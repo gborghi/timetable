@@ -245,8 +245,21 @@ def import_school_into_db(db: Session, school: dict[str, Any],
 
     # Teacher rows
     for t in school.get("teachers", []):
+        full = t["name"]
+        # Best-effort split: Faker default emits "First Last" in en_US, while
+        # Italian Faker emits "Last First" or "First Last" depending on the
+        # locale's _format. Heuristic: rsplit on the LAST whitespace and treat
+        # the right side as last_name; if there's only one token, leave them
+        # as None.
+        parts = str(full).rsplit(" ", 1)
+        if len(parts) == 2:
+            first_n, last_n = parts[0], parts[1]
+        else:
+            first_n, last_n = None, None
         tt = models.Teacher(
-            name=t["name"],
+            name=full,
+            last_name=last_n, first_name=first_n,
+            nickname=None,
             group=t.get("group"),
             max_hours=int(t.get("max_hours", 18)),
             free_day=t.get("free_day"),

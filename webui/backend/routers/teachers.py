@@ -51,6 +51,9 @@ def _to_out(t: models.Teacher) -> schemas.TeacherOut:
     return schemas.TeacherOut(
         id=t.id,
         name=t.name,
+        last_name=t.last_name,
+        first_name=t.first_name,
+        nickname=t.nickname,
         matricola=t.matricola,
         group=t.group,
         max_hours=t.max_hours,
@@ -118,6 +121,9 @@ def get_teacher(teacher_id: int, db: Session = Depends(get_db)):
 def _apply_payload(t: models.Teacher, p: schemas.TeacherIn,
                    db: Session) -> None:
     t.name = p.name
+    t.last_name = p.last_name
+    t.first_name = p.first_name
+    t.nickname = p.nickname
     t.matricola = p.matricola
     t.group = p.group
     t.max_hours = p.max_hours

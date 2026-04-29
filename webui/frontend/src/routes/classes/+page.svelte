@@ -26,7 +26,7 @@
   function newClass() {
     editing = {
       _new: true,
-      name: '', year: 1, section: '', curriculum: '', curriculum_id: null,
+      name: '', nickname: '', year: 1, section: '', curriculum: '', curriculum_id: null,
       n_students: 22, notes: '',
       hard_entry_at_8: true, hard_exit_after_12: true,
       hard_no_holes: true, hard_dual_math: true,
@@ -151,6 +151,12 @@
   {#if editing}
     <div class="grid grid-cols-2 gap-3">
       <div class="field"><label>Nome</label><input bind:value={editing.name}/></div>
+      <div class="field">
+        <label>Nickname (mostrato nell'orario)
+          <span class="text-xs text-ink-400">- default: nome</span>
+        </label>
+        <input bind:value={editing.nickname} placeholder={editing.name ?? ''}/>
+      </div>
       <div class="field"><label>Anno</label><input type="number" min="1" max="5" bind:value={editing.year}/></div>
       <div class="field"><label>Sezione</label><input bind:value={editing.section}/></div>
       <div class="field">

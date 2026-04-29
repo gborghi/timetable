@@ -23,6 +23,7 @@ def _to_out(s: models.Student, db: Session) -> schemas.StudentOut:
     ).count()
     return schemas.StudentOut(
         id=s.id, last_name=s.last_name, first_name=s.first_name,
+        nickname=s.nickname,
         birth_date=s.birth_date, gender=s.gender, email=s.email,
         student_code=s.student_code, class_id=s.class_id, notes=s.notes,
         class_name=cls_name, n_groups=n_groups,
@@ -65,6 +66,7 @@ def _apply(s: models.Student, p: schemas.StudentIn, db: Session) -> None:
     _validate_class(db, p.class_id)
     s.last_name = p.last_name
     s.first_name = p.first_name
+    s.nickname = p.nickname
     s.birth_date = p.birth_date
     s.gender = p.gender
     s.email = p.email

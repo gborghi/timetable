@@ -144,8 +144,16 @@ def run_mock_generation(profile: str, mode: str, margin: float,
 # ----------------------------------------------------------------------
 
 
-def import_experiments_profile(profile: str, use_optimized: bool) -> int:
-    params = dict(profile=profile, use_optimized=use_optimized)
+def import_experiments_profile(profile: str, use_optimized: bool,
+                               *,
+                               import_curricula: bool = True,
+                               import_classrooms: bool = True,
+                               import_students: bool = True,
+                               students_seed: int = 42) -> int:
+    params = dict(profile=profile, use_optimized=use_optimized,
+                  import_curricula=import_curricula,
+                  import_classrooms=import_classrooms,
+                  import_students=import_students)
     run_id = create_run("import", f"Import {profile}", profile, params)
     here = os.path.dirname(os.path.abspath(__file__))
     experiments_dir = os.path.normpath(
@@ -175,6 +183,52 @@ def import_experiments_profile(profile: str, use_optimized: bool) -> int:
               f"{len(school.get('teachers', []))} teachers")
         with SessionLocal() as db:
             engine_io.import_school_into_db(db, school, replace=True)
+
+        # ---------- Pool data: curricula / classrooms / students ----------
+        if import_curricula:
+            from . import seed_curricula
+            try:
+                seed_curricula.seed(force=False)
+                # link curriculum_id on classes by matching the legacy
+                # curriculum string column
+                with SessionLocal() as db:
+                    codes_map = {c.code: c.id
+                                 for c in db.query(models.Curriculum).all()}
+                    linked = 0
+                    for cl in db.query(models.SchoolClass).all():
+                        if cl.curriculum and cl.curriculum_id is None:
+                            cid = codes_map.get(cl.curriculum)
+                            if cid is not None:
+                                cl.curriculum_id = cid
+                                linked += 1
+                    db.commit()
+                print(f"[import] curricula seeded; {linked} classes linked")
+            except Exception as e:
+                print(f"[import] curricula seed skipped: {e}")
+
+        if import_classrooms:
+            try:
+                summary = auto_generate_classrooms(overrides=None)
+                print(f"[import] classrooms generated: "
+                      f"{summary.get('created', 0)} rooms "
+                      f"(school size {summary.get('n_classes', 0)})")
+            except Exception as e:
+                print(f"[import] classroom generation skipped: {e}")
+
+        if import_students:
+            from . import mock_students
+            try:
+                with SessionLocal() as db:
+                    rep = mock_students.generate_students_for_db(
+                        db, seed=int(students_seed), force=True,
+                    )
+                print(f"[import] students generated: "
+                      f"{rep.get('n_inserted', 0)} students in "
+                      f"{rep.get('n_classes_populated', 0)} classes")
+            except Exception as e:
+                print(f"[import] student generation skipped: {e}")
+        # -----------------------------------------------------------------
+
         if os.path.exists(profs_pkl):
             with open(profs_pkl, "rb") as f:
                 profs = pickle.load(f)

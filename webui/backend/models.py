@@ -62,7 +62,19 @@ class Subject(Base):
 class Teacher(Base):
     __tablename__ = "teachers"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    name: Mapped[str] = mapped_column(String(120), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(120), unique=True, index=True,
+                                      comment="full canonical name; "
+                                      "engine key. Defaults to "
+                                      "'<last_name> <first_name>'.")
+    last_name: Mapped[str | None] = mapped_column(String(80), nullable=True,
+                                                  index=True)
+    first_name: Mapped[str | None] = mapped_column(String(80), nullable=True,
+                                                   index=True)
+    nickname: Mapped[str | None] = mapped_column(
+        String(80), nullable=True,
+        comment="abbreviated name shown in the timetable view; defaults "
+                "to '<last_name> <first_name>' when displayed."
+    )
     matricola: Mapped[str | None] = mapped_column(String(40), nullable=True)
     group: Mapped[str | None] = mapped_column(String(40), nullable=True,
                                               comment="classe di concorso")
@@ -169,6 +181,10 @@ class SchoolClass(Base):
     __tablename__ = "school_classes"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(40), unique=True, index=True)
+    nickname: Mapped[str | None] = mapped_column(
+        String(40), nullable=True,
+        comment="abbreviation shown in the timetable; defaults to name"
+    )
     year: Mapped[int] = mapped_column(Integer, default=1)
     section: Mapped[str | None] = mapped_column(String(8), nullable=True)
     curriculum: Mapped[str | None] = mapped_column(String(64), nullable=True)
@@ -625,6 +641,11 @@ class Student(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     last_name: Mapped[str] = mapped_column(String(80), index=True)
     first_name: Mapped[str] = mapped_column(String(80), index=True)
+    nickname: Mapped[str | None] = mapped_column(
+        String(80), nullable=True,
+        comment="abbreviation shown in the timetable; defaults to "
+                "'<last_name> <first_name>' when displayed."
+    )
     birth_date: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
     gender: Mapped[str | None] = mapped_column(String(8), nullable=True,
                                                comment="M | F | other")
@@ -665,6 +686,10 @@ class StudyGroup(Base):
     __tablename__ = "study_groups"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(120), unique=True, index=True)
+    nickname: Mapped[str | None] = mapped_column(
+        String(80), nullable=True,
+        comment="abbreviation shown in the timetable; defaults to name"
+    )
     kind: Mapped[str] = mapped_column(
         String(32), default="splitting",
         comment="splitting | language | religion | support | other"

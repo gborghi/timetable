@@ -28,6 +28,7 @@ def _to_out(c: models.SchoolClass, db=None) -> schemas.ClassOut:
     return schemas.ClassOut(
         id=c.id,
         name=c.name,
+        nickname=c.nickname,
         year=c.year,
         section=c.section,
         curriculum=c.curriculum,
@@ -75,6 +76,7 @@ def get_class(class_id: int, db: Session = Depends(get_db)):
 
 def _apply(c: models.SchoolClass, p: schemas.ClassIn, db: Session) -> None:
     c.name = p.name
+    c.nickname = p.nickname
     c.year = p.year
     c.section = p.section
     c.curriculum = p.curriculum

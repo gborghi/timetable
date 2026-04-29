@@ -21,6 +21,11 @@ def teacher_fields() -> dict[str, Callable[[Any], Any]]:
     return {
         "name": lambda r: r.get("name") or "",
         "cognome_nome": lambda r: r.get("name") or "",
+        "last_name": lambda r: r.get("last_name") or "",
+        "cognome": lambda r: r.get("last_name") or "",
+        "first_name": lambda r: r.get("first_name") or "",
+        "nome": lambda r: r.get("first_name") or "",
+        "nickname": lambda r: r.get("nickname") or "",
         "matricola": lambda r: r.get("matricola") or "",
         "group": lambda r: r.get("group") or "",
         "classe_di_concorso": lambda r: r.get("group") or "",
@@ -95,6 +100,7 @@ def teacher_funcs() -> dict[str, Callable[..., bool]]:
 def class_fields() -> dict[str, Callable[[Any], Any]]:
     return {
         "name": lambda r: r.get("name") or "",
+        "nickname": lambda r: r.get("nickname") or "",
         "year": lambda r: r.get("year", 0),
         "anno": lambda r: r.get("year", 0),
         "section": lambda r: r.get("section") or "",
@@ -182,6 +188,7 @@ def student_fields() -> dict[str, Callable[[Any], Any]]:
         "cognome": lambda r: r.get("last_name") or "",
         "first_name": lambda r: r.get("first_name") or "",
         "nome": lambda r: r.get("first_name") or "",
+        "nickname": lambda r: r.get("nickname") or "",
         "fullname": lambda r: ((r.get("last_name") or "") + " "
                                + (r.get("first_name") or "")).strip(),
         "class_name": lambda r: r.get("class_name") or "",
@@ -205,6 +212,7 @@ def group_fields() -> dict[str, Callable[[Any], Any]]:
     return {
         "name": lambda r: r.get("name") or "",
         "nome": lambda r: r.get("name") or "",
+        "nickname": lambda r: r.get("nickname") or "",
         "kind": lambda r: r.get("kind") or "",
         "tipo": lambda r: r.get("kind") or "",
         "description": lambda r: r.get("description") or "",

@@ -20,6 +20,9 @@ def get_state(db: Session = Depends(get_db)):
     n_assignments = db.query(models.Assignment).count()
     n_rooms = db.query(models.Classroom).count()
     n_solutions = db.query(models.Solution).count()
+    n_curricula = db.query(models.Curriculum).count()
+    n_students = db.query(models.Student).count()
+    n_groups = db.query(models.StudyGroup).count()
     active = engine_io.get_active_solution(db)
     return {
         "classes": n_classes,
@@ -28,6 +31,9 @@ def get_state(db: Session = Depends(get_db)):
         "assignments": n_assignments,
         "classrooms": n_rooms,
         "solutions": n_solutions,
+        "curricula": n_curricula,
+        "students": n_students,
+        "groups": n_groups,
         "active_solution": (
             None if active is None else {
                 "id": active.id,
@@ -64,7 +70,11 @@ def import_profile(payload: schemas.ImportPickleIn):
             404, f"school_{payload.profile}.pkl not found in experiments/"
         )
     run_id = optimization.import_experiments_profile(
-        payload.profile, payload.use_optimized
+        payload.profile, payload.use_optimized,
+        import_curricula=payload.import_curricula,
+        import_classrooms=payload.import_classrooms,
+        import_students=payload.import_students,
+        students_seed=payload.students_seed,
     )
     return {"run_id": run_id}
 

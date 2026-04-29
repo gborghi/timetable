@@ -18,7 +18,7 @@
 
   function newStudent() {
     editing = {
-      _new: true, last_name: '', first_name: '',
+      _new: true, last_name: '', first_name: '', nickname: '',
       birth_date: null, gender: null, email: '',
       student_code: '', class_id: null, notes: ''
     };
@@ -53,6 +53,7 @@
   const columns = [
     { key: 'last_name', label: 'Cognome' },
     { key: 'first_name', label: 'Nome' },
+    { key: 'nickname', label: 'Nickname' },
     { key: 'class_name', label: 'Classe' },
     { key: 'student_code', label: 'Matricola' },
     { key: 'gender', label: 'Sesso' },
@@ -87,6 +88,7 @@
     <tr>
       <td><strong>{row.last_name}</strong></td>
       <td>{row.first_name}</td>
+      <td class="text-xs">{row.nickname ?? ''}</td>
       <td>{row.class_name ?? ''}</td>
       <td>{row.student_code ?? ''}</td>
       <td class="text-center">{row.gender ?? ''}</td>
@@ -105,6 +107,13 @@
     <div class="grid grid-cols-2 gap-3">
       <div class="field"><label>Cognome</label><input bind:value={editing.last_name}/></div>
       <div class="field"><label>Nome</label><input bind:value={editing.first_name}/></div>
+      <div class="field col-span-2">
+        <label>Nickname (mostrato nell'orario)
+          <span class="text-xs text-ink-400">- default: "Cognome Nome"</span>
+        </label>
+        <input bind:value={editing.nickname}
+               placeholder={(editing.last_name ?? '') + ' ' + (editing.first_name ?? '')}/>
+      </div>
       <div class="field"><label>Data nascita</label>
         <input type="date" bind:value={editing.birth_date}/></div>
       <div class="field"><label>Sesso</label>

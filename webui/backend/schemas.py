@@ -46,6 +46,9 @@ class UnavailabilitySlot(BaseModel):
 
 class TeacherBase(BaseModel):
     name: str
+    last_name: str | None = None
+    first_name: str | None = None
+    nickname: str | None = None
     matricola: str | None = None
     group: str | None = None
     max_hours: int = 18
@@ -86,6 +89,7 @@ class ClassSubjectIn(BaseModel):
 
 class ClassBase(BaseModel):
     name: str
+    nickname: str | None = None
     year: int = 1
     section: str | None = None
     curriculum: str | None = None
@@ -258,6 +262,17 @@ class ImportPickleIn(BaseModel):
     use_optimized: bool = True
     """When true and an optimized pkl exists, import it as the active
     solution. Otherwise import the decomposed pkl."""
+    # Extra "pool" data to import alongside school + profs:
+    import_curricula: bool = True
+    """Seed indirizzi (idempotent) and link curriculum_id on each class."""
+    import_classrooms: bool = True
+    """Auto-generate classrooms via the standard recipe (one per class +
+    proportional labs/palestre/biblioteca)."""
+    import_students: bool = True
+    """Generate fake students for each class using Faker, sized after
+    `n_students` on each class."""
+    students_seed: int = 42
+    """Random seed for the student generator (deterministic output)."""
 
 
 # ---------- Schedule view filters ----------
@@ -470,6 +485,7 @@ class CurriculumOut(CurriculumBase):
 class StudentBase(BaseModel):
     last_name: str
     first_name: str
+    nickname: str | None = None
     birth_date: dt.date | None = None
     gender: str | None = None
     email: str | None = None
@@ -499,6 +515,7 @@ class GroupSubjectHoursIn(BaseModel):
 
 class StudyGroupBase(BaseModel):
     name: str
+    nickname: str | None = None
     kind: str = "splitting"
     description: str | None = None
     notes: str | None = None

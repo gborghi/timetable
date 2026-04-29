@@ -26,7 +26,8 @@
   function newTeacher() {
     editing = {
       _new: true,
-      name: '', matricola: '', group: '',
+      name: '', last_name: '', first_name: '', nickname: '',
+      matricola: '', group: '',
       max_hours: 18, completion_hours: 0, exemption_hours: 0,
       free_day: 'Saturday', max_consecutive: 5, notes: '',
       pref_no_buchi_weight: 10, pref_no_five_weight: 30, pref_no_one_weight: 80,
@@ -39,6 +40,27 @@
   function edit(row) {
     editing = JSON.parse(JSON.stringify(row));
     if (!Array.isArray(editing.unavailability)) editing.unavailability = [];
+    if (!editing.last_name && !editing.first_name && editing.name) {
+      // back-fill split fields from the legacy 'name' column
+      const parts = editing.name.trim().split(/\s+/);
+      if (parts.length >= 2) {
+        editing.last_name = parts[parts.length - 1];
+        editing.first_name = parts.slice(0, -1).join(' ');
+      } else {
+        editing.last_name = editing.name;
+        editing.first_name = '';
+      }
+    }
+  }
+
+  // Auto-build the canonical 'name' = '<last_name> <first_name>' when the user
+  // edits either field, unless they have already overridden it manually.
+  function syncName() {
+    const ln = (editing.last_name || '').trim();
+    const fn = (editing.first_name || '').trim();
+    const composed = ln && fn ? `${ln} ${fn}` : (ln || fn);
+    if (composed) editing.name = composed;
+    if (!editing.nickname) editing.nickname = composed;
   }
 
   // Map free_day name <-> day number (1..6)
@@ -134,7 +156,9 @@
   }
 
   const columns = [
-    { key: 'name', label: 'Cognome Nome' },
+    { key: 'last_name', label: 'Cognome' },
+    { key: 'first_name', label: 'Nome' },
+    { key: 'nickname', label: 'Nickname' },
     { key: 'group', label: 'Cl. concorso' },
     { key: 'subjects', label: 'Materie', sortable: false,
       render: (r) => (r.subjects || []).join(', ') },
@@ -183,10 +207,11 @@
     selectable={true}
     bind:selectedIds
     let:row let:columns>
-    <td>
-      <strong>{row.name}</strong>
+    <td><strong>{row.last_name ?? row.name}</strong>
       {#if row.matricola}<span class="text-xs text-ink-500"> ({row.matricola})</span>{/if}
     </td>
+    <td>{row.first_name ?? ''}</td>
+    <td class="text-xs">{row.nickname ?? ''}</td>
     <td>{row.group ?? ''}</td>
     <td class="text-xs">{(row.subjects || []).join(', ')}</td>
     <td class="text-center">{row.max_hours}</td>
@@ -208,7 +233,21 @@
 <Modal open={!!editing} title={editing?._new ? 'Nuovo docente' : 'Modifica docente'} onClose={() => (editing = null)}>
   {#if editing}
     <div class="grid grid-cols-2 gap-3">
-      <div class="field"><label>Nome</label><input bind:value={editing.name}/></div>
+      <div class="field">
+        <label>Cognome</label>
+        <input bind:value={editing.last_name} on:input={syncName}/>
+      </div>
+      <div class="field">
+        <label>Nome</label>
+        <input bind:value={editing.first_name} on:input={syncName}/>
+      </div>
+      <div class="field col-span-2">
+        <label>Nickname (mostrato nell'orario)
+          <span class="text-xs text-ink-400">- default: "Cognome Nome"</span>
+        </label>
+        <input bind:value={editing.nickname}
+               placeholder={(editing.last_name ?? '') + ' ' + (editing.first_name ?? '')}/>
+      </div>
       <div class="field"><label>Matricola</label><input bind:value={editing.matricola}/></div>
       <div class="field"><label>Classe di concorso</label><input bind:value={editing.group}/></div>
       <div class="field"><label>Max ore-cattedra</label><input type="number" bind:value={editing.max_hours}/></div>

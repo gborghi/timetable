@@ -7,6 +7,9 @@
   let availableProfiles = [];
   let selectedProfile = 'small';
   let useOptimized = true;
+  let importCurricula = true;
+  let importClassrooms = true;
+  let importStudents = true;
   let mockMode = 'aggregated';
   let mockMargin = 0.05;
   let baseMaxHours = 18;
@@ -26,7 +29,11 @@
     busyImport = true;
     try {
       const res = await api.post('/api/dataset/import-profile', {
-        profile: selectedProfile, use_optimized: useOptimized
+        profile: selectedProfile,
+        use_optimized: useOptimized,
+        import_curricula: importCurricula,
+        import_classrooms: importClassrooms,
+        import_students: importStudents
       });
       runId = res.run_id;
       flash('Import lanciato (run #' + runId + ')', 'success');
@@ -116,12 +123,31 @@
           <input type="checkbox" bind:checked={useOptimized} />
           Usa la soluzione ottimizzata se disponibile
         </label>
+
+        <div class="space-y-1 border border-ink-200 rounded p-2 bg-ink-50">
+          <div class="text-xs font-semibold text-ink-500 mb-1">
+            Pool dati da generare insieme al profilo:
+          </div>
+          <label class="flex items-center gap-2 text-sm">
+            <input type="checkbox" bind:checked={importCurricula}/>
+            Indirizzi (curricula): seed dei monte-ore mock + linkaggio classi
+          </label>
+          <label class="flex items-center gap-2 text-sm">
+            <input type="checkbox" bind:checked={importClassrooms}/>
+            Aule: una per classe + lab/palestre/biblioteca proporzionali
+          </label>
+          <label class="flex items-center gap-2 text-sm">
+            <input type="checkbox" bind:checked={importStudents}/>
+            Studenti: ~22 per classe (Faker, deterministico)
+          </label>
+        </div>
+
         <div class="flex items-center gap-3">
           <button class="btn-primary" on:click={importPickle} disabled={busyImport}>
             Importa
           </button>
           <button class="btn" on:click={autoGenerateClassrooms}>
-            Genera aule (proporzionali alla scuola)
+            Rigenera solo aule
           </button>
         </div>
       </div>
@@ -174,7 +200,7 @@
 
   <section class="card p-5">
     <h2 class="mb-2">Stato corrente</h2>
-    <div class="grid grid-cols-2 md:grid-cols-6 gap-3 text-center">
+    <div class="grid grid-cols-2 md:grid-cols-7 gap-3 text-center">
       <div class="card !shadow-none p-3">
         <div class="text-3xl font-semibold">{$datasetState.classes}</div>
         <div class="text-xs text-ink-500">Classi</div>
@@ -192,12 +218,16 @@
         <div class="text-xs text-ink-500">Aule</div>
       </div>
       <div class="card !shadow-none p-3">
+        <div class="text-3xl font-semibold">{$datasetState.students ?? 0}</div>
+        <div class="text-xs text-ink-500">Studenti</div>
+      </div>
+      <div class="card !shadow-none p-3">
         <div class="text-3xl font-semibold">{$datasetState.assignments}</div>
         <div class="text-xs text-ink-500">Cattedre</div>
       </div>
       <div class="card !shadow-none p-3">
         <div class="text-3xl font-semibold">{$datasetState.solutions}</div>
-        <div class="text-xs text-ink-500">Soluzioni salvate</div>
+        <div class="text-xs text-ink-500">Soluzioni</div>
       </div>
     </div>
     {#if $datasetState.active_solution}

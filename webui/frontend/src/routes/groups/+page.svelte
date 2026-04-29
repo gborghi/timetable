@@ -25,7 +25,7 @@
 
   function newGroup() {
     editing = {
-      _new: true, name: '', kind: 'splitting',
+      _new: true, name: '', nickname: '', kind: 'splitting',
       description: '', notes: '',
       student_ids: [], subject_hours: []
     };
@@ -136,6 +136,12 @@
   {#if editing}
     <div class="grid grid-cols-2 gap-3">
       <div class="field"><label>Nome</label><input bind:value={editing.name}/></div>
+      <div class="field">
+        <label>Nickname
+          <span class="text-xs text-ink-400">- default: nome</span>
+        </label>
+        <input bind:value={editing.nickname} placeholder={editing.name ?? ''}/>
+      </div>
       <div class="field"><label>Tipo</label>
         <select bind:value={editing.kind}>
           <option value="splitting">splitting (frazionamento classe)</option>

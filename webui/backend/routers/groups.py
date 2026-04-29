@@ -32,7 +32,7 @@ def _to_out(g: models.StudyGroup, db: Session) -> schemas.StudyGroupOut:
             if cid is not None:
                 classes.add(cid)
     return schemas.StudyGroupOut(
-        id=g.id, name=g.name, kind=g.kind,
+        id=g.id, name=g.name, nickname=g.nickname, kind=g.kind,
         description=g.description, notes=g.notes,
         student_ids=student_ids,
         subject_hours=[
@@ -68,6 +68,7 @@ def get_group(gid: int, db: Session = Depends(get_db)):
 def _apply(g: models.StudyGroup, p: schemas.StudyGroupIn,
            db: Session) -> None:
     g.name = p.name
+    g.nickname = p.nickname
     g.kind = p.kind
     g.description = p.description
     g.notes = p.notes

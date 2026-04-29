@@ -66,3 +66,21 @@ def _apply_lightweight_migrations() -> None:
             conn.execute(text(
                 "ALTER TABLE school_classes ADD COLUMN curriculum_id INTEGER"
             ))
+        # nickname columns and split-name columns
+        nickname_targets = (
+            "teachers", "students", "school_classes", "study_groups",
+        )
+        for tbl in nickname_targets:
+            if insp.has_table(tbl) and not has_column(tbl, "nickname"):
+                conn.execute(text(
+                    f"ALTER TABLE {tbl} ADD COLUMN nickname VARCHAR(80)"
+                ))
+        if insp.has_table("teachers"):
+            if not has_column("teachers", "last_name"):
+                conn.execute(text(
+                    "ALTER TABLE teachers ADD COLUMN last_name VARCHAR(80)"
+                ))
+            if not has_column("teachers", "first_name"):
+                conn.execute(text(
+                    "ALTER TABLE teachers ADD COLUMN first_name VARCHAR(80)"
+                ))
