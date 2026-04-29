@@ -154,7 +154,11 @@
 
   async function onDrop(ev, uncov) {
     ev.preventDefault();
-    if (!dragTeacher) return;
+    // Capture the teacher reference at drop time. `dragend` fires on the
+    // source element AFTER `drop` and clears `dragTeacher`; if we reach
+    // it past an `await`, the variable is already null.
+    const t = dragTeacher;
+    if (!t) return;
     try {
       await api.post('/api/substitutions', {
         date: cellModal.date,
@@ -163,9 +167,9 @@
         class_name: uncov.class_name,
         subject: uncov.subject,
         original_teacher_name: uncov.original_teacher_name,
-        substitute_teacher_id: dragTeacher.id,
+        substitute_teacher_id: t.id,
       });
-      flash(`Supplenza assegnata: ${dragTeacher.display} -> ${uncov.class_name}`,
+      flash(`Supplenza assegnata: ${t.display} -> ${uncov.class_name}`,
             'success');
       dragTeacher = null;
       await refreshCellModal();
