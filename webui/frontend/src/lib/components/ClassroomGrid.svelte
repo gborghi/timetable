@@ -3,8 +3,9 @@
   //
   // States (per classroom):
   //   allowed   (verdino, default): the entity may use the room
+  //   soft      (giallo)          : SOFT penalty when used (positive weight)
   //   preferred (blu)             : SOFT bonus when used (negative weight)
-  //   forbidden (rosso)           : HARD: cannot be in this room
+  //   forbidden (rosso)           : HARD: cannot be in this room (no weight)
   //   enforced  (verde scuro)     : HARD: MUST be in a room of this kind
   //
   // Props:
@@ -43,14 +44,16 @@
   });
 
   function defaultWeightFor(state) {
+    if (state === 'soft') return 100;
     if (state === 'preferred') return -100;
-    if (state === 'forbidden') return 100;
+    if (state === 'forbidden') return 0;   // HARD, weight unused
     if (state === 'enforced') return 0;
     return 0;
   }
 
   function nextState(cur) {
-    if (cur === 'allowed') return 'preferred';
+    if (cur === 'allowed') return 'soft';
+    if (cur === 'soft') return 'preferred';
     if (cur === 'preferred') return 'forbidden';
     if (cur === 'forbidden') return 'enforced';
     return 'allowed';
@@ -81,12 +84,13 @@
     if (!cur) return;
     let v = Number(ev.target.value);
     if (!Number.isFinite(v)) return;
+    if (cur.state === 'soft' && v < 0) v = Math.abs(v);
     if (cur.state === 'preferred' && v > 0) v = -Math.abs(v);
-    if (cur.state === 'forbidden' && v < 0) v = Math.abs(v);
     setRoom(room.name, cur.state, v);
   }
 
   function colorClasses(state) {
+    if (state === 'soft')      return 'bg-amber-200 border-amber-400 text-amber-900';
     if (state === 'preferred') return 'bg-sky-200 border-sky-400 text-sky-900';
     if (state === 'forbidden') return 'bg-red-200 border-red-400 text-red-900';
     if (state === 'enforced')  return 'bg-emerald-700 border-emerald-900 text-white';
@@ -113,11 +117,13 @@
         click cicla:
         <span class="pill" style="background:#d1fae5;color:#065f46;">verdino</span>
         ->
-        <span class="pill-blue">blu</span>
+        <span class="pill-amber">giallo (+)</span>
         ->
-        <span class="pill-red">rosso</span>
+        <span class="pill-blue">blu (-)</span>
         ->
-        <span class="pill" style="background:#065f46;color:#fff;">verde scuro</span>
+        <span class="pill-red">rosso (HARD)</span>
+        ->
+        <span class="pill" style="background:#065f46;color:#fff;">verdone (must)</span>
       </span>
     {/if}
   </div>
@@ -133,15 +139,16 @@
           <div class="rounded border-2 p-2 cursor-pointer transition-colors {colorClasses(state)}"
                on:click={(e) => onClick(e, room)}
                title={state === 'allowed' ? 'Aula consentita (default)' :
+                      state === 'soft' ? 'SOFT - penalita ' + (pref?.weight ?? '') :
                       state === 'preferred' ? 'PREFERITA - bonus ' + (pref?.weight ?? '') :
-                      state === 'forbidden' ? 'VIETATA' :
+                      state === 'forbidden' ? 'VIETATA (HARD, no penalty)' :
                       'OBBLIGATORIA (enforced)'}>
             <div class="flex items-baseline justify-between">
               <strong class="text-sm truncate">{room.name}</strong>
               <span class="text-[10px] opacity-75">{room.kind}</span>
             </div>
             <div class="text-[10px] opacity-75">cap. {room.capacity}</div>
-            {#if state === 'preferred' || state === 'forbidden'}
+            {#if state === 'soft' || state === 'preferred'}
               <div class="mt-1">
                 <input type="number" step="10"
                        class="w-full text-xs px-1 py-0.5 rounded border bg-white text-ink-900"

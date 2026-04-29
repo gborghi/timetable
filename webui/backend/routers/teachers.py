@@ -81,7 +81,7 @@ def _apply_teacher_classroom_prefs(db, teacher_id: int,
         if room is None:
             continue
         st = p.state if p.state in (
-            "allowed", "preferred", "forbidden", "enforced"
+            "allowed", "soft", "preferred", "forbidden", "enforced"
         ) else "allowed"
         db.add(models.TeacherClassroomPreference(
             teacher_id=teacher_id,

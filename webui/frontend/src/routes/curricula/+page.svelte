@@ -15,8 +15,18 @@
   let logicalRules = [];
   let logicalDraftExpr = '';
   let logicalDraftYear = null;
-  let logicalDraftKind = 'hard';   // 'hard' | 'soft' | 'preferred'
+  let logicalDraftKind = 'hard';   // 'hard' | 'soft' | 'preferred' | 'enforced'
   let logicalDraftPenalty = 100;
+  $: logicalSignedPenalty = (logicalDraftKind === 'preferred')
+                              ? -Math.abs(logicalDraftPenalty || 100)
+                              : Math.abs(logicalDraftPenalty || 100);
+  function onLogicalPenaltyInput(ev) {
+    let v = Number(ev.target.value);
+    if (!Number.isFinite(v)) return;
+    logicalDraftPenalty = Math.abs(v);
+    ev.target.value = (logicalDraftKind === 'preferred')
+                        ? -logicalDraftPenalty : logicalDraftPenalty;
+  }
 
   function _payloadFromKind(kind, expr, pen, year, label) {
     const base = {
@@ -388,8 +398,10 @@
               </label>
               {#if logicalDraftKind === 'soft' || logicalDraftKind === 'preferred'}
                 <div class="field">
-                  <label>{logicalDraftKind === 'soft' ? 'Penalita' : 'Bonus'}</label>
-                  <input type="number" min="0" class="w-24" bind:value={logicalDraftPenalty}/>
+                  <label>{logicalDraftKind === 'soft' ? 'Penalita (> 0)' : 'Bonus (< 0)'}</label>
+                  <input type="number" class="w-24"
+                         value={logicalSignedPenalty}
+                         on:input={onLogicalPenaltyInput}/>
                 </div>
               {/if}
               <button class="btn-primary" on:click={addLogical}

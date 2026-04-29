@@ -19,9 +19,25 @@
 
   let rules = [];
   let draftExpr = '';
-  // 'hard' | 'soft' | 'preferred'
+  // 'hard' | 'soft' | 'preferred' | 'enforced'
   let draftKind = 'hard';
   let draftPenalty = 100;
+
+  // The displayed penalty in the input is signed (negative for preferred).
+  // We mirror it into draftPenalty (absolute) on every reactive change.
+  $: signedPenalty = (draftKind === 'preferred')
+                       ? -Math.abs(draftPenalty || 100)
+                       : Math.abs(draftPenalty || 100);
+
+  function onPenaltyInput(ev) {
+    let v = Number(ev.target.value);
+    if (!Number.isFinite(v)) return;
+    if (draftKind === 'preferred' && v > 0) v = -v;
+    if (draftKind === 'soft' && v < 0) v = -v;
+    draftPenalty = Math.abs(v);
+    // force the sign in the displayed field if the user typed it wrong
+    ev.target.value = (draftKind === 'preferred') ? -draftPenalty : draftPenalty;
+  }
   let validateInfo = null;     // {ok, pretty?, error?}
   let editingId = null;        // id being edited
   let busy = false;
@@ -107,7 +123,8 @@
     editingId = r.id;
     draftExpr = r.expression;
     draftKind = kindFromRule(r);
-    draftPenalty = Math.abs(r.soft_penalty || 100);
+    // draftPenalty stays absolute; the signed display is computed
+    draftPenalty = Math.abs(r.soft_penalty || 100) || 100;
     validateInfo = null;
   }
 
@@ -273,6 +290,7 @@
               {#if !r.is_hard}
                 <input type="number" class="w-20 px-1.5 py-0.5 border border-ink-200 rounded text-xs"
                   value={r.soft_penalty}
+                  title={kindFromRule(r) === 'preferred' ? 'Bonus (deve essere < 0)' : 'Penalita (> 0)'}
                   on:change={(e) => updatePenalty(r, e)}/>
               {:else}
                 <span class="text-xs text-ink-400">-</span>
@@ -328,13 +346,14 @@
       <div class="field"
            class:opacity-50={draftKind === 'hard' || draftKind === 'enforced'}>
         <label>
-          {#if draftKind === 'soft'}Penalita (soft)
-          {:else if draftKind === 'preferred'}Bonus (preferito)
+          {#if draftKind === 'soft'}Penalita (soft, &gt; 0)
+          {:else if draftKind === 'preferred'}Bonus (preferito, &lt; 0)
           {:else}-{/if}
         </label>
-        <input type="number" min="0" class="w-24"
+        <input type="number" class="w-24"
                disabled={draftKind === 'hard' || draftKind === 'enforced'}
-               bind:value={draftPenalty}/>
+               value={signedPenalty}
+               on:input={onPenaltyInput}/>
       </div>
       <button class="btn-primary" on:click={add} disabled={busy || !draftExpr.trim()}>
         {editingId ? 'Salva modifica' : 'Aggiungi'}

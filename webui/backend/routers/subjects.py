@@ -67,7 +67,7 @@ def _apply_classroom_prefs(db, subject_name: str,
         if room is None:
             continue
         st = p.state if p.state in (
-            "allowed", "preferred", "forbidden", "enforced"
+            "allowed", "soft", "preferred", "forbidden", "enforced"
         ) else "allowed"
         db.add(models.ClassroomSubjectPreference(
             classroom_id=room.id,

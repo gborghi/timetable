@@ -129,7 +129,7 @@ def _apply(r: models.Classroom, p: schemas.ClassroomIn, db: Session):
         db.flush()
     for sp in p.subject_prefs:
         st = sp.state if sp.state in (
-            "allowed", "preferred", "forbidden", "enforced"
+            "allowed", "soft", "preferred", "forbidden", "enforced"
         ) else ("enforced" if sp.required else "allowed")
         db.add(models.ClassroomSubjectPreference(
             classroom_id=r.id, subject=sp.subject,
