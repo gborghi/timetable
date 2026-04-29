@@ -151,11 +151,83 @@ def subject_funcs() -> dict[str, Callable[..., bool]]:
 # ---------- Apply (filter + sort) ----------
 
 
+# ---------- Curricula ----------
+
+
+def curriculum_fields() -> dict[str, Callable[[Any], Any]]:
+    return {
+        "code": lambda r: r.get("code") or "",
+        "codice": lambda r: r.get("code") or "",
+        "name": lambda r: r.get("name") or "",
+        "nome": lambda r: r.get("name") or "",
+        "description": lambda r: r.get("description") or "",
+        "score": lambda r: r.get("score", 0),
+        "punteggio": lambda r: r.get("score", 0),
+        "n_classes": lambda r: r.get("n_classes", 0),
+        "n_classi": lambda r: r.get("n_classes", 0),
+        "n_hours_rows": lambda r: len(r.get("hours", [])),
+    }
+
+
+def curriculum_funcs() -> dict[str, Callable[..., bool]]:
+    return {}
+
+
+# ---------- Students ----------
+
+
+def student_fields() -> dict[str, Callable[[Any], Any]]:
+    return {
+        "last_name": lambda r: r.get("last_name") or "",
+        "cognome": lambda r: r.get("last_name") or "",
+        "first_name": lambda r: r.get("first_name") or "",
+        "nome": lambda r: r.get("first_name") or "",
+        "fullname": lambda r: ((r.get("last_name") or "") + " "
+                               + (r.get("first_name") or "")).strip(),
+        "class_name": lambda r: r.get("class_name") or "",
+        "classe": lambda r: r.get("class_name") or "",
+        "student_code": lambda r: r.get("student_code") or "",
+        "matricola": lambda r: r.get("student_code") or "",
+        "email": lambda r: r.get("email") or "",
+        "gender": lambda r: r.get("gender") or "",
+        "n_groups": lambda r: r.get("n_groups", 0),
+    }
+
+
+def student_funcs() -> dict[str, Callable[..., bool]]:
+    return {}
+
+
+# ---------- Study groups ----------
+
+
+def group_fields() -> dict[str, Callable[[Any], Any]]:
+    return {
+        "name": lambda r: r.get("name") or "",
+        "nome": lambda r: r.get("name") or "",
+        "kind": lambda r: r.get("kind") or "",
+        "tipo": lambda r: r.get("kind") or "",
+        "description": lambda r: r.get("description") or "",
+        "n_students": lambda r: r.get("n_students", 0),
+        "n_studenti": lambda r: r.get("n_students", 0),
+        "n_classes_touched": lambda r: r.get("n_classes_touched", 0),
+        "n_classi_coinvolte": lambda r: r.get("n_classes_touched", 0),
+        "n_subjects": lambda r: len(r.get("subject_hours", [])),
+    }
+
+
+def group_funcs() -> dict[str, Callable[..., bool]]:
+    return {}
+
+
 _FIELDS_FOR = {
     "teachers":   (teacher_fields, teacher_funcs),
     "classes":    (class_fields, class_funcs),
     "classrooms": (classroom_fields, classroom_funcs),
     "subjects":   (subject_fields, subject_funcs),
+    "curricula":  (curriculum_fields, curriculum_funcs),
+    "students":   (student_fields, student_funcs),
+    "groups":     (group_fields, group_funcs),
 }
 
 

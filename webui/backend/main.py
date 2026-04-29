@@ -24,13 +24,18 @@ if PARENT not in sys.path:
 from backend.db import init_db  # noqa: E402
 from backend.routers import (  # noqa: E402
     assignments,
+    bulk,
     classes,
     classrooms,
     coteaching,
+    curricula,
     dataset,
+    groups,
+    imports,
     logical,
     optimize,
     schedule,
+    students,
     subjects,
     teachers,
 )
@@ -66,6 +71,11 @@ app.include_router(dataset.router)
 app.include_router(schedule.router)
 app.include_router(optimize.router)
 app.include_router(logical.router)
+app.include_router(curricula.router)
+app.include_router(students.router)
+app.include_router(groups.router)
+app.include_router(imports.router)
+app.include_router(bulk.router)
 
 
 @app.get("/")

@@ -7,11 +7,15 @@
   import AvailabilityMatrix from '$lib/components/AvailabilityMatrix.svelte';
   import SortableQueryableList from '$lib/components/SortableQueryableList.svelte';
   import LogicalUnavailabilitiesPanel from '$lib/components/LogicalUnavailabilitiesPanel.svelte';
+  import ImportButton from '$lib/components/ImportButton.svelte';
+  import BulkApplyModal from '$lib/components/BulkApplyModal.svelte';
 
   let editing = null;
   let allSubjects = [];
   let allClasses = [];
   let listRef = null;
+  let selectedIds = [];
+  let showBulk = false;
 
   let showGenPanel = false;
   let suggested = null;
@@ -127,10 +131,16 @@
 </script>
 
 <div class="space-y-4">
-  <div class="flex items-baseline gap-3">
+  <div class="flex items-baseline gap-3 flex-wrap">
     <h1>Aule</h1>
     <button class="btn ml-auto" on:click={loadSuggested}>Genera aule...</button>
     <button class="btn-primary" on:click={newRoom}>+ Nuova aula</button>
+    <ImportButton entity="classrooms" onDone={() => listRef?.reload()}/>
+    <button class="btn !text-xs" on:click={() => (showBulk = true)}
+            disabled={selectedIds.length === 0}
+            title="Applica un vincolo a tutte le aule selezionate">
+      Vincolo collettivo ({selectedIds.length})
+    </button>
   </div>
 
   {#if showGenPanel && suggested}
@@ -174,21 +184,25 @@
     {columns}
     {help}
     rowKey={(r) => r.id}
+    selectable={true}
+    bind:selectedIds
     let:row let:columns>
-    <tr>
-      <td><strong>{row.name}</strong></td>
-      <td><span class="pill">{row.kind}</span></td>
-      <td class="text-center">{row.capacity}</td>
-      <td class="text-center">
-        {#if row.multi_class}max {row.multi_class_max} (pref {row.multi_class_pref}){:else}no{/if}
-      </td>
-      <td class="whitespace-nowrap">
-        <button class="btn !text-xs !px-2 !py-1" on:click={() => edit(row)}>Modifica</button>
-        <button class="btn-danger !text-xs !px-2 !py-1" on:click={() => del(row)}>Elimina</button>
-      </td>
-    </tr>
+    <td><strong>{row.name}</strong></td>
+    <td><span class="pill">{row.kind}</span></td>
+    <td class="text-center">{row.capacity}</td>
+    <td class="text-center">
+      {#if row.multi_class}max {row.multi_class_max} (pref {row.multi_class_pref}){:else}no{/if}
+    </td>
+    <td class="whitespace-nowrap">
+      <button class="btn !text-xs !px-2 !py-1" on:click={() => edit(row)}>Modifica</button>
+      <button class="btn-danger !text-xs !px-2 !py-1" on:click={() => del(row)}>Elimina</button>
+    </td>
   </SortableQueryableList>
 </div>
+
+<BulkApplyModal entity="classrooms" bind:open={showBulk}
+                {selectedIds}
+                onDone={() => { selectedIds = []; listRef?.reload(); }}/>
 
 <Modal open={!!editing} title={editing?._new ? 'Nuova aula' : 'Modifica aula'} onClose={() => (editing = null)}>
   {#if editing}

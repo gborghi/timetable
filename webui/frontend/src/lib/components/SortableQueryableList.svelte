@@ -34,6 +34,14 @@
   export let help = { fields: [], examples: [] };
   export let rowKey = (r) => r.id ?? r.name;
   export let onRowsChange = (_) => {};
+  // Multi-select support (shift/ctrl click). When true, a leading
+  // checkbox column appears and the parent can read `selectedIds` via
+  // bind:selectedIds. Selection is preserved across sorts but reset on
+  // explicit reload from the parent only if reload-clear is true.
+  export let selectable = false;
+  export let selectedIds = [];
+
+  let lastClickedIdx = -1;
 
   const MAX_SORT_LEVELS = 4;
 
@@ -112,6 +120,63 @@
     return l ? l.direction : null;
   }
 
+  // ---------- selection ----------
+  function isSelected(row) {
+    return selectedIds.includes(rowKey(row));
+  }
+
+  function toggleOne(row) {
+    const k = rowKey(row);
+    if (selectedIds.includes(k)) {
+      selectedIds = selectedIds.filter((x) => x !== k);
+    } else {
+      selectedIds = [...selectedIds, k];
+    }
+  }
+
+  function selectRange(fromIdx, toIdx) {
+    const lo = Math.min(fromIdx, toIdx);
+    const hi = Math.max(fromIdx, toIdx);
+    const ks = rows.slice(lo, hi + 1).map(rowKey);
+    const set = new Set(selectedIds);
+    ks.forEach((k) => set.add(k));
+    selectedIds = [...set];
+  }
+
+  function onRowClick(ev, row, idx) {
+    if (!selectable) return;
+    // Don't hijack clicks on actual interactive controls inside the row
+    const t = ev.target;
+    if (t && (t.tagName === 'BUTTON' || t.tagName === 'INPUT'
+              || t.tagName === 'A' || t.closest('button')
+              || t.closest('a') || t.closest('input'))) return;
+    if (ev.shiftKey && lastClickedIdx >= 0) {
+      selectRange(lastClickedIdx, idx);
+    } else if (ev.ctrlKey || ev.metaKey) {
+      toggleOne(row);
+      lastClickedIdx = idx;
+    } else {
+      // plain click: single-select (replace)
+      const k = rowKey(row);
+      if (selectedIds.length === 1 && selectedIds[0] === k) {
+        selectedIds = [];
+      } else {
+        selectedIds = [k];
+      }
+      lastClickedIdx = idx;
+    }
+    ev.preventDefault();
+  }
+
+  function selectAllVisible() {
+    selectedIds = rows.map(rowKey);
+  }
+
+  function clearSelection() {
+    selectedIds = [];
+    lastClickedIdx = -1;
+  }
+
   reload();
 </script>
 
@@ -137,6 +202,20 @@
             title="Torna all'ordine originale">
       Reset sort
     </button>
+    {#if selectable}
+      <span class="border-l border-ink-200 h-6 mx-1"></span>
+      <button class="btn !text-xs" on:click={selectAllVisible}
+              title="Seleziona tutte le righe attualmente visibili">
+        Seleziona tutto
+      </button>
+      <button class="btn !text-xs" on:click={clearSelection}
+              disabled={selectedIds.length === 0}>
+        Deseleziona
+      </button>
+      {#if selectedIds.length > 0}
+        <span class="pill pill-blue">{selectedIds.length} selezionati</span>
+      {/if}
+    {/if}
     <span class="text-xs text-ink-500 ml-auto">{rows.length} risultati</span>
   </div>
 
@@ -190,6 +269,15 @@
     <table class="tbl">
       <thead>
         <tr>
+          {#if selectable}
+            <th class="w-6 text-center"
+                title="Tieni Ctrl o Shift per selezione multipla. Click semplice = singola.">
+              <input type="checkbox"
+                     checked={selectedIds.length > 0 && selectedIds.length === rows.length}
+                     indeterminate={selectedIds.length > 0 && selectedIds.length < rows.length}
+                     on:change={(e) => e.target.checked ? selectAllVisible() : clearSelection()}/>
+            </th>
+          {/if}
           {#each columns as col}
             {@const dir = sortLevels.find((l) => l.column === col.key)?.direction ?? null}
             {@const idx = sortLevels.findIndex((l) => l.column === col.key)}
@@ -225,14 +313,31 @@
         </tr>
       </thead>
       <tbody>
-        {#each rows as row (rowKey(row))}
-          <slot {row} {columns}>
-            <tr>
-              {#each columns as col}
-                <td>{col.render ? col.render(row) : (row[col.key] ?? '')}</td>
-              {/each}
+        {#each rows as row, idx (rowKey(row))}
+          {#if selectable}
+            <tr class:bg-accent-500={false}
+                class:!bg-accent-500={false}
+                style={isSelected(row) ? 'background-color: rgba(59,130,246,0.10);' : ''}
+                on:click={(e) => onRowClick(e, row, idx)}>
+              <td class="w-6 text-center">
+                <input type="checkbox" checked={isSelected(row)}
+                       on:click|stopPropagation={() => { toggleOne(row); lastClickedIdx = idx; }}/>
+              </td>
+              <slot {row} {columns} {idx}>
+                {#each columns as col}
+                  <td>{col.render ? col.render(row) : (row[col.key] ?? '')}</td>
+                {/each}
+              </slot>
             </tr>
-          </slot>
+          {:else}
+            <slot {row} {columns} {idx}>
+              <tr>
+                {#each columns as col}
+                  <td>{col.render ? col.render(row) : (row[col.key] ?? '')}</td>
+                {/each}
+              </tr>
+            </slot>
+          {/if}
         {/each}
       </tbody>
     </table>

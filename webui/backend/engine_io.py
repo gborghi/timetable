@@ -51,14 +51,33 @@ DAY_NAME_IT = {1: "Lun", 2: "Mar", 3: "Mer", 4: "Gio", 5: "Ven", 6: "Sab"}
 def school_dict_from_db(db: Session) -> dict[str, Any]:
     """Build the dict that big_mock_school.py would serialize as
     school_<profile>.pkl."""
+    # Build a code -> Curriculum map so we can fall back to the indirizzo
+    # monte-ore when a class has no per-class subject overrides yet.
+    curr_by_id = {c.id: c for c in db.query(models.Curriculum).all()}
+    curr_by_code = {c.code: c for c in curr_by_id.values()}
+    curr_hours: dict[int, dict[int, dict[str, int]]] = {}
+    for h in db.query(models.CurriculumSubjectHours).all():
+        curr_hours.setdefault(h.curriculum_id, {})\
+            .setdefault(h.year, {})[h.subject] = h.hours_per_week
+
     classes_dump = []
     for cl in db.query(models.SchoolClass).order_by(models.SchoolClass.name).all():
+        # subjects: use per-class rows when present; otherwise fall back to
+        # the curriculum monte-ore for the relevant year
+        subjects = {s.subject: s.hours_per_week for s in cl.subjects}
+        if not subjects and cl.curriculum_id and cl.curriculum_id in curr_hours:
+            subjects = dict(curr_hours[cl.curriculum_id].get(cl.year, {}))
+        curr_code = None
+        if cl.curriculum_id and cl.curriculum_id in curr_by_id:
+            curr_code = curr_by_id[cl.curriculum_id].code
+        elif cl.curriculum:
+            curr_code = cl.curriculum
         classes_dump.append({
             "name": cl.name,
             "year": cl.year,
             "section": cl.section,
-            "curriculum": cl.curriculum,
-            "subjects": {s.subject: s.hours_per_week for s in cl.subjects},
+            "curriculum": curr_code,
+            "subjects": subjects,
         })
     teachers_dump = []
     for t in db.query(models.Teacher).order_by(models.Teacher.name).all():
@@ -72,16 +91,60 @@ def school_dict_from_db(db: Session) -> dict[str, Any]:
     cconc = defaultdict(dict)
     for row in db.query(models.SubjectGroupWeight).all():
         cconc[row.subject][row.group_name] = row.weight
-    curriculum_scores = {}
+    # curriculum_scores: prefer the score column from curricula, fall back
+    # to first-segment of legacy `curriculum` string for unmapped classes.
+    curriculum_scores: dict[str, int] = {}
+    for c in curr_by_id.values():
+        curriculum_scores[c.code] = int(c.score or 1)
     for cl in db.query(models.SchoolClass).all():
-        if cl.curriculum:
+        if cl.curriculum and cl.curriculum.split("_")[0] not in curriculum_scores:
             curriculum_scores[cl.curriculum.split("_")[0]] = 1
+    # curricula: full grid + score, included so the engine can know about
+    # indirizzi without having to re-derive them from class names.
+    curricula_dump = []
+    for c in curr_by_id.values():
+        curricula_dump.append({
+            "code": c.code,
+            "name": c.name,
+            "score": int(c.score or 1),
+            "hours": {y: dict(ss) for y, ss in
+                      curr_hours.get(c.id, {}).items()},
+        })
+    # students + study groups (not strictly needed by the solver yet, but
+    # piped through so future engine versions can see them in one shot)
+    students_dump = []
+    classes_by_id = {cl.id: cl for cl in
+                     db.query(models.SchoolClass).all()}
+    for st in db.query(models.Student).order_by(
+            models.Student.last_name, models.Student.first_name).all():
+        students_dump.append({
+            "id": st.id,
+            "last_name": st.last_name,
+            "first_name": st.first_name,
+            "class_name": (classes_by_id[st.class_id].name
+                           if st.class_id and st.class_id in classes_by_id
+                           else None),
+            "student_code": st.student_code,
+        })
+    groups_dump = []
+    for g in db.query(models.StudyGroup).order_by(models.StudyGroup.name).all():
+        member_ids = [m.student_id for m in g.members]
+        groups_dump.append({
+            "name": g.name,
+            "kind": g.kind,
+            "student_ids": member_ids,
+            "subjects": {h.subject: h.hours_per_week
+                         for h in g.subject_hours},
+        })
     return {
         "profile": "webui",
         "classes": classes_dump,
         "teachers": teachers_dump,
         "cconcorsopersubject": dict(cconc),
         "curriculum_scores": curriculum_scores,
+        "curricula": curricula_dump,
+        "students": students_dump,
+        "groups": groups_dump,
     }
 
 

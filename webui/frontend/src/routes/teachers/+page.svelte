@@ -7,10 +7,14 @@
   import AvailabilityMatrix from '$lib/components/AvailabilityMatrix.svelte';
   import SortableQueryableList from '$lib/components/SortableQueryableList.svelte';
   import LogicalUnavailabilitiesPanel from '$lib/components/LogicalUnavailabilitiesPanel.svelte';
+  import ImportButton from '$lib/components/ImportButton.svelte';
+  import BulkApplyModal from '$lib/components/BulkApplyModal.svelte';
 
   let editing = null;
   let allSubjects = [];
   let listRef = null;
+  let selectedIds = [];
+  let showBulk = false;
 
   onMount(async () => {
     try {
@@ -159,9 +163,15 @@
 </script>
 
 <div class="space-y-4">
-  <div class="flex items-baseline gap-3">
+  <div class="flex items-baseline gap-3 flex-wrap">
     <h1>Docenti</h1>
     <button class="btn-primary ml-auto" on:click={newTeacher}>+ Nuovo docente</button>
+    <ImportButton entity="teachers" onDone={() => listRef?.reload()}/>
+    <button class="btn !text-xs" on:click={() => (showBulk = true)}
+            disabled={selectedIds.length === 0}
+            title="Applica un vincolo a tutti i docenti selezionati">
+      Vincolo collettivo ({selectedIds.length})
+    </button>
   </div>
 
   <SortableQueryableList
@@ -170,26 +180,30 @@
     {columns}
     {help}
     rowKey={(r) => r.id}
+    selectable={true}
+    bind:selectedIds
     let:row let:columns>
-    <tr>
-      <td>
-        <strong>{row.name}</strong>
-        {#if row.matricola}<span class="text-xs text-ink-500"> ({row.matricola})</span>{/if}
-      </td>
-      <td>{row.group ?? ''}</td>
-      <td class="text-xs">{(row.subjects || []).join(', ')}</td>
-      <td class="text-center">{row.max_hours}</td>
-      <td>{row.free_day ?? ''}</td>
-      <td class="text-center">{row.n_classes}</td>
-      <td class="text-center">{row.scheduled_hours}</td>
-      <td class="text-center text-xs">{row.soft_penalty_total}</td>
-      <td class="whitespace-nowrap">
-        <button class="btn !text-xs !px-2 !py-1" on:click={() => edit(row)}>Modifica</button>
-        <button class="btn-danger !text-xs !px-2 !py-1" on:click={() => del(row)}>Elimina</button>
-      </td>
-    </tr>
+    <td>
+      <strong>{row.name}</strong>
+      {#if row.matricola}<span class="text-xs text-ink-500"> ({row.matricola})</span>{/if}
+    </td>
+    <td>{row.group ?? ''}</td>
+    <td class="text-xs">{(row.subjects || []).join(', ')}</td>
+    <td class="text-center">{row.max_hours}</td>
+    <td>{row.free_day ?? ''}</td>
+    <td class="text-center">{row.n_classes}</td>
+    <td class="text-center">{row.scheduled_hours}</td>
+    <td class="text-center text-xs">{row.soft_penalty_total}</td>
+    <td class="whitespace-nowrap">
+      <button class="btn !text-xs !px-2 !py-1" on:click={() => edit(row)}>Modifica</button>
+      <button class="btn-danger !text-xs !px-2 !py-1" on:click={() => del(row)}>Elimina</button>
+    </td>
   </SortableQueryableList>
 </div>
+
+<BulkApplyModal entity="teachers" bind:open={showBulk}
+                {selectedIds}
+                onDone={() => { selectedIds = []; listRef?.reload(); }}/>
 
 <Modal open={!!editing} title={editing?._new ? 'Nuovo docente' : 'Modifica docente'} onClose={() => (editing = null)}>
   {#if editing}

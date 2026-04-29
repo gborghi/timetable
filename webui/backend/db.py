@@ -41,3 +41,28 @@ def init_db():
     """Create tables if missing. Imported here lazily to avoid cycles."""
     from . import models  # noqa: F401
     Base.metadata.create_all(bind=engine)
+    _apply_lightweight_migrations()
+
+
+def _apply_lightweight_migrations() -> None:
+    """Idempotent ALTER TABLE migrations for SQLite.
+
+    `Base.metadata.create_all` only creates missing TABLES; it does not
+    add columns to existing tables. This function adds new columns when
+    needed, querying `PRAGMA table_info` to detect what is already there.
+    """
+    from sqlalchemy import inspect, text
+
+    insp = inspect(engine)
+
+    def has_column(table: str, column: str) -> bool:
+        if not insp.has_table(table):
+            return False
+        return any(c["name"] == column for c in insp.get_columns(table))
+
+    with engine.begin() as conn:
+        if insp.has_table("school_classes") \
+                and not has_column("school_classes", "curriculum_id"):
+            conn.execute(text(
+                "ALTER TABLE school_classes ADD COLUMN curriculum_id INTEGER"
+            ))

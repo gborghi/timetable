@@ -89,6 +89,7 @@ class ClassBase(BaseModel):
     year: int = 1
     section: str | None = None
     curriculum: str | None = None
+    curriculum_id: int | None = None
     n_students: int = 20
     notes: str | None = None
     hard_entry_at_8: bool = True
@@ -413,6 +414,124 @@ class LogicValidateOut(BaseModel):
     pretty: str | None = None
     clauses: list[list[dict[str, Any]]] | None = None
     error: str | None = None
+
+
+# ---------- Curricula (indirizzi) ----------
+
+
+class CurriculumSubjectHoursIn(BaseModel):
+    year: int
+    subject: str
+    hours_per_week: int = 0
+
+
+class CurriculumLogicalConstraintIn(BaseModel):
+    year_filter: int | None = None
+    label: str | None = None
+    expression: str
+    is_hard: bool = True
+    soft_penalty: int = 100
+
+
+class CurriculumLogicalConstraintOut(BaseModel):
+    id: int
+    curriculum_id: int
+    year_filter: int | None
+    label: str | None
+    expression: str
+    pretty: str
+    clauses: list[list[dict[str, Any]]] = Field(default_factory=list)
+    is_hard: bool
+    soft_penalty: int
+
+
+class CurriculumBase(BaseModel):
+    code: str
+    name: str
+    description: str | None = None
+    notes: str | None = None
+    score: int = 1
+
+
+class CurriculumIn(CurriculumBase):
+    hours: list[CurriculumSubjectHoursIn] = Field(default_factory=list)
+
+
+class CurriculumOut(CurriculumBase):
+    id: int
+    hours: list[CurriculumSubjectHoursIn] = Field(default_factory=list)
+    n_classes: int = 0
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ---------- Students ----------
+
+
+class StudentBase(BaseModel):
+    last_name: str
+    first_name: str
+    birth_date: dt.date | None = None
+    gender: str | None = None
+    email: str | None = None
+    student_code: str | None = None
+    class_id: int | None = None
+    notes: str | None = None
+
+
+class StudentIn(StudentBase):
+    pass
+
+
+class StudentOut(StudentBase):
+    id: int
+    class_name: str | None = None
+    n_groups: int = 0
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ---------- Study groups ----------
+
+
+class GroupSubjectHoursIn(BaseModel):
+    subject: str
+    hours_per_week: int = 1
+
+
+class StudyGroupBase(BaseModel):
+    name: str
+    kind: str = "splitting"
+    description: str | None = None
+    notes: str | None = None
+
+
+class StudyGroupIn(StudyGroupBase):
+    student_ids: list[int] = Field(default_factory=list)
+    subject_hours: list[GroupSubjectHoursIn] = Field(default_factory=list)
+
+
+class StudyGroupOut(StudyGroupBase):
+    id: int
+    student_ids: list[int] = Field(default_factory=list)
+    subject_hours: list[GroupSubjectHoursIn] = Field(default_factory=list)
+    n_students: int = 0
+    n_classes_touched: int = 0
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ---------- Excel/CSV import ----------
+
+
+class ImportReport(BaseModel):
+    """Result of an Excel/CSV import. Inserted/updated/skipped counts and
+    a list of human-readable messages for the user."""
+    ok: bool
+    entity: str
+    n_inserted: int = 0
+    n_updated: int = 0
+    n_skipped: int = 0
+    n_total_rows: int = 0
+    messages: list[str] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)
 
 
 class MockClassroomsIn(BaseModel):

@@ -6,21 +6,27 @@
   import AvailabilityMatrix from '$lib/components/AvailabilityMatrix.svelte';
   import SortableQueryableList from '$lib/components/SortableQueryableList.svelte';
   import LogicalUnavailabilitiesPanel from '$lib/components/LogicalUnavailabilitiesPanel.svelte';
+  import ImportButton from '$lib/components/ImportButton.svelte';
+  import BulkApplyModal from '$lib/components/BulkApplyModal.svelte';
 
   let editing = null;
   let allSubjects = [];
+  let allCurricula = [];
   let listRef = null;
+  let selectedIds = [];
+  let showBulk = false;
 
   onMount(async () => {
     try {
       allSubjects = (await api.get('/api/subjects')).map((s) => s.name).sort();
+      allCurricula = await api.get('/api/curricula');
     } catch { /* */ }
   });
 
   function newClass() {
     editing = {
       _new: true,
-      name: '', year: 1, section: '', curriculum: '',
+      name: '', year: 1, section: '', curriculum: '', curriculum_id: null,
       n_students: 22, notes: '',
       hard_entry_at_8: true, hard_exit_after_12: true,
       hard_no_holes: true, hard_dual_math: true,
@@ -30,6 +36,22 @@
     };
   }
   function edit(row) { editing = JSON.parse(JSON.stringify(row)); }
+
+  function applyCurriculumGrid() {
+    if (!editing.curriculum_id) return;
+    const c = allCurricula.find((x) => x.id === editing.curriculum_id);
+    if (!c) return;
+    const yearHours = (c.hours || []).filter((h) => Number(h.year) === Number(editing.year));
+    if (yearHours.length === 0) {
+      flash(`L'indirizzo ${c.code} non ha ore definite per l'anno ${editing.year}`,
+            'warning');
+      return;
+    }
+    editing.subjects = yearHours.map((h) => ({
+      subject: h.subject, hours_per_week: h.hours_per_week
+    }));
+    if (!editing.curriculum) editing.curriculum = c.code;
+  }
   function addSubject() {
     editing.subjects = [...editing.subjects, { subject: '', hours_per_week: 1 }];
   }
@@ -86,9 +108,15 @@
 </script>
 
 <div class="space-y-4">
-  <div class="flex items-baseline gap-3">
+  <div class="flex items-baseline gap-3 flex-wrap">
     <h1>Classi</h1>
     <button class="btn-primary ml-auto" on:click={newClass}>+ Nuova classe</button>
+    <ImportButton entity="classes" onDone={() => listRef?.reload()}/>
+    <button class="btn !text-xs" on:click={() => (showBulk = true)}
+            disabled={selectedIds.length === 0}
+            title="Applica un vincolo a tutte le classi selezionate">
+      Vincolo collettivo ({selectedIds.length})
+    </button>
   </div>
 
   <SortableQueryableList
@@ -97,23 +125,27 @@
     {columns}
     {help}
     rowKey={(r) => r.id}
+    selectable={true}
+    bind:selectedIds
     let:row let:columns>
-    <tr>
-      <td><strong>{row.name}</strong></td>
-      <td class="text-center">{row.year}</td>
-      <td>{row.section ?? ''}</td>
-      <td>{row.curriculum ?? ''}</td>
-      <td class="text-center">{row.n_students}</td>
-      <td class="text-center">
-        {(row.subjects || []).reduce((s, x) => s + Number(x.hours_per_week || 0), 0)}
-      </td>
-      <td class="whitespace-nowrap">
-        <button class="btn !text-xs !px-2 !py-1" on:click={() => edit(row)}>Modifica</button>
-        <button class="btn-danger !text-xs !px-2 !py-1" on:click={() => del(row)}>Elimina</button>
-      </td>
-    </tr>
+    <td><strong>{row.name}</strong></td>
+    <td class="text-center">{row.year}</td>
+    <td>{row.section ?? ''}</td>
+    <td>{row.curriculum ?? ''}</td>
+    <td class="text-center">{row.n_students}</td>
+    <td class="text-center">
+      {(row.subjects || []).reduce((s, x) => s + Number(x.hours_per_week || 0), 0)}
+    </td>
+    <td class="whitespace-nowrap">
+      <button class="btn !text-xs !px-2 !py-1" on:click={() => edit(row)}>Modifica</button>
+      <button class="btn-danger !text-xs !px-2 !py-1" on:click={() => del(row)}>Elimina</button>
+    </td>
   </SortableQueryableList>
 </div>
+
+<BulkApplyModal entity="classes" bind:open={showBulk}
+                {selectedIds}
+                onDone={() => { selectedIds = []; listRef?.reload(); }}/>
 
 <Modal open={!!editing} title={editing?._new ? 'Nuova classe' : 'Modifica classe'} onClose={() => (editing = null)}>
   {#if editing}
@@ -121,7 +153,30 @@
       <div class="field"><label>Nome</label><input bind:value={editing.name}/></div>
       <div class="field"><label>Anno</label><input type="number" min="1" max="5" bind:value={editing.year}/></div>
       <div class="field"><label>Sezione</label><input bind:value={editing.section}/></div>
-      <div class="field"><label>Indirizzo</label><input bind:value={editing.curriculum}/></div>
+      <div class="field">
+        <label>Indirizzo</label>
+        <div class="flex gap-2">
+          <select bind:value={editing.curriculum_id}
+                  on:change={() => {
+                    const c = allCurricula.find((x) => x.id === editing.curriculum_id);
+                    if (c) editing.curriculum = c.code;
+                  }}
+                  class="flex-1 px-2 py-1 border border-ink-200 rounded">
+            <option value={null}>(nessuno)</option>
+            {#each allCurricula as c}
+              <option value={c.id}>{c.code} - {c.name}</option>
+            {/each}
+          </select>
+          <button class="btn !text-xs !px-2 !py-1"
+                  on:click={applyCurriculumGrid}
+                  disabled={!editing.curriculum_id}
+                  title="Carica il monte-ore dell'indirizzo per l'anno selezionato">
+            Importa griglia
+          </button>
+        </div>
+        <input class="mt-1 text-xs" placeholder="(stringa libera, opzionale)"
+               bind:value={editing.curriculum}/>
+      </div>
       <div class="field"><label>N. studenti</label><input type="number" bind:value={editing.n_students}/></div>
       <div class="field"><label>Note</label><input bind:value={editing.notes}/></div>
     </div>

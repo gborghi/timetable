@@ -13,6 +13,7 @@ from typing import Any
 
 from sqlalchemy import (
     Boolean,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -171,6 +172,12 @@ class SchoolClass(Base):
     year: Mapped[int] = mapped_column(Integer, default=1)
     section: Mapped[str | None] = mapped_column(String(8), nullable=True)
     curriculum: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    curriculum_id: Mapped[int | None] = mapped_column(
+        ForeignKey("curricula.id", ondelete="SET NULL"),
+        nullable=True, index=True,
+        comment="Optional FK to normalized indirizzi (curricula). The string "
+                "`curriculum` column is kept as fallback for legacy rows."
+    )
     n_students: Mapped[int] = mapped_column(Integer, default=20)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     # HARD constraints (toggles)
@@ -536,4 +543,170 @@ class CoTeachingRule(Base):
     school_class: Mapped["SchoolClass"] = relationship()
     __table_args__ = (
         UniqueConstraint("class_id", "subject", name="uq_coteach_cl_subj"),
+    )
+
+
+# ---------- Curricula (indirizzi di studio) ----------
+
+
+class Curriculum(Base):
+    """An indirizzo di studio (e.g. Scientifico, Linguistico, ITIS) with its
+    own monte-ore per anno and curriculum-level logical constraints."""
+    __tablename__ = "curricula"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    code: Mapped[str] = mapped_column(String(64), unique=True, index=True,
+                                      comment="machine name e.g. 'Scientifico'")
+    name: Mapped[str] = mapped_column(String(120),
+                                      comment="display name")
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    score: Mapped[int] = mapped_column(
+        Integer, default=1,
+        comment="curriculum_score used by the engine (mock_classes2 jargon)"
+    )
+    hours: Mapped[list["CurriculumSubjectHours"]] = relationship(
+        back_populates="curriculum", cascade="all, delete-orphan"
+    )
+    constraints: Mapped[list["CurriculumLogicalConstraint"]] = relationship(
+        back_populates="curriculum", cascade="all, delete-orphan"
+    )
+
+
+class CurriculumSubjectHours(Base):
+    """Monte ore for (curriculum, year, subject). Together they form the
+    weekly grid an indirizzo expects for each year of course."""
+    __tablename__ = "curriculum_subject_hours"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    curriculum_id: Mapped[int] = mapped_column(
+        ForeignKey("curricula.id", ondelete="CASCADE"), index=True
+    )
+    year: Mapped[int] = mapped_column(Integer, index=True)
+    subject: Mapped[str] = mapped_column(String(64), index=True)
+    hours_per_week: Mapped[int] = mapped_column(Integer, default=0)
+    curriculum: Mapped["Curriculum"] = relationship(back_populates="hours")
+    __table_args__ = (
+        UniqueConstraint("curriculum_id", "year", "subject",
+                         name="uq_curr_year_subj"),
+    )
+
+
+class CurriculumLogicalConstraint(Base):
+    """Curriculum-level logical (DNF) constraint. Optionally restricted to
+    a specific year_filter (NULL means it applies to every year).
+
+    Same DNF shape as LogicalUnavailability, but stored separately because
+    it carries an extra `year_filter` column and resolves to many entities
+    (every class with this curriculum) at solver time, not a single one."""
+    __tablename__ = "curriculum_logical_constraints"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    curriculum_id: Mapped[int] = mapped_column(
+        ForeignKey("curricula.id", ondelete="CASCADE"), index=True
+    )
+    year_filter: Mapped[int | None] = mapped_column(
+        Integer, nullable=True,
+        comment="NULL = applies to all years of this curriculum"
+    )
+    label: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    expression: Mapped[str] = mapped_column(Text)
+    parsed_dnf_json: Mapped[str] = mapped_column(Text, default="[]")
+    is_hard: Mapped[bool] = mapped_column(Boolean, default=True)
+    soft_penalty: Mapped[int] = mapped_column(Integer, default=100)
+    curriculum: Mapped["Curriculum"] = relationship(back_populates="constraints")
+
+
+# ---------- Students ----------
+
+
+class Student(Base):
+    """A student record. Optionally associated to a single home class.
+    Students can also belong to one or more StudyGroup via GroupMembership
+    (e.g. a language group cutting across two classes)."""
+    __tablename__ = "students"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    last_name: Mapped[str] = mapped_column(String(80), index=True)
+    first_name: Mapped[str] = mapped_column(String(80), index=True)
+    birth_date: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
+    gender: Mapped[str | None] = mapped_column(String(8), nullable=True,
+                                               comment="M | F | other")
+    email: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    student_code: Mapped[str | None] = mapped_column(
+        String(40), nullable=True, index=True,
+        comment="external id (matricola/codice studente)"
+    )
+    class_id: Mapped[int | None] = mapped_column(
+        ForeignKey("school_classes.id", ondelete="SET NULL"),
+        nullable=True, index=True
+    )
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    school_class: Mapped["SchoolClass | None"] = relationship()
+    memberships: Mapped[list["GroupMembership"]] = relationship(
+        back_populates="student", cascade="all, delete-orphan"
+    )
+    __table_args__ = (
+        UniqueConstraint("last_name", "first_name", "birth_date",
+                         name="uq_student_identity"),
+    )
+
+
+# ---------- Study groups (gruppi articolati / classi frazionate) ----------
+
+
+class StudyGroup(Base):
+    """A study group cutting across one or more classes (type C semantics).
+
+    Examples: 'IRC vs Alternativa', 'Spagnolo vs Tedesco', 'Recupero
+    matematica 1A+1B'. Members are listed in GroupMembership; ore per
+    materia in GroupSubjectHours.
+
+    `kind` is a free-text discriminator (e.g. language, religion,
+    splitting, support). The solver treats a group as a virtual class
+    that meets for the listed subjects and whose members must not be
+    scheduled in their home class for the same slot."""
+    __tablename__ = "study_groups"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(120), unique=True, index=True)
+    kind: Mapped[str] = mapped_column(
+        String(32), default="splitting",
+        comment="splitting | language | religion | support | other"
+    )
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    members: Mapped[list["GroupMembership"]] = relationship(
+        back_populates="group", cascade="all, delete-orphan"
+    )
+    subject_hours: Mapped[list["GroupSubjectHours"]] = relationship(
+        back_populates="group", cascade="all, delete-orphan"
+    )
+
+
+class GroupMembership(Base):
+    """A student belongs to a study group."""
+    __tablename__ = "group_memberships"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    group_id: Mapped[int] = mapped_column(
+        ForeignKey("study_groups.id", ondelete="CASCADE"), index=True
+    )
+    student_id: Mapped[int] = mapped_column(
+        ForeignKey("students.id", ondelete="CASCADE"), index=True
+    )
+    group: Mapped["StudyGroup"] = relationship(back_populates="members")
+    student: Mapped["Student"] = relationship(back_populates="memberships")
+    __table_args__ = (
+        UniqueConstraint("group_id", "student_id", name="uq_group_student"),
+    )
+
+
+class GroupSubjectHours(Base):
+    """The hours-per-week the group meets for a given subject. The same
+    group can have several subjects (e.g. IRC + religion teacher)."""
+    __tablename__ = "group_subject_hours"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    group_id: Mapped[int] = mapped_column(
+        ForeignKey("study_groups.id", ondelete="CASCADE"), index=True
+    )
+    subject: Mapped[str] = mapped_column(String(64), index=True)
+    hours_per_week: Mapped[int] = mapped_column(Integer, default=1)
+    group: Mapped["StudyGroup"] = relationship(back_populates="subject_hours")
+    __table_args__ = (
+        UniqueConstraint("group_id", "subject", name="uq_group_subj"),
     )

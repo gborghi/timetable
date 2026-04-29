@@ -4,6 +4,7 @@
   import { flash } from '$lib/stores.js';
   import Modal from '$lib/components/Modal.svelte';
   import SortableQueryableList from '$lib/components/SortableQueryableList.svelte';
+  import ImportButton from '$lib/components/ImportButton.svelte';
 
   let editing = null;
   let weights = [];
@@ -76,13 +77,14 @@
 </script>
 
 <div class="space-y-4">
-  <div class="flex items-baseline gap-3">
+  <div class="flex items-baseline gap-3 flex-wrap">
     <h1>Materie</h1>
     <button class="btn ml-auto" on:click={() => (editWeights = !editWeights)}>
       {editWeights ? 'Vista materie' : 'Pesi cl. concorso'}
     </button>
     {#if !editWeights}
       <button class="btn-primary" on:click={newSubject}>+ Nuova materia</button>
+      <ImportButton entity="subjects" onDone={() => listRef?.reload()}/>
     {:else}
       <button class="btn-primary" on:click={saveWeights}>Salva tutti</button>
     {/if}

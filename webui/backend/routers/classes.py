@@ -31,6 +31,7 @@ def _to_out(c: models.SchoolClass, db=None) -> schemas.ClassOut:
         year=c.year,
         section=c.section,
         curriculum=c.curriculum,
+        curriculum_id=c.curriculum_id,
         n_students=c.n_students,
         notes=c.notes,
         hard_entry_at_8=c.hard_entry_at_8,
@@ -77,6 +78,15 @@ def _apply(c: models.SchoolClass, p: schemas.ClassIn, db: Session) -> None:
     c.year = p.year
     c.section = p.section
     c.curriculum = p.curriculum
+    if p.curriculum_id is not None:
+        cur = db.get(models.Curriculum, p.curriculum_id)
+        if cur is None:
+            raise HTTPException(400, f"curriculum_id {p.curriculum_id} inesistente")
+        c.curriculum_id = p.curriculum_id
+        if not c.curriculum:
+            c.curriculum = cur.code
+    else:
+        c.curriculum_id = None
     c.n_students = p.n_students
     c.notes = p.notes
     c.hard_entry_at_8 = p.hard_entry_at_8
