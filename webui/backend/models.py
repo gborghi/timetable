@@ -427,21 +427,58 @@ class Classroom(Base):
 
 
 class ClassroomSubjectPreference(Base):
-    """Soft preference: this subject prefers being held in this classroom."""
+    """4-state subject<->classroom preference.
+
+    state: 'allowed'   - default; the subject can be held in the room (no
+                         contribution to the objective)
+           'preferred' - SOFT bonus when used (negative weight by convention,
+                         but the sign is kept on the `weight` column)
+           'forbidden' - HARD: subject cannot be in this room
+           'enforced'  - HARD: subject MUST be in a room of this kind
+                         (legacy `required=True` maps here)
+    Backwards-compat: rows without state default to 'allowed'; the boolean
+    `required` column is kept in sync (state='enforced' iff required=True)."""
     __tablename__ = "classroom_subject_preferences"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     classroom_id: Mapped[int] = mapped_column(
         ForeignKey("classrooms.id", ondelete="CASCADE"), index=True
     )
     subject: Mapped[str] = mapped_column(String(64))
+    state: Mapped[str] = mapped_column(
+        String(16), default="allowed",
+        comment="allowed | preferred | forbidden | enforced"
+    )
     weight: Mapped[float] = mapped_column(Float, default=10.0)
     required: Mapped[bool] = mapped_column(
         Boolean, default=False,
-        comment="HARD: subject can only be in this kind of room if true"
+        comment="legacy: 'required' == state=='enforced'"
     )
     classroom: Mapped["Classroom"] = relationship(back_populates="subject_prefs")
     __table_args__ = (
         UniqueConstraint("classroom_id", "subject", name="uq_room_subj"),
+    )
+
+
+class TeacherClassroomPreference(Base):
+    """4-state teacher<->classroom preference. Same semantics as
+    ClassroomSubjectPreference but on the (teacher, classroom) pair."""
+    __tablename__ = "teacher_classroom_preferences"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    teacher_id: Mapped[int] = mapped_column(
+        ForeignKey("teachers.id", ondelete="CASCADE"), index=True
+    )
+    classroom_id: Mapped[int] = mapped_column(
+        ForeignKey("classrooms.id", ondelete="CASCADE"), index=True
+    )
+    state: Mapped[str] = mapped_column(
+        String(16), default="allowed",
+        comment="allowed | preferred | forbidden | enforced"
+    )
+    weight: Mapped[float] = mapped_column(Float, default=10.0)
+    teacher: Mapped["Teacher"] = relationship()
+    classroom: Mapped["Classroom"] = relationship()
+    __table_args__ = (
+        UniqueConstraint("teacher_id", "classroom_id", name="uq_teacher_room"),
     )
 
 
@@ -514,10 +551,15 @@ class LogicalUnavailability(Base):
     Same shape for teachers / classes / classrooms — the `entity_type`
     discriminator picks which target the rule applies to.
 
-    The DNF is `[clause1, clause2, ...]` where each clause is a list of
-    `{day, hour, negate}` literals. The constraint is satisfied iff at
-    least one clause is fully active (i.e. all its literals hold) on the
-    timetable.
+    `kind` discriminates the four constraint types:
+       hard      - DNF must be satisfied (busy/unavailable side)
+       soft      - violation costs +soft_penalty
+       preferred - satisfaction grants -|soft_penalty| (objective bonus)
+       enforced  - DNF must be satisfied AND interpreted as 'the entity
+                   MUST have a lesson in at least one of the slot blocks'
+    is_hard is kept for backwards-compat (kind='hard' iff is_hard=True);
+    the sign of soft_penalty (when not hard) still distinguishes soft
+    from preferred.
     """
     __tablename__ = "logical_unavailabilities"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -530,6 +572,10 @@ class LogicalUnavailability(Base):
     parsed_dnf_json: Mapped[str] = mapped_column(Text, default="[]")
     is_hard: Mapped[bool] = mapped_column(Boolean, default=True)
     soft_penalty: Mapped[int] = mapped_column(Integer, default=100)
+    kind: Mapped[str] = mapped_column(
+        String(16), default="hard",
+        comment="hard | soft | preferred | enforced"
+    )
 
 
 class CoTeachingRule(Base):
@@ -627,6 +673,10 @@ class CurriculumLogicalConstraint(Base):
     parsed_dnf_json: Mapped[str] = mapped_column(Text, default="[]")
     is_hard: Mapped[bool] = mapped_column(Boolean, default=True)
     soft_penalty: Mapped[int] = mapped_column(Integer, default=100)
+    kind: Mapped[str] = mapped_column(
+        String(16), default="hard",
+        comment="hard | soft | preferred | enforced"
+    )
     curriculum: Mapped["Curriculum"] = relationship(back_populates="constraints")
 
 

@@ -115,7 +115,7 @@ def _apply(c: models.SchoolClass, p: schemas.ClassIn, db: Session) -> None:
     for u in p.unavailability:
         db.add(models.ClassUnavailability(
             class_id=c.id, day=int(u.day), hour=int(u.hour),
-            state=u.state if u.state in ("hard", "soft", "preferred") else "hard",
+            state=u.state if u.state in ("hard", "soft", "preferred", "enforced") else "hard",
             soft_penalty=int(u.soft_penalty or 100),
             reason=u.reason,
         ))

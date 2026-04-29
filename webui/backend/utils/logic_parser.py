@@ -94,11 +94,24 @@ _TOKEN_RE = re.compile(
     (?P<rparen>\))                                     |
     (?P<and>(?:and|AND|And|&&|\&))                     |
     (?P<or>(?:or|OR|Or|\|\||\|))                       |
-    (?P<not>(?:not|NOT|Not|\!))                        |
+    (?P<not>(?:not|NOT|Not|mai|MAI|Mai|\!))            |
+    (?P<predicate>(?:aula|materia|classe|gruppo|prof|docente)
+        \s*:\s*[\w\.\-]+(?:@[A-Za-z][A-Za-z'à-ÿ]*\s*\d*)?
+    )                                                  |
     (?P<slot>[A-Za-z][A-Za-z'à-ÿ]*\s*\d+)
     """,
-    re.VERBOSE | re.UNICODE,
+    re.VERBOSE | re.UNICODE | re.IGNORECASE,
 )
+
+
+_PREDICATE_KINDS = {
+    "aula": "classroom",
+    "materia": "subject",
+    "classe": "class",
+    "gruppo": "group",
+    "prof": "teacher",
+    "docente": "teacher",
+}
 
 
 class LogicError(ValueError):
@@ -117,12 +130,11 @@ def _tokenize(text: str) -> list[tuple[str, str]]:
                 f"Token sconosciuto a colonna {pos+1}: '{text[pos:pos+20]}'"
             )
         pos = m.end()
-        for k in ("lparen", "rparen", "and", "or", "not", "slot"):
+        for k in ("lparen", "rparen", "and", "or", "not", "predicate", "slot"):
             v = m.group(k)
             if v is None:
                 continue
             if k == "slot":
-                # Split into day_code (letters) and hour (digits).
                 lett = re.match(r"[A-Za-z'à-ÿ]+", v).group(0)
                 digits = v[len(lett):].strip()
                 day = normalize_day(lett.replace(" ", ""))
@@ -143,6 +155,47 @@ def _tokenize(text: str) -> list[tuple[str, str]]:
                         f"o 8..13 assoluti)"
                     )
                 out.append(("SLOT", (day, hour)))
+            elif k == "predicate":
+                # form: KIND:NAME(@DAY[HOUR])?
+                # split on first ':'
+                kind_raw, _, rest = v.partition(":")
+                kind_raw = kind_raw.strip().lower()
+                kind_norm = _PREDICATE_KINDS.get(kind_raw)
+                if kind_norm is None:
+                    raise LogicError(
+                        f"predicate sconosciuto: '{kind_raw}'"
+                    )
+                # rest may contain @suffix
+                name, _, suffix = rest.partition("@")
+                name = name.strip()
+                day = None
+                hour = None
+                if suffix:
+                    # suffix is like 'mar' or 'mar4' or 'martedi'
+                    sm = re.match(
+                        r"\s*([A-Za-z'à-ÿ]+)\s*(\d+)?\s*", suffix
+                    )
+                    if sm is None:
+                        raise LogicError(
+                            f"slot dopo @ malformato: '{suffix}'"
+                        )
+                    day = normalize_day(sm.group(1))
+                    if day is None:
+                        raise LogicError(
+                            f"Giorno sconosciuto dopo @: '{sm.group(1)}'"
+                        )
+                    if sm.group(2):
+                        hour = normalize_hour(int(sm.group(2)))
+                        if hour is None:
+                            raise LogicError(
+                                f"Ora fuori range dopo @: {sm.group(2)}"
+                            )
+                out.append(("PREDICATE", {
+                    "kind": kind_norm, "name": name,
+                    "day": day, "hour": hour,
+                }))
+            elif k == "not":
+                out.append(("NOT", v))
             else:
                 out.append((k.upper(), v))
             break  # whitespace match has no group
@@ -154,9 +207,11 @@ def _tokenize(text: str) -> list[tuple[str, str]]:
 
 @dataclass
 class _Lit:
-    day: int
-    hour: int
+    day: int | None
+    hour: int | None
     negate: bool = False
+    predicate_kind: str | None = None
+    predicate_name: str | None = None
 
 
 @dataclass
@@ -230,7 +285,14 @@ class _Parser:
             self._eat("SLOT")
             day, hour = tok[1]
             return _Node("lit", lit=_Lit(day=day, hour=hour, negate=False))
-        raise LogicError(f"atteso slot o '(', trovato {tok}")
+        if tok[0] == "PREDICATE":
+            self._eat("PREDICATE")
+            p = tok[1]
+            return _Node("lit", lit=_Lit(
+                day=p["day"], hour=p["hour"], negate=False,
+                predicate_kind=p["kind"], predicate_name=p["name"],
+            ))
+        raise LogicError(f"atteso slot, predicate o '(', trovato {tok}")
 
 
 # ---------- DNF transformation ----------
@@ -241,9 +303,12 @@ def _push_not(node: _Node) -> _Node:
     if node.kind == "not":
         child = node.children[0]
         if child.kind == "lit":
-            return _Node("lit", lit=_Lit(day=child.lit.day,
-                                         hour=child.lit.hour,
-                                         negate=not child.lit.negate))
+            return _Node("lit", lit=_Lit(
+                day=child.lit.day, hour=child.lit.hour,
+                negate=not child.lit.negate,
+                predicate_kind=child.lit.predicate_kind,
+                predicate_name=child.lit.predicate_name,
+            ))
         if child.kind == "not":
             return _push_not(child.children[0])
         if child.kind == "and":
@@ -285,7 +350,8 @@ def _to_dnf(node: _Node) -> list[list[_Lit]]:
             seen = set()
             uniq: list[_Lit] = []
             for lit in clause:
-                key = (lit.day, lit.hour, lit.negate)
+                key = (lit.day, lit.hour, lit.negate,
+                       lit.predicate_kind, lit.predicate_name)
                 if key in seen:
                     continue
                 seen.add(key)
@@ -306,6 +372,17 @@ class ParsedExpression:
 
 
 def _lit_to_str(lit: dict) -> str:
+    pk = lit.get("predicate_kind")
+    if pk:
+        # restore Italian label for the predicate kind
+        kind_label = {v: k for k, v in _PREDICATE_KINDS.items() if k != "prof"}\
+            .get(pk, pk)
+        base = f"{kind_label}:{lit.get('predicate_name', '')}"
+        if lit.get("day") is not None:
+            base += "@" + DAY_NAMES_IT.get(lit["day"], "?")
+            if lit.get("hour") is not None:
+                base += str(lit["hour"])
+        return ("NOT " + base) if lit.get("negate") else base
     label = DAY_NAMES_IT.get(lit["day"], "?") + str(lit["hour"])
     return ("NOT " + label) if lit.get("negate") else label
 
@@ -335,7 +412,10 @@ def parse_to_dnf(expression: str) -> ParsedExpression:
     ast = _push_not(ast)
     dnf = _to_dnf(ast)
     clauses_json = [
-        [{"day": l.day, "hour": l.hour, "negate": l.negate} for l in clause]
+        [{"day": l.day, "hour": l.hour, "negate": l.negate,
+          "predicate_kind": l.predicate_kind,
+          "predicate_name": l.predicate_name}
+         for l in clause]
         for clause in dnf
     ]
     pretty = dnf_to_pretty(clauses_json)
@@ -353,13 +433,26 @@ def evaluate_against_unavailable(clauses: list[list[dict]],
     clause is fully active given `unavail_set` (a set of (day, hour) the
     target is unavailable on).
 
-    Positive literal `(day, hour, negate=False)` holds iff `(day, hour)`
-    is in unavail_set. Negative literal holds iff NOT in unavail_set.
+    Slot literal `(day, hour, negate=False)` holds iff `(day, hour)` is
+    in `unavail_set`. Negative literal holds iff NOT in unavail_set.
+
+    Predicate literals (`aula:X@mar`, etc.) require richer context than
+    a flat unavail-set to be evaluated; this evaluator currently treats
+    them OPTIMISTICALLY (literal assumed true) so the rest of the DNF
+    can still be enforced. The caller is responsible for additional
+    checks via `iter_predicate_literals` when needed.
     """
     for clause in clauses:
         ok = True
         for lit in clause:
-            present = (lit["day"], lit["hour"]) in unavail_set
+            if lit.get("predicate_kind"):
+                # opaque predicate — assume satisfied here (see docstring)
+                continue
+            day = lit.get("day")
+            hour = lit.get("hour")
+            if day is None or hour is None:
+                continue
+            present = (day, hour) in unavail_set
             if lit.get("negate"):
                 if present:
                     ok = False
@@ -371,3 +464,13 @@ def evaluate_against_unavailable(clauses: list[list[dict]],
         if ok:
             return True
     return False
+
+
+def iter_predicate_literals(clauses: list[list[dict]]):
+    """Yield every literal in `clauses` that carries a predicate, so the
+    caller can apply its own evaluation (classroom/subject/class lookup
+    against the active solution and classroom assignment)."""
+    for clause in clauses:
+        for lit in clause:
+            if lit.get("predicate_kind"):
+                yield lit

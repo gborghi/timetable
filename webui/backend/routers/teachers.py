@@ -47,7 +47,51 @@ def _autofill_free_day_cells(t: models.Teacher,
     return out
 
 
-def _to_out(t: models.Teacher) -> schemas.TeacherOut:
+def _classroom_prefs_for_teacher(db, teacher_id: int
+                                 ) -> list[schemas.TeacherClassroomPrefIn]:
+    rooms = {r.id: r for r in db.query(models.Classroom).all()}
+    rows = db.query(models.TeacherClassroomPreference).filter(
+        models.TeacherClassroomPreference.teacher_id == teacher_id
+    ).all()
+    out = []
+    for r in rows:
+        room = rooms.get(r.classroom_id)
+        if room is None:
+            continue
+        out.append(schemas.TeacherClassroomPrefIn(
+            classroom_name=room.name,
+            state=r.state or "allowed",
+            weight=float(r.weight or 0.0),
+        ))
+    return out
+
+
+def _apply_teacher_classroom_prefs(db, teacher_id: int,
+                                   prefs) -> None:
+    db.query(models.TeacherClassroomPreference).filter(
+        models.TeacherClassroomPreference.teacher_id == teacher_id
+    ).delete()
+    rooms_by_name = {r.name: r for r in db.query(models.Classroom).all()}
+    seen = set()
+    for p in (prefs or []):
+        if p.classroom_name in seen:
+            continue
+        seen.add(p.classroom_name)
+        room = rooms_by_name.get(p.classroom_name)
+        if room is None:
+            continue
+        st = p.state if p.state in (
+            "allowed", "preferred", "forbidden", "enforced"
+        ) else "allowed"
+        db.add(models.TeacherClassroomPreference(
+            teacher_id=teacher_id,
+            classroom_id=room.id,
+            state=st,
+            weight=float(p.weight or 0.0),
+        ))
+
+
+def _to_out(t: models.Teacher, db=None) -> schemas.TeacherOut:
     return schemas.TeacherOut(
         id=t.id,
         name=t.name,
@@ -70,6 +114,8 @@ def _to_out(t: models.Teacher) -> schemas.TeacherOut:
         unavailability=_autofill_free_day_cells(t, list(t.unavailability)),
         mandatory_free_days=[m.day for m in t.mandatory_free_days],
         compatible_classes=[c.class_name for c in t.compatible_classes],
+        classroom_prefs=(_classroom_prefs_for_teacher(db, t.id)
+                         if db is not None else []),
     )
 
 
@@ -95,7 +141,7 @@ def list_teachers(q: str | None = Query(None,
             sched_by_t[l.teacher_name] = sched_by_t.get(l.teacher_name, 0) + 1
     out = []
     for t in rows:
-        d = _to_out(t).model_dump()
+        d = _to_out(t, db).model_dump()
         d["n_classes"] = n_classes_by_t.get(t.id, 0)
         d["scheduled_hours"] = sched_by_t.get(t.name, 0)
         d["soft_penalty_total"] = sum(
@@ -115,7 +161,7 @@ def get_teacher(teacher_id: int, db: Session = Depends(get_db)):
     t = db.get(models.Teacher, teacher_id)
     if t is None:
         raise HTTPException(404, "teacher not found")
-    return _to_out(t)
+    return _to_out(t, db)
 
 
 def _apply_payload(t: models.Teacher, p: schemas.TeacherIn,
@@ -156,7 +202,7 @@ def _apply_payload(t: models.Teacher, p: schemas.TeacherIn,
     for u in p.unavailability:
         db.add(models.TeacherUnavailability(
             teacher_id=t.id, day=int(u.day), hour=int(u.hour),
-            state=u.state if u.state in ("hard", "soft", "preferred") else "hard",
+            state=u.state if u.state in ("hard", "soft", "preferred", "enforced") else "hard",
             soft_penalty=int(u.soft_penalty or 100),
             reason=u.reason
         ))
@@ -166,6 +212,7 @@ def _apply_payload(t: models.Teacher, p: schemas.TeacherIn,
         db.add(models.TeacherCompatibleClass(
             teacher_id=t.id, class_name=cn
         ))
+    _apply_teacher_classroom_prefs(db, t.id, p.classroom_prefs)
 
 
 @router.post("", response_model=schemas.TeacherOut)
@@ -181,7 +228,7 @@ def create_teacher(payload: schemas.TeacherIn,
     _apply_payload(t, payload, db)
     db.commit()
     db.refresh(t)
-    return _to_out(t)
+    return _to_out(t, db)
 
 
 @router.put("/{teacher_id}", response_model=schemas.TeacherOut)
@@ -193,7 +240,7 @@ def update_teacher(teacher_id: int, payload: schemas.TeacherIn,
     _apply_payload(t, payload, db)
     db.commit()
     db.refresh(t)
-    return _to_out(t)
+    return _to_out(t, db)
 
 
 @router.delete("/{teacher_id}")

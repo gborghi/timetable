@@ -70,11 +70,13 @@
       const pen = Number(softPenalty);
       let payload;
       if (logicalKind === 'hard')
-        payload = { is_hard: true, soft_penalty: 100 };
+        payload = { kind: 'hard', is_hard: true, soft_penalty: 100 };
+      else if (logicalKind === 'enforced')
+        payload = { kind: 'enforced', is_hard: true, soft_penalty: 100 };
       else if (logicalKind === 'soft')
-        payload = { is_hard: false, soft_penalty: Math.abs(pen) };
+        payload = { kind: 'soft', is_hard: false, soft_penalty: Math.abs(pen) };
       else
-        payload = { is_hard: false, soft_penalty: -Math.abs(pen) };
+        payload = { kind: 'preferred', is_hard: false, soft_penalty: -Math.abs(pen) };
       return { expression: exprText.trim(), ...payload };
     }
     if (action === 'set_field') {
@@ -172,7 +174,11 @@
             <input type="radio" bind:group={logicalKind} value="preferred"/>
             <span class="pill-blue !text-[10px]">PREFERITO</span>
           </label>
-          {#if logicalKind !== 'hard'}
+          <label class="flex gap-1 items-center">
+            <input type="radio" bind:group={logicalKind} value="enforced"/>
+            <span class="pill !text-[10px]" style="background:#065f46;color:#fff;">ENFORCED</span>
+          </label>
+          {#if logicalKind === 'soft' || logicalKind === 'preferred'}
             <label class="flex gap-1 items-center">
               {logicalKind === 'soft' ? 'Penalita' : 'Bonus'}:
               <input type="number" min="0"
@@ -235,6 +241,7 @@
           <option value="hard">HARD (rosso)</option>
           <option value="soft">SOFT (giallo, penalita +)</option>
           <option value="preferred">PREFERITO (blu, bonus -)</option>
+          <option value="enforced">ENFORCED (verde scuro, deve esserci)</option>
         </select>
         {#if unavailState === 'soft' || unavailState === 'preferred'}
           <label class="text-xs">{unavailState === 'soft' ? 'Penalita' : 'Bonus'}</label>

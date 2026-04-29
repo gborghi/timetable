@@ -23,14 +23,18 @@
       expression: expr,
       year_filter: year == null || year === '' ? null : Number(year),
       label: label || null,
+      kind,
     };
-    if (kind === 'hard') return { ...base, is_hard: true, soft_penalty: 100 };
-    if (kind === 'soft') return { ...base, is_hard: false,
-                                   soft_penalty: Math.abs(Number(pen) || 100) };
+    if (kind === 'hard' || kind === 'enforced')
+      return { ...base, is_hard: true, soft_penalty: 100 };
+    if (kind === 'soft')
+      return { ...base, is_hard: false,
+               soft_penalty: Math.abs(Number(pen) || 100) };
     return { ...base, is_hard: false,
              soft_penalty: -Math.abs(Number(pen) || 100) };
   }
   function _kindFromRule(r) {
+    if (r.kind) return r.kind;
     if (r.is_hard) return 'hard';
     if (Number(r.soft_penalty) < 0) return 'preferred';
     return 'soft';
@@ -314,9 +318,15 @@
                       <div class="text-ink-400 text-[10px]">orig: <code>{r.expression}</code></div>
                     </td>
                     <td>
-                      {#if r.is_hard}<span class="pill-red">HARD</span>
-                      {:else if Number(r.soft_penalty) < 0}<span class="pill-blue">PREFERITO</span>
-                      {:else}<span class="pill-amber">SOFT</span>{/if}
+                      {#if _kindFromRule(r) === 'enforced'}
+                        <span class="pill" style="background:#065f46;color:#fff;">ENFORCED</span>
+                      {:else if _kindFromRule(r) === 'hard'}
+                        <span class="pill-red">HARD</span>
+                      {:else if _kindFromRule(r) === 'preferred'}
+                        <span class="pill-blue">PREFERITO</span>
+                      {:else}
+                        <span class="pill-amber">SOFT</span>
+                      {/if}
                     </td>
                     <td class="w-20 text-center">{r.is_hard ? '-' : r.soft_penalty}</td>
                     <td class="whitespace-nowrap">
@@ -372,7 +382,11 @@
                 <input type="radio" bind:group={logicalDraftKind} value="preferred"/>
                 <span class="pill-blue !text-[10px]">PREFERITO</span>
               </label>
-              {#if logicalDraftKind !== 'hard'}
+              <label class="flex items-center gap-1 text-xs">
+                <input type="radio" bind:group={logicalDraftKind} value="enforced"/>
+                <span class="pill !text-[10px]" style="background:#065f46;color:#fff;">ENFORCED</span>
+              </label>
+              {#if logicalDraftKind === 'soft' || logicalDraftKind === 'preferred'}
                 <div class="field">
                   <label>{logicalDraftKind === 'soft' ? 'Penalita' : 'Bonus'}</label>
                   <input type="number" min="0" class="w-24" bind:value={logicalDraftPenalty}/>

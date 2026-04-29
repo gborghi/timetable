@@ -23,12 +23,19 @@ class SubjectBase(BaseModel):
     preferred_band_weight: float = 0.0
 
 
+class SubjectClassroomPrefIn(BaseModel):
+    classroom_name: str
+    state: str = "allowed"   # allowed | preferred | forbidden | enforced
+    weight: float = 10.0
+
+
 class SubjectIn(SubjectBase):
-    pass
+    classroom_prefs: list[SubjectClassroomPrefIn] = Field(default_factory=list)
 
 
 class SubjectOut(SubjectBase):
     id: int
+    classroom_prefs: list[SubjectClassroomPrefIn] = Field(default_factory=list)
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -63,11 +70,18 @@ class TeacherBase(BaseModel):
     preferred_days_csv: str | None = None
 
 
+class TeacherClassroomPrefIn(BaseModel):
+    classroom_name: str
+    state: str = "allowed"   # allowed | preferred | forbidden | enforced
+    weight: float = 10.0
+
+
 class TeacherIn(TeacherBase):
     subjects: list[str] = Field(default_factory=list)
     unavailability: list[UnavailabilitySlot] = Field(default_factory=list)
     mandatory_free_days: list[int] = Field(default_factory=list)
     compatible_classes: list[str] = Field(default_factory=list)
+    classroom_prefs: list[TeacherClassroomPrefIn] = Field(default_factory=list)
 
 
 class TeacherOut(TeacherBase):
@@ -76,6 +90,7 @@ class TeacherOut(TeacherBase):
     unavailability: list[UnavailabilitySlot] = Field(default_factory=list)
     mandatory_free_days: list[int] = Field(default_factory=list)
     compatible_classes: list[str] = Field(default_factory=list)
+    classroom_prefs: list[TeacherClassroomPrefIn] = Field(default_factory=list)
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -332,6 +347,7 @@ class ClassroomSubjectPrefIn(BaseModel):
     subject: str
     weight: float = 10.0
     required: bool = False
+    state: str = "allowed"  # allowed | preferred | forbidden | enforced
 
 
 class ClassroomClassPrefIn(BaseModel):
@@ -402,10 +418,16 @@ class ClassroomAssignRunIn(BaseModel):
 
 
 class LogicalUnavIn(BaseModel):
-    """A logical (disjunctive) unavailability constraint."""
+    """A logical (disjunctive) unavailability constraint.
+
+    `kind` carries the 4-way classification (hard/soft/preferred/enforced).
+    `is_hard` is kept for backwards compatibility — when not provided
+    explicitly it is derived from kind.
+    """
     expression: str
     is_hard: bool = True
     soft_penalty: int = 100
+    kind: str = "hard"   # hard | soft | preferred | enforced
 
 
 class LogicalUnavOut(BaseModel):
@@ -417,6 +439,7 @@ class LogicalUnavOut(BaseModel):
     clauses: list[list[dict[str, Any]]] = Field(default_factory=list)
     is_hard: bool
     soft_penalty: int
+    kind: str = "hard"
 
 
 class LogicValidateIn(BaseModel):
@@ -446,6 +469,7 @@ class CurriculumLogicalConstraintIn(BaseModel):
     expression: str
     is_hard: bool = True
     soft_penalty: int = 100
+    kind: str = "hard"
 
 
 class CurriculumLogicalConstraintOut(BaseModel):
@@ -458,6 +482,7 @@ class CurriculumLogicalConstraintOut(BaseModel):
     clauses: list[list[dict[str, Any]]] = Field(default_factory=list)
     is_hard: bool
     soft_penalty: int
+    kind: str = "hard"
 
 
 class CurriculumBase(BaseModel):

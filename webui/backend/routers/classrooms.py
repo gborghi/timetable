@@ -23,7 +23,9 @@ def _to_out(c: models.Classroom) -> schemas.ClassroomOut:
         notes=c.notes,
         subject_prefs=[
             schemas.ClassroomSubjectPrefIn(
-                subject=p.subject, weight=p.weight, required=p.required
+                subject=p.subject, weight=p.weight, required=p.required,
+                state=(p.state or
+                       ("enforced" if p.required else "allowed")),
             )
             for p in c.subject_prefs
         ],
@@ -126,9 +128,13 @@ def _apply(r: models.Classroom, p: schemas.ClassroomIn, db: Session):
         ).delete()
         db.flush()
     for sp in p.subject_prefs:
+        st = sp.state if sp.state in (
+            "allowed", "preferred", "forbidden", "enforced"
+        ) else ("enforced" if sp.required else "allowed")
         db.add(models.ClassroomSubjectPreference(
             classroom_id=r.id, subject=sp.subject,
-            weight=sp.weight, required=sp.required,
+            state=st,
+            weight=sp.weight, required=(st == "enforced" or sp.required),
         ))
     for cp in p.class_prefs:
         db.add(models.ClassroomClassPreference(
@@ -138,7 +144,7 @@ def _apply(r: models.Classroom, p: schemas.ClassroomIn, db: Session):
     for u in p.unavailability:
         db.add(models.ClassroomUnavailability(
             classroom_id=r.id, day=int(u.day), hour=int(u.hour),
-            state=u.state if u.state in ("hard", "soft", "preferred") else "hard",
+            state=u.state if u.state in ("hard", "soft", "preferred", "enforced") else "hard",
             soft_penalty=int(u.soft_penalty or 100),
             reason=u.reason,
         ))

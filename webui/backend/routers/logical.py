@@ -50,11 +50,41 @@ def _row_to_out(row: models.LogicalUnavailability) -> schemas.LogicalUnavOut:
     except Exception:
         clauses = []
     from ..utils.logic_parser import dnf_to_pretty
+    kind = row.kind or _kind_from_legacy(row.is_hard, row.soft_penalty)
     return schemas.LogicalUnavOut(
         id=row.id, entity_type=row.entity_type, entity_id=row.entity_id,
         expression=row.expression, pretty=dnf_to_pretty(clauses),
         clauses=clauses, is_hard=row.is_hard, soft_penalty=row.soft_penalty,
+        kind=kind,
     )
+
+
+def _kind_from_legacy(is_hard: bool, soft_penalty: int) -> str:
+    if is_hard:
+        return "hard"
+    if (soft_penalty or 0) < 0:
+        return "preferred"
+    return "soft"
+
+
+def _normalise_kind(payload: schemas.LogicalUnavIn) -> tuple[str, bool, int]:
+    """Returns (kind, is_hard, soft_penalty) consistent with the requested
+    kind. The UI may set either `kind` or the legacy is_hard/soft_penalty;
+    we honour kind when it's an explicit non-default value."""
+    raw_kind = (payload.kind or "").strip().lower()
+    if raw_kind not in ("hard", "soft", "preferred", "enforced"):
+        # fall back to legacy fields
+        raw_kind = _kind_from_legacy(payload.is_hard, payload.soft_penalty)
+    pen = int(payload.soft_penalty)
+    if raw_kind == "hard":
+        return "hard", True, max(0, pen) or 100
+    if raw_kind == "enforced":
+        # enforced = hard-like, must be satisfied (positive presence)
+        return "enforced", True, max(0, pen) or 100
+    if raw_kind == "preferred":
+        return "preferred", False, -abs(pen if pen else 100)
+    # soft
+    return "soft", False, abs(pen if pen else 100)
 
 
 @router.post("/api/logic/validate", response_model=schemas.LogicValidateOut)
@@ -89,12 +119,14 @@ def _add_rule(entity: str, entity_id: int,
         raise HTTPException(400, f"sintassi non valida: {e}")
     if not parsed.clauses:
         raise HTTPException(400, "espressione vuota")
+    kind, is_hard, pen = _normalise_kind(payload)
     row = models.LogicalUnavailability(
         entity_type=ENTITY_TYPE[entity], entity_id=entity_id,
         expression=payload.expression,
         parsed_dnf_json=json.dumps(parsed.clauses),
-        is_hard=payload.is_hard,
-        soft_penalty=int(payload.soft_penalty),
+        is_hard=is_hard,
+        soft_penalty=pen,
+        kind=kind,
     )
     db.add(row)
     db.commit()
@@ -113,10 +145,12 @@ def _update_rule(entity: str, entity_id: int, rule_id: int,
         parsed = parse_to_dnf(payload.expression)
     except LogicError as e:
         raise HTTPException(400, f"sintassi non valida: {e}")
+    kind, is_hard, pen = _normalise_kind(payload)
     row.expression = payload.expression
     row.parsed_dnf_json = json.dumps(parsed.clauses)
-    row.is_hard = payload.is_hard
-    row.soft_penalty = int(payload.soft_penalty)
+    row.is_hard = is_hard
+    row.soft_penalty = pen
+    row.kind = kind
     db.commit()
     db.refresh(row)
     return _row_to_out(row)

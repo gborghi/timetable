@@ -142,12 +142,36 @@ def delete_curriculum(cid: int, db: Session = Depends(get_db)):
 # ---------- Logical constraints (curriculum-level) ----------
 
 
+def _kind_from_legacy(is_hard: bool, soft_penalty: int) -> str:
+    if is_hard:
+        return "hard"
+    if (soft_penalty or 0) < 0:
+        return "preferred"
+    return "soft"
+
+
+def _normalise_kind(payload: schemas.CurriculumLogicalConstraintIn
+                    ) -> tuple[str, bool, int]:
+    raw = (payload.kind or "").strip().lower()
+    if raw not in ("hard", "soft", "preferred", "enforced"):
+        raw = _kind_from_legacy(payload.is_hard, payload.soft_penalty)
+    pen = int(payload.soft_penalty)
+    if raw == "hard":
+        return "hard", True, max(0, pen) or 100
+    if raw == "enforced":
+        return "enforced", True, max(0, pen) or 100
+    if raw == "preferred":
+        return "preferred", False, -abs(pen if pen else 100)
+    return "soft", False, abs(pen if pen else 100)
+
+
 def _row_to_out(row: models.CurriculumLogicalConstraint
                 ) -> schemas.CurriculumLogicalConstraintOut:
     try:
         clauses = json.loads(row.parsed_dnf_json or "[]")
     except Exception:
         clauses = []
+    kind = row.kind or _kind_from_legacy(row.is_hard, row.soft_penalty)
     return schemas.CurriculumLogicalConstraintOut(
         id=row.id, curriculum_id=row.curriculum_id,
         year_filter=row.year_filter, label=row.label,
@@ -155,6 +179,7 @@ def _row_to_out(row: models.CurriculumLogicalConstraint
         pretty=dnf_to_pretty(clauses),
         clauses=clauses,
         is_hard=row.is_hard, soft_penalty=row.soft_penalty,
+        kind=kind,
     )
 
 
@@ -186,14 +211,16 @@ def add_curriculum_rule(cid: int,
         raise HTTPException(400, f"sintassi non valida: {e}")
     if not parsed.clauses:
         raise HTTPException(400, "espressione vuota")
+    kind, is_hard, pen = _normalise_kind(payload)
     row = models.CurriculumLogicalConstraint(
         curriculum_id=cid,
         year_filter=payload.year_filter,
         label=payload.label,
         expression=payload.expression,
         parsed_dnf_json=json.dumps(parsed.clauses),
-        is_hard=payload.is_hard,
-        soft_penalty=int(payload.soft_penalty),
+        is_hard=is_hard,
+        soft_penalty=pen,
+        kind=kind,
     )
     db.add(row)
     db.commit()
@@ -213,12 +240,14 @@ def update_curriculum_rule(cid: int, rid: int,
         parsed = parse_to_dnf(payload.expression)
     except LogicError as e:
         raise HTTPException(400, f"sintassi non valida: {e}")
+    kind, is_hard, pen = _normalise_kind(payload)
     row.year_filter = payload.year_filter
     row.label = payload.label
     row.expression = payload.expression
     row.parsed_dnf_json = json.dumps(parsed.clauses)
-    row.is_hard = payload.is_hard
-    row.soft_penalty = int(payload.soft_penalty)
+    row.is_hard = is_hard
+    row.soft_penalty = pen
+    row.kind = kind
     db.commit()
     db.refresh(row)
     return _row_to_out(row)

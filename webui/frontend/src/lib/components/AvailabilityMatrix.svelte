@@ -16,7 +16,8 @@
   //   title, readonly: cosmetics
   //
   // Click cycle on a cell BACKGROUND: free -> yellow(soft, +100) -> red(hard)
-  //                                         -> blue(preferred, -100) -> free
+  //                                         -> blue(preferred, -100)
+  //                                         -> dark-green(enforced) -> free
   // Inline numeric input visible when yellow OR blue. The input is freely
   // editable; commit happens on `change` (blur or Enter). Sign: positive on
   // yellow, negative on blue (auto-flipped if you toggle).
@@ -78,6 +79,7 @@
     if (cur === null) return 'soft';
     if (cur === 'soft') return 'hard';
     if (cur === 'hard') return 'preferred';
+    if (cur === 'preferred') return 'enforced';
     return 'free';
   }
 
@@ -168,6 +170,9 @@
       <span class="flex items-center gap-1">
         <span class="w-3 h-3 rounded-sm border border-sky-400 bg-sky-200"></span> PREFERITO (penalita -)
       </span>
+      <span class="flex items-center gap-1">
+        <span class="w-3 h-3 rounded-sm border border-emerald-700 bg-emerald-700"></span> ENFORCED (deve esserci)
+      </span>
     </div>
   </div>
   <p class="text-xs text-ink-500 mb-2">
@@ -194,6 +199,7 @@
               {@const isSoft = cell && cell.state === 'soft'}
               {@const isHard = cell && cell.state === 'hard'}
               {@const isPref = cell && cell.state === 'preferred'}
+              {@const isEnf  = cell && cell.state === 'enforced'}
               <td class="p-1 align-middle">
                 <div class="relative h-9 rounded border cursor-pointer transition-colors flex items-center justify-center"
                   class:bg-emerald-50={isFree}
@@ -205,6 +211,8 @@
                   class:border-red-500={isHard}
                   class:bg-sky-200={isPref}
                   class:border-sky-400={isPref}
+                  class:bg-emerald-700={isEnf}
+                  class:border-emerald-900={isEnf}
                   on:click={(e) => onCellClick(e, d, h)}
                   on:mousedown={(e) => onMouseDown(e, d, h)}
                   on:mouseenter={() => onMouseEnter(d, h)}
@@ -212,11 +220,15 @@
                     ? 'SOFT - penalita ' + cell.soft_penalty
                     : isPref
                     ? 'PREFERITO - bonus ' + cell.soft_penalty
+                    : isEnf
+                    ? 'ENFORCED - DEVE essere occupata' + (cell.reason ? ' - ' + cell.reason : '')
                     : isHard
                     ? 'HARD non disponibile' + (cell.reason ? ' - ' + cell.reason : '')
                     : 'Libero - click per cambiare'}>
                   {#if isFree}
                     <span class="text-emerald-700 font-semibold text-xs">-</span>
+                  {:else if isEnf}
+                    <span class="text-white font-semibold text-xs">!</span>
                   {:else if isHard}
                     <span class="text-red-900 font-semibold text-xs">X</span>
                   {:else if isSoft}

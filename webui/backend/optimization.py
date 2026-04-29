@@ -1064,6 +1064,7 @@ def _availability_constraints(db: Session) -> dict[str, Any]:
     """
     teacher_hard: set = set()
     teacher_soft: dict = {}
+    teacher_enforced: set = set()
     teachers = {t.id: t for t in db.query(models.Teacher).all()}
     for u in db.query(models.TeacherUnavailability).all():
         t = teachers.get(u.teacher_id)
@@ -1075,6 +1076,10 @@ def _availability_constraints(db: Session) -> dict[str, Any]:
             # 'soft'      -> positive penalty (penalised when used)
             # 'preferred' -> negative penalty (rewarded when used)
             teacher_soft[(t.name, u.day, u.hour)] = u.soft_penalty
+        elif u.state == "enforced":
+            # The teacher MUST have a lesson at this slot. The hard
+            # constraint is enforced at solver time; here we just collect.
+            teacher_enforced.add((t.name, u.day, u.hour))
     # Auto-promote free_day -> 6 hard cells
     for t in teachers.values():
         d = DAY_TO_INT.get(t.free_day or "")
@@ -1085,6 +1090,7 @@ def _availability_constraints(db: Session) -> dict[str, Any]:
 
     class_hard: set = set()
     class_soft: dict = {}
+    class_enforced: set = set()
     classes = {c.id: c for c in db.query(models.SchoolClass).all()}
     for u in db.query(models.ClassUnavailability).all():
         c = classes.get(u.class_id)
@@ -1094,9 +1100,12 @@ def _availability_constraints(db: Session) -> dict[str, Any]:
             class_hard.add((c.name, u.day, u.hour))
         elif u.state in ("soft", "preferred"):
             class_soft[(c.name, u.day, u.hour)] = u.soft_penalty
+        elif u.state == "enforced":
+            class_enforced.add((c.name, u.day, u.hour))
 
     room_hard: set = set()
     room_soft: dict = {}
+    room_enforced: set = set()
     rooms = {r.id: r for r in db.query(models.Classroom).all()}
     for u in db.query(models.ClassroomUnavailability).all():
         r = rooms.get(u.classroom_id)
@@ -1106,14 +1115,19 @@ def _availability_constraints(db: Session) -> dict[str, Any]:
             room_hard.add((r.name, u.day, u.hour))
         elif u.state in ("soft", "preferred"):
             room_soft[(r.name, u.day, u.hour)] = u.soft_penalty
+        elif u.state == "enforced":
+            room_enforced.add((r.name, u.day, u.hour))
 
     return {
         "teacher_hard": teacher_hard,
         "teacher_soft": teacher_soft,
+        "teacher_enforced": teacher_enforced,
         "class_hard": class_hard,
         "class_soft": class_soft,
+        "class_enforced": class_enforced,
         "room_hard": room_hard,
         "room_soft": room_soft,
+        "room_enforced": room_enforced,
     }
 
 

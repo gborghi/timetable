@@ -84,3 +84,30 @@ def _apply_lightweight_migrations() -> None:
                 conn.execute(text(
                     "ALTER TABLE teachers ADD COLUMN first_name VARCHAR(80)"
                 ))
+        # state column on classroom_subject_preferences
+        if insp.has_table("classroom_subject_preferences") \
+                and not has_column("classroom_subject_preferences", "state"):
+            conn.execute(text(
+                "ALTER TABLE classroom_subject_preferences "
+                "ADD COLUMN state VARCHAR(16) DEFAULT 'allowed'"
+            ))
+            # Backfill: required=True -> 'enforced'; weight>0 -> 'preferred'
+            conn.execute(text(
+                "UPDATE classroom_subject_preferences "
+                "SET state = CASE WHEN required=1 THEN 'enforced' "
+                "WHEN weight > 0 THEN 'preferred' ELSE 'allowed' END"
+            ))
+        # kind column on the two logical-constraint tables
+        for tbl in ("logical_unavailabilities",
+                    "curriculum_logical_constraints"):
+            if insp.has_table(tbl) and not has_column(tbl, "kind"):
+                conn.execute(text(
+                    f"ALTER TABLE {tbl} ADD COLUMN kind VARCHAR(16) "
+                    f"DEFAULT 'hard'"
+                ))
+                conn.execute(text(
+                    f"UPDATE {tbl} SET kind = CASE "
+                    f"  WHEN is_hard = 1 THEN 'hard' "
+                    f"  WHEN soft_penalty < 0 THEN 'preferred' "
+                    f"  ELSE 'soft' END"
+                ))

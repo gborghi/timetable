@@ -9,17 +9,26 @@
   import LogicalUnavailabilitiesPanel from '$lib/components/LogicalUnavailabilitiesPanel.svelte';
   import ImportButton from '$lib/components/ImportButton.svelte';
   import BulkApplyModal from '$lib/components/BulkApplyModal.svelte';
+  import ClassroomGrid from '$lib/components/ClassroomGrid.svelte';
 
   let editing = null;
   let allSubjects = [];
+  let allClassrooms = [];
   let listRef = null;
   let selectedIds = [];
   let showBulk = false;
+
+  function onClassroomPrefsChange(newPrefs) {
+    editing = { ...editing, classroom_prefs: newPrefs };
+  }
 
   onMount(async () => {
     try {
       const subs = await api.get('/api/subjects');
       allSubjects = subs.map((s) => s.name).sort();
+    } catch { /* */ }
+    try {
+      allClassrooms = await api.get('/api/classrooms');
     } catch { /* */ }
   });
 
@@ -33,7 +42,8 @@
       pref_no_buchi_weight: 10, pref_no_five_weight: 30, pref_no_one_weight: 80,
       preferred_days_csv: '',
       subjects: [], unavailability: [],
-      mandatory_free_days: [], compatible_classes: []
+      mandatory_free_days: [], compatible_classes: [],
+      classroom_prefs: []
     };
   }
 
@@ -286,6 +296,14 @@
       <div class="field"><label>Peso "no buchi"</label><input type="number" bind:value={editing.pref_no_buchi_weight}/></div>
       <div class="field"><label>Peso "no 5 ore"</label><input type="number" bind:value={editing.pref_no_five_weight}/></div>
       <div class="field"><label>Peso "no 1 ora isolata"</label><input type="number" bind:value={editing.pref_no_one_weight}/></div>
+    </div>
+
+    <div class="mt-4">
+      <ClassroomGrid
+        classrooms={allClassrooms}
+        value={editing.classroom_prefs ?? []}
+        onChange={onClassroomPrefsChange}
+        title="Aule per questo docente"/>
     </div>
 
     <div class="mt-4">

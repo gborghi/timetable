@@ -5,14 +5,17 @@
   import Modal from '$lib/components/Modal.svelte';
   import SortableQueryableList from '$lib/components/SortableQueryableList.svelte';
   import ImportButton from '$lib/components/ImportButton.svelte';
+  import ClassroomGrid from '$lib/components/ClassroomGrid.svelte';
 
   let editing = null;
   let weights = [];
+  let allClassrooms = [];
   let editWeights = false;
   let listRef = null;
 
   onMount(async () => {
     try { weights = await api.get('/api/subjects/group-weights'); } catch { /* */ }
+    try { allClassrooms = await api.get('/api/classrooms'); } catch { /* */ }
   });
 
   function newSubject() {
@@ -21,10 +24,17 @@
       distribute_days_weight: 0, dual_hours_weight: 0,
       no_sixth_hour_weight: 0,
       preferred_band_start: null, preferred_band_end: null,
-      preferred_band_weight: 0
+      preferred_band_weight: 0,
+      classroom_prefs: []
     };
   }
-  function edit(row) { editing = JSON.parse(JSON.stringify(row)); }
+  function edit(row) {
+    editing = JSON.parse(JSON.stringify(row));
+    if (!Array.isArray(editing.classroom_prefs)) editing.classroom_prefs = [];
+  }
+  function onClassroomPrefsChange(newPrefs) {
+    editing = { ...editing, classroom_prefs: newPrefs };
+  }
 
   async function save() {
     const payload = { ...editing };
@@ -149,6 +159,15 @@
         <div class="field"><label>Peso fascia</label><input type="number" bind:value={editing.preferred_band_weight}/></div>
       </div>
     </div>
+
+    <div class="mt-4 border-t border-ink-200 pt-3">
+      <ClassroomGrid
+        classrooms={allClassrooms}
+        value={editing.classroom_prefs ?? []}
+        onChange={onClassroomPrefsChange}
+        title="Aule per questa materia"/>
+    </div>
+
     <div class="mt-5 flex justify-end gap-2">
       <button class="btn" on:click={() => (editing = null)}>Annulla</button>
       <button class="btn-primary" on:click={save}>Salva</button>

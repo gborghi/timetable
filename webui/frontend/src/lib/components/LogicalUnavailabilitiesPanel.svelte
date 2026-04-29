@@ -27,20 +27,27 @@
   let busy = false;
   let showHelp = false;
 
-  // Map UI kind <-> backend (is_hard, soft_penalty sign)
+  // Map UI kind <-> backend payload. The `kind` field is the canonical
+  // discriminator; is_hard and soft_penalty are kept consistent for
+  // backwards compatibility with older rows.
   function payloadFromUI(kind, expr, pen) {
+    const base = { expression: expr, kind };
     if (kind === 'hard') {
-      return { expression: expr, is_hard: true, soft_penalty: 100 };
+      return { ...base, is_hard: true, soft_penalty: 100 };
+    }
+    if (kind === 'enforced') {
+      return { ...base, is_hard: true, soft_penalty: 100 };
     }
     if (kind === 'soft') {
-      return { expression: expr, is_hard: false,
+      return { ...base, is_hard: false,
                soft_penalty: Math.abs(Number(pen) || 100) };
     }
     // preferred
-    return { expression: expr, is_hard: false,
+    return { ...base, is_hard: false,
              soft_penalty: -Math.abs(Number(pen) || 100) };
   }
   function kindFromRule(r) {
+    if (r.kind) return r.kind;     // backend tells us
     if (r.is_hard) return 'hard';
     if (Number(r.soft_penalty) < 0) return 'preferred';
     return 'soft';
@@ -140,11 +147,12 @@
     }
   }
 
-  // Cycle HARD -> SOFT(+) -> PREFERRED(-) -> HARD
+  // Cycle HARD -> SOFT(+) -> PREFERRED(-) -> ENFORCED -> HARD
   async function cycleKind(r) {
     const current = kindFromRule(r);
     const next = current === 'hard' ? 'soft'
-              : current === 'soft' ? 'preferred' : 'hard';
+              : current === 'soft' ? 'preferred'
+              : current === 'preferred' ? 'enforced' : 'hard';
     const payload = payloadFromUI(next, r.expression,
                                   Math.abs(r.soft_penalty) || 100);
     try {
@@ -158,15 +166,22 @@
       'lun8 AND lun9',
       '(lun8 AND lun9) OR (mar8 AND mar9)',
       'gio11 OR gio12 OR gio13',
-      'NOT (mer3 AND mer4)'
+      'NOT (mer3 AND mer4)',
+      'mai aula:LabFisica@mar',
+      'aula:LabFisica@lun OR aula:LabFisica@mar',
+      'mai materia:Religione@lun8'
     ],
     classes: [
       'mer4 AND mer5 AND mer6',
-      '(mer4 AND mer5) OR (gio4 AND gio5)'
+      '(mer4 AND mer5) OR (gio4 AND gio5)',
+      'mai aula:Palestra@gio',
+      'aula:LabInformatica@mar OR aula:LabInformatica@gio'
     ],
     classrooms: [
       'gio4 AND gio5 AND gio6',
-      '(lun13 AND mar13)'
+      '(lun13 AND mar13)',
+      'mai materia:Religione',
+      'gruppo:IRC OR gruppo:Alternativa'
     ]
   };
 </script>
@@ -191,6 +206,24 @@
       <div><strong>Operatori:</strong>
         <code>AND</code>, <code>OR</code>, <code>NOT</code>, parentesi.
         Anche <code>&amp;</code>, <code>|</code>, <code>!</code> sono accettati.
+        <code>mai</code> e' alias di <code>NOT</code>.
+      </div>
+      <div><strong>Predicate atoms (sintassi estesa):</strong>
+        <code>aula:NOME</code>, <code>materia:NOME</code>,
+        <code>classe:NOME</code>, <code>gruppo:NOME</code>,
+        <code>docente:NOME</code>. Opzionalmente con suffisso <code>@giorno</code>
+        o <code>@giornoOra</code> (es. <code>aula:LabFisica@mar</code> =
+        "in aula LabFisica il martedi", <code>aula:LabFisica@mar4</code> =
+        "in aula LabFisica martedi 4a ora"). Lo storage e l'editing funzionano
+        gia oggi; l'enforcement nel solver e' parziale (vedi docs).
+      </div>
+      <div><strong>Tipi:</strong>
+        <span class="pill-red !text-[10px]">HARD</span> deve essere soddisfatto;
+        <span class="pill-amber !text-[10px]">SOFT</span> paga penalita se violato;
+        <span class="pill-blue !text-[10px]">PREFERITO</span> da bonus se soddisfatto;
+        <span class="pill !text-[10px]" style="background:#065f46;color:#fff;">ENFORCED</span>
+        deve essere soddisfatto E almeno uno degli slot della DNF deve essere
+        un'ora di lezione attiva.
       </div>
       <div>
         <strong>Esempi {entityType}:</strong>
@@ -224,10 +257,12 @@
             <td>
               <button class="text-xs"
                 on:click={() => cycleKind(r)}
-                title="click per ciclare HARD -> SOFT -> PREFERITO">
-                {#if r.is_hard}
+                title="click per ciclare HARD -> SOFT -> PREFERITO -> ENFORCED">
+                {#if kindFromRule(r) === 'enforced'}
+                  <span class="pill" style="background:#065f46;color:#fff;">ENFORCED</span>
+                {:else if kindFromRule(r) === 'hard'}
                   <span class="pill-red">HARD</span>
-                {:else if Number(r.soft_penalty) < 0}
+                {:else if kindFromRule(r) === 'preferred'}
                   <span class="pill-blue">PREFERITO</span>
                 {:else}
                   <span class="pill-amber">SOFT</span>
@@ -286,14 +321,19 @@
         <input type="radio" bind:group={draftKind} value="preferred"/>
         <span class="pill-blue !text-[10px]">PREFERITO</span>
       </label>
-      <div class="field" class:opacity-50={draftKind === 'hard'}>
+      <label class="flex items-center gap-1 text-xs">
+        <input type="radio" bind:group={draftKind} value="enforced"/>
+        <span class="pill !text-[10px]" style="background:#065f46;color:#fff;">ENFORCED</span>
+      </label>
+      <div class="field"
+           class:opacity-50={draftKind === 'hard' || draftKind === 'enforced'}>
         <label>
           {#if draftKind === 'soft'}Penalita (soft)
           {:else if draftKind === 'preferred'}Bonus (preferito)
-          {:else}Penalita / Bonus{/if}
+          {:else}-{/if}
         </label>
         <input type="number" min="0" class="w-24"
-               disabled={draftKind === 'hard'}
+               disabled={draftKind === 'hard' || draftKind === 'enforced'}
                bind:value={draftPenalty}/>
       </div>
       <button class="btn-primary" on:click={add} disabled={busy || !draftExpr.trim()}>
