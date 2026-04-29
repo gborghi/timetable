@@ -18,7 +18,7 @@
     { href: '/assignments',label: 'Cattedre'                 },
     { href: '/optimize',   label: 'Workflow'                 },
     { href: '/schedule',   label: 'Orario'                   },
-    { href: '/free-now',   label: 'Chi è libero?'      },
+    { href: '/assenze-supplenze', label: 'Assenze e supplenze' },
   ];
 
   onMount(refreshDataset);

@@ -721,6 +721,52 @@ class GroupMembership(Base):
     )
 
 
+class Absence(Base):
+    """A single-day absence of a teacher (illness, off-site duty, ...).
+    The substitution UI uses these together with the active timetable
+    solution to compute per-slot coverage status."""
+    __tablename__ = "absences"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    teacher_id: Mapped[int] = mapped_column(
+        ForeignKey("teachers.id", ondelete="CASCADE"), index=True
+    )
+    date: Mapped[dt.date] = mapped_column(Date, index=True)
+    reason: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+    teacher: Mapped["Teacher"] = relationship()
+    __table_args__ = (
+        UniqueConstraint("teacher_id", "date", name="uq_absence_teacher_date"),
+    )
+
+
+class SubstituteAssignment(Base):
+    """A substitute teacher assigned to cover a specific (date, day, hour,
+    class) slot left uncovered by a teacher absence. The assignment is
+    keyed on the slot tuple so we can have at most one substitute per
+    uncovered lesson."""
+    __tablename__ = "substitute_assignments"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    date: Mapped[dt.date] = mapped_column(Date, index=True)
+    day: Mapped[int] = mapped_column(Integer)
+    hour: Mapped[int] = mapped_column(Integer)
+    class_name: Mapped[str] = mapped_column(String(40))
+    subject: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    original_teacher_name: Mapped[str] = mapped_column(String(120),
+                                                       index=True)
+    substitute_teacher_id: Mapped[int | None] = mapped_column(
+        ForeignKey("teachers.id", ondelete="SET NULL"),
+        nullable=True, index=True
+    )
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)
+    substitute: Mapped["Teacher | None"] = relationship()
+    __table_args__ = (
+        UniqueConstraint("date", "day", "hour", "class_name",
+                         name="uq_sub_slot"),
+    )
+
+
 class GroupSubjectHours(Base):
     """The hours-per-week the group meets for a given subject. The same
     group can have several subjects (e.g. IRC + religion teacher)."""
