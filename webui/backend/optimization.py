@@ -945,17 +945,34 @@ def _logical_violation_summary(rules: dict, name: str,
                                unavail_set: set[tuple[int, int]]
                                ) -> tuple[bool, int]:
     """For the rules attached to `name`, returns (any_hard_violated,
-    sum_soft_penalty_when_violated)."""
+    total_soft_penalty).
+
+    Penalty semantics by rule kind:
+      * HARD            (is_hard=True)      : violated -> hard flag
+      * SOFT            (is_hard=False, p>=0): violated -> +p
+      * PREFERRED       (is_hard=False, p<0) : satisfied -> +p (= bonus)
+
+    Both SOFT and PREFERRED contributions are summed in `soft_pen` so the
+    same objective accumulator handles both.
+    """
     from .utils.logic_parser import evaluate_against_unavailable
     hard_violated = False
     soft_pen = 0
     for rule in rules.get(name, []):
         ok = evaluate_against_unavailable(rule["clauses"], unavail_set)
+        pen = int(rule["soft_penalty"])
         if not ok:
             if rule["is_hard"]:
                 hard_violated = True
-            else:
-                soft_pen += int(rule["soft_penalty"])
+            elif pen >= 0:
+                # SOFT constraint, pay penalty
+                soft_pen += pen
+            # PREFERRED + violated -> no contribution
+        else:
+            # satisfied
+            if not rule["is_hard"] and pen < 0:
+                # PREFERRED + satisfied -> apply bonus (negative)
+                soft_pen += pen
     return hard_violated, soft_pen
 
 
@@ -1007,17 +1024,23 @@ def _logical_check_for_solution(db: Session, sol: dict
             for rule in rule_list:
                 from .utils.logic_parser import evaluate_against_unavailable
                 ok = evaluate_against_unavailable(rule["clauses"], unav)
-                if ok:
-                    continue
-                if rule["is_hard"]:
-                    if first_violation is None:
-                        first_violation = (
-                            f"vincolo logico HARD violato su {group_name} "
-                            f"{name}"
-                        )
-                    return  # stop on first hard violation
+                pen = int(rule["soft_penalty"])
+                if not ok:
+                    if rule["is_hard"]:
+                        if first_violation is None:
+                            first_violation = (
+                                f"vincolo logico HARD violato su {group_name} "
+                                f"{name}"
+                            )
+                        return  # stop on first hard violation
+                    if pen >= 0:
+                        # SOFT, pay penalty when violated
+                        total_soft += pen
+                    # PREFERRED violated -> no contribution
                 else:
-                    total_soft += int(rule["soft_penalty"])
+                    if not rule["is_hard"] and pen < 0:
+                        # PREFERRED satisfied -> bonus (negative addend)
+                        total_soft += pen
 
     visit("docente", teacher_unavail, rules["teacher_rules"])
     if first_violation is None:
@@ -1048,7 +1071,9 @@ def _availability_constraints(db: Session) -> dict[str, Any]:
             continue
         if u.state == "hard":
             teacher_hard.add((t.name, u.day, u.hour))
-        elif u.state == "soft":
+        elif u.state in ("soft", "preferred"):
+            # 'soft'      -> positive penalty (penalised when used)
+            # 'preferred' -> negative penalty (rewarded when used)
             teacher_soft[(t.name, u.day, u.hour)] = u.soft_penalty
     # Auto-promote free_day -> 6 hard cells
     for t in teachers.values():
@@ -1067,7 +1092,7 @@ def _availability_constraints(db: Session) -> dict[str, Any]:
             continue
         if u.state == "hard":
             class_hard.add((c.name, u.day, u.hour))
-        elif u.state == "soft":
+        elif u.state in ("soft", "preferred"):
             class_soft[(c.name, u.day, u.hour)] = u.soft_penalty
 
     room_hard: set = set()
@@ -1079,7 +1104,7 @@ def _availability_constraints(db: Session) -> dict[str, Any]:
             continue
         if u.state == "hard":
             room_hard.add((r.name, u.day, u.hour))
-        elif u.state == "soft":
+        elif u.state in ("soft", "preferred"):
             room_soft[(r.name, u.day, u.hour)] = u.soft_penalty
 
     return {

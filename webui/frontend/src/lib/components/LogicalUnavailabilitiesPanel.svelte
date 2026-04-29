@@ -19,12 +19,32 @@
 
   let rules = [];
   let draftExpr = '';
-  let draftIsHard = true;
+  // 'hard' | 'soft' | 'preferred'
+  let draftKind = 'hard';
   let draftPenalty = 100;
   let validateInfo = null;     // {ok, pretty?, error?}
   let editingId = null;        // id being edited
   let busy = false;
   let showHelp = false;
+
+  // Map UI kind <-> backend (is_hard, soft_penalty sign)
+  function payloadFromUI(kind, expr, pen) {
+    if (kind === 'hard') {
+      return { expression: expr, is_hard: true, soft_penalty: 100 };
+    }
+    if (kind === 'soft') {
+      return { expression: expr, is_hard: false,
+               soft_penalty: Math.abs(Number(pen) || 100) };
+    }
+    // preferred
+    return { expression: expr, is_hard: false,
+             soft_penalty: -Math.abs(Number(pen) || 100) };
+  }
+  function kindFromRule(r) {
+    if (r.is_hard) return 'hard';
+    if (Number(r.soft_penalty) < 0) return 'preferred';
+    return 'soft';
+  }
 
   $: base = entityId ? `/api/${entityType}/${entityId}/logical-unavailabilities` : '';
 
@@ -57,11 +77,7 @@
     if (!draftExpr.trim()) return;
     busy = true;
     try {
-      const payload = {
-        expression: draftExpr,
-        is_hard: draftIsHard,
-        soft_penalty: Number(draftPenalty)
-      };
+      const payload = payloadFromUI(draftKind, draftExpr, draftPenalty);
       if (editingId) {
         await api.put(`${base}/${editingId}`, payload);
         flash('Vincolo aggiornato', 'success');
@@ -83,8 +99,8 @@
   function startEdit(r) {
     editingId = r.id;
     draftExpr = r.expression;
-    draftIsHard = r.is_hard;
-    draftPenalty = r.soft_penalty;
+    draftKind = kindFromRule(r);
+    draftPenalty = Math.abs(r.soft_penalty || 100);
     validateInfo = null;
   }
 
@@ -107,12 +123,16 @@
 
   async function updatePenalty(r, ev) {
     const v = Number(ev.target.value);
-    if (!Number.isFinite(v) || v < 0) return;
+    if (!Number.isFinite(v)) return;
+    const kind = kindFromRule(r);
+    let pen = v;
+    if (kind === 'soft' && pen < 0) pen = Math.abs(pen);
+    if (kind === 'preferred' && pen > 0) pen = -pen;
     try {
       await api.put(`${base}/${r.id}`, {
         expression: r.expression,
         is_hard: r.is_hard,
-        soft_penalty: v
+        soft_penalty: pen
       });
       await reload();
     } catch (e) {
@@ -120,17 +140,17 @@
     }
   }
 
-  async function toggleHard(r) {
+  // Cycle HARD -> SOFT(+) -> PREFERRED(-) -> HARD
+  async function cycleKind(r) {
+    const current = kindFromRule(r);
+    const next = current === 'hard' ? 'soft'
+              : current === 'soft' ? 'preferred' : 'hard';
+    const payload = payloadFromUI(next, r.expression,
+                                  Math.abs(r.soft_penalty) || 100);
     try {
-      await api.put(`${base}/${r.id}`, {
-        expression: r.expression,
-        is_hard: !r.is_hard,
-        soft_penalty: r.soft_penalty
-      });
+      await api.put(`${base}/${r.id}`, payload);
       await reload();
-    } catch (e) {
-      flash('Errore: ' + e.message, 'error');
-    }
+    } catch (e) { flash('Errore: ' + e.message, 'error'); }
   }
 
   const examples = {
@@ -203,10 +223,12 @@
             </td>
             <td>
               <button class="text-xs"
-                on:click={() => toggleHard(r)}
-                title="click per togglare HARD/SOFT">
+                on:click={() => cycleKind(r)}
+                title="click per ciclare HARD -> SOFT -> PREFERITO">
                 {#if r.is_hard}
                   <span class="pill-red">HARD</span>
+                {:else if Number(r.soft_penalty) < 0}
+                  <span class="pill-blue">PREFERITO</span>
                 {:else}
                   <span class="pill-amber">SOFT</span>
                 {/if}
@@ -214,7 +236,7 @@
             </td>
             <td class="w-28">
               {#if !r.is_hard}
-                <input type="number" min="0" class="w-20 px-1.5 py-0.5 border border-ink-200 rounded text-xs"
+                <input type="number" class="w-20 px-1.5 py-0.5 border border-ink-200 rounded text-xs"
                   value={r.soft_penalty}
                   on:change={(e) => updatePenalty(r, e)}/>
               {:else}
@@ -253,14 +275,26 @@
       </div>
       <button class="btn !text-xs" on:click={validate}>Verifica sintassi</button>
       <label class="flex items-center gap-1 text-xs">
-        <input type="radio" bind:group={draftIsHard} value={true}/> HARD
+        <input type="radio" bind:group={draftKind} value="hard"/>
+        <span class="pill-red !text-[10px]">HARD</span>
       </label>
       <label class="flex items-center gap-1 text-xs">
-        <input type="radio" bind:group={draftIsHard} value={false}/> SOFT
+        <input type="radio" bind:group={draftKind} value="soft"/>
+        <span class="pill-amber !text-[10px]">SOFT</span>
       </label>
-      <div class="field" class:opacity-50={draftIsHard}>
-        <label>Penalita SOFT</label>
-        <input type="number" class="w-24" disabled={draftIsHard} bind:value={draftPenalty}/>
+      <label class="flex items-center gap-1 text-xs">
+        <input type="radio" bind:group={draftKind} value="preferred"/>
+        <span class="pill-blue !text-[10px]">PREFERITO</span>
+      </label>
+      <div class="field" class:opacity-50={draftKind === 'hard'}>
+        <label>
+          {#if draftKind === 'soft'}Penalita (soft)
+          {:else if draftKind === 'preferred'}Bonus (preferito)
+          {:else}Penalita / Bonus{/if}
+        </label>
+        <input type="number" min="0" class="w-24"
+               disabled={draftKind === 'hard'}
+               bind:value={draftPenalty}/>
       </div>
       <button class="btn-primary" on:click={add} disabled={busy || !draftExpr.trim()}>
         {editingId ? 'Salva modifica' : 'Aggiungi'}

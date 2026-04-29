@@ -15,8 +15,26 @@
   let logicalRules = [];
   let logicalDraftExpr = '';
   let logicalDraftYear = null;
-  let logicalDraftIsHard = true;
+  let logicalDraftKind = 'hard';   // 'hard' | 'soft' | 'preferred'
   let logicalDraftPenalty = 100;
+
+  function _payloadFromKind(kind, expr, pen, year, label) {
+    const base = {
+      expression: expr,
+      year_filter: year == null || year === '' ? null : Number(year),
+      label: label || null,
+    };
+    if (kind === 'hard') return { ...base, is_hard: true, soft_penalty: 100 };
+    if (kind === 'soft') return { ...base, is_hard: false,
+                                   soft_penalty: Math.abs(Number(pen) || 100) };
+    return { ...base, is_hard: false,
+             soft_penalty: -Math.abs(Number(pen) || 100) };
+  }
+  function _kindFromRule(r) {
+    if (r.is_hard) return 'hard';
+    if (Number(r.soft_penalty) < 0) return 'preferred';
+    return 'soft';
+  }
   let logicalDraftLabel = '';
   let logicalEditingId = null;
   let logicalValidate = null;
@@ -112,13 +130,10 @@
     }
     if (!logicalDraftExpr.trim()) return;
     try {
-      const payload = {
-        expression: logicalDraftExpr,
-        year_filter: logicalDraftYear == null || logicalDraftYear === '' ? null : Number(logicalDraftYear),
-        label: logicalDraftLabel || null,
-        is_hard: logicalDraftIsHard,
-        soft_penalty: Number(logicalDraftPenalty)
-      };
+      const payload = _payloadFromKind(
+        logicalDraftKind, logicalDraftExpr, logicalDraftPenalty,
+        logicalDraftYear, logicalDraftLabel
+      );
       if (logicalEditingId) {
         await api.put(`/api/curricula/${editing.id}/logical-constraints/${logicalEditingId}`, payload);
       } else {
@@ -137,8 +152,8 @@
     logicalEditingId = r.id;
     logicalDraftExpr = r.expression;
     logicalDraftYear = r.year_filter;
-    logicalDraftIsHard = r.is_hard;
-    logicalDraftPenalty = r.soft_penalty;
+    logicalDraftKind = _kindFromRule(r);
+    logicalDraftPenalty = Math.abs(r.soft_penalty || 100);
     logicalDraftLabel = r.label || '';
   }
   function cancelEditLogical() {
@@ -300,6 +315,7 @@
                     </td>
                     <td>
                       {#if r.is_hard}<span class="pill-red">HARD</span>
+                      {:else if Number(r.soft_penalty) < 0}<span class="pill-blue">PREFERITO</span>
                       {:else}<span class="pill-amber">SOFT</span>{/if}
                     </td>
                     <td class="w-20 text-center">{r.is_hard ? '-' : r.soft_penalty}</td>
@@ -345,15 +361,21 @@
             <div class="flex gap-2 items-end flex-wrap">
               <button class="btn !text-xs" on:click={logicalValidateNow}>Verifica sintassi</button>
               <label class="flex items-center gap-1 text-xs">
-                <input type="radio" bind:group={logicalDraftIsHard} value={true}/> HARD
+                <input type="radio" bind:group={logicalDraftKind} value="hard"/>
+                <span class="pill-red !text-[10px]">HARD</span>
               </label>
               <label class="flex items-center gap-1 text-xs">
-                <input type="radio" bind:group={logicalDraftIsHard} value={false}/> SOFT
+                <input type="radio" bind:group={logicalDraftKind} value="soft"/>
+                <span class="pill-amber !text-[10px]">SOFT</span>
               </label>
-              {#if !logicalDraftIsHard}
+              <label class="flex items-center gap-1 text-xs">
+                <input type="radio" bind:group={logicalDraftKind} value="preferred"/>
+                <span class="pill-blue !text-[10px]">PREFERITO</span>
+              </label>
+              {#if logicalDraftKind !== 'hard'}
                 <div class="field">
-                  <label>Penalita</label>
-                  <input type="number" class="w-24" bind:value={logicalDraftPenalty}/>
+                  <label>{logicalDraftKind === 'soft' ? 'Penalita' : 'Bonus'}</label>
+                  <input type="number" min="0" class="w-24" bind:value={logicalDraftPenalty}/>
                 </div>
               {/if}
               <button class="btn-primary" on:click={addLogical}

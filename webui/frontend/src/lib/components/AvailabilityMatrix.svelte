@@ -1,22 +1,26 @@
 <script>
-  // Reusable 3-state availability matrix.
+  // Reusable 4-state availability matrix.
+  //
+  // States:
+  //   free       (green) : no entry, no constraint
+  //   soft       (yellow): SOFT non-preferred, positive penalty (default 100)
+  //                        -- objective is penalised when this slot is used
+  //   hard       (red)   : HARD unavailable
+  //   preferred  (blue)  : SOFT preferred, negative penalty (default -100)
+  //                        -- objective is REWARDED (gets a bonus) when this
+  //                        slot is used
   //
   // Props:
-  //   value:    Array<{day, hour, state:'hard'|'soft', soft_penalty:int, reason?}>
-  //   onChange: callback(newValue) -> void   (parent MUST reassign root state
-  //                                            for Svelte 4 reactivity)
-  //   title:    optional header
-  //   readonly: if true, disables clicks
+  //   value:    Array<{day, hour, state, soft_penalty:int, reason?}>
+  //   onChange: callback(newValue) -> void  (parent must reassign root state)
+  //   title, readonly: cosmetics
   //
-  // Interactions:
-  //   - single click on the cell BACKGROUND
-  //                                -> cycle  free -> soft (yellow) -> hard (red) -> free
-  //   - inline numeric input visible inside every yellow cell, with
-  //     stopPropagation so editing the number does not change the colour;
-  //     the value is committed on `change` (blur or Enter) — typing does NOT
-  //     trigger re-renders, so the caret never jumps.
-  //   - drag (mousedown + mouseenter) applies the cycle target to a block
-  //
+  // Click cycle on a cell BACKGROUND: free -> yellow(soft, +100) -> red(hard)
+  //                                         -> blue(preferred, -100) -> free
+  // Inline numeric input visible when yellow OR blue. The input is freely
+  // editable; commit happens on `change` (blur or Enter). Sign: positive on
+  // yellow, negative on blue (auto-flipped if you toggle).
+
   import { DAYS, HOURS, DAY_NAMES_IT } from '../constants.js';
 
   export let value = [];
@@ -29,40 +33,51 @@
   let dragMode = null;
   let dragApplied = new Set();
 
-  // local mirror of value (so visual updates land in 1 frame even before the
-  // parent has propagated the new prop back down).
   let cells = Array.isArray(value) ? value.slice() : [];
   $: if (Array.isArray(value)) cells = value.slice();
 
-  // Per-cell local penalty drafts. The input writes here on every
-  // keystroke; we only push to setCell() on `change` (blur or Enter).
   let drafts = {};
 
   function _key(d, h) { return d + '-' + h; }
-  function _findIdx(arr, d, h) { return arr.findIndex((c) => c.day === d && c.hour === h); }
 
   function _commit(newCells) {
     cells = newCells;
     onChange(newCells);
   }
 
+  function _defaultPenaltyFor(state) {
+    if (state === 'soft') return 100;
+    if (state === 'preferred') return -100;
+    return 0;
+  }
+
   function setCell(d, h, state, penalty) {
     const list = cells.filter((c) => !(c.day === d && c.hour === h));
     if (state !== 'free') {
+      let pen;
+      if (state === 'soft' || state === 'preferred') {
+        pen = (penalty === undefined || penalty === null
+                  ? _defaultPenaltyFor(state) : Number(penalty));
+        // sign-clamp: yellow has positive, blue has negative
+        if (state === 'soft' && pen < 0) pen = Math.abs(pen);
+        if (state === 'preferred' && pen > 0) pen = -pen;
+      } else {
+        pen = 0;
+      }
       list.push({
         day: d, hour: h, state,
-        soft_penalty: state === 'soft' ? Number(penalty ?? 100) : 0,
+        soft_penalty: pen,
         reason: null
       });
     }
     _commit(list);
-    // Reset draft for this cell if state is no longer soft
-    if (state !== 'soft') delete drafts[_key(d, h)];
+    if (state !== 'soft' && state !== 'preferred') delete drafts[_key(d, h)];
   }
 
   function nextState(cur) {
     if (cur === null) return 'soft';
     if (cur === 'soft') return 'hard';
+    if (cur === 'hard') return 'preferred';
     return 'free';
   }
 
@@ -106,22 +121,22 @@
     setCell(d, h, nextState(cur ? cur.state : null));
   }
 
-  // Input handlers (live edit; commit on change)
   function onPenaltyInput(ev, d, h) {
     drafts[_key(d, h)] = ev.target.value;
-    drafts = drafts;  // svelte reactivity
+    drafts = drafts;
   }
 
   function onPenaltyChange(ev, d, h) {
     if (readonly) return;
+    const cell = cells.find((c) => c.day === d && c.hour === h) || null;
+    if (cell === null) return;
     const v = Number(ev.target.value);
-    if (!Number.isFinite(v) || v < 0) {
-      // restore from cell
-      const cell = cells.find((c) => c.day === d && c.hour === h) || null;
-      ev.target.value = cell ? cell.soft_penalty : 100;
+    if (!Number.isFinite(v)) {
+      ev.target.value = cell.soft_penalty;
       return;
     }
-    setCell(d, h, 'soft', v);
+    // Re-anchor sign by current state
+    setCell(d, h, cell.state, v);
   }
 
   function onPenaltyKeydown(ev, d, h) {
@@ -138,24 +153,27 @@
 <svelte:window on:mouseup={onMouseUp}/>
 
 <div class="select-none">
-  <div class="flex items-baseline justify-between mb-2">
+  <div class="flex items-baseline justify-between mb-2 flex-wrap gap-2">
     <h3 class="!text-base">{title}</h3>
-    <div class="flex gap-3 text-xs">
+    <div class="flex gap-3 text-xs flex-wrap">
       <span class="flex items-center gap-1">
         <span class="w-3 h-3 rounded-sm border border-emerald-400 bg-emerald-100"></span> libero
       </span>
       <span class="flex items-center gap-1">
-        <span class="w-3 h-3 rounded-sm border border-amber-400 bg-amber-200"></span> SOFT (penalita)
+        <span class="w-3 h-3 rounded-sm border border-amber-400 bg-amber-200"></span> SOFT (penalita +)
       </span>
       <span class="flex items-center gap-1">
         <span class="w-3 h-3 rounded-sm border border-red-400 bg-red-300"></span> HARD non disp.
       </span>
+      <span class="flex items-center gap-1">
+        <span class="w-3 h-3 rounded-sm border border-sky-400 bg-sky-200"></span> PREFERITO (penalita -)
+      </span>
     </div>
   </div>
   <p class="text-xs text-ink-500 mb-2">
-    Click sulla cella: libero -&gt; giallo -&gt; rosso -&gt; libero.
-    Quando una cella e\` gialla, modifica la penalita direttamente nel
-    campo numerico (cliccare nel campo non cambia il colore).
+    Click sulla cella: libero -&gt; giallo (soft, +100) -&gt; rosso (hard) -&gt;
+    blu (preferito, -100) -&gt; libero.
+    Quando la cella e\` gialla o blu, modifica la penalita nel campo numerico.
     Trascina per applicare lo stesso stato a un blocco.
   </p>
   <div class="overflow-x-auto">
@@ -175,6 +193,7 @@
               {@const isFree = !cell}
               {@const isSoft = cell && cell.state === 'soft'}
               {@const isHard = cell && cell.state === 'hard'}
+              {@const isPref = cell && cell.state === 'preferred'}
               <td class="p-1 align-middle">
                 <div class="relative h-9 rounded border cursor-pointer transition-colors flex items-center justify-center"
                   class:bg-emerald-50={isFree}
@@ -184,19 +203,23 @@
                   class:border-amber-400={isSoft}
                   class:bg-red-300={isHard}
                   class:border-red-500={isHard}
+                  class:bg-sky-200={isPref}
+                  class:border-sky-400={isPref}
                   on:click={(e) => onCellClick(e, d, h)}
                   on:mousedown={(e) => onMouseDown(e, d, h)}
                   on:mouseenter={() => onMouseEnter(d, h)}
                   title={isSoft
-                    ? 'SOFT - penalita ' + cell.soft_penalty + '. Click sui bordi per cambiare colore; modifica il numero per cambiare la penalita.'
-                    : (isHard
-                       ? 'HARD non disponibile' + (cell.reason ? ' - ' + cell.reason : '')
-                       : 'Libero - click per cambiare')}>
+                    ? 'SOFT - penalita ' + cell.soft_penalty
+                    : isPref
+                    ? 'PREFERITO - bonus ' + cell.soft_penalty
+                    : isHard
+                    ? 'HARD non disponibile' + (cell.reason ? ' - ' + cell.reason : '')
+                    : 'Libero - click per cambiare'}>
                   {#if isFree}
                     <span class="text-emerald-700 font-semibold text-xs">-</span>
                   {:else if isHard}
                     <span class="text-red-900 font-semibold text-xs">X</span>
-                  {:else}
+                  {:else if isSoft}
                     <input type="number" min="0" max="9999" step="10"
                       class="block w-12 h-7 text-center text-xs font-semibold
                              text-amber-900 bg-amber-100 border border-amber-500 rounded
@@ -204,6 +227,21 @@
                              [&::-webkit-outer-spin-button]:appearance-none
                              [&::-webkit-inner-spin-button]:appearance-none
                              focus:outline-none focus:ring-2 focus:ring-amber-600/40"
+                      value={drafts[_key(d, h)] ?? cell.soft_penalty}
+                      on:click|stopPropagation
+                      on:mousedown|stopPropagation
+                      on:dblclick|stopPropagation
+                      on:input={(e) => onPenaltyInput(e, d, h)}
+                      on:change={(e) => onPenaltyChange(e, d, h)}
+                      on:keydown={(e) => onPenaltyKeydown(e, d, h)}/>
+                  {:else if isPref}
+                    <input type="number" max="0" min="-9999" step="10"
+                      class="block w-12 h-7 text-center text-xs font-semibold
+                             text-sky-900 bg-sky-100 border border-sky-500 rounded
+                             [appearance:textfield]
+                             [&::-webkit-outer-spin-button]:appearance-none
+                             [&::-webkit-inner-spin-button]:appearance-none
+                             focus:outline-none focus:ring-2 focus:ring-sky-600/40"
                       value={drafts[_key(d, h)] ?? cell.soft_penalty}
                       on:click|stopPropagation
                       on:mousedown|stopPropagation

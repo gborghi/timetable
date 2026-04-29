@@ -25,7 +25,8 @@
 
   // payload state per action
   let exprText = '';
-  let isHard = true;
+  // 'hard' | 'soft' | 'preferred'
+  let logicalKind = 'hard';
   let softPenalty = 100;
 
   let fieldName = '';
@@ -34,6 +35,7 @@
 
   let unavailDay = 1;
   let unavailHour = 1;
+  // 'hard' | 'soft' | 'preferred'
   let unavailState = 'hard';
   let unavailReason = '';
 
@@ -65,8 +67,15 @@
 
   function buildPayload() {
     if (action === 'add_logical') {
-      return { expression: exprText.trim(), is_hard: isHard,
-               soft_penalty: Number(softPenalty) };
+      const pen = Number(softPenalty);
+      let payload;
+      if (logicalKind === 'hard')
+        payload = { is_hard: true, soft_penalty: 100 };
+      else if (logicalKind === 'soft')
+        payload = { is_hard: false, soft_penalty: Math.abs(pen) };
+      else
+        payload = { is_hard: false, soft_penalty: -Math.abs(pen) };
+      return { expression: exprText.trim(), ...payload };
     }
     if (action === 'set_field') {
       let v = fieldValue;
@@ -75,9 +84,13 @@
       return { field: fieldName, value: v };
     }
     if (action === 'add_unavailability') {
+      const pen = Number(softPenalty);
+      let signed_pen = pen;
+      if (unavailState === 'soft' && signed_pen < 0) signed_pen = Math.abs(signed_pen);
+      if (unavailState === 'preferred' && signed_pen > 0) signed_pen = -signed_pen;
       return { day: Number(unavailDay), hour: Number(unavailHour),
                state: unavailState,
-               soft_penalty: Number(softPenalty),
+               soft_penalty: signed_pen,
                reason: unavailReason || null };
     }
     return {};
@@ -146,18 +159,25 @@
         <input class="w-full font-mono text-sm px-2 py-1 border border-ink-200 rounded"
                placeholder="es. lun8 AND lun9"
                bind:value={exprText} on:input={reset}/>
-        <div class="flex gap-3 text-xs items-center">
-          <label class="flex gap-1">
-            <input type="radio" bind:group={isHard} value={true}/> HARD
+        <div class="flex gap-3 text-xs items-center flex-wrap">
+          <label class="flex gap-1 items-center">
+            <input type="radio" bind:group={logicalKind} value="hard"/>
+            <span class="pill-red !text-[10px]">HARD</span>
           </label>
-          <label class="flex gap-1">
-            <input type="radio" bind:group={isHard} value={false}/> SOFT
+          <label class="flex gap-1 items-center">
+            <input type="radio" bind:group={logicalKind} value="soft"/>
+            <span class="pill-amber !text-[10px]">SOFT</span>
           </label>
-          {#if !isHard}
+          <label class="flex gap-1 items-center">
+            <input type="radio" bind:group={logicalKind} value="preferred"/>
+            <span class="pill-blue !text-[10px]">PREFERITO</span>
+          </label>
+          {#if logicalKind !== 'hard'}
             <label class="flex gap-1 items-center">
-              Penalita: <input type="number" min="0"
-                               class="w-16 px-1 py-0.5 border border-ink-200 rounded"
-                               bind:value={softPenalty}/>
+              {logicalKind === 'soft' ? 'Penalita' : 'Bonus'}:
+              <input type="number" min="0"
+                     class="w-16 px-1 py-0.5 border border-ink-200 rounded"
+                     bind:value={softPenalty}/>
             </label>
           {/if}
         </div>
@@ -212,11 +232,12 @@
                class="px-2 py-1 border border-ink-200 rounded" on:input={reset}/>
         <label class="text-xs">Stato</label>
         <select bind:value={unavailState} class="px-2 py-1 border border-ink-200 rounded">
-          <option value="hard">HARD</option>
-          <option value="soft">SOFT</option>
+          <option value="hard">HARD (rosso)</option>
+          <option value="soft">SOFT (giallo, penalita +)</option>
+          <option value="preferred">PREFERITO (blu, bonus -)</option>
         </select>
-        {#if unavailState === 'soft'}
-          <label class="text-xs">Penalita SOFT</label>
+        {#if unavailState === 'soft' || unavailState === 'preferred'}
+          <label class="text-xs">{unavailState === 'soft' ? 'Penalita' : 'Bonus'}</label>
           <input type="number" min="0" bind:value={softPenalty}
                  class="px-2 py-1 border border-ink-200 rounded"/>
         {/if}
