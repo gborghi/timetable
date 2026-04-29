@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Node
+node_modules/
+.svelte-kit/
+build/
+dist/
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Project-specific runtime artifacts
+data/*.db
+webui/data/*.db
+webui/data/runs/
+output/
+experiments/output/
+proofs/
+
+# Pickled snapshots / experiment artifacts
+experiments/*.pkl
+schedule/*.pkl
+
+# Logs
+*.log
+
+# Secrets / keys (do NOT commit)
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+.env
+.env.*

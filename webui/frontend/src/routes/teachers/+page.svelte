@@ -1,0 +1,247 @@
+<script>
+  import { onMount } from 'svelte';
+  import { api } from '$lib/api.js';
+  import { flash, refreshDataset } from '$lib/stores.js';
+  import { DAY_NAMES_EN } from '$lib/constants.js';
+  import Modal from '$lib/components/Modal.svelte';
+  import AvailabilityMatrix from '$lib/components/AvailabilityMatrix.svelte';
+  import SortableQueryableList from '$lib/components/SortableQueryableList.svelte';
+  import LogicalUnavailabilitiesPanel from '$lib/components/LogicalUnavailabilitiesPanel.svelte';
+
+  let editing = null;
+  let allSubjects = [];
+  let listRef = null;
+
+  onMount(async () => {
+    try {
+      const subs = await api.get('/api/subjects');
+      allSubjects = subs.map((s) => s.name).sort();
+    } catch { /* */ }
+  });
+
+  function newTeacher() {
+    editing = {
+      _new: true,
+      name: '', matricola: '', group: '',
+      max_hours: 18, completion_hours: 0, exemption_hours: 0,
+      free_day: 'Saturday', max_consecutive: 5, notes: '',
+      pref_no_buchi_weight: 10, pref_no_five_weight: 30, pref_no_one_weight: 80,
+      preferred_days_csv: '',
+      subjects: [], unavailability: [],
+      mandatory_free_days: [], compatible_classes: []
+    };
+  }
+
+  function edit(row) {
+    editing = JSON.parse(JSON.stringify(row));
+    if (!Array.isArray(editing.unavailability)) editing.unavailability = [];
+  }
+
+  // Map free_day name <-> day number (1..6)
+  const DAY_NAME_TO_INT = {
+    Monday: 1, Tuesday: 2, Wednesday: 3,
+    Thursday: 4, Friday: 5, Saturday: 6
+  };
+  const INT_TO_DAY_NAME = ['', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const HOURS_FULL = [8, 9, 10, 11, 12, 13];
+
+  function hardCellsForDay(d) {
+    return HOURS_FULL.map((h) => ({
+      day: d, hour: h, state: 'hard', soft_penalty: 0,
+      reason: 'giorno libero'
+    }));
+  }
+
+  // When the user picks a different free_day from the select, rewrite the
+  // matrix: drop the old day's HARD-auto cells, add the new day's HARD cells.
+  function onFreeDaySelect(ev) {
+    const newName = ev.target.value;
+    const newD = DAY_NAME_TO_INT[newName] || null;
+    const oldD = DAY_NAME_TO_INT[editing.free_day] || null;
+    if (newD === oldD) return;
+    let cells = (editing.unavailability || []).filter(
+      (c) => oldD === null || c.day !== oldD
+    );
+    if (newD) cells = [...cells, ...hardCellsForDay(newD)];
+    editing = { ...editing, free_day: newName, unavailability: cells };
+  }
+
+  // When the user mutates the matrix manually, derive free_day:
+  //  - if all 6 hours of some day are HARD red -> set free_day to that day
+  //  - if the previously-set free_day no longer has 6 HARD cells -> clear it
+  function syncFreeDayFromMatrix() {
+    if (!editing) return;
+    const cells = editing.unavailability || [];
+    const isHardCount = {};
+    for (const c of cells) {
+      if (c.state === 'hard') {
+        isHardCount[c.day] = (isHardCount[c.day] || 0) + 1;
+      }
+    }
+    // Find a day that is fully hard
+    const fullyHard = Object.entries(isHardCount)
+      .filter(([_, n]) => n >= 6)
+      .map(([d, _]) => Number(d));
+    if (fullyHard.length === 1) {
+      editing = { ...editing, free_day: INT_TO_DAY_NAME[fullyHard[0]] };
+    } else if (fullyHard.length === 0) {
+      const cur = DAY_NAME_TO_INT[editing.free_day];
+      if (cur && (isHardCount[cur] || 0) < 6) {
+        editing = { ...editing, free_day: '' };
+      }
+    }
+    // If multiple full-hard days, leave free_day untouched (ambiguous).
+  }
+
+  async function save() {
+    const payload = { ...editing };
+    delete payload._new;
+    delete payload.id;
+    delete payload.scheduled_hours;
+    delete payload.n_classes;
+    delete payload.soft_penalty_total;
+    try {
+      if (editing._new) await api.post('/api/teachers', payload);
+      else await api.put('/api/teachers/' + editing.id, payload);
+      flash('Salvato', 'success');
+      editing = null;
+      await listRef.reload();
+      await refreshDataset();
+    } catch (e) {
+      flash('Errore: ' + e.message, 'error');
+    }
+  }
+
+  async function del(row) {
+    if (!confirm('Eliminare ' + row.name + '?')) return;
+    try {
+      await api.del('/api/teachers/' + row.id);
+      await listRef.reload();
+      await refreshDataset();
+    } catch (e) {
+      flash('Errore: ' + e.message, 'error');
+    }
+  }
+
+  function onMatrixChange(newCells) {
+    // reassign `editing` so Svelte 4 sees the change and re-renders.
+    editing = { ...editing, unavailability: newCells };
+    syncFreeDayFromMatrix();
+  }
+
+  const columns = [
+    { key: 'name', label: 'Cognome Nome' },
+    { key: 'group', label: 'Cl. concorso' },
+    { key: 'subjects', label: 'Materie', sortable: false,
+      render: (r) => (r.subjects || []).join(', ') },
+    { key: 'max_hours', label: 'Max ore' },
+    { key: 'free_day', label: 'Giorno libero' },
+    { key: 'n_classes', label: 'N. classi' },
+    { key: 'scheduled_hours', label: 'Ore-cattedra' },
+    { key: 'soft_penalty_total', label: 'Soft tot.' }
+  ];
+  const help = {
+    fields: ['name', 'cognome_nome', 'matricola', 'group', 'classe_di_concorso',
+             'max_hours', 'max_ore', 'free_day', 'giorno_libero', 'subjects',
+             'materia', 'n_classes', 'scheduled_hours', 'ore_cattedra',
+             'soft_penalty_total', 'n_unavail'],
+    examples: [
+      'group = A026',
+      'classe_di_concorso in [A026, A027]',
+      'max_ore >= 18 AND group = A026',
+      'cognome_nome startswith B',
+      'free_day = Wednesday',
+      'unavailable_on(saturday, 11)',
+      'unavailable_on(martedi)',
+      'soft_penalty_total > 50'
+    ]
+  };
+</script>
+
+<div class="space-y-4">
+  <div class="flex items-baseline gap-3">
+    <h1>Docenti</h1>
+    <button class="btn-primary ml-auto" on:click={newTeacher}>+ Nuovo docente</button>
+  </div>
+
+  <SortableQueryableList
+    bind:this={listRef}
+    endpoint="/api/teachers"
+    {columns}
+    {help}
+    rowKey={(r) => r.id}
+    let:row let:columns>
+    <tr>
+      <td>
+        <strong>{row.name}</strong>
+        {#if row.matricola}<span class="text-xs text-ink-500"> ({row.matricola})</span>{/if}
+      </td>
+      <td>{row.group ?? ''}</td>
+      <td class="text-xs">{(row.subjects || []).join(', ')}</td>
+      <td class="text-center">{row.max_hours}</td>
+      <td>{row.free_day ?? ''}</td>
+      <td class="text-center">{row.n_classes}</td>
+      <td class="text-center">{row.scheduled_hours}</td>
+      <td class="text-center text-xs">{row.soft_penalty_total}</td>
+      <td class="whitespace-nowrap">
+        <button class="btn !text-xs !px-2 !py-1" on:click={() => edit(row)}>Modifica</button>
+        <button class="btn-danger !text-xs !px-2 !py-1" on:click={() => del(row)}>Elimina</button>
+      </td>
+    </tr>
+  </SortableQueryableList>
+</div>
+
+<Modal open={!!editing} title={editing?._new ? 'Nuovo docente' : 'Modifica docente'} onClose={() => (editing = null)}>
+  {#if editing}
+    <div class="grid grid-cols-2 gap-3">
+      <div class="field"><label>Nome</label><input bind:value={editing.name}/></div>
+      <div class="field"><label>Matricola</label><input bind:value={editing.matricola}/></div>
+      <div class="field"><label>Classe di concorso</label><input bind:value={editing.group}/></div>
+      <div class="field"><label>Max ore-cattedra</label><input type="number" bind:value={editing.max_hours}/></div>
+      <div class="field"><label>Ore di completamento</label><input type="number" bind:value={editing.completion_hours}/></div>
+      <div class="field"><label>Ore di esonero</label><input type="number" bind:value={editing.exemption_hours}/></div>
+      <div class="field">
+        <label>Giorno libero (alias di "riga rossa nella matrice")</label>
+        <select value={editing.free_day || ''} on:change={onFreeDaySelect}>
+          <option value="">(nessuno)</option>
+          {#each DAY_NAMES_EN as d}<option value={d}>{d}</option>{/each}
+        </select>
+      </div>
+      <div class="field"><label>Max ore consecutive</label><input type="number" bind:value={editing.max_consecutive}/></div>
+      <div class="field col-span-2">
+        <label>Materie insegnate</label>
+        <select multiple class="h-32" bind:value={editing.subjects}>
+          {#each allSubjects as s}<option value={s}>{s}</option>{/each}
+        </select>
+      </div>
+    </div>
+
+    <div class="mt-4">
+      <AvailabilityMatrix
+        title="Disponibilita oraria del docente"
+        value={editing.unavailability}
+        onChange={onMatrixChange}/>
+      {#if editing.free_day}
+        <p class="text-xs text-ink-500 mt-1">
+          Le 6 ore del giorno libero ({editing.free_day}) sono pre-impostate
+          a HARD (rosso) automaticamente.
+        </p>
+      {/if}
+    </div>
+
+    <div class="mt-4 grid grid-cols-3 gap-3">
+      <div class="field"><label>Peso "no buchi"</label><input type="number" bind:value={editing.pref_no_buchi_weight}/></div>
+      <div class="field"><label>Peso "no 5 ore"</label><input type="number" bind:value={editing.pref_no_five_weight}/></div>
+      <div class="field"><label>Peso "no 1 ora isolata"</label><input type="number" bind:value={editing.pref_no_one_weight}/></div>
+    </div>
+
+    <div class="mt-4">
+      <LogicalUnavailabilitiesPanel entityType="teachers" entityId={editing.id ?? null}/>
+    </div>
+
+    <div class="mt-5 flex justify-end gap-2">
+      <button class="btn" on:click={() => (editing = null)}>Annulla</button>
+      <button class="btn-primary" on:click={save}>Salva</button>
+    </div>
+  {/if}
+</Modal>

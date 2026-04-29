@@ -1,0 +1,72 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html { -webkit-text-size-adjust: 100%; }
+  body { font-feature-settings: 'cv11', 'ss01'; }
+  h1 { @apply text-2xl font-semibold tracking-tight; }
+  h2 { @apply text-xl font-semibold tracking-tight; }
+  h3 { @apply text-lg font-semibold; }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center gap-2 px-3 py-1.5 rounded-md
+           text-sm font-medium border border-ink-200 bg-white
+           hover:bg-ink-100 active:bg-ink-200 transition-colors
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply btn bg-accent-500 text-white border-accent-500
+           hover:bg-accent-600 active:bg-accent-600;
+  }
+  .btn-danger {
+    @apply btn bg-red-500 text-white border-red-500
+           hover:bg-red-600 active:bg-red-700;
+  }
+  .card {
+    @apply bg-white border border-ink-200 rounded-lg shadow-sm;
+  }
+  .field {
+    @apply flex flex-col gap-1 text-sm;
+  }
+  .field input, .field select, .field textarea {
+    @apply px-2 py-1.5 rounded-md border border-ink-200
+           bg-white text-ink-900 focus:outline-none
+           focus:ring-2 focus:ring-accent-500/40 focus:border-accent-500;
+  }
+  .field label, label.field-label {
+    @apply text-xs font-medium text-ink-500;
+  }
+  .pill {
+    @apply inline-flex items-center px-2 py-0.5 text-xs
+           rounded-full bg-ink-100 text-ink-700;
+  }
+  .pill-green { @apply pill bg-emerald-100 text-emerald-800; }
+  .pill-red   { @apply pill bg-red-100 text-red-800; }
+  .pill-amber { @apply pill bg-amber-100 text-amber-800; }
+  .pill-blue  { @apply pill bg-sky-100 text-sky-800; }
+  table.tbl {
+    @apply w-full text-sm border-collapse;
+  }
+  table.tbl th {
+    @apply text-left text-xs uppercase tracking-wide text-ink-500
+           border-b border-ink-200 px-2 py-1;
+  }
+  table.tbl td {
+    @apply border-b border-ink-100 px-2 py-1.5 align-top;
+  }
+}
+
+.timetable-grid {
+  display: grid;
+  grid-template-columns: 56px repeat(6, 1fr);
+  gap: 4px;
+}
+.timetable-grid > .cell {
+  min-height: 64px;
+}
+.dragging { opacity: 0.4; }
+.drop-target { outline: 2px dashed #3a6df0; outline-offset: -2px; }
+.drop-target-bad { outline: 2px dashed #dc2626; outline-offset: -2px; }
