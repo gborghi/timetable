@@ -202,6 +202,29 @@
   $: selClassGrid = classData && selectedClass ? classData.grid[selectedClass] : null;
   $: selTeacherGrid = teacherData && selectedTeacher ? teacherData.grid[selectedTeacher] : null;
   $: selRoomGrid = roomData && selectedRoom ? roomData.grid[selectedRoom] : null;
+
+  // Per-slot set of occupied classroom names. Used by the cell dropdowns
+  // to color free rooms green and disable busy rooms (red).
+  $: occupiedAt = (() => {
+    const out = {};
+    if (!roomData) return out;
+    for (const d of DAYS) for (const h of HOURS) {
+      const set = new Set();
+      for (const rn of roomData.rooms) {
+        const lst = roomData.grid?.[rn]?.[d]?.[h] ?? [];
+        if (lst.length > 0) set.add(rn);
+      }
+      out[d + '-' + h] = set;
+    }
+    return out;
+  })();
+
+  function isRoomBusy(d, h, roomName, currentRoom) {
+    // The room currently assigned to this very lesson stays selectable,
+    // so the user can keep it. Any other occupied room is red+disabled.
+    if (roomName === currentRoom) return false;
+    return (occupiedAt[d + '-' + h] || new Set()).has(roomName);
+  }
 </script>
 
 <div class="space-y-4">
@@ -324,7 +347,15 @@
                       on:click|stopPropagation
                       on:change={(e) => setRoom(cell.lesson_id, e.target.value)}>
                       <option value="">(nessuna)</option>
-                      {#each allRooms as r}<option>{r}</option>{/each}
+                      {#each allRooms as r}
+                        {@const busy = isRoomBusy(d, h, r, cell.classroom)}
+                        <option value={r} disabled={busy}
+                          style={busy
+                            ? 'background:#fecaca;color:#991b1b'
+                            : 'background:#d1fae5;color:#065f46'}>
+                          {r}{busy ? ' (occupata)' : ''}
+                        </option>
+                      {/each}
                     </select>
                   </div>
                 {:else}
@@ -461,9 +492,23 @@
                     {/if}
                   </div>
                   <div class="text-ink-500">{cell.subject}</div>
-                  {#if cell.classroom}
-                    <div class="text-ink-300 text-[10px]">{cell.classroom}</div>
-                  {/if}
+                  <div class="mt-1">
+                    <select class="text-xs border border-ink-200 rounded px-1 py-0.5 w-full"
+                      value={cell.classroom || ''}
+                      on:click|stopPropagation
+                      on:change={(e) => setRoom(cell.lesson_id, e.target.value)}>
+                      <option value="">(nessuna)</option>
+                      {#each allRooms as r}
+                        {@const busy = isRoomBusy(d, h, r, cell.classroom)}
+                        <option value={r} disabled={busy}
+                          style={busy
+                            ? 'background:#fecaca;color:#991b1b'
+                            : 'background:#d1fae5;color:#065f46'}>
+                          {r}{busy ? ' (occupata)' : ''}
+                        </option>
+                      {/each}
+                    </select>
+                  </div>
                 {:else}
                   <div class="text-ink-300 text-center">
                     {#if moveSrc && pv}
