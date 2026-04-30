@@ -3,7 +3,11 @@
   import { api, downloadUrl } from '$lib/api.js';
   import { flash, refreshDataset } from '$lib/stores.js';
   import { DAYS, HOURS, DAY_NAMES_IT } from '$lib/constants.js';
-  import Modal from '$lib/components/Modal.svelte';
+  import MoveModeBanner from '$lib/components/schedule/MoveModeBanner.svelte';
+  import RoomDropdown from '$lib/components/schedule/RoomDropdown.svelte';
+  import PreviewCellHint from '$lib/components/schedule/PreviewCellHint.svelte';
+  import RoomClearedNoticeModal from '$lib/components/schedule/RoomClearedNoticeModal.svelte';
+  import SolutionsTable from '$lib/components/schedule/SolutionsTable.svelte';
 
   let view = 'classes';   // classes | teachers | rooms | slot
   // each entity gets an independent layout toggle:
@@ -303,22 +307,7 @@
       </div>
     </div>
     {#if classesViewMode === 'matrix' && selClassGrid}
-      {#if moveSrc}
-        <div class="card p-3 bg-accent-500/5 border-accent-500/40 flex items-center gap-3 flex-wrap">
-          <strong>Modalita sposta:</strong>
-          <span class="text-sm">
-            {moveSrc.subject} ({moveSrc.cls} con {moveSrc.teacher}) da
-            <code>{DAY_NAMES_IT[moveSrc.day]} {moveSrc.hour}:00</code>
-          </span>
-          <span class="text-xs text-ink-500">
-            verde = mossa OK / migliora SOFT,
-            giallo = peggiora SOFT (con delta),
-            rosso = HARD violato.
-            {movePreviewBusy ? ' (calcolo preview...)' : ''}
-          </span>
-          <button class="btn !text-xs ml-auto" on:click={cancelMove}>Esc</button>
-        </div>
-      {/if}
+      <MoveModeBanner {moveSrc} {movePreviewBusy} showLegend={true} onCancel={cancelMove}/>
       <div class="card p-4 overflow-auto">
         <div class="timetable-grid">
           <div></div>
@@ -370,36 +359,14 @@
                   </div>
                   <div class="text-ink-500">{cell.teachers.join(' + ')}</div>
                   <div class="mt-1">
-                    <select class="text-xs border border-ink-200 rounded px-1 py-0.5 w-full"
-                      value={cell.classroom || ''}
-                      on:click|stopPropagation
-                      on:change={(e) => setRoom(cell.lesson_id, e.target.value)}>
-                      <option value="">(nessuna)</option>
-                      {#each allRooms as r}
-                        {@const busy = isRoomBusy(d, h, r, cell.classroom)}
-                        <option value={r} disabled={busy}
-                          style={busy
-                            ? 'background:#fecaca;color:#991b1b'
-                            : 'background:#d1fae5;color:#065f46'}>
-                          {r}{busy ? ' (occupata)' : ''}
-                        </option>
-                      {/each}
-                    </select>
+                    <RoomDropdown lessonId={cell.lesson_id}
+                                  currentRoom={cell.classroom}
+                                  {allRooms}
+                                  isBusy={(r) => isRoomBusy(d, h, r, cell.classroom)}
+                                  onChange={setRoom}/>
                   </div>
                 {:else}
-                  <div class="text-ink-300 text-center">
-                    {#if moveSrc && pv}
-                      {#if pv.status === 'ok' && pv.delta_soft != null}
-                        <span class="text-emerald-700 font-semibold">{pv.delta_soft >= 0 ? '+' : ''}{pv.delta_soft}</span>
-                      {:else if pv.status === 'soft_worse'}
-                        <span class="text-amber-700 font-semibold">+{pv.delta_soft}</span>
-                      {:else if pv.status === 'hard_violation'}
-                        <span class="text-red-700">X</span>
-                      {/if}
-                    {:else}
-                      -
-                    {/if}
-                  </div>
+                  <PreviewCellHint preview={pv} active={!!moveSrc}/>
                 {/if}
               </div>
             {/each}
@@ -462,16 +429,7 @@
       </div>
     </div>
     {#if teachersViewMode === 'matrix' && selTeacherGrid}
-      {#if moveSrc}
-        <div class="card p-3 bg-accent-500/5 border-accent-500/40 flex items-center gap-3 flex-wrap">
-          <strong>Modalita sposta:</strong>
-          <span class="text-sm">
-            {moveSrc.subject} ({moveSrc.cls} con {moveSrc.teacher}) da
-            <code>{DAY_NAMES_IT[moveSrc.day]} {moveSrc.hour}:00</code>
-          </span>
-          <button class="btn !text-xs ml-auto" on:click={cancelMove}>Esc</button>
-        </div>
-      {/if}
+      <MoveModeBanner {moveSrc} onCancel={cancelMove}/>
       <div class="card p-4 overflow-auto">
         <div class="timetable-grid">
           <div></div>
@@ -521,36 +479,14 @@
                   </div>
                   <div class="text-ink-500">{cell.subject}</div>
                   <div class="mt-1">
-                    <select class="text-xs border border-ink-200 rounded px-1 py-0.5 w-full"
-                      value={cell.classroom || ''}
-                      on:click|stopPropagation
-                      on:change={(e) => setRoom(cell.lesson_id, e.target.value)}>
-                      <option value="">(nessuna)</option>
-                      {#each allRooms as r}
-                        {@const busy = isRoomBusy(d, h, r, cell.classroom)}
-                        <option value={r} disabled={busy}
-                          style={busy
-                            ? 'background:#fecaca;color:#991b1b'
-                            : 'background:#d1fae5;color:#065f46'}>
-                          {r}{busy ? ' (occupata)' : ''}
-                        </option>
-                      {/each}
-                    </select>
+                    <RoomDropdown lessonId={cell.lesson_id}
+                                  currentRoom={cell.classroom}
+                                  {allRooms}
+                                  isBusy={(r) => isRoomBusy(d, h, r, cell.classroom)}
+                                  onChange={setRoom}/>
                   </div>
                 {:else}
-                  <div class="text-ink-300 text-center">
-                    {#if moveSrc && pv}
-                      {#if pv.status === 'ok' && pv.delta_soft != null}
-                        <span class="text-emerald-700 font-semibold">{pv.delta_soft >= 0 ? '+' : ''}{pv.delta_soft}</span>
-                      {:else if pv.status === 'soft_worse'}
-                        <span class="text-amber-700 font-semibold">+{pv.delta_soft}</span>
-                      {:else if pv.status === 'hard_violation'}
-                        <span class="text-red-700">X</span>
-                      {/if}
-                    {:else}
-                      -
-                    {/if}
-                  </div>
+                  <PreviewCellHint preview={pv} active={!!moveSrc}/>
                 {/if}
               </div>
             {/each}
@@ -617,16 +553,7 @@
       </div>
     </div>
     {#if roomsViewMode === 'matrix' && selRoomGrid}
-      {#if moveSrc}
-        <div class="card p-3 bg-accent-500/5 border-accent-500/40 flex items-center gap-3 flex-wrap">
-          <strong>Modalita sposta:</strong>
-          <span class="text-sm">
-            {moveSrc.subject} ({moveSrc.cls} con {moveSrc.teacher}) da
-            <code>{DAY_NAMES_IT[moveSrc.day]} {moveSrc.hour}:00</code>
-          </span>
-          <button class="btn !text-xs ml-auto" on:click={cancelMove}>Esc</button>
-        </div>
-      {/if}
+      <MoveModeBanner {moveSrc} onCancel={cancelMove}/>
       <div class="card p-4 overflow-auto">
         <div class="timetable-grid">
           <div></div>
@@ -680,19 +607,7 @@
                     </div>
                   {/each}
                 {:else}
-                  <div class="text-ink-300 text-center">
-                    {#if moveSrc && pv}
-                      {#if pv.status === 'ok' && pv.delta_soft != null}
-                        <span class="text-emerald-700 font-semibold">{pv.delta_soft >= 0 ? '+' : ''}{pv.delta_soft}</span>
-                      {:else if pv.status === 'soft_worse'}
-                        <span class="text-amber-700 font-semibold">+{pv.delta_soft}</span>
-                      {:else if pv.status === 'hard_violation'}
-                        <span class="text-red-700">X</span>
-                      {/if}
-                    {:else}
-                      -
-                    {/if}
-                  </div>
+                  <PreviewCellHint preview={pv} active={!!moveSrc}/>
                 {/if}
               </div>
             {/each}
@@ -780,59 +695,10 @@
     </div>
   {/if}
 
-<Modal open={!!roomClearedNotice}
-       title="Aula rimossa dopo lo spostamento"
-       onClose={() => (roomClearedNotice = null)}>
-  {#if roomClearedNotice}
-    <div class="space-y-3 text-sm">
-      <p>
-        La lezione <strong>{roomClearedNotice.subject}</strong>
-        ({roomClearedNotice.class_name} con {roomClearedNotice.teacher})
-        e' stata spostata in
-        <code>{DAY_NAMES_IT[roomClearedNotice.day]} {roomClearedNotice.hour}:00</code>,
-        ma l'aula <strong>{roomClearedNotice.room}</strong> non era
-        disponibile in quel nuovo slot (occupata da un'altra lezione
-        oppure HARD-non-disponibile in quell'orario).
-      </p>
-      <p>
-        L'aula e' stata <strong>rimossa</strong> dalla lezione spostata.
-        Apri la cella nella matrice e seleziona una nuova aula dal
-        dropdown (le aule libere appaiono in verde, quelle occupate in
-        rosso e non sono selezionabili).
-      </p>
-      <div class="flex justify-end">
-        <button class="btn-primary" on:click={() => (roomClearedNotice = null)}>
-          Ho capito
-        </button>
-      </div>
-    </div>
-  {/if}
-</Modal>
+<RoomClearedNoticeModal notice={roomClearedNotice}
+                       onClose={() => (roomClearedNotice = null)}/>
 
-<section class="card p-5">
-    <h2 class="mb-3">Soluzioni salvate</h2>
-    <div class="overflow-x-auto">
-      <table class="tbl">
-        <thead><tr><th>#</th><th>Nome</th><th>Tipo</th><th>Obj</th><th>Metriche</th><th>Attiva?</th><th></th></tr></thead>
-        <tbody>
-          {#each solutions as s}
-            <tr>
-              <td>#{s.id}</td>
-              <td>{s.name}</td>
-              <td>{s.kind}</td>
-              <td>{s.obj_value}</td>
-              <td class="text-xs">{Object.entries(s.metrics || {}).map(([k, v]) => `${k}=${v}`).join(' ')}</td>
-              <td>{s.is_active ? '✓' : ''}</td>
-              <td>
-                {#if !s.is_active}
-                  <button class="btn !text-xs !px-2 !py-1" on:click={() => activateSolution(s.id)}>attiva</button>
-                {/if}
-                <button class="btn-danger !text-xs !px-2 !py-1" on:click={() => delSolution(s.id)}>x</button>
-              </td>
-            </tr>
-          {/each}
-        </tbody>
-      </table>
-    </div>
-  </section>
+<SolutionsTable {solutions}
+                onActivate={activateSolution}
+                onDelete={delSolution}/>
 </div>
