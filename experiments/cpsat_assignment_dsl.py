@@ -267,6 +267,29 @@ def solve_assignment_dsl(data: dict, dsl_expression: str,
     total_weight_v = model.NewIntVar(0, 1_000_000, "total_weight")
     model.Add(total_weight_v == sum(teacher_weight))
 
+    # ---- Linearised variance proxy: sum of |teacher_weight[t] - mean|
+    # Used by the "balance_weight" preset. The mean of teacher_weight
+    # over n_t teachers is sum/n_t; we avoid the division (CP-SAT
+    # integer) by working with `n_t * weight - total_weight` and
+    # taking absolute values, then optionally normalising by n_t in the
+    # objective coefficient.
+    weight_balance_penalty = 0
+    if n_t > 0 and max_w > 0:
+        # Build per-teacher absolute deviation: abs(n_t * tw_i - total_weight)
+        # The factor n_t is constant; CP-SAT handles linear integer.
+        ub_dev = max_w * n_t * 2
+        deviations = []
+        for ti in range(n_t):
+            diff = model.NewIntVar(-ub_dev, ub_dev, f"diff_w_{ti}")
+            model.Add(diff == n_t * teacher_weight[ti] - total_weight_v)
+            absd = model.NewIntVar(0, ub_dev, f"absdiff_w_{ti}")
+            model.AddAbsEquality(absd, diff)
+            deviations.append(absd)
+        weight_balance_penalty = model.NewIntVar(
+            0, ub_dev * n_t + 1, "weight_balance_penalty"
+        )
+        model.Add(weight_balance_penalty == sum(deviations))
+
     # ---- Seniority alignment (preset "seniority") --------------------
     # Per teacher, build a misalignment cost = sum_ci has_class[ti,ci] *
     # |rank_t - rank_ci| * curriculum_score[ci].
@@ -378,6 +401,7 @@ def solve_assignment_dsl(data: dict, dsl_expression: str,
         total_n_curricula=total_n_curricula_v,
         total_weight=total_weight_v,
         total_seniority_misalignment=total_seniority_misalignment,
+        weight_balance_penalty=weight_balance_penalty,
         n_under_18=n_under_18,
         n_under_10=n_under_10,
     )
@@ -457,16 +481,17 @@ def solve_assignment_dsl(data: dict, dsl_expression: str,
             f"{expected_pairs} cattedre coperte"
         )
 
-    sen = (int(solver.Value(total_seniority_misalignment))
-           if hasattr(total_seniority_misalignment, "Index")
-           else int(total_seniority_misalignment))
+    def _val(v):
+        return int(solver.Value(v)) if hasattr(v, "Index") else int(v)
+
     metrics = {
         "objective": int(solver.ObjectiveValue()),
         "total_unused_capacity": int(solver.Value(total_unused)),
         "total_n_classes": int(solver.Value(total_n_classes_v)),
         "total_n_curricula": int(solver.Value(total_n_curricula_v)),
         "total_weight": int(solver.Value(total_weight_v)),
-        "total_seniority_misalignment": sen,
+        "total_seniority_misalignment": _val(total_seniority_misalignment),
+        "weight_balance_penalty": _val(weight_balance_penalty),
         "n_under_18": int(solver.Value(n_under_18)),
         "n_under_10": int(solver.Value(n_under_10)),
         "direction": direction,

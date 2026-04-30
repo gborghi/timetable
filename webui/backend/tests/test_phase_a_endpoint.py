@@ -8,14 +8,8 @@ def test_phase_a_presets_endpoint(client):
     body = r.json()
     assert isinstance(body, list)
     keys = {p["key"] for p in body}
-    # The 5 advertised presets must all be present.
-    assert {
-        "balance_curricula",
-        "concentrate_curriculum",
-        "balance_year",
-        "max_full_cattedre",
-        "minimize_fragmentation",
-    }.issubset(keys)
+    # Exactly 3 shipped presets per Giovanni's spec; Custom is UI-only.
+    assert keys == {"balance_weight", "max_clustering", "seniority"}
     for p in body:
         assert "label" in p and "summary" in p and "expression" in p
 

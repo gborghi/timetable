@@ -269,6 +269,7 @@ SCALAR_VARS = {
     "total_n_curricula",
     "total_weight",
     "total_seniority_misalignment",
+    "weight_balance_penalty",   # linearized variance proxy
     "n_under_18",      # backward compat
     "n_under_10",      # backward compat
 }
@@ -441,6 +442,7 @@ class CompileContext:
     total_n_curricula: Any = None
     total_weight: Any = None
     total_seniority_misalignment: Any = 0
+    weight_balance_penalty: Any = 0
     n_under_18: Any = None
     n_under_10: Any = None
     # Helpers built lazily for predicates: cache of {name -> list[BoolVar]}
@@ -477,6 +479,8 @@ def _lower(node: dict, ctx: CompileContext, inside_aggregate: bool):
             return ctx.total_weight
         if name == "total_seniority_misalignment":
             return ctx.total_seniority_misalignment
+        if name == "weight_balance_penalty":
+            return ctx.weight_balance_penalty
         if name == "n_under_18":
             return ctx.n_under_18
         if name == "n_under_10":
@@ -654,71 +658,46 @@ def _eval_const_expr(node: dict) -> float:
 # ============================================================
 
 # Each preset is (key, label, summary, dsl_expr).
+# Exactly THREE shipped presets per Giovanni's spec; everything else
+# is reachable via "Custom" in the UI.
 PRESETS: list[tuple[str, str, str, str]] = [
     (
-        "balance_curricula",
-        "Bilanciamento per indirizzo (default)",
-        "Distribuisce equamente il peso degli indirizzi fra i "
-        "docenti: nessuno solo classi pesanti, nessuno solo "
-        "leggere. Equivale al default storico.",
+        "max_clustering",
+        "Clusterizzazione massima",
+        "Minimizza le connessioni docente-classe nel grafo "
+        "bipartito: ogni docente lavora su poche classi e su un "
+        "solo indirizzo. Risultato: il grafo si decompone meglio "
+        "in cluster nella successiva Phase B (meno docenti-ponte, "
+        "stage A piu' veloce). Rigidizza l'allocazione in caso di "
+        "emergenze.",
         "minimize 50 * total_unused_capacity "
-        "+ 100 * total_n_classes "
-        "- 5 * total_n_curricula "
-        "+ 5000 * n_under_18 "
-        "+ 50000 * n_under_10",
-    ),
-    (
-        "concentrate_curriculum",
-        "Concentrazione per indirizzo",
-        "Ogni docente prevalentemente su un solo indirizzo: "
-        "facilita la successiva decomposizione spettrale (cluster "
-        "piu' puliti, meno docenti-ponte). Rigidizza pero' "
-        "l'allocazione per emergenze.",
-        "minimize 50 * total_unused_capacity "
-        "+ 100 * total_n_classes "
+        "+ 200 * total_n_classes "
         "+ 200 * sum(cross_curricula()) "
         "+ 5000 * n_under_18",
     ),
     (
-        "balance_year",
-        "Bilanciamento per anno",
-        "Distribuisce equamente classi del biennio vs triennio "
-        "(usa teacher_weight come proxy dell'eta' della classe). "
-        "Riduce il rischio che un docente sia solo sul biennio "
-        "(spesso percepito come piu' leggero).",
+        "balance_weight",
+        "Varianza minima peso-indirizzo",
+        "Distribuisce equamente il peso degli indirizzi fra i "
+        "docenti tramite una linearizzazione della varianza "
+        "(somma di scarti assoluti dal peso medio). Nessun "
+        "docente solo su classi pesanti, nessuno solo su leggere. "
+        "Default ragionevole se non hai requisiti particolari.",
         "minimize 50 * total_unused_capacity "
         "+ 100 * total_n_classes "
-        "+ sum(teacher_weight) "
-        "+ 5000 * n_under_18",
-    ),
-    (
-        "max_full_cattedre",
-        "Massimizza cattedre piene (18h)",
-        "Minimizza il numero di docenti con cattedra incompleta: "
-        "soft 18h (peso alto), soft 10h (quasi-hard).",
-        "minimize sum(under_min_hours(18)) * 5000 "
-        "+ sum(under_min_hours(10)) * 50000 "
-        "+ 50 * total_unused_capacity",
-    ),
-    (
-        "minimize_fragmentation",
-        "Minimizza frammentazione classi",
-        "Riduce il numero di classi distinte per docente (pari "
-        "ore -> piu' continuita' su poche classi). Buono per "
-        "l'esperienza dello studente.",
-        "minimize 200 * total_n_classes "
-        "+ 50 * total_unused_capacity "
-        "+ 5000 * n_under_18",
+        "+ 20 * weight_balance_penalty "
+        "+ 5000 * n_under_18 "
+        "+ 50000 * n_under_10",
     ),
     (
         "seniority",
-        "Anzianita' graduatoria -> indirizzi pesanti",
+        "Anzianita' (graduatoria) -> indirizzi pesanti",
         "Docenti con punteggio graduatoria piu' alto vengono "
         "assegnati preferenzialmente alle classi degli indirizzi "
-        "con peso piu' alto (curriculum.score). Soft penalty "
+        "con peso piu' alto (curriculum.score). SOFT penalty "
         "proporzionale al disallineamento. Richiede che i docenti "
         "abbiano graduatoria_score impostato; quelli senza "
-        "punteggio vengono trattati come neutrali (rank medio).",
+        "punteggio vengono trattati come neutrali (rank mediano).",
         "minimize 50 * total_unused_capacity "
         "+ 100 * total_n_classes "
         "+ 5000 * n_under_18 "

@@ -54,6 +54,7 @@ not (yet) supported.
 | `total_n_curricula`             | sum over teachers of "distinct curriculum-tops assigned" |
 | `total_weight`                  | sum over teachers of `teacher_weight[t]`              |
 | `total_seniority_misalignment`  | sum over teachers of `teacher_seniority_misalignment[t]`. Higher means teachers and classes are badly matched by seniority/curriculum-weight; minimise to align "anziani -> indirizzi pesanti". |
+| `weight_balance_penalty`        | linearised variance of `teacher_weight[t]`: `sum_t |n_t * teacher_weight[t] - total_weight|`. Minimise to make every teacher carry roughly the same indirizzo-weight (= no one stuck only on heavy classes, no one only on light). Lineare-equivalente di una varianza. |
 | `n_under_18`                    | count of teachers with `actual_hours < 18`            |
 | `n_under_10`                    | count of teachers with `actual_hours < 10`            |
 
@@ -99,72 +100,44 @@ The validator gives a clear error pointing at the offending node.
 
 ## Built-in presets
 
-The presets are stored in `objective_dsl.PRESETS` and surfaced by
-`GET /api/optimize/phase-a/presets`. Each tuple is
+Per Giovanni's spec, the **three** shipped presets cover the most
+common Phase-A goals; everything else is reachable via `Custom` in
+the UI editor. The presets are stored in `objective_dsl.PRESETS`
+and surfaced by `GET /api/optimize/phase-a/presets`. Each tuple is
 `(key, label, summary, dsl_expression)`.
 
-### `balance_curricula` (default)
+### `max_clustering`
 
 ```text
 minimize 50 * total_unused_capacity
-       + 100 * total_n_classes
-       - 5 * total_n_curricula
-       + 5000 * n_under_18
-       + 50000 * n_under_10
-```
-
-Distributes load across teachers without strongly preferring single-
-curriculum concentration. Heavy penalties on under-18h and under-10h
-keep cattedre piene.
-
-### `concentrate_curriculum`
-
-```text
-minimize 50 * total_unused_capacity
-       + 100 * total_n_classes
+       + 200 * total_n_classes
        + 200 * sum(cross_curricula())
        + 5000 * n_under_18
 ```
 
-Each teacher works on as few curriculum-tops as possible. Pushes the
-bipartite teacher-class graph toward natural clusters which makes the
-spectral decomposition (Phase B Stage A bridges) more effective.
+Minimises the number of teacher-class connections in the bipartite
+graph: each teacher works on as few classes as possible AND on a
+single curriculum. Pushes the graph toward natural clusters, making
+the subsequent spectral decomposition in Phase B (Stage A bridges)
+much more effective. Trade-off: rigidifies the allocation in case of
+substitutions / emergencies.
 
-### `balance_year`
+### `balance_weight`
 
 ```text
 minimize 50 * total_unused_capacity
        + 100 * total_n_classes
-       + sum(teacher_weight)
+       + 20 * weight_balance_penalty
        + 5000 * n_under_18
+       + 50000 * n_under_10
 ```
 
-Uses `teacher_weight = sum(year + curriculum_score)` as a proxy for
-"how heavy is this teacher's load" and minimises the sum, indirectly
-balancing biennio vs triennio.
-
-### `max_full_cattedre`
-
-```text
-minimize sum(under_min_hours(18)) * 5000
-       + sum(under_min_hours(10)) * 50000
-       + 50 * total_unused_capacity
-```
-
-Aggressively penalises any teacher under 18h, near-hard penalty
-under 10h. Ideal when filling cattedre is the priority and a bit of
-fragmentation is acceptable.
-
-### `minimize_fragmentation`
-
-```text
-minimize 200 * total_n_classes
-       + 50 * total_unused_capacity
-       + 5000 * n_under_18
-```
-
-Focused on reducing the number of distinct classes per teacher
-(continuita' didattica). Good for student experience.
+Distributes the weight of curricula evenly across teachers using a
+**linearised variance** of `teacher_weight[t]` — concretely
+`weight_balance_penalty = sum_t |n_t * teacher_weight[t] -
+total_weight|`, which is zero exactly when every teacher carries
+the same total weight. Sensible default if you don't have a
+specific requirement.
 
 ### `seniority`
 

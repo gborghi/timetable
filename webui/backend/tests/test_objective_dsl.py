@@ -133,10 +133,23 @@ def test_all_presets_validate_ok():
 
 
 def test_get_preset_lookup():
-    p = get_preset("balance_curricula")
+    p = get_preset("balance_weight")
     assert p is not None
-    assert p[0] == "balance_curricula"
+    assert p[0] == "balance_weight"
     assert get_preset("does_not_exist") is None
+
+
+def test_exactly_three_presets_shipped():
+    """Per Giovanni's spec: exactly 3 presets + Custom (Custom is UI-only)."""
+    keys = {p[0] for p in PRESETS}
+    assert keys == {"balance_weight", "max_clustering", "seniority"}
+
+
+def test_weight_balance_penalty_in_vocab():
+    res = validate("minimize weight_balance_penalty")
+    assert res.ok, res.errors
+    res = validate("minimize 5 * weight_balance_penalty + 100 * total_n_classes")
+    assert res.ok, res.errors
 
 
 def test_seniority_preset_present():
