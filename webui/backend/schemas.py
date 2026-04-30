@@ -320,6 +320,10 @@ class MoveLessonOut(BaseModel):
     delta: float | None = None
     metrics_before: dict[str, Any] = Field(default_factory=dict)
     metrics_after: dict[str, Any] = Field(default_factory=dict)
+    # Set when the lesson's classroom had to be cleared after the move
+    # because the old room was occupied or HARD-unavailable at dst.
+    room_cleared: bool = False
+    cleared_room: str | None = None
 
 
 # ---------- Manual assignment override validation ----------

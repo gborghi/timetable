@@ -3,6 +3,7 @@
   import { api, downloadUrl } from '$lib/api.js';
   import { flash, refreshDataset } from '$lib/stores.js';
   import { DAYS, HOURS, DAY_NAMES_IT } from '$lib/constants.js';
+  import Modal from '$lib/components/Modal.svelte';
 
   let view = 'classes';   // classes | teachers | rooms | slot
   // each entity gets an independent layout toggle:
@@ -28,6 +29,10 @@
   let moveSrc = null;          // {lesson_id, teacher, cls, subject, day, hour}
   let movePreview = null;      // map "d-h" -> {status, reason, delta_soft}
   let movePreviewBusy = false;
+  // When the backend reports room_cleared after a move, we surface a
+  // modal alert so the user knows the old classroom couldn't follow the
+  // lesson and must be replaced manually.
+  let roomClearedNotice = null;  // {room, day, hour, ctx, class_name, teacher}
 
   onMount(async () => {
     await loadAll();
@@ -92,6 +97,16 @@
       }
       await loadAll();
       await refreshDataset();
+      if (r.accepted && r.room_cleared) {
+        roomClearedNotice = {
+          room: r.cleared_room,
+          day: dst.day,
+          hour: dst.hour,
+          class_name: payload.class_name,
+          teacher: payload.teacher_name,
+          subject: payload.subject,
+        };
+      }
     } catch (e) {
       flash('Errore: ' + e.message, 'error');
     }
@@ -153,9 +168,22 @@
       lastMoveOutcome = r;
       if (!r.accepted) flash('Mossa rifiutata: ' + r.reason, 'error');
       else flash(r.reason || 'Mossa applicata', 'success');
+      const movedDay = day;
+      const movedHour = hour;
+      const movedSrc = moveSrc;
       cancelMove();
       await loadAll();
       await refreshDataset();
+      if (r.accepted && r.room_cleared) {
+        roomClearedNotice = {
+          room: r.cleared_room,
+          day: movedDay,
+          hour: movedHour,
+          class_name: movedSrc.cls,
+          teacher: movedSrc.teacher,
+          subject: movedSrc.subject,
+        };
+      }
     } catch (e) {
       flash('Errore: ' + e.message, 'error');
     }
@@ -752,7 +780,36 @@
     </div>
   {/if}
 
-  <section class="card p-5">
+<Modal open={!!roomClearedNotice}
+       title="Aula rimossa dopo lo spostamento"
+       onClose={() => (roomClearedNotice = null)}>
+  {#if roomClearedNotice}
+    <div class="space-y-3 text-sm">
+      <p>
+        La lezione <strong>{roomClearedNotice.subject}</strong>
+        ({roomClearedNotice.class_name} con {roomClearedNotice.teacher})
+        e' stata spostata in
+        <code>{DAY_NAMES_IT[roomClearedNotice.day]} {roomClearedNotice.hour}:00</code>,
+        ma l'aula <strong>{roomClearedNotice.room}</strong> non era
+        disponibile in quel nuovo slot (occupata da un'altra lezione
+        oppure HARD-non-disponibile in quell'orario).
+      </p>
+      <p>
+        L'aula e' stata <strong>rimossa</strong> dalla lezione spostata.
+        Apri la cella nella matrice e seleziona una nuova aula dal
+        dropdown (le aule libere appaiono in verde, quelle occupate in
+        rosso e non sono selezionabili).
+      </p>
+      <div class="flex justify-end">
+        <button class="btn-primary" on:click={() => (roomClearedNotice = null)}>
+          Ho capito
+        </button>
+      </div>
+    </div>
+  {/if}
+</Modal>
+
+<section class="card p-5">
     <h2 class="mb-3">Soluzioni salvate</h2>
     <div class="overflow-x-auto">
       <table class="tbl">

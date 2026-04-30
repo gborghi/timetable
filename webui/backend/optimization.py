@@ -1211,12 +1211,11 @@ def preview_moves_for_lesson(db: Session, src: tuple,
                             "reason": f"classe {cl} HARD non disp.",
                             "delta_soft": None})
             continue
-        if src_room and (src_room, d, h) in av["room_hard"]:
-            results.append({"day": d, "hour": h,
-                            "status": "hard_violation",
-                            "reason": f"aula {src_room} HARD non disp.",
-                            "delta_soft": None})
-            continue
+        # Note: room availability is INTENTIONALLY not checked here. The
+        # preview shows the slot as free if teacher/class allow the move;
+        # if the lesson's old room is occupied (or HARD-unavailable) at
+        # the destination, validate_and_apply_move clears the room and
+        # asks the user to pick a new one (room_cleared=True flag).
         # destination already occupied by SAME (same triple) -> noop
         if sol.get(dst, 0) == 1:
             results.append({"day": d, "hour": h, "status": "noop",
@@ -1317,12 +1316,9 @@ def validate_and_apply_move(db: Session, src: tuple,
         models.Lesson.day == src[3],
         models.Lesson.hour == src[4],
     ).first()
-    if src_lesson and src_lesson.classroom_name:
-        if (src_lesson.classroom_name, d_dst, h_dst) in av["room_hard"]:
-            return {"accepted": False,
-                    "reason": (f"L'aula {src_lesson.classroom_name} ha "
-                               f"indisponibilita HARD in giorno {d_dst} "
-                               f"ora {h_dst}.")}
+    # Room HARD-unavailability is NOT a reason to reject the move: the
+    # post-apply pass below will simply clear the classroom and tell the
+    # caller via room_cleared=True so the UI can prompt for a new pick.
 
     new_sol = dict(sol)
     new_sol[src] = 0
@@ -1345,8 +1341,43 @@ def validate_and_apply_move(db: Session, src: tuple,
     _ok1, soft1, _ = _logical_check_for_solution(db, new_sol)
     v0 += soft0
     v1 += soft1
-    # Apply
+    # Apply: replace the solution dict, then carry the classroom across
+    # the move (replace_solution_lessons keys on (p,cl,subj,day,hour),
+    # so the moved lesson would otherwise lose its classroom).
     engine_io.replace_solution_lessons(db, active.id, new_sol)
+    src_room = src_lesson.classroom_name if src_lesson else None
+    room_cleared = False
+    cleared_room = None
+    if src_room:
+        # Look up the moved lesson row by its new key
+        new_row = db.query(models.Lesson).filter(
+            models.Lesson.solution_id == active.id,
+            models.Lesson.teacher_name == dst[0],
+            models.Lesson.class_name == dst[1],
+            models.Lesson.subject == dst[2],
+            models.Lesson.day == dst[3],
+            models.Lesson.hour == dst[4],
+        ).first()
+        # Conflict 1: the room is occupied by another lesson at dst
+        conflict_lesson = db.query(models.Lesson).filter(
+            models.Lesson.solution_id == active.id,
+            models.Lesson.day == dst[3],
+            models.Lesson.hour == dst[4],
+            models.Lesson.classroom_name == src_room,
+            models.Lesson.id != (new_row.id if new_row else -1),
+        ).first()
+        # Conflict 2: the room is HARD-unavailable in admin matrix at dst
+        conflict_admin = (src_room, dst[3], dst[4]) in av["room_hard"]
+        if new_row is not None:
+            if conflict_lesson is None and not conflict_admin:
+                # Free: carry the room across the move
+                new_row.classroom_name = src_room
+            else:
+                # Occupied: leave the moved lesson without a classroom and
+                # tell the caller so the UI can prompt for a new pick.
+                new_row.classroom_name = None
+                room_cleared = True
+                cleared_room = src_room
     active.obj_value = float(v1)
     active.metrics_json = json.dumps({**m1, "feasible": True})
     db.commit()
@@ -1361,4 +1392,6 @@ def validate_and_apply_move(db: Session, src: tuple,
         "delta": float(v1 - v0),
         "metrics_before": m0,
         "metrics_after": m1,
+        "room_cleared": room_cleared,
+        "cleared_room": cleared_room,
     }
