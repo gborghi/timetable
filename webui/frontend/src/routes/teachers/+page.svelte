@@ -38,6 +38,7 @@
       max_hours: TEACHER_DEFAULTS.max_hours,
       completion_hours: TEACHER_DEFAULTS.completion_hours,
       exemption_hours: TEACHER_DEFAULTS.exemption_hours,
+      graduatoria_score: null,
       free_day: TEACHER_DEFAULTS.free_day,
       max_consecutive: TEACHER_DEFAULTS.max_consecutive,
       notes: '',
@@ -293,6 +294,15 @@
       <div class="field"><label>Max ore-cattedra</label><input type="number" bind:value={editing.max_hours}/></div>
       <div class="field"><label>Ore di completamento</label><input type="number" bind:value={editing.completion_hours}/></div>
       <div class="field"><label>Ore di esonero</label><input type="number" bind:value={editing.exemption_hours}/></div>
+      <div class="field">
+        <label title="Punteggio in graduatoria provinciale (0-300). Usato dal preset 'Anzianita' di Phase A per assegnare i docenti piu' anziani agli indirizzi pesanti.">
+          Punteggio graduatoria
+          <span class="text-xs text-ink-400">- opzionale, 0-300</span>
+        </label>
+        <input type="number" min="0" max="300" step="0.5"
+               bind:value={editing.graduatoria_score}
+               placeholder="(non impostato)"/>
+      </div>
       <div class="field">
         <label>Giorno libero (alias di "riga rossa nella matrice")</label>
         <select value={editing.free_day || ''} on:change={onFreeDaySelect}>

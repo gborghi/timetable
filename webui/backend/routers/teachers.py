@@ -103,6 +103,7 @@ def _to_out(t: models.Teacher, db=None) -> schemas.TeacherOut:
         max_hours=t.max_hours,
         completion_hours=t.completion_hours,
         exemption_hours=t.exemption_hours,
+        graduatoria_score=t.graduatoria_score,
         free_day=t.free_day,
         max_consecutive=t.max_consecutive,
         notes=t.notes,
@@ -175,6 +176,7 @@ def _apply_payload(t: models.Teacher, p: schemas.TeacherIn,
     t.max_hours = p.max_hours
     t.completion_hours = p.completion_hours
     t.exemption_hours = p.exemption_hours
+    t.graduatoria_score = p.graduatoria_score
     t.free_day = p.free_day
     t.max_consecutive = p.max_consecutive
     t.notes = p.notes

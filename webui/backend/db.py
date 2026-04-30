@@ -233,6 +233,15 @@ def _apply_lightweight_migrations() -> None:
                         f"WHERE {col} IS NULL"
                     ))
 
+        # graduatoria_score on Teacher: nullable Float column used by
+        # the Phase-A seniority criterion. Backfill not necessary
+        # (NULL means "no score recorded").
+        if insp.has_table("teachers") and not has_column(
+                "teachers", "graduatoria_score"):
+            conn.execute(text(
+                "ALTER TABLE teachers ADD COLUMN graduatoria_score FLOAT"
+            ))
+
         # tenant_id on user-facing entities (Section 2.5 P3).
         # Defaults everything to tenant 1 -- the existing single school.
         for tbl in timestamped:

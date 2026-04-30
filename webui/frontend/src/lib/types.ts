@@ -87,6 +87,7 @@ export interface TeacherBase {
   max_hours: number;
   completion_hours: number;
   exemption_hours: number;
+  graduatoria_score?: number | null;
   free_day?: string | null;
   max_consecutive: number;
   notes?: string | null;

@@ -107,6 +107,12 @@ class TeacherBase(BaseModel):
     max_hours: int = 18
     completion_hours: int = 0
     exemption_hours: int = 0
+    graduatoria_score: float | None = Field(
+        default=None,
+        description="Punteggio in graduatoria provinciale (0-300). "
+                    "Usato dal preset Phase-A 'seniority' per allineare "
+                    "anzianita' e indirizzi pesanti."
+    )
     free_day: str | None = None
     max_consecutive: int = 5
     notes: str | None = None

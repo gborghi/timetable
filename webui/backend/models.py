@@ -102,6 +102,13 @@ class Teacher(TenantMixin, TimestampMixin, Base):
     max_hours: Mapped[int] = mapped_column(Integer, default=18)
     completion_hours: Mapped[int] = mapped_column(Integer, default=0)
     exemption_hours: Mapped[int] = mapped_column(Integer, default=0)
+    graduatoria_score: Mapped[float | None] = mapped_column(
+        Float, nullable=True,
+        comment="Punteggio in graduatoria provinciale (range tipico "
+                "0-300). Usato dal preset 'seniority' di Phase A per "
+                "assegnare i docenti piu' anziani agli indirizzi a "
+                "peso maggiore."
+    )
     free_day: Mapped[str | None] = mapped_column(String(16), nullable=True,
                                                  comment="day name (Italian)")
     max_consecutive: Mapped[int] = mapped_column(Integer, default=5,
