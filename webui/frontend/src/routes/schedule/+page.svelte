@@ -5,12 +5,19 @@
   import { DAYS, HOURS, DAY_NAMES_IT } from '$lib/constants.js';
 
   let view = 'classes';   // classes | teachers | rooms | slot
+  // each entity gets an independent layout toggle:
+  //   'matrix' = per-entity 6x6 grid with drag-drop / move preview
+  //   'list'   = single big table with one row per entity and 36 slot columns
+  let classesViewMode = 'matrix';
+  let teachersViewMode = 'matrix';
+  let roomsViewMode = 'matrix';
   let classData = null;
   let teacherData = null;
   let roomData = null;
   let slotData = null;
   let selectedClass = '';
   let selectedTeacher = '';
+  let selectedRoom = '';
   let slotDay = 1, slotHour = 8;
   let dragging = null;
   let dropTarget = null;
@@ -35,6 +42,7 @@
       teacherData = await api.get('/api/schedule/by-teacher');
       if (teacherData?.teachers?.length) selectedTeacher = teacherData.teachers[0];
       roomData = await api.get('/api/schedule/by-room');
+      if (roomData?.rooms?.length && !selectedRoom) selectedRoom = roomData.rooms[0];
     } catch (e) {
       flash('Nessuna soluzione attiva: ' + e.message, 'error');
     }
@@ -193,6 +201,7 @@
 
   $: selClassGrid = classData && selectedClass ? classData.grid[selectedClass] : null;
   $: selTeacherGrid = teacherData && selectedTeacher ? teacherData.grid[selectedTeacher] : null;
+  $: selRoomGrid = roomData && selectedRoom ? roomData.grid[selectedRoom] : null;
 </script>
 
 <div class="space-y-4">
@@ -226,13 +235,23 @@
   {:else}
 
   {#if view === 'classes'}
-    <div class="card p-3">
-      <label class="text-sm">Classe</label>
-      <select class="ml-2 px-2 py-1.5 rounded-md border border-ink-200" bind:value={selectedClass}>
-        {#each classData.classes as c}<option>{c}</option>{/each}
-      </select>
+    <div class="card p-3 flex items-center gap-3 flex-wrap">
+      {#if classesViewMode === 'matrix'}
+        <label class="text-sm">Classe</label>
+        <select class="ml-2 px-2 py-1.5 rounded-md border border-ink-200" bind:value={selectedClass}>
+          {#each classData.classes as c}<option>{c}</option>{/each}
+        </select>
+      {:else}
+        <span class="text-sm text-ink-500">Lista: {classData.classes.length} classi</span>
+      {/if}
+      <div class="ml-auto flex gap-1">
+        <button class="btn !text-xs" class:bg-ink-100={classesViewMode === 'matrix'}
+                on:click={() => (classesViewMode = 'matrix')}>matrice</button>
+        <button class="btn !text-xs" class:bg-ink-100={classesViewMode === 'list'}
+                on:click={() => (classesViewMode = 'list')}>lista</button>
+      </div>
     </div>
-    {#if selClassGrid}
+    {#if classesViewMode === 'matrix' && selClassGrid}
       {#if moveSrc}
         <div class="card p-3 bg-accent-500/5 border-accent-500/40 flex items-center gap-3 flex-wrap">
           <strong>Modalita sposta:</strong>
@@ -328,15 +347,62 @@
           {/each}
         </div>
       </div>
+    {:else if classesViewMode === 'list'}
+      <div class="card p-2 overflow-auto">
+        <table class="tbl text-xs">
+          <thead>
+            <tr>
+              <th class="sticky left-0 bg-white z-10">Classe</th>
+              {#each DAYS as d}{#each HOURS as h}
+                <th class="text-[10px] text-center min-w-12">
+                  {DAY_NAMES_IT[d][0]}{h}
+                </th>
+              {/each}{/each}
+            </tr>
+          </thead>
+          <tbody>
+            {#each classData.classes as cn}
+              <tr>
+                <td class="sticky left-0 bg-white font-semibold">{cn}</td>
+                {#each DAYS as d}{#each HOURS as h}
+                  {@const cell = classData.grid[cn]?.[d]?.[h] ?? null}
+                  <td class="p-1 text-[10px] text-center"
+                      class:bg-emerald-50={!cell}
+                      class:bg-amber-50={cell && cell.subjects.length > 1}
+                      class:bg-white={cell && cell.subjects.length === 1}
+                      title={cell ? cell.teachers.join(' + ') + ' / ' + cell.subjects.join('+') + (cell.classroom ? ' / ' + cell.classroom : '') : ''}>
+                    {#if cell}
+                      <div class="font-semibold">{cell.subjects.join('+')}</div>
+                      <div class="text-ink-400 text-[9px] truncate">{cell.teachers.join('+')}</div>
+                    {:else}
+                      <span class="text-ink-300">-</span>
+                    {/if}
+                  </td>
+                {/each}{/each}
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
     {/if}
   {:else if view === 'teachers'}
-    <div class="card p-3">
-      <label class="text-sm">Docente</label>
-      <select class="ml-2 px-2 py-1.5 rounded-md border border-ink-200" bind:value={selectedTeacher}>
-        {#each teacherData.teachers as t}<option>{t}</option>{/each}
-      </select>
+    <div class="card p-3 flex items-center gap-3 flex-wrap">
+      {#if teachersViewMode === 'matrix'}
+        <label class="text-sm">Docente</label>
+        <select class="ml-2 px-2 py-1.5 rounded-md border border-ink-200" bind:value={selectedTeacher}>
+          {#each teacherData.teachers as t}<option>{t}</option>{/each}
+        </select>
+      {:else}
+        <span class="text-sm text-ink-500">Lista: {teacherData.teachers.length} docenti</span>
+      {/if}
+      <div class="ml-auto flex gap-1">
+        <button class="btn !text-xs" class:bg-ink-100={teachersViewMode === 'matrix'}
+                on:click={() => (teachersViewMode = 'matrix')}>matrice</button>
+        <button class="btn !text-xs" class:bg-ink-100={teachersViewMode === 'list'}
+                on:click={() => (teachersViewMode = 'list')}>lista</button>
+      </div>
     </div>
-    {#if selTeacherGrid}
+    {#if teachersViewMode === 'matrix' && selTeacherGrid}
       {#if moveSrc}
         <div class="card p-3 bg-accent-500/5 border-accent-500/40 flex items-center gap-3 flex-wrap">
           <strong>Modalita sposta:</strong>
@@ -418,9 +484,149 @@
           {/each}
         </div>
       </div>
+    {:else if teachersViewMode === 'list'}
+      <div class="card p-2 overflow-auto">
+        <table class="tbl text-xs">
+          <thead>
+            <tr>
+              <th class="sticky left-0 bg-white z-10">Docente</th>
+              {#each DAYS as d}{#each HOURS as h}
+                <th class="text-[10px] text-center min-w-12">
+                  {DAY_NAMES_IT[d][0]}{h}
+                </th>
+              {/each}{/each}
+            </tr>
+          </thead>
+          <tbody>
+            {#each teacherData.teachers as tn}
+              <tr>
+                <td class="sticky left-0 bg-white font-semibold">{tn}</td>
+                {#each DAYS as d}{#each HOURS as h}
+                  {@const cell = teacherData.grid[tn]?.[d]?.[h] ?? null}
+                  <td class="p-1 text-[10px] text-center"
+                      class:bg-emerald-50={!cell}
+                      class:bg-white={cell}
+                      title={cell ? cell.class_name + ' / ' + cell.subject + (cell.classroom ? ' / ' + cell.classroom : '') : ''}>
+                    {#if cell}
+                      <div class="font-semibold">{cell.class_name}</div>
+                      <div class="text-ink-400 text-[9px] truncate">{cell.subject}</div>
+                    {:else}
+                      <span class="text-ink-300">-</span>
+                    {/if}
+                  </td>
+                {/each}{/each}
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
     {/if}
   {:else if view === 'rooms'}
     {#if roomData}
+    <div class="card p-3 flex items-center gap-3 flex-wrap">
+      {#if roomsViewMode === 'matrix'}
+        <label class="text-sm">Aula</label>
+        <select class="ml-2 px-2 py-1.5 rounded-md border border-ink-200" bind:value={selectedRoom}>
+          {#each roomData.rooms as r}<option>{r}</option>{/each}
+        </select>
+        {#if selectedRoom && roomData.rooms_meta[selectedRoom]}
+          <span class="pill">{roomData.rooms_meta[selectedRoom].kind}</span>
+          <span class="text-xs text-ink-500">cap. {roomData.rooms_meta[selectedRoom].capacity}</span>
+        {/if}
+      {:else}
+        <span class="text-sm text-ink-500">Lista: {roomData.rooms.length} aule</span>
+      {/if}
+      <div class="ml-auto flex gap-1">
+        <button class="btn !text-xs" class:bg-ink-100={roomsViewMode === 'matrix'}
+                on:click={() => (roomsViewMode = 'matrix')}>matrice</button>
+        <button class="btn !text-xs" class:bg-ink-100={roomsViewMode === 'list'}
+                on:click={() => (roomsViewMode = 'list')}>lista</button>
+      </div>
+    </div>
+    {#if roomsViewMode === 'matrix' && selRoomGrid}
+      {#if moveSrc}
+        <div class="card p-3 bg-accent-500/5 border-accent-500/40 flex items-center gap-3 flex-wrap">
+          <strong>Modalita sposta:</strong>
+          <span class="text-sm">
+            {moveSrc.subject} ({moveSrc.cls} con {moveSrc.teacher}) da
+            <code>{DAY_NAMES_IT[moveSrc.day]} {moveSrc.hour}:00</code>
+          </span>
+          <button class="btn !text-xs ml-auto" on:click={cancelMove}>Esc</button>
+        </div>
+      {/if}
+      <div class="card p-4 overflow-auto">
+        <div class="timetable-grid">
+          <div></div>
+          {#each DAYS as d}<div class="text-xs text-center font-semibold text-ink-500 pb-1">{DAY_NAMES_IT[d]}</div>{/each}
+          {#each HOURS as h}
+            <div class="text-xs text-ink-500 pr-2 pt-2">{h}:00</div>
+            {#each DAYS as d}
+              {@const lst = selRoomGrid?.[d]?.[h] ?? []}
+              {@const key = 'cell-r-' + d + '-' + h}
+              {@const pv = movePreview ? movePreview[d + '-' + h] : null}
+              {@const isMulti = lst.length > 1}
+              <div class="cell card !shadow-none p-2 text-xs relative"
+                class:drop-target={dropTarget === key && dragging}
+                class:!bg-emerald-100={moveSrc && pv && pv.status === 'ok' && pv.delta_soft !== 0}
+                class:!bg-emerald-50={moveSrc && pv && pv.status === 'ok' && pv.delta_soft === 0}
+                class:!bg-amber-100={moveSrc && pv && pv.status === 'soft_worse'}
+                class:!bg-red-200={moveSrc && pv && pv.status === 'hard_violation'}
+                class:!bg-red-50={!moveSrc && isMulti}
+                class:cursor-pointer={moveSrc}
+                title={pv && pv.reason ? pv.reason
+                  : (pv && pv.delta_soft != null
+                     ? (pv.delta_soft > 0 ? '+' + pv.delta_soft : '' + pv.delta_soft)
+                       + ' punti SOFT'
+                     : (isMulti ? lst.length + ' lezioni nello stesso slot' : ''))}
+                on:click={moveSrc ? () => confirmMove(d, h) : undefined}
+                on:dragover={(e) => overTarget(e, key)}
+                on:dragleave={leaveTarget}
+                on:drop={(e) => dropOn(e, { day: d, hour: h })}>
+                {#if lst.length}
+                  {#each lst as l}
+                    <div class="cursor-grab"
+                      draggable="true"
+                      on:dragstart={(e) => startDrag(e, {
+                        teacher: l.teacher, cls: l.class_name,
+                        subject: l.subject, day: d, hour: h
+                      })}
+                      on:dragend={endDrag}>
+                      <div class="font-semibold">{l.class_name}</div>
+                      <div class="text-ink-500">{l.subject}</div>
+                      <div class="text-ink-400 text-[10px]">{l.teacher}</div>
+                      {#if !moveSrc}
+                        <button class="text-[10px] text-accent-500 hover:underline"
+                          title="Sposta..."
+                          on:click|stopPropagation={() => startMove(
+                            { lesson_id: l.lesson_id, class_name: l.class_name,
+                              subject: l.subject, teachers: [l.teacher],
+                              subjects: [l.subject] }, d, h, 'teachers')}>
+                          sposta
+                        </button>
+                      {/if}
+                    </div>
+                  {/each}
+                {:else}
+                  <div class="text-ink-300 text-center">
+                    {#if moveSrc && pv}
+                      {#if pv.status === 'ok' && pv.delta_soft != null}
+                        <span class="text-emerald-700 font-semibold">{pv.delta_soft >= 0 ? '+' : ''}{pv.delta_soft}</span>
+                      {:else if pv.status === 'soft_worse'}
+                        <span class="text-amber-700 font-semibold">+{pv.delta_soft}</span>
+                      {:else if pv.status === 'hard_violation'}
+                        <span class="text-red-700">X</span>
+                      {/if}
+                    {:else}
+                      -
+                    {/if}
+                  </div>
+                {/if}
+              </div>
+            {/each}
+          {/each}
+        </div>
+      </div>
+    {:else if roomsViewMode === 'list'}
       <div class="card p-4 overflow-auto">
         <table class="tbl">
           <thead>
@@ -447,6 +653,7 @@
           </tbody>
         </table>
       </div>
+    {/if}
     {/if}
   {:else if view === 'slot'}
     <div class="card p-3 flex gap-3 items-end">
