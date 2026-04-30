@@ -329,7 +329,7 @@
                     </td>
                     <td>
                       {#if _kindFromRule(r) === 'enforced'}
-                        <span class="pill" style="background:#065f46;color:#fff;">ENFORCED</span>
+                        <span class="pill-c-enforced">ENFORCED</span>
                       {:else if _kindFromRule(r) === 'hard'}
                         <span class="pill-red">HARD</span>
                       {:else if _kindFromRule(r) === 'preferred'}
@@ -394,7 +394,7 @@
               </label>
               <label class="flex items-center gap-1 text-xs">
                 <input type="radio" bind:group={logicalDraftKind} value="enforced"/>
-                <span class="pill !text-[10px]" style="background:#065f46;color:#fff;">ENFORCED</span>
+                <span class="pill-c-enforced !text-[10px]">ENFORCED</span>
               </label>
               {#if logicalDraftKind === 'soft' || logicalDraftKind === 'preferred'}
                 <div class="field">

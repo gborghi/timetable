@@ -41,7 +41,8 @@
 </script>
 
 <div class="min-h-screen flex flex-col">
-  <header class="bg-white border-b border-ink-200">
+  <a href="#main-content" class="skip-link">Vai al contenuto principale</a>
+  <header class="bg-white border-b border-ink-200" role="banner">
     <div class="max-w-[1500px] mx-auto px-6 py-3 flex items-center gap-4">
       <a href="/" class="flex items-center gap-3 leading-tight"
          title={HORACE_LATIN}>
@@ -56,12 +57,15 @@
           </span>
         </span>
       </a>
-      <nav class="flex flex-wrap gap-1 ml-4">
+      <nav class="flex flex-wrap gap-1 ml-4" aria-label="Navigazione principale">
         {#each links as l}
+          {@const active = l.exact ? cur === l.href
+                                    : cur.startsWith(l.href) && l.href !== '/'}
           <a href={l.href}
-             class="px-3 py-1.5 text-sm rounded-md hover:bg-ink-100"
-             class:bg-ink-100={l.exact ? cur === l.href : cur.startsWith(l.href) && l.href !== '/'}
-             class:font-medium={l.exact ? cur === l.href : cur.startsWith(l.href) && l.href !== '/'}>{l.label}</a>
+             class="px-3 py-1.5 text-sm rounded-md hover:bg-ink-100 focus-ring"
+             class:bg-ink-100={active}
+             class:font-medium={active}
+             aria-current={active ? 'page' : undefined}>{l.label}</a>
         {/each}
       </nav>
       <div class="ml-auto flex items-center gap-2 text-xs text-ink-500">
@@ -77,11 +81,12 @@
     </div>
   </header>
 
-  <main class="flex-1 max-w-[1500px] w-full mx-auto px-6 py-6">
+  <main id="main-content" tabindex="-1"
+        class="flex-1 max-w-[1500px] w-full mx-auto px-6 py-6 focus:outline-none">
     <slot />
   </main>
 
-  <footer class="border-t border-ink-200 bg-white">
+  <footer class="border-t border-ink-200 bg-white" role="contentinfo">
     <div class="max-w-[1500px] mx-auto px-6 py-3 text-xs text-ink-500 flex flex-wrap gap-3 items-baseline">
       <span class="font-semibold text-ink-600">Carpe Diem</span>
       <span class="italic">Cogli il giorno</span>

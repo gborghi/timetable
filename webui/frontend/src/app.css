@@ -47,6 +47,20 @@
   .pill-red   { @apply pill bg-red-100 text-red-800; }
   .pill-amber { @apply pill bg-amber-100 text-amber-800; }
   .pill-blue  { @apply pill bg-sky-100 text-sky-800; }
+  /* Constraint-level pills: same shape as .pill but with the
+     dedicated palette tokens defined in tailwind.config.js. Use
+     these instead of inline `style="background:...;color:..."`
+     when rendering vincolo levels. */
+  .pill-c-hard      { @apply pill bg-c-hard-bg text-c-hard-fg; }
+  .pill-c-soft      { @apply pill bg-c-soft-bg text-c-soft-fg; }
+  .pill-c-preferred { @apply pill bg-c-pref-bg text-c-pref-fg; }
+  .pill-c-enforced  { @apply pill bg-c-enf-bg  text-c-enf-fg;  }
+  .pill-c-allowed   { @apply pill bg-c-allow-bg text-c-allow-fg; }
+  .pill-c-forbidden { @apply pill bg-c-hard-bg text-c-hard-fg; }
+  /* Visible focus ring for keyboard users -- a11y baseline */
+  .focus-ring:focus-visible {
+    @apply outline-none ring-2 ring-accent-500 ring-offset-2;
+  }
   table.tbl {
     @apply w-full text-sm border-collapse;
   }
@@ -70,3 +84,30 @@
 .dragging { opacity: 0.4; }
 .drop-target { outline: 2px dashed #3a6df0; outline-offset: -2px; }
 .drop-target-bad { outline: 2px dashed #dc2626; outline-offset: -2px; }
+
+/* Skip link: hidden until focused by keyboard, then jumps to main */
+.skip-link {
+  position: absolute;
+  left: 8px;
+  top: -40px;
+  z-index: 1000;
+  background: #0f172a;
+  color: #fff;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-weight: 600;
+}
+.skip-link:focus {
+  top: 8px;
+  outline: 2px solid #3a6df0;
+  outline-offset: 2px;
+}
+
+/* Visually-hidden but available to screen readers (sr-only equivalent
+   without depending on Tailwind's plugin) */
+.sr-only {
+  position: absolute;
+  width: 1px; height: 1px; padding: 0;
+  margin: -1px; overflow: hidden;
+  clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+}

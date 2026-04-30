@@ -237,10 +237,14 @@
                 <td class="text-center">{row.hours}</td>
                 <td class="whitespace-nowrap">
                   <button class="btn !text-xs !px-2 !py-1" on:click={() => startEdit(cn, row)}>cambia</button>
-                  <button class="btn !text-xs !px-2 !py-1"
+                  <button class="btn !text-xs !px-2 !py-1 focus-ring"
                     title={row.locked ? 'Sblocca' : 'Blocca'}
+                    aria-label={row.locked
+                      ? 'Sblocca cattedra ' + row.subject + ' per ' + cn
+                      : 'Blocca cattedra ' + row.subject + ' per ' + cn}
+                    aria-pressed={row.locked}
                     on:click={() => toggleLock(row.id, row.locked)}>
-                    {row.locked ? '🔒' : '🔓'}
+                    <span aria-hidden="true">{row.locked ? '🔒' : '🔓'}</span>
                   </button>
                 </td>
               </tr>

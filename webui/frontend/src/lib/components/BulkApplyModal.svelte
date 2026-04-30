@@ -176,7 +176,7 @@
           </label>
           <label class="flex gap-1 items-center">
             <input type="radio" bind:group={logicalKind} value="enforced"/>
-            <span class="pill !text-[10px]" style="background:#065f46;color:#fff;">ENFORCED</span>
+            <span class="pill-c-enforced !text-[10px]">ENFORCED</span>
           </label>
           {#if logicalKind === 'soft' || logicalKind === 'preferred'}
             <label class="flex gap-1 items-center">

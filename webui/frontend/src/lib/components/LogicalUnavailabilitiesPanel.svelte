@@ -238,7 +238,7 @@
         <span class="pill-red !text-[10px]">HARD</span> deve essere soddisfatto;
         <span class="pill-amber !text-[10px]">SOFT</span> paga penalita se violato;
         <span class="pill-blue !text-[10px]">PREFERITO</span> da bonus se soddisfatto;
-        <span class="pill !text-[10px]" style="background:#065f46;color:#fff;">ENFORCED</span>
+        <span class="pill-c-enforced !text-[10px]">ENFORCED</span>
         deve essere soddisfatto E almeno uno degli slot della DNF deve essere
         un'ora di lezione attiva.
       </div>
@@ -276,7 +276,7 @@
                 on:click={() => cycleKind(r)}
                 title="click per ciclare HARD -> SOFT -> PREFERITO -> ENFORCED">
                 {#if kindFromRule(r) === 'enforced'}
-                  <span class="pill" style="background:#065f46;color:#fff;">ENFORCED</span>
+                  <span class="pill-c-enforced">ENFORCED</span>
                 {:else if kindFromRule(r) === 'hard'}
                   <span class="pill-red">HARD</span>
                 {:else if kindFromRule(r) === 'preferred'}
@@ -341,7 +341,7 @@
       </label>
       <label class="flex items-center gap-1 text-xs">
         <input type="radio" bind:group={draftKind} value="enforced"/>
-        <span class="pill !text-[10px]" style="background:#065f46;color:#fff;">ENFORCED</span>
+        <span class="pill-c-enforced !text-[10px]">ENFORCED</span>
       </label>
       <div class="field"
            class:opacity-50={draftKind === 'hard' || draftKind === 'enforced'}>

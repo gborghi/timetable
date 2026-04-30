@@ -4,6 +4,7 @@
   import { flash } from '$lib/stores.js';
   import Modal from '$lib/components/Modal.svelte';
   import SortableQueryableList from '$lib/components/SortableQueryableList.svelte';
+  import { levelPill, levelLabel } from '$lib/constraint_levels.js';
 
   let listRef = null;
   let conflicts = null;
@@ -57,20 +58,7 @@
     } catch (e) { flash('Errore: ' + e.message, 'error'); }
   }
 
-  // Color coding by level
-  function levelClass(level) {
-    if (level === 'enforced')  return 'background:#065f46;color:#fff;';
-    if (level === 'hard'
-        || level === 'forbidden') return 'background:#fecaca;color:#991b1b;';
-    if (level === 'preferred') return 'background:#bae6fd;color:#075985;';
-    if (level === 'soft')      return 'background:#fde68a;color:#92400e;';
-    if (level === 'allowed')   return 'background:#d1fae5;color:#065f46;';
-    return 'background:#e5e7eb;color:#374151;';
-  }
-
-  function levelLabel(level) {
-    return (level || '?').toUpperCase();
-  }
+  // levelPill / levelLabel imported from $lib/constraint_levels.js
 
   const columns = [
     { key: 'kind', label: 'Kind' },
@@ -125,7 +113,7 @@
                 <ul class="text-xs ml-4 list-disc">
                   {#each c.members as m}
                     <li>
-                      <span class="pill" style={levelClass(m.level)}>
+                      <span class={levelPill(m.level)}>
                         {levelLabel(m.level)}
                       </span>
                       {m.kind} #{m.id} - {m.owner_name} - {m.detail}
@@ -147,7 +135,7 @@
     I colori riflettono il tipo: <span class="pill-red">HARD</span>,
     <span class="pill-amber">SOFT</span>,
     <span class="pill-blue">PREFERITO</span>,
-    <span class="pill" style="background:#065f46;color:#fff;">ENFORCED</span>.
+    <span class="pill-c-enforced">ENFORCED</span>.
   </p>
 
   <SortableQueryableList
@@ -162,7 +150,7 @@
       <td class="text-xs">{row.scope}</td>
       <td class="text-xs"><strong>{row.owner_name}</strong></td>
       <td>
-        <span class="pill !text-[10px]" style={levelClass(row.level)}>
+        <span class="{levelPill(row.level)} !text-[10px]">
           {levelLabel(row.level)}
         </span>
       </td>

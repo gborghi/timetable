@@ -115,15 +115,15 @@
              bind:value={nameFilter}/>
       <span class="text-[11px] text-ink-500 ml-auto">
         click cicla:
-        <span class="pill" style="background:#d1fae5;color:#065f46;">verdino</span>
+        <span class="pill-c-allowed">verdino</span>
         ->
-        <span class="pill-amber">giallo (+)</span>
+        <span class="pill-c-soft">giallo (+)</span>
         ->
-        <span class="pill-blue">blu (-)</span>
+        <span class="pill-c-preferred">blu (-)</span>
         ->
-        <span class="pill-red">rosso (HARD)</span>
+        <span class="pill-c-hard">rosso (HARD)</span>
         ->
-        <span class="pill" style="background:#065f46;color:#fff;">verdone (must)</span>
+        <span class="pill-c-enforced">verdone (must)</span>
       </span>
     {/if}
   </div>
