@@ -160,6 +160,187 @@ def list_events(q: str | None = Query(None,
         raise HTTPException(400, f"Errore query: {e}")
 
 
+@router.get("/event/{assignment_id}/lessons")
+def event_lessons(assignment_id: int, db: Session = Depends(get_db)):
+    """Detail of all individual lessons that realise this assignment in
+    the active solution. Returns for each: lesson_id, day, hour,
+    classroom_name."""
+    a = db.get(models.Assignment, assignment_id)
+    if a is None:
+        raise HTTPException(404, "assignment non trovata")
+    t = db.get(models.Teacher, a.teacher_id)
+    c = db.get(models.SchoolClass, a.class_id)
+    if t is None or c is None:
+        raise HTTPException(404, "assignment con docente/classe mancante")
+    active = engine_io.get_active_solution(db)
+    if active is None:
+        return {"assignment_id": assignment_id, "lessons": [],
+                "expected_hours": int(a.hours), "active_solution": None}
+    lessons = db.query(models.Lesson).filter(
+        models.Lesson.solution_id == active.id,
+        models.Lesson.teacher_name == t.name,
+        models.Lesson.class_name == c.name,
+        models.Lesson.subject == a.subject,
+    ).order_by(models.Lesson.day, models.Lesson.hour).all()
+    out = []
+    for l in lessons:
+        out.append({
+            "lesson_id": l.id,
+            "day": l.day,
+            "hour": l.hour,
+            "classroom_name": l.classroom_name,
+        })
+    return {
+        "assignment_id": assignment_id,
+        "active_solution": active.id,
+        "teacher_name": t.name,
+        "class_name": c.name,
+        "subject": a.subject,
+        "expected_hours": int(a.hours),
+        "lessons": out,
+    }
+
+
+from pydantic import BaseModel as _BM
+
+
+class LessonReassignIn(_BM):
+    """Move/edit a single lesson realising an assignment.
+
+    Either day+hour (re-time) or classroom_name (re-room) or both can
+    change. Set on_conflict to choose how to handle a clash:
+        'dry_run'    - just report; do not persist
+        'unassign'   - clear the conflicting lesson(s) at dst (or evict
+                       the room from another lesson when only the room
+                       conflicts)
+        'cancel'     - 400 with no change
+        'optimize'   - same as 'unassign' for now; the UI is expected
+                       to follow up by launching the optimizer on the
+                       freed slot. We do not auto-launch here.
+    """
+    day: int | None = None
+    hour: int | None = None
+    classroom_name: str | None = None  # None = leave as-is; '' = clear
+    on_conflict: str = "dry_run"
+
+
+def _conflict_lessons(db, active_id: int, target: models.Lesson,
+                      new_day: int, new_hour: int,
+                      new_room: str | None) -> dict:
+    """Look for HARD conflicts at the destination (day, hour).
+    Returns dict with sets of conflict lessons."""
+    teacher_busy: list[models.Lesson] = []
+    class_busy: list[models.Lesson] = []
+    room_busy: list[models.Lesson] = []
+    rows = db.query(models.Lesson).filter(
+        models.Lesson.solution_id == active_id,
+        models.Lesson.day == new_day,
+        models.Lesson.hour == new_hour,
+        models.Lesson.id != target.id,
+    ).all()
+    for r in rows:
+        if r.teacher_name == target.teacher_name:
+            teacher_busy.append(r)
+        if r.class_name == target.class_name:
+            class_busy.append(r)
+        if (new_room and r.classroom_name == new_room
+                and (new_room or "") != ""):
+            room_busy.append(r)
+    return {
+        "teacher_busy": teacher_busy,
+        "class_busy": class_busy,
+        "room_busy": room_busy,
+    }
+
+
+@router.put("/event/{assignment_id}/lesson/{lesson_id}")
+def reassign_lesson(assignment_id: int, lesson_id: int,
+                    payload: LessonReassignIn,
+                    db: Session = Depends(get_db)):
+    """Move a single lesson to a new (day, hour) and/or classroom,
+    detecting conflicts and offering resolutions."""
+    a = db.get(models.Assignment, assignment_id)
+    if a is None:
+        raise HTTPException(404, "assignment non trovata")
+    target = db.get(models.Lesson, lesson_id)
+    if target is None:
+        raise HTTPException(404, "lezione non trovata")
+    active = engine_io.get_active_solution(db)
+    if active is None or target.solution_id != active.id:
+        raise HTTPException(400, "lezione non appartiene alla soluzione attiva")
+
+    new_day = int(payload.day) if payload.day is not None else target.day
+    new_hour = int(payload.hour) if payload.hour is not None else target.hour
+    if new_day not in _DAYS or new_hour not in _HOURS:
+        raise HTTPException(400, "day/hour fuori range")
+    new_room = (target.classroom_name if payload.classroom_name is None
+                else (payload.classroom_name or None))
+
+    # Same slot + same room ? noop
+    if (new_day == target.day and new_hour == target.hour
+            and new_room == target.classroom_name):
+        return {"ok": True, "no_change": True}
+
+    cinfo = _conflict_lessons(db, active.id, target, new_day, new_hour,
+                              new_room)
+    has_conflict = (cinfo["teacher_busy"] or cinfo["class_busy"]
+                    or cinfo["room_busy"])
+
+    def _summarise(rows: list[models.Lesson]) -> list[dict]:
+        return [{"lesson_id": r.id, "teacher_name": r.teacher_name,
+                 "class_name": r.class_name, "subject": r.subject,
+                 "day": r.day, "hour": r.hour,
+                 "classroom_name": r.classroom_name}
+                for r in rows]
+
+    conflict_payload = {
+        "teacher_busy": _summarise(cinfo["teacher_busy"]),
+        "class_busy": _summarise(cinfo["class_busy"]),
+        "room_busy": _summarise(cinfo["room_busy"]),
+    }
+
+    if has_conflict and payload.on_conflict == "dry_run":
+        return {"ok": False, "conflict": True, "details": conflict_payload}
+
+    if has_conflict and payload.on_conflict == "cancel":
+        return {"ok": False, "cancelled": True, "details": conflict_payload}
+
+    if has_conflict and payload.on_conflict in ("unassign", "optimize"):
+        # Same teacher/class busy: those lessons CANNOT coexist with the
+        # target on the same slot. We delete them (they become
+        # un-scheduled, surfacing as missing_hours in /monitor).
+        for r in cinfo["teacher_busy"]:
+            db.delete(r)
+        for r in cinfo["class_busy"]:
+            # Avoid double-delete (some lessons may be in both sets)
+            if r in cinfo["teacher_busy"]:
+                continue
+            db.delete(r)
+        # Room conflict: only clear the room of the conflicting lesson;
+        # don't delete the lesson, just free its classroom.
+        for r in cinfo["room_busy"]:
+            if r in cinfo["teacher_busy"] or r in cinfo["class_busy"]:
+                continue
+            r.classroom_name = None
+        db.flush()
+
+    # Apply the move
+    target.day = new_day
+    target.hour = new_hour
+    if payload.classroom_name is not None:
+        target.classroom_name = (payload.classroom_name or None)
+    db.commit()
+
+    return {
+        "ok": True,
+        "conflict": bool(has_conflict),
+        "resolution": payload.on_conflict if has_conflict else None,
+        "details": conflict_payload,
+        "moved_to": {"day": new_day, "hour": new_hour,
+                     "classroom_name": target.classroom_name},
+    }
+
+
 @router.get("/summary")
 def summary(db: Session = Depends(get_db)):
     rows = _build_events(db)
@@ -178,6 +359,8 @@ def summary(db: Session = Depends(get_db)):
 
 
 _DAY_CODE = {1: "lun", 2: "mar", 3: "mer", 4: "gio", 5: "ven", 6: "sab"}
+_DAYS = (1, 2, 3, 4, 5, 6)
+_HOURS = (8, 9, 10, 11, 12, 13)
 
 
 def _slot_label(day: int, hour: int) -> str:
