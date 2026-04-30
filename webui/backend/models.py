@@ -36,13 +36,31 @@ class JSONColumn(Text):
 
 
 def utcnow() -> dt.datetime:
-    return dt.datetime.utcnow()
+    # tz-naive UTC: SQLAlchemy default DateTime is tz-naive on SQLite,
+    # so we strip the timezone for storage compatibility.
+    return dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
+
+
+class TimestampMixin:
+    """Adds `created_at` (default now) and `updated_at` (default now,
+    auto-updated on PUT). Section 2.2 P3.
+
+    Mixed into the user-facing top-level entities (Subject, Teacher,
+    SchoolClass, Classroom, Student, StudyGroup, Curriculum). Existing
+    DBs are auto-upgraded by the lightweight migration in db.py.
+    """
+    created_at: Mapped[dt.datetime] = mapped_column(
+        DateTime, default=utcnow, nullable=False
+    )
+    updated_at: Mapped[dt.datetime] = mapped_column(
+        DateTime, default=utcnow, onupdate=utcnow, nullable=False
+    )
 
 
 # ---------- Subjects ----------
 
 
-class Subject(Base):
+class Subject(TimestampMixin, Base):
     __tablename__ = "subjects"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(64), unique=True, index=True)
@@ -60,7 +78,7 @@ class Subject(Base):
 # ---------- Teachers ----------
 
 
-class Teacher(Base):
+class Teacher(TimestampMixin, Base):
     __tablename__ = "teachers"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(120), unique=True, index=True,
@@ -178,7 +196,7 @@ class TeacherCompatibleClass(Base):
 # ---------- Classes ----------
 
 
-class SchoolClass(Base):
+class SchoolClass(TimestampMixin, Base):
     __tablename__ = "school_classes"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(40), unique=True, index=True)
@@ -405,7 +423,7 @@ class AppState(Base):
 # ---------- Classrooms (aule) ----------
 
 
-class Classroom(Base):
+class Classroom(TimestampMixin, Base):
     __tablename__ = "classrooms"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(64), unique=True, index=True)
@@ -626,7 +644,7 @@ class CoTeachingRule(Base):
 # ---------- Curricula (indirizzi di studio) ----------
 
 
-class Curriculum(Base):
+class Curriculum(TimestampMixin, Base):
     """An indirizzo di studio (e.g. Scientifico, Linguistico, ITIS) with its
     own monte-ore per anno and curriculum-level logical constraints."""
     __tablename__ = "curricula"
@@ -698,7 +716,7 @@ class CurriculumLogicalConstraint(Base):
 # ---------- Students ----------
 
 
-class Student(Base):
+class Student(TimestampMixin, Base):
     """A student record. Optionally associated to a single home class.
     Students can also belong to one or more StudyGroup via GroupMembership
     (e.g. a language group cutting across two classes)."""
@@ -737,7 +755,7 @@ class Student(Base):
 # ---------- Study groups (gruppi articolati / classi frazionate) ----------
 
 
-class StudyGroup(Base):
+class StudyGroup(TimestampMixin, Base):
     """A study group cutting across one or more classes (type C semantics).
 
     Examples: 'IRC vs Alternativa', 'Spagnolo vs Tedesco', 'Recupero

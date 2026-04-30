@@ -140,6 +140,19 @@ def _apply_migrations_on(engine):
                 "ON lessons (solution_id, classroom_name, day, hour)",
             ):
                 conn.execute(text(stmt))
+        for tbl in ("subjects", "teachers", "school_classes", "classrooms",
+                    "curricula", "students", "study_groups"):
+            if not insp.has_table(tbl):
+                continue
+            for col in ("created_at", "updated_at"):
+                if not has_column(tbl, col):
+                    conn.execute(text(
+                        f"ALTER TABLE {tbl} ADD COLUMN {col} DATETIME"
+                    ))
+                    conn.execute(text(
+                        f"UPDATE {tbl} SET {col} = CURRENT_TIMESTAMP "
+                        f"WHERE {col} IS NULL"
+                    ))
 
 
 @pytest.fixture

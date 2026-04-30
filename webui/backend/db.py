@@ -128,3 +128,25 @@ def _apply_lightweight_migrations() -> None:
                 "ON lessons (solution_id, classroom_name, day, hour)",
             ):
                 conn.execute(text(stmt))
+
+        # created_at / updated_at on user-facing entities
+        # (Section 2.2 P3). SQLite forbids non-constant defaults in
+        # ALTER TABLE ADD COLUMN, so we add the columns nullable, then
+        # backfill with CURRENT_TIMESTAMP. Existing rows get a sensible
+        # value; future writes are populated by the ORM mixin.
+        timestamped = (
+            "subjects", "teachers", "school_classes", "classrooms",
+            "curricula", "students", "study_groups",
+        )
+        for tbl in timestamped:
+            if not insp.has_table(tbl):
+                continue
+            for col in ("created_at", "updated_at"):
+                if not has_column(tbl, col):
+                    conn.execute(text(
+                        f"ALTER TABLE {tbl} ADD COLUMN {col} DATETIME"
+                    ))
+                    conn.execute(text(
+                        f"UPDATE {tbl} SET {col} = CURRENT_TIMESTAMP "
+                        f"WHERE {col} IS NULL"
+                    ))
