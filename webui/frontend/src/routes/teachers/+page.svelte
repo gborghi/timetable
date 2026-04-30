@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { api } from '$lib/api.js';
   import { flash, refreshDataset } from '$lib/stores.js';
-  import { DAY_NAMES_EN } from '$lib/constants.js';
+  import { DAY_NAMES_EN, TEACHER_DEFAULTS } from '$lib/constants.js';
   import Modal from '$lib/components/Modal.svelte';
   import AvailabilityMatrix from '$lib/components/AvailabilityMatrix.svelte';
   import SortableQueryableList from '$lib/components/SortableQueryableList.svelte';
@@ -10,6 +10,7 @@
   import ImportButton from '$lib/components/ImportButton.svelte';
   import BulkApplyModal from '$lib/components/BulkApplyModal.svelte';
   import ClassroomGrid from '$lib/components/ClassroomGrid.svelte';
+  import { cloneRow } from '$lib/utils.js';
 
   let editing = null;
   let allSubjects = [];
@@ -37,9 +38,15 @@
       _new: true,
       name: '', last_name: '', first_name: '', nickname: '',
       matricola: '', group: '',
-      max_hours: 18, completion_hours: 0, exemption_hours: 0,
-      free_day: 'Saturday', max_consecutive: 5, notes: '',
-      pref_no_buchi_weight: 10, pref_no_five_weight: 30, pref_no_one_weight: 80,
+      max_hours: TEACHER_DEFAULTS.max_hours,
+      completion_hours: TEACHER_DEFAULTS.completion_hours,
+      exemption_hours: TEACHER_DEFAULTS.exemption_hours,
+      free_day: TEACHER_DEFAULTS.free_day,
+      max_consecutive: TEACHER_DEFAULTS.max_consecutive,
+      notes: '',
+      pref_no_buchi_weight: TEACHER_DEFAULTS.pref_no_buchi_weight,
+      pref_no_five_weight: TEACHER_DEFAULTS.pref_no_five_weight,
+      pref_no_one_weight: TEACHER_DEFAULTS.pref_no_one_weight,
       preferred_days_csv: '',
       subjects: [], unavailability: [],
       mandatory_free_days: [], compatible_classes: [],
@@ -48,7 +55,7 @@
   }
 
   function edit(row) {
-    editing = JSON.parse(JSON.stringify(row));
+    editing = cloneRow(row);
     if (!Array.isArray(editing.unavailability)) editing.unavailability = [];
     if (!editing.last_name && !editing.first_name && editing.name) {
       // back-fill split fields from the legacy 'name' column

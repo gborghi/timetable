@@ -8,6 +8,7 @@
   import LogicalUnavailabilitiesPanel from '$lib/components/LogicalUnavailabilitiesPanel.svelte';
   import ImportButton from '$lib/components/ImportButton.svelte';
   import BulkApplyModal from '$lib/components/BulkApplyModal.svelte';
+  import { cloneRow } from '$lib/utils.js';
 
   let editing = null;
   let allSubjects = [];
@@ -35,7 +36,7 @@
       subjects: [], unavailability: []
     };
   }
-  function edit(row) { editing = JSON.parse(JSON.stringify(row)); }
+  function edit(row) { editing = cloneRow(row); }
 
   function applyCurriculumGrid() {
     if (!editing.curriculum_id) return;

@@ -5,6 +5,7 @@
   import Modal from '$lib/components/Modal.svelte';
   import SortableQueryableList from '$lib/components/SortableQueryableList.svelte';
   import ImportButton from '$lib/components/ImportButton.svelte';
+  import { cloneRow } from '$lib/utils.js';
 
   let editing = null;
   let listRef = null;
@@ -24,7 +25,7 @@
     };
   }
 
-  function edit(row) { editing = JSON.parse(JSON.stringify(row)); }
+  function edit(row) { editing = cloneRow(row); }
 
   let saving = false;
   async function save() {

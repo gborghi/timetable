@@ -6,6 +6,7 @@
   import SortableQueryableList from '$lib/components/SortableQueryableList.svelte';
   import ImportButton from '$lib/components/ImportButton.svelte';
   import ClassroomGrid from '$lib/components/ClassroomGrid.svelte';
+  import { cloneRow } from '$lib/utils.js';
 
   let editing = null;
   let weights = [];
@@ -29,7 +30,7 @@
     };
   }
   function edit(row) {
-    editing = JSON.parse(JSON.stringify(row));
+    editing = cloneRow(row);
     if (!Array.isArray(editing.classroom_prefs)) editing.classroom_prefs = [];
   }
   function onClassroomPrefsChange(newPrefs) {

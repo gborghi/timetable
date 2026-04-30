@@ -5,6 +5,7 @@
   import Modal from '$lib/components/Modal.svelte';
   import SortableQueryableList from '$lib/components/SortableQueryableList.svelte';
   import ImportButton from '$lib/components/ImportButton.svelte';
+  import { cloneRow } from '$lib/utils.js';
 
   let editing = null;
   let listRef = null;
@@ -69,7 +70,7 @@
   }
 
   async function edit(row) {
-    editing = JSON.parse(JSON.stringify(row));
+    editing = cloneRow(row);
     activeTab = 'hours';
     selectedYear = 1;
     await reloadLogicalRules();

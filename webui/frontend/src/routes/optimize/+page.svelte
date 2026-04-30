@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { api } from '$lib/api.js';
   import { flash, refreshDataset } from '$lib/stores.js';
+  import { OPTIMIZE_DEFAULTS } from '$lib/constants.js';
   import RunLogPanel from '$lib/components/RunLogPanel.svelte';
 
   let runId = null;
@@ -9,7 +10,7 @@
   let lastRefresh = 0;
 
   // Parameters per step
-  let step1 = { profile: 'small', mode: 'aggregated', margin: 0.05, base_max_hours: 18 };
+  let step1 = { ...OPTIMIZE_DEFAULTS };
   let step1import = { profile: 'small', use_optimized: true };
   let step2 = { time_limit_s: 30, workers: 8, log: true };
   let step3 = {

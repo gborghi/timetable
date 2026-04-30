@@ -3,6 +3,7 @@
   import { api } from '$lib/api.js';
   import { flash } from '$lib/stores.js';
   import Modal from '$lib/components/Modal.svelte';
+  import { cloneRow } from '$lib/utils.js';
 
   let rows = [];
   let editing = null;
@@ -24,7 +25,7 @@
     };
   }
 
-  function edit(row) { editing = JSON.parse(JSON.stringify(row)); }
+  function edit(row) { editing = cloneRow(row); }
 
   async function save() {
     const payload = {
