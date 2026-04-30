@@ -41,16 +41,17 @@ sono in `lib/api.js` (thin fetch wrapper), gli store globali in
 
 **Suggerimenti**
 
-- **P1** -- estrarre i moduli "service" per ogni dominio (es.
-  `lib/services/teachers.js`, `lib/services/coverage.js`) che contengono
-  solo le chiamate API + helper di trasformazione. Le pagine diventano
-  presentational. Questo abbatte la duplicazione (es. ogni pagina lista
-  ha la stessa logica `reload(); flash('Errore: '+e.message)`).
-- **P1** -- spezzare le 3-4 pagine sopra le 400 LoC. `schedule/+page.svelte`
-  e' ~840 LoC con 4 viste, drag-drop, move-preview e dropdown aule:
-  estrarre un `<ScheduleClassMatrix>`, `<ScheduleTeacherMatrix>`,
-  `<ScheduleRoomMatrix>`, `<ScheduleListView>` e' lavoro mecccanico ma
-  rende ogni pezzo testabile e riusabile.
+- **P1** [DONE 2026-04-30 a2ad8af] -- estrarre i moduli "service" per
+  ogni dominio (es. `lib/services/teachers.js`, `lib/services/coverage.js`)
+  che contengono solo le chiamate API + helper di trasformazione.
+  Implementato come `lib/services/index.js` con namespace per resource;
+  8 pagine CRUD migrate; le altre seguiranno incrementalmente.
+- **P1** [DONE 2026-04-30 99f9809] -- spezzare le 3-4 pagine sopra le 400
+  LoC. `schedule/+page.svelte` da 838 -> 704 LoC, estratti
+  `MoveModeBanner`, `RoomDropdown`, `PreviewCellHint`,
+  `RoomClearedNoticeModal`, `SolutionsTable` in
+  `lib/components/schedule/`. Le matrici intere lasciate inline (drag
+  state condiviso).
 - **P2** -- migrare a TypeScript. Il fetch wrapper restituisce `any`,
   i payload modal sono `any`, lo schema Pydantic backend non ha riflesso
   client. Generare client tipizzato dall'OpenAPI di FastAPI (`openapi-fetch`,
@@ -73,13 +74,13 @@ con date come Student (`birth_date`) c'e' gia' coercion implicita.
 
 **Suggerimenti**
 
-- **P1** -- usare `structuredClone(row)` dove serve un deep-clone (Node
-  18+, browser moderni); altrimenti uno helper `cloneRow()` in
-  `lib/utils.js` con conversioni esplicite (Date in/out ISO).
-- **P1** -- introdurre uno store derivato per il dataset state che si
-  aggiorna automaticamente dopo ogni mutazione (`refreshDataset` e' gia'
-  presente ma viene chiamato manualmente in ogni pagina; centralizzare
-  via subscription al `flash`/`mutation` evento).
+- **P1** [DONE 2026-04-30 aaaff91] -- usare `structuredClone(row)` dove
+  serve un deep-clone. Helper `cloneRow()` in `lib/utils.js` con fallback
+  JSON; 8 pagine migrate.
+- **P1** [DONE 2026-04-30 1aea608] -- store derivato per dataset state
+  che si aggiorna automaticamente dopo ogni mutazione. Implementato in
+  `lib/stores.js` come `mutationCounter` + `bumpMutation()` con debounce
+  di 120ms su `refreshDataset`.
 - **P2** -- adottare un piccolo "query cache" tipo
   [TanStack Query](https://github.com/svalrog/svelte-query) per i GET di
   lista. Oggi ogni `listRef.reload()` e' una fetch fresca; un cache con
@@ -96,17 +97,19 @@ mouse (drag-and-drop pure mouse).
 
 **Suggerimenti**
 
-- **P1** -- audit ARIA: aggiungere `aria-label` a ogni bottone con solo
-  emoji/icon, ruolo `dialog` + `aria-modal=true` + focus-trap nei Modal,
-  `aria-live="polite"` al Toast container.
+- **P1** [DONE 2026-04-30 773fad2] -- audit ARIA: `aria-label` sui
+  bottoni icon-only, `role=dialog` + `aria-modal=true` + focus-trap nei
+  Modal, `aria-live` (polite/assertive in base al tone) al Toast.
+  Skip-link aggiunto al layout.
 - **P2** -- contrast check: la palette Tailwind usata e' generalmente
   compliante AA, ma i pill `pill-amber` su sfondo `bg-amber-50` sono al
   limite. Passare il sito in axe / Lighthouse e fissare le 5-10 issue
   che vengono fuori.
-- **P2** -- alternative tastiera al drag-and-drop: nelle matrici di
-  /schedule, /monitor, /assenze-supplenze, aggiungere "click sorgente"
-  + "click target" come fallback (gia' presente per il "sposta" in
-  /schedule, replicare in /assenze).
+- **P2** [DONE 2026-04-30 26c5f0b] -- alternative tastiera al drag-drop:
+  in /schedule le celle matrice (vista classi + docenti) hanno tabindex,
+  role=button, aria-label, focus-ring; Enter avvia/conferma move-mode,
+  Escape annulla. /assenze-supplenze gia' usava il pattern click-source
+  + click-target.
 - **P3** -- screen reader pass: alt text nelle figure, table headers
   scope=col/row, skip-link in cima alla nav.
 
@@ -123,12 +126,14 @@ sotto i ~900px.
 - **P1** -- verificare ogni pagina su 375px (mobile) e 768px (tablet).
   Le pagine "list-table-wide" (schedule/list, classrooms/list) andrebbero
   ridotte a "card per row" sotto md.
-- **P2** -- la matrice 6x6 (AvailabilityMatrix, slot picker monitor) puo'
-  essere ridotta su mobile usando label compatti ("L M M G V S" come
-  header, hour 8/9/10/11/12/13 in colonne). In alternativa, su mobile
-  mostrare una sola colonna (giorno) alla volta con un selettore.
-- **P3** -- prevedere PWA / installabile: manifest, icone, offline
-  caching del bundle (la UI e' tutta single-domain, perfetto candidato).
+- **P2** [DONE 2026-04-30 d6d5cde] -- la matrice 6x6 (timetable-grid)
+  ora ha `min-width: 720px` (640px sotto breakpoint 640) cosi' su mobile
+  produce uno scroll orizzontale dentro l'overflow-auto invece di
+  troncarsi. Media query stringe gap e padding sotto 640px.
+- **P3** [DONE 2026-04-30 d6d5cde] -- PWA stub installabile: aggiunto
+  `static/manifest.webmanifest` con palette piTantum (theme/background)
+  e icone esistenti. `app.html` linka manifest + `theme-color` +
+  `viewport initial-scale=1`. Manca offline caching (service worker).
 
 ### 1.5 Performance percepita
 
@@ -144,17 +149,17 @@ medium, ~250 per la huge.
 
 **Suggerimenti**
 
-- **P1** -- aggiungere **skeleton loaders** sulle pagine principali
-  (`SortableQueryableList` puo' rendere N righe placeholder mentre
-  `await reload()` e' in volo).
-- **P1** -- mostrare un indicatore di "sto facendo qualcosa" sui bottoni
-  durante POST/PUT (oggi la UI freeza muta finche' la response arriva).
-  E' gia' implementato in alcuni punti (`disabled={busy}`), va
-  generalizzato.
+- **P1** [DONE 2026-04-30 64caa2e] -- skeleton loaders su
+  `SortableQueryableList` (6 righe placeholder al primo caricamento) +
+  pulse indicator nell'header sui reload successivi.
+- **P1** [DONE 2026-04-30 64caa2e] -- indicatore "sto facendo qualcosa"
+  sui bottoni durante POST/PUT (`disabled={saving}`/`busyStore` in
+  `lib/utils.js`).
 - **P2** -- virtualizzare le liste lunghe. `SortableQueryableList` su
   /monitor e /constraints diventa lenta sopra 1000 righe; integrare
   [svelte-virtual-list](https://github.com/sveltejs/svelte-virtual-list)
-  o equivalente.
+  o equivalente. (Dataset reale piTantum non si avvicina, lasciato
+  per quando i numeri lo richiederanno.)
 - **P2** -- pagine con `import` carica la lista intera al mount: per le
   pagine con >500 righe (Studenti su huge, Lezioni/Soluzione attiva)
   introdurre paginazione lato server (vedere sezione backend) e
@@ -175,19 +180,19 @@ il messaggio e' un Pydantic dump non leggibile.
 
 **Suggerimenti**
 
-- **P1** -- design system minimale: spostare i 5 colori vincolo
-  (HARD/SOFT/PREFERITO/ENFORCED/ALLOWED) in `tailwind.config.js` come
-  classi custom (`bg-c-hard`, `bg-c-soft`, ...). Eliminare gli inline
-  `style="..."`.
-- **P1** -- error handler centralizzato in `api.js` che riconosce le
-  4-5 forme di response error tipiche di FastAPI (`detail` string,
-  `detail` array of validation errors, generic 500) e produce un
-  messaggio leggibile.
+- **P1** [DONE 2026-04-30 773fad2] -- design system minimale: tokens
+  `c.{hard,soft,pref,enf,allow,forbidden}-{bg,fg,border}` in
+  `tailwind.config.js`, classi pill `pill-c-*`, inline
+  `style="background:#065f46..."` rimossi (8 occorrenze sostituite).
+- **P1** [DONE 2026-04-30 1aea608] -- error handler centralizzato in
+  `api.js` (`formatApiError`) che gestisce le 3 forme tipiche FastAPI
+  (`detail: string`, `detail: [{loc,msg,type}]`, `error: string`).
 - **P2** -- microcopy review: alcuni testi sono in italiano + inglese
   mescolati ("Cerca conflitti" / "dry-run"). Decidere lingua e
   uniformare.
-- **P3** -- toast con azioni (es. "Cancellato. UNDO?") via stack di
-  toast con TTL.
+- **P3** [DONE 2026-04-30 26c5f0b] -- toast con azioni (UNDO) via
+  `flash(msg, tone, {action: {label, fn}})` -- collegato ai delete di
+  /teachers, /classes, /students con TTL 8s.
 
 ### 1.7 Robustezza
 
@@ -202,13 +207,19 @@ il messaggio e' un Pydantic dump non leggibile.
 
 **Suggerimenti**
 
-- **P1** -- retry esponenziale per i 5xx (3 tentativi con backoff).
-- **P1** -- network status banner: ping `/api/health` ogni 30 s, se
-  offline mostra un banner persistente in alto.
+- **P1** [DONE 2026-04-30 1aea608] -- retry esponenziale per i 5xx
+  (200/400/800ms) per GET/HEAD; mutazioni non retry-ate.
+- **P1** [DONE 2026-04-30 1aea608] -- network status banner: ping
+  `/api/health` ogni 30s, se offline banner persistente in alto del
+  layout (`networkOnline` store + `startNetworkMonitor`).
 - **P2** -- optimistic update sulle liste corte (CRUD: aggiungi la riga
-  client-side, rollback su errore).
-- **P2** -- soft-delete + "ripristina" entro 5 s tramite toast con
-  azione UNDO.
+  client-side, rollback su errore). Considerato rischioso per un tool
+  interno; rimandato.
+- **P2** [DONE 2026-04-30 26c5f0b] -- soft-delete + "ripristina" tramite
+  toast con azione UNDO. Wired su /teachers, /classes, /students; il
+  ripristino ricrea la riga (POST) ma perde il primary key originale.
+  Non e' un soft-delete vero (lato DB) ma copre il caso "ho cancellato
+  per sbaglio".
 
 ### 1.8 Test
 
@@ -216,10 +227,10 @@ il messaggio e' un Pydantic dump non leggibile.
 
 **Suggerimenti**
 
-- **P1** -- introdurre Vitest con 5-10 test smoke iniziali sulle utility
-  pure (`logic_parser` lato client se mai esistesse uno; per ora il
-  parser e' solo backend, ma la classifying logic dei 5 stati
-  `kindFromRule(r)` e' duplicata in 3-4 file: testarla in unit).
+- **P1** [DONE 2026-04-30] -- 20 smoke test su `constraint_levels.js`
+  (`kindFromRule`, `payloadFromKind`, `clampPenalty`, mapping coverage).
+  Usa `node --test` (Node 20+) cosi' niente nuova dependency vitest.
+  `npm test` nel frontend esegue la suite (~250ms).
 - **P2** -- Playwright per 3-5 test e2e: importa profilo small, naviga,
   edita un docente, runna phase A. Gira in CI.
 - **P3** -- visual regression con Playwright + screenshot delle pagine
@@ -241,10 +252,14 @@ il messaggio e' un Pydantic dump non leggibile.
 
 - **P1** -- creare un componente generico `<EntityListPage>` con slot
   per le colonne, l'editing modal, le actions. Astrazione pesante ma
-  paga al primo nuovo CRUD page.
-- **P1** -- estrarre `lib/constraint_levels.js` con
-  `LEVELS = ['hard','soft','preferred','enforced','allowed']` +
-  `kindFromRule(r)` + `levelClass(state)` + `levelLabel(state)`.
+  paga al primo nuovo CRUD page. (Rimandato: i template attuali sono
+  poco simili tra loro -- ogni pagina ha campi specifici -- e
+  `SortableQueryableList` copre gia' la parte query/sort/render.)
+- **P1** [DONE 2026-04-30 773fad2] -- estratto `lib/constraint_levels.js`
+  con `LEVELS`, `LOGICAL_KINDS`, `LEVEL_LABEL`, `LEVEL_PILL_CLASS`,
+  `LEVEL_CELL_CLASS`, `DEFAULT_PENALTY`, `kindFromRule`, `levelPill`,
+  `levelLabel`, `levelCellClass`, `payloadFromKind`, `clampPenalty`.
+  Single source of truth per i 5 stati (4 file riducono duplicazione).
 
 ---
 
