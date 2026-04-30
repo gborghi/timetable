@@ -349,16 +349,24 @@ def reassign_lesson(assignment_id: int, lesson_id: int,
 
 @router.get("/summary")
 def summary(db: Session = Depends(get_db)):
-    rows = _build_events(db)
-    n = len(rows)
-    n_incomplete = sum(1 for r in rows if not r["is_complete"])
-    return {
-        "n_events": n,
-        "n_incomplete": n_incomplete,
-        "n_missing_hours": sum(1 for r in rows if r["missing_hours"]),
-        "n_missing_room": sum(1 for r in rows if r["missing_room"]),
-        "n_missing_group": sum(1 for r in rows if r["missing_group"]),
-    }
+    """Section 2.4 P1: cached 15s with mutation invalidation."""
+    from ..utils.ttl_cache import cached as ttl_cached
+
+    def _compute():
+        rows = _build_events(db)
+        n = len(rows)
+        n_incomplete = sum(1 for r in rows if not r["is_complete"])
+        return {
+            "n_events": n,
+            "n_incomplete": n_incomplete,
+            "n_missing_hours": sum(1 for r in rows if r["missing_hours"]),
+            "n_missing_room": sum(1 for r in rows if r["missing_room"]),
+            "n_missing_group": sum(1 for r in rows if r["missing_group"]),
+        }
+    return ttl_cached(
+        "monitor.summary", ttl_s=15.0, mutation_aware=True,
+        compute=_compute,
+    )
 
 
 # ---------- Constraints view ----------

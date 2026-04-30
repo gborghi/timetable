@@ -8,12 +8,12 @@ from sqlalchemy.orm import Session
 
 from .. import models, schemas, optimization, engine_io
 from ..db import get_db
+from ..utils.ttl_cache import cached as ttl_cached
 
 router = APIRouter(prefix="/api/dataset", tags=["dataset"])
 
 
-@router.get("/state")
-def get_state(db: Session = Depends(get_db)):
+def _compute_state(db: Session) -> dict:
     n_classes = db.query(models.SchoolClass).count()
     n_teachers = db.query(models.Teacher).count()
     n_subjects = db.query(models.Subject).count()
@@ -44,6 +44,19 @@ def get_state(db: Session = Depends(get_db)):
             }
         ),
     }
+
+
+@router.get("/state")
+def get_state(db: Session = Depends(get_db)):
+    """Section 2.4 P1: cached for 30s with mutation invalidation. The
+    9-COUNT scan + active_solution lookup are cheap individually but
+    /api/dataset/state is polled aggressively by the layout (header
+    pills) and Dashboard, so the savings are in served-request count
+    not per-call latency."""
+    return ttl_cached(
+        "dataset.state", ttl_s=30.0, mutation_aware=True,
+        compute=lambda: _compute_state(db),
+    )
 
 
 @router.post("/mock")

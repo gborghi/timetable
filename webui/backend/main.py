@@ -25,6 +25,7 @@ if PARENT not in sys.path:
 
 from backend.db import init_db  # noqa: E402
 from backend.logging_setup import configure_logging, get_logger  # noqa: E402
+from backend.utils.mutation_bump import MutationBumpMiddleware  # noqa: E402
 from backend.utils.request_logging import RequestLoggingMiddleware  # noqa: E402
 from backend.routers import (  # noqa: E402
     assignments,
@@ -91,6 +92,7 @@ app = FastAPI(
 )
 
 app.add_middleware(RequestLoggingMiddleware)
+app.add_middleware(MutationBumpMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_allow_origins(),
