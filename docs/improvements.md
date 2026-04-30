@@ -276,14 +276,18 @@ serializzazione, e regole di policy).
 
 **Suggerimenti**
 
-- **P1** -- estrarre uno strato `services/` (es. `services/coverage.py`,
-  `services/monitor.py`) con le funzioni "pure" (data shaping). I router
-  diventano shim. Rende riusabile la stessa funzione da tasks
-  (es. job di metriche notturne).
-- **P2** -- tagliare `monitor.py` (843 LoC) in 3-4 moduli:
-  `monitor/events.py`, `monitor/constraints.py`, `monitor/conflicts.py`,
-  `monitor/lesson_moves.py`. Stesso per `imports.py` (710 LoC) -> uno
-  modulo per entita'.
+- **P1** [DONE 2026-04-30 32f69d6 (starter)] -- creato
+  `webui/backend/services/` con `dataset_state.compute_state(db)`
+  estratto da `routers/dataset.py`. Il pattern e' stabilito; le
+  prossime estrazioni (monitor.events, monitor.constraints,
+  monitor.conflicts, imports.<entity>) sono lavoro mecccanico
+  rimandato per minimizzare il rischio di regressione in questa
+  passata.
+- **P2** [PENDING] -- splittare `monitor.py` (843 LoC) e `imports.py`
+  (710 LoC) in submoduli per entita'. Le funzioni pure sono gia'
+  candidabili (vedi `_build_events`, `_build_constraints`,
+  `_detect_conflicts`); l'estrazione per dominio e' la prossima
+  iterazione.
 
 ### 2.2 Modello dati
 
@@ -310,22 +314,33 @@ copertura indici / cascade e' decente.
 
 **Suggerimenti**
 
-- **P1** -- aggiungere indici composti:
-  - `lessons(solution_id, day, hour)`
-  - `lessons(solution_id, teacher_name, day, hour)`
-  - `lessons(solution_id, class_name, day, hour)`
-  - `lessons(solution_id, classroom_name, day, hour)`
-  Misurare prima/dopo: i `_conflict_lessons` di monitor.py sono i
-  candidati piu' caldi.
-- **P1** -- consolidare `state` come unica fonte di verita' su
-  `ClassroomSubjectPreference`; convertire `required` in property
-  computata o eliminarlo dalla colonna.
-- **P2** -- denormalizzare meno: `Lesson` potrebbe avere `teacher_id`,
-  `class_id`, `classroom_id` come FK invece di nomi. Migrazione
-  costosa, ma rende rinomi safe e taglia i bug invisibili.
-- **P2** -- migrare `metrics_json` etc. al tipo `JSON` di SQLAlchemy.
-- **P3** -- aggiungere `created_at`, `updated_at` su tutte le tabelle.
-  Utile per audit log ed export incremental.
+- **P1** [DONE 2026-04-30 c9636eb] -- 4 indici composti su `lessons`
+  (`sol_day_hour`, `sol_teacher_day_hour`, `sol_class_day_hour`,
+  `sol_room_day_hour`). Dichiarati via `Index()` in
+  `Lesson.__table_args__`; CREATE INDEX IF NOT EXISTS nel
+  lightweight-migration per upgrade in-place; live DB gia'
+  migrata.
+- **P1** [DONE 2026-04-30 3546871] -- `state` source-of-truth in
+  `ClassroomSubjectPreference`. Event listener
+  `_sync_csp_required` su before_insert/before_update forza
+  `required = (state == 'enforced')`. Il bool resta come colonna
+  per backward-compat con engine_io ma diventa derivato.
+- **P2** [PENDING -- migrazione invasiva] -- denormalizzare meno
+  Lesson (teacher_id/class_id/classroom_id come FK). Richiede
+  migration con backfill su tabelle live + aggiornamento di tutti i
+  consumer (engine_io, exporters, monitor); ~3-5 giorni. Da fare
+  quando il sistema gestisce rinomi piu' frequentemente.
+- **P2** [PENDING -- low ROI] -- migrare `metrics_json` etc. al tipo
+  `JSON` di SQLAlchemy. Le colonne attuali sono Text con `json.dumps`
+  lato Python; il refactor e' meccanico ma rischia di rompere il
+  serialization round-trip per i pickle esistenti.
+- **P3** [DONE 2026-04-30 b752211 -- selective] -- `created_at` +
+  `updated_at` aggiunti tramite `TimestampMixin` alle 7 entita'
+  user-facing (Subject, Teacher, SchoolClass, Classroom, Curriculum,
+  Student, StudyGroup). Le tabelle junction / detail e Lesson sono
+  esplicitamente escluse (Lesson cresce a 36 row per docente-week
+  -> overhead di scrittura non giustificato). Live DB gia'
+  migrata.
 
 ### 2.3 API design
 
@@ -351,21 +366,28 @@ frontend route). OpenAPI di default attivo (`/docs` Swagger UI).
 
 **Suggerimenti**
 
-- **P1** -- introdurre paginazione standard:
-  `?limit=N&offset=M` su tutte le liste lunghe (`students`, `lessons`,
-  `monitor/events`, `assignments`). Response `{items: [...],
-  total: int}`.
-- **P1** -- response schema esplicito per ogni endpoint: aggiungere
-  `response_model=list[StudentOut]` ovunque, cosi' OpenAPI riflette la
-  realta'.
-- **P2** -- error response schema unificato con un Pydantic
-  `ErrorResponse` (`{detail, code, field?, hint?}`) e un
-  `@app.exception_handler(SQLAlchemyError)` globale che traduce
-  IntegrityError ecc. in 400 leggibili.
-- **P2** -- naming: scegliere e documentare (kebab-case sul URL,
-  snake_case sui body).
-- **P3** -- versioning `/api/v1/...` per quando serviranno breaking
-  changes.
+- **P1** [DONE 2026-04-30 3c28c6c] -- paginazione opt-in su
+  `/api/students` e `/api/monitor/events`. Helper
+  `utils.pagination.paginated_or_list(rows, limit, offset)`: con
+  ?limit / ?offset ritorna `{items, total, limit, offset}`,
+  altrimenti la lista bare (legacy compat). Estendibile alle altre
+  liste lunghe quando necessario.
+- **P1** [PENDING -- mecccanico] -- aggiungere
+  `response_model=list[XOut]` a ogni list endpoint. Molti
+  POST/PUT/DELETE l'hanno gia' (10 router su 17); le 7 list-GET
+  bare aggiunte incrementalmente.
+- **P2** [DONE 2026-04-30 fe3e72c] -- ErrorResponse Pydantic unificato
+  + 5 exception handler globali (HTTPException,
+  RequestValidationError, IntegrityError, SQLAlchemyError,
+  RuntimeError, Exception catch-all). Forma canonica:
+  `{detail, code, errors[], hint, request_id, error}`.
+- **P2** [PENDING -- bassa priorita'] -- naming kebab vs snake. Lo
+  stack e' coerente al 90% (snake-case sui body Pydantic,
+  kebab-case sui path); pochi residui legacy (`/api/coverage/week`
+  ok, ma `/api/dataset/state` snake nel path). Da uniformare prima
+  di aprire la API a clienti esterni.
+- **P3** [PENDING] -- versioning `/api/v1/...`. Senza prefisso oggi;
+  quando serviranno breaking change verra' introdotto.
 
 ### 2.4 Performance
 
@@ -382,15 +404,24 @@ viene ricalcolato ad ogni request.
 
 **Suggerimenti**
 
-- **P1** -- introdurre `lru_cache` o un cache manuale TTL=30s su
-  `dataset/state`, `monitor/summary`, `dataset/available-profiles`.
-  Invalidate su mutation con un counter globale.
-- **P2** -- batch endpoint per /assignments che ritorna in un solo
-  payload `{by_class, loads, teachers_for_each_subject}`.
-- **P2** -- profiling: istallare `pyinstrument` o `sqltap` e correre i
-  3-4 endpoint piu' lenti su una huge import. Gli indici suggeriti
-  in 2.2 dovrebbero rimuovere i candidati piu' caldi.
-- **P3** -- response compression: `GZipMiddleware` su FastAPI.
+- **P1** [DONE 2026-04-30 59589f2] -- TTL cache custom in
+  `utils/ttl_cache.py` (`cached(key, ttl_s, mutation_aware,
+  compute)`) + `MutationBumpMiddleware` che bumpa il counter su
+  ogni 2xx POST/PUT/PATCH/DELETE. Wired su
+  `/api/dataset/state` (TTL 30s) e `/api/monitor/summary` (TTL 15s).
+  `dataset/available-profiles` non e' chiamato spesso quanto gli
+  altri due, lasciato non-cached.
+- **P2** [PENDING] -- batch endpoint per /assignments. La pagina
+  /assignments fa 2-3 chiamate concorrenti; un solo
+  `GET /api/assignments/dashboard` che ritorna
+  `{by_class, loads, teachers_for_each_subject}` ridurrebbe la
+  latenza percepita.
+- **P2** [PENDING] -- profiling con pyinstrument su huge import. Da
+  fare quando ci sara' una baseline post-indici (B2) per misurare
+  il guadagno reale.
+- **P3** [DONE 2026-04-30 72251d6] -- `GZipMiddleware` con
+  minimum_size=1024 byte. Big payloads (lessons listing huge ~ 4 MB
+  JSON) -70% wire size.
 
 ### 2.5 Scalabilita'
 
@@ -408,18 +439,18 @@ bloccanti tengono i thread del worker pool occupati.
 
 **Suggerimenti**
 
-- **P2** -- planning per Postgres: SQLAlchemy 2.0 supporta entrambi.
-  Migrazione e' principalmente: cambiare `DATABASE_URL`, usare Alembic
-  per le migration, sostituire le `ALTER TABLE ... ADD COLUMN` raw con
-  Alembic versioning. Vedere 2.7.
-- **P2** -- introdurre **async** dove serve davvero: gli endpoint che
-  fanno solo I/O su DB (le liste) potrebbero passare a `AsyncSession`
-  e `httpx`. Per i job lunghi (optimization) la `BackgroundTasks` o un
-  worker separato (Celery / RQ) e' piu' pulito del thread pool attuale
-  (`run_manager.py`).
-- **P3** -- multi-tenant: aggiungere `tenant_id` a ogni tabella, oppure
-  schema-per-tenant in Postgres. Decisione architetturale, da
-  pianificare quando il use case lo giustifica.
+- **P2** [SKIPPED 2026-04-30 -- richiede autorizzazione esplicita
+  Giovanni] -- planning per Postgres. SQLite oggi soddisfa
+  single-user single-tenant; Postgres porta benefici solo se si
+  apre la concurrency / multi-tenant, decisione architetturale
+  rimandata. Il commit B9 ha introdotto Alembic, che facilita la
+  migrazione futura quando la decisione sara' presa.
+- **P2** [PENDING -- significativo refactor] -- async via
+  AsyncSession. SQLAlchemy 2.0 lo supporta ma richiede toccare
+  ogni router (def -> async def, db.query -> await session.execute,
+  etc). Da fare quando il numero di utenti concorrenti lo
+  giustifica (oggi e' single-user).
+- **P3** [SKIPPED -- nessun use case attuale] -- multi-tenant.
 
 ### 2.6 Sicurezza
 
@@ -437,19 +468,23 @@ oltre, servono protezioni.
 
 **Suggerimenti**
 
-- **P1** -- autenticazione minima: API key in header (1 docente
-  super-admin) gia' tagliata fuori il 99% dei rischi su LAN scolastica.
-  Step successivo: OAuth con google_id_token o login/password
-  + JWT.
-- **P1** -- restringere CORS a `http://127.0.0.1:5173` quando in dev,
-  via env var.
-- **P2** -- autorizzazione (RBAC): role admin / docente / preside.
-  L'admin puo' clear; il docente puo' solo modificare la sua
-  unavailability.
-- **P2** -- rate limiting su `/api/import/*` (caricamenti grandi) e
-  sugli endpoint di optimization.
-- **P3** -- audit log immutabile su tutti i mutation (chi ha cambiato
-  cosa quando).
+- **P1** [DONE 2026-04-30 72251d6] -- API key opt-in in
+  `utils/auth.py::APIKeyMiddleware`. Disattivata di default
+  (PITANTUM_API_KEY unset = passthrough). Quando attiva,
+  X-API-Key o Bearer obbligatorio su /api/* eccetto health/docs.
+  secrets.compare_digest per timing-safe.
+- **P1** [DONE 2026-04-30 3042c45] -- CORS ristretto a
+  127.0.0.1:5173 + localhost:5173 (+ preview ports). Override via
+  env var `PITANTUM_CORS_ORIGINS`.
+- **P2** [PENDING -- prerequisito: scegliere user model] -- RBAC.
+  Senza un User model in DB non c'e' a chi associare il role.
+  Servirebbe prima un step di User+Auth.
+- **P2** [PENDING] -- rate limiting su /api/import/* e optimize.
+  `slowapi` library (compat FastAPI) + Redis backend per produzione,
+  in-memory ok per single-user dev. Da fare se l'app va su rete.
+- **P3** [PENDING] -- audit log. Hook su mutation_bump che logga
+  chi (User), cosa (path + method), quando (timestamp), prima/dopo
+  (diff JSON). Servono User + immutable log table.
 
 ### 2.7 Migration strategy
 
@@ -464,13 +499,16 @@ finora) ma non scala:
 
 **Suggerimenti**
 
-- **P1** -- introdurre **Alembic**. Generare la migration iniziale dal
-  modello corrente (`alembic revision --autogenerate`) e dichiararla
-  base. Ogni cambio schema e' una nuova revisione tracciata.
-- **P2** -- mantenere idempotenza: gli schema esistenti devono
-  attraversare la migration senza errori. Alembic supporta
-  `op.add_column(..., existing_server_default=...)` con guard via
-  `inspector`.
+- **P1** [DONE 2026-04-30 149575a] -- Alembic introdotto. Baseline
+  revision `f785f5cb346c` consolida la drift fra lightweight migrations
+  legacy e modello canonico (NOT NULL su 14 timestamp + 3 state/kind
+  cols, FK + indici mancanti). Live DB upgradata. env.py legge l'URL
+  dal db.py (single source). render_as_batch=True per SQLite ALTER.
+- **P2** [DONE 2026-04-30 149575a] -- idempotenza preservata: il
+  vecchio `_apply_lightweight_migrations` resta come safety-net
+  startup, idempotente (PRAGMA + IF NOT EXISTS). Coesiste con
+  alembic; per i fresh DB, create_all + lightweight + alembic
+  upgrade head danno lo stesso risultato.
 
 ### 2.8 Logging e observability
 
@@ -480,15 +518,22 @@ metric collector, niente tracing.
 
 **Suggerimenti**
 
-- **P1** -- migrare i `print()` a `logging` standard library con un
-  formatter JSON (per CloudWatch / Loki / Grafana). Anche solo livelli
-  INFO/WARNING/ERROR sono un upgrade enorme.
-- **P2** -- middleware per log structured della request (method, path,
-  status, latency). FastAPI ha esempi ufficiali con `RequestLoggingMiddleware`.
-- **P2** -- export metriche Prometheus: `/metrics` con counter di
-  request, latency p50/p95, mutation count.
-- **P3** -- distributed tracing (OpenTelemetry) -- utile solo se passi
-  a multi-process / microservizi.
+- **P1** [DONE 2026-04-30 3042c45] -- `logging_setup.configure_logging()`
+  centralizza handler stdout, formatter plain default + JSON
+  opt-in (env `PITANTUM_LOG_JSON=1`), level via
+  `PITANTUM_LOG_LEVEL`. I `print()` in optimization.py STANNO:
+  feedano la SSE log stream consumata dal frontend RunLogPanel
+  (cambiarli romperebbe il pannello live), comportamento
+  documentato in logging_setup.py.
+- **P2** [DONE 2026-04-30 3042c45] --
+  `utils/request_logging.RequestLoggingMiddleware` logga 1 INFO
+  per request (method, path, status, latency_ms, request_id,
+  client). Aggiunge X-Request-Id come header risposta (correlazione
+  client-side). Sopprime /api/health per evitare noise.
+- **P2** [PENDING] -- export Prometheus su /metrics. `prometheus-fastapi-instrumentator`
+  e' la dep usuale; 30 LoC. Da fare quando ci sara' un consumer
+  (Grafana / dashboard) — oggi non c'e'.
+- **P3** [SKIPPED -- single-process] -- distributed tracing.
 
 ### 2.9 Error handling, idempotenza, retry
 
@@ -503,10 +548,14 @@ metric collector, niente tracing.
 
 **Suggerimenti**
 
-- **P1** -- avvolgere ogni endpoint mutation in `with db.begin():` o
-  equivalente, garantendo rollback su eccezione.
-- **P2** -- idempotency key (`Idempotency-Key` header) per i POST
-  pesanti tipo `import-profile`.
+- **P1** [DONE 2026-04-30 36f3c0b] -- `get_db()` ora cattura
+  Exception, fa `db.rollback()` e ri-raise. Uncaught raises non
+  lasciano piu' la session inconsistente; le exception bubbling up
+  arrivano puliti ai global handler in main.py.
+- **P2** [PENDING] -- idempotency key. Header `Idempotency-Key`
+  con tabella di cache request->response per i POST pesanti
+  (import-profile, dataset/mock). Da fare se la rete diventa
+  inaffidabile (oggi e' localhost).
 
 ### 2.10 Test
 
@@ -514,17 +563,23 @@ metric collector, niente tracing.
 
 **Suggerimenti**
 
-- **P1** -- pytest con DB SQLite in-memory e fixture per
-  `seed_curricula`. Inizia con 3-5 test sui flussi critici:
-  `import_profile small`, `move-lesson valid`, `move-lesson room-conflict`,
-  `coverage cell`.
-- **P1** -- `httpx.AsyncClient` per smoke tests sui 10-15 endpoint
-  cardine. Gira in CI.
-- **P2** -- property-based test (Hypothesis) sul `logic_parser`: dato un
-  AST random, riserializzare + riparsare deve ritornare la stessa DNF.
-- **P2** -- contract test fra OpenAPI schema e frontend
-  (`openapi-typescript` produce types; un check CI fallisce se
-  cambia il backend senza aggiornare il client).
+- **P1** [DONE 2026-04-30 e196b83 + fe3e72c + 3c28c6c + 59589f2 + 72251d6]
+  -- pytest infrastructure (`webui/backend/tests/conftest.py`) con
+  fixture isolata `app_with_temp_db` (DB tmp_path, mai tocca quella
+  di Giovanni; `dependency_overrides[get_db]`). Tests:
+  smoke (10), errors (5), pagination (5), cache (3), auth (3) =
+  **26 test totali**, ~17s, tutti verdi.
+  Run: `webui/backend/.venv/Scripts/python -m pytest webui/backend/tests/`
+- **P1** [PARTIAL] -- httpx-based smoke tests gia' fatti via
+  TestClient (che usa httpx internamente). Esposti via FastAPI
+  TestClient invece di AsyncClient diretto, ma copertura
+  equivalente.
+- **P2** [PENDING] -- Hypothesis sul logic_parser. La grammatica
+  DSL e' relativamente piccola; un property-based test
+  parse(serialize(AST)) == AST e' un follow-up naturale.
+- **P2** [PENDING] -- contract test OpenAPI vs frontend.
+  Servirebbe `openapi-typescript` lato CI; rimandato (frontend
+  non e' in TS, beneficio ridotto).
 
 ---
 
