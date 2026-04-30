@@ -23,6 +23,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
+from sqlalchemy import event
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
@@ -469,8 +470,11 @@ class ClassroomSubjectPreference(Base):
            'forbidden' - HARD: subject cannot be in this room
            'enforced'  - HARD: subject MUST be in a room of this kind
                          (legacy `required=True` maps here)
-    Backwards-compat: rows without state default to 'allowed'; the boolean
-    `required` column is kept in sync (state='enforced' iff required=True)."""
+    `state` is the SOURCE OF TRUTH; the legacy boolean `required` is kept
+    only for backward-compat with engine_io (which still reads it). A
+    SQLAlchemy event listener keeps `required` in sync with `state` on
+    every insert/update so callers cannot drift the two apart. Section
+    2.2 P1 of docs/improvements.md."""
     __tablename__ = "classroom_subject_preferences"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     classroom_id: Mapped[int] = mapped_column(
@@ -479,17 +483,35 @@ class ClassroomSubjectPreference(Base):
     subject: Mapped[str] = mapped_column(String(64))
     state: Mapped[str] = mapped_column(
         String(16), default="allowed",
-        comment="allowed | preferred | forbidden | enforced"
+        comment="allowed | preferred | forbidden | enforced -- source of truth"
     )
     weight: Mapped[float] = mapped_column(Float, default=10.0)
     required: Mapped[bool] = mapped_column(
         Boolean, default=False,
-        comment="legacy: 'required' == state=='enforced'"
+        comment="DERIVED: kept in sync with `state` via the event "
+                "listener below. Do not write to it directly; set "
+                "`state='enforced'` instead."
     )
     classroom: Mapped["Classroom"] = relationship(back_populates="subject_prefs")
     __table_args__ = (
         UniqueConstraint("classroom_id", "subject", name="uq_room_subj"),
     )
+
+
+def _sync_csp_required(mapper, connection, target):
+    """Auto-sync `required` from `state` on every insert/update.
+
+    'enforced' -> required=True, anything else -> required=False.
+    This keeps the legacy column consistent without forcing every
+    caller to remember to update both fields.
+    """
+    target.required = (target.state == "enforced")
+
+
+event.listen(ClassroomSubjectPreference, "before_insert",
+             _sync_csp_required)
+event.listen(ClassroomSubjectPreference, "before_update",
+             _sync_csp_required)
 
 
 class TeacherClassroomPreference(Base):
