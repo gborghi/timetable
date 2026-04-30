@@ -128,6 +128,18 @@ def _apply_migrations_on(engine):
                     f"ALTER TABLE {tbl} ADD COLUMN kind VARCHAR(16) "
                     f"DEFAULT 'hard'"
                 ))
+        if insp.has_table("lessons"):
+            for stmt in (
+                "CREATE INDEX IF NOT EXISTS ix_lessons_sol_day_hour "
+                "ON lessons (solution_id, day, hour)",
+                "CREATE INDEX IF NOT EXISTS ix_lessons_sol_teacher_day_hour "
+                "ON lessons (solution_id, teacher_name, day, hour)",
+                "CREATE INDEX IF NOT EXISTS ix_lessons_sol_class_day_hour "
+                "ON lessons (solution_id, class_name, day, hour)",
+                "CREATE INDEX IF NOT EXISTS ix_lessons_sol_room_day_hour "
+                "ON lessons (solution_id, classroom_name, day, hour)",
+            ):
+                conn.execute(text(stmt))
 
 
 @pytest.fixture

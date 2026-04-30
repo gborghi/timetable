@@ -17,6 +17,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -321,6 +322,20 @@ class Lesson(Base):
                 "this lesson"
     )
     solution: Mapped["Solution"] = relationship(back_populates="lessons")
+
+    # Composite indexes covering the hot lookup patterns used by
+    # /schedule, /monitor, /coverage and the conflict scanner. Section
+    # 2.2 P1 of docs/improvements.md.
+    __table_args__ = (
+        Index("ix_lessons_sol_day_hour",
+              "solution_id", "day", "hour"),
+        Index("ix_lessons_sol_teacher_day_hour",
+              "solution_id", "teacher_name", "day", "hour"),
+        Index("ix_lessons_sol_class_day_hour",
+              "solution_id", "class_name", "day", "hour"),
+        Index("ix_lessons_sol_room_day_hour",
+              "solution_id", "classroom_name", "day", "hour"),
+    )
 
 
 class DayCount(Base):

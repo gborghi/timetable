@@ -111,3 +111,20 @@ def _apply_lightweight_migrations() -> None:
                     f"  WHEN soft_penalty < 0 THEN 'preferred' "
                     f"  ELSE 'soft' END"
                 ))
+
+        # Composite indexes on `lessons` (Section 2.2 P1). SQLite's
+        # CREATE INDEX IF NOT EXISTS handles upgrades for existing DBs;
+        # `metadata.create_all` on fresh DBs creates them via the
+        # Index() declarations on the model.
+        if insp.has_table("lessons"):
+            for stmt in (
+                "CREATE INDEX IF NOT EXISTS ix_lessons_sol_day_hour "
+                "ON lessons (solution_id, day, hour)",
+                "CREATE INDEX IF NOT EXISTS ix_lessons_sol_teacher_day_hour "
+                "ON lessons (solution_id, teacher_name, day, hour)",
+                "CREATE INDEX IF NOT EXISTS ix_lessons_sol_class_day_hour "
+                "ON lessons (solution_id, class_name, day, hour)",
+                "CREATE INDEX IF NOT EXISTS ix_lessons_sol_room_day_hour "
+                "ON lessons (solution_id, classroom_name, day, hour)",
+            ):
+                conn.execute(text(stmt))
