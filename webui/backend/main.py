@@ -37,6 +37,7 @@ from backend.routers import (  # noqa: E402
     coteaching,
     coverage,
     curricula,
+    dashboard,
     dataset,
     groups,
     imports,
@@ -125,6 +126,7 @@ app.include_router(imports.router)
 app.include_router(bulk.router)
 app.include_router(coverage.router)
 app.include_router(monitor.router)
+app.include_router(dashboard.router)
 
 
 @app.get("/")

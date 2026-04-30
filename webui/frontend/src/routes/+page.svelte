@@ -3,6 +3,12 @@
   import { api } from '$lib/api';
   import { datasetState, flash, refreshDataset } from '$lib/stores';
   import RunLogPanel from '$lib/components/RunLogPanel.svelte';
+  import EntityGraph from '$lib/components/dashboard/EntityGraph.svelte';
+
+  // Graph panel: hidden by default; user clicks "Visualizza grafo" to
+  // render. Mode toggle: classes-as-nodes vs teachers-as-nodes.
+  let showGraph = false;
+  let graphMode = 'classes';   // 'classes' | 'teachers'
 
   let availableProfiles = [];
   let selectedProfile = 'small';
@@ -236,6 +242,65 @@
         ({$datasetState.active_solution.kind}) -
         obj=<code>{$datasetState.active_solution.obj_value}</code>
         - metriche {JSON.stringify($datasetState.active_solution.metrics)}
+      </div>
+    {/if}
+  </section>
+
+  <!-- ========== Network graph (toggleable) ========== -->
+  <section class="card p-5">
+    <div class="flex items-baseline gap-3 flex-wrap">
+      <h2>Grafo della scuola</h2>
+      <span class="text-xs text-ink-500 max-w-2xl">
+        Visualizza la struttura: in modalita' "Classi" ogni classe e' un
+        nodo e gli archi rappresentano docenti condivisi (lo spessore e'
+        proporzionale al numero di docenti in comune); in modalita'
+        "Docenti" ogni docente e' un nodo e gli archi rappresentano
+        classi condivise.
+      </span>
+      <button
+        class="btn ml-auto !text-xs"
+        on:click={() => (showGraph = !showGraph)}
+        aria-expanded={showGraph}
+      >
+        {showGraph ? 'Nascondi grafo' : 'Visualizza grafo'}
+      </button>
+    </div>
+
+    {#if showGraph}
+      <div class="mt-4 flex items-center gap-2">
+        <div class="inline-flex rounded-md overflow-hidden border border-ink-200 text-xs">
+          <button
+            class="px-3 py-1.5 transition-colors"
+            class:bg-accent-500={graphMode === 'classes'}
+            class:text-white={graphMode === 'classes'}
+            class:bg-white={graphMode !== 'classes'}
+            on:click={() => (graphMode = 'classes')}
+            aria-pressed={graphMode === 'classes'}
+          >
+            Classi (nodi)
+          </button>
+          <button
+            class="px-3 py-1.5 border-l border-ink-200 transition-colors"
+            class:bg-accent-500={graphMode === 'teachers'}
+            class:text-white={graphMode === 'teachers'}
+            class:bg-white={graphMode !== 'teachers'}
+            on:click={() => (graphMode = 'teachers')}
+            aria-pressed={graphMode === 'teachers'}
+          >
+            Docenti (nodi)
+          </button>
+        </div>
+        <span class="text-xs text-ink-500">
+          {graphMode === 'classes'
+            ? 'Archi spessi = molti docenti condivisi.'
+            : 'Archi spessi = molte classi condivise.'}
+        </span>
+      </div>
+
+      <div class="mt-3">
+        {#key graphMode}
+          <EntityGraph mode={graphMode} height={560} />
+        {/key}
       </div>
     {/if}
   </section>

@@ -69,6 +69,48 @@ Punto di partenza. Tre card:
 
 In basso il `RunLogPanel` streama via SSE i log dell'ultimo run.
 
+#### Grafo della scuola (toggleable)
+
+Sotto allo stato corrente c'e' una sezione "Grafo della scuola" con
+bottone "Visualizza grafo" che espande/collassa un canvas Cytoscape.js
+con layout force-directed (fcose). Due modalita' selezionabili tramite
+segmented control:
+
+- **Classi (nodi)**: ogni classe (es. "1A", "3B") e' un nodo;
+  due classi sono collegate da un arco se condividono almeno un
+  docente. Lo spessore dell'arco e' proporzionale al numero di docenti
+  in comune (1 docente = sottile, 6+ = spesso). Tooltip al hover su
+  un arco: lista dei docenti condivisi. Tooltip su un nodo:
+  classe + indirizzo + lista completa docenti.
+  *Utilita'*: vedere a colpo d'occhio quali classi sono "vicine"
+  nel senso di condivisione di personale; identificare il nucleo di
+  classi che condividono molti docenti (cluster naturali) e quali
+  sono periferiche.
+
+- **Docenti (nodi)**: ogni docente e' un nodo (etichetta:
+  cognome + iniziale del nome); due docenti sono collegati se
+  insegnano in almeno una classe in comune. Spessore = numero di
+  classi condivise. Tooltip arco: lista classi in comune.
+  Tooltip nodo: nome + materie + lista classi insegnate.
+  *Utilita'*: visualizzare la rete del corpo docente, identificare
+  i docenti "ponte" (highly-connected, insegnano in molte classi
+  diverse) che sono fattori critici per la decomposizione spettrale.
+
+I dati arrivano da `GET /api/dashboard/graph?mode=classes|teachers`.
+La risposta e' cached server-side per 60s (TTL cache della Section
+2.4 P1) e invalidata automaticamente da ogni mutazione (assignment,
+docenti, classi). Lato client TanStack Query la riusa per tutta la
+sessione.
+
+Pan, zoom (rotellina) e drag-to-reposition dei nodi sono
+supportati. La palette segue il branding piTantum: nodi indaco in
+modalita' classi, nodi oro in modalita' docenti, archi terra di
+Siena con opacita' 55% (scure quando hovered).
+
+Performance: per il profilo `superhuge` (~80 classi / ~159 docenti)
+il payload completo e' nell'ordine di 10-20KB; il rendering iniziale
+con fcose e' ~1-2s, poi il grafo e' interattivo a 60fps.
+
 ### Docenti (`/teachers`)
 
 CRUD docenti. Il modal di edit ha:
