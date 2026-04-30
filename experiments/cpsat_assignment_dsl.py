@@ -195,6 +195,84 @@ def solve_assignment_dsl(data: dict, dsl_expression: str,
     total_weight_v = model.NewIntVar(0, 1_000_000, "total_weight")
     model.Add(total_weight_v == sum(teacher_weight))
 
+    # ---- Seniority alignment (preset "seniority") --------------------
+    # Per teacher, build a misalignment cost = sum_ci has_class[ti,ci] *
+    # |rank_t - rank_ci| * curriculum_score[ci].
+    # rank_t is computed from graduatoria_score: descending sort,
+    # rank 1 = highest score. Teachers without a score get the median
+    # rank (neutral). rank_ci is computed from the curriculum's score
+    # field (high score = low rank target = "should go to highly-ranked
+    # teacher").
+    def _ranks_from_scores(scores: list[float | None]) -> list[float]:
+        n = len(scores)
+        if n == 0:
+            return []
+        # Median for missing
+        present = sorted([s for s in scores if s is not None],
+                         reverse=True)
+        median = present[len(present) // 2] if present else 0
+        filled = [s if s is not None else median for s in scores]
+        # Sort indices by descending score: highest score -> rank 1
+        order = sorted(range(n), key=lambda i: -filled[i])
+        ranks = [0.0] * n
+        for r, i in enumerate(order):
+            ranks[i] = r + 1
+        return ranks
+
+    teacher_score = [t.get("graduatoria_score") for t in teachers]
+    teacher_rank = _ranks_from_scores(teacher_score)
+    # Class rank: rank by curriculum_score descending, so highest-score
+    # class gets rank 1 ("wants" highest-rank teacher).
+    class_score = [
+        cur_score.get(cl["curriculum"], 1) for cl in classes
+    ]
+    if class_score:
+        ord_cl = sorted(range(n_c), key=lambda i: -class_score[i])
+        class_rank = [0.0] * n_c
+        for r, i in enumerate(ord_cl):
+            class_rank[i] = r + 1
+    else:
+        class_rank = []
+
+    # Per-(ti, ci) coefficient and per-teacher aggregated misalignment
+    # var, both linear (BoolVar * constant -> linear).
+    teacher_seniority_misalignment = []
+    has_any_score = any(s is not None for s in teacher_score)
+    if has_any_score and n_c > 0 and n_t > 0:
+        # Normalisation: divide by max possible to keep integer ranges
+        # bounded. Multiply by 100 then floor to int so ortools is happy
+        # with integer coefficients.
+        for ti in range(n_t):
+            terms = []
+            for ci in range(n_c):
+                if (ti, ci) not in has_class:
+                    continue
+                misalign = abs(teacher_rank[ti] - class_rank[ci])
+                cscore = class_score[ci]
+                # Bigger curriculum_score -> the misalignment matters more.
+                coeff = int(round(misalign * cscore * 10))
+                if coeff == 0:
+                    continue
+                terms.append(coeff * has_class[(ti, ci)])
+            # Bound: max possible coeff * n_c.
+            ub = max(1, int(max(class_rank or [1]) * max(class_score or [1]) * 10) * n_c)
+            v = model.NewIntVar(0, ub, f"sen_mis_{ti}")
+            if terms:
+                model.Add(v == sum(terms))
+            else:
+                model.Add(v == 0)
+            teacher_seniority_misalignment.append(v)
+        total_seniority_misalignment = model.NewIntVar(
+            0, 100_000_000, "total_seniority_misalignment"
+        )
+        model.Add(total_seniority_misalignment ==
+                  sum(teacher_seniority_misalignment))
+    else:
+        # No graduatoria data -> the seniority criterion silently
+        # degrades to zero contribution.
+        teacher_seniority_misalignment = [0] * n_t
+        total_seniority_misalignment = 0
+
     # Backward-compat scalars used by the "max full cattedre" preset.
     n_under_18_terms = []
     n_under_10_terms = []
@@ -222,10 +300,12 @@ def solve_assignment_dsl(data: dict, dsl_expression: str,
         teacher_n_classes=teacher_n_classes,
         teacher_n_curricula=teacher_n_curricula,
         teacher_weight=teacher_weight,
+        teacher_seniority_misalignment=teacher_seniority_misalignment,
         total_unused_capacity=total_unused,
         total_n_classes=total_n_classes_v,
         total_n_curricula=total_n_curricula_v,
         total_weight=total_weight_v,
+        total_seniority_misalignment=total_seniority_misalignment,
         n_under_18=n_under_18,
         n_under_10=n_under_10,
     )
@@ -281,12 +361,16 @@ def solve_assignment_dsl(data: dict, dsl_expression: str,
             f"{expected_pairs} cattedre coperte"
         )
 
+    sen = (int(solver.Value(total_seniority_misalignment))
+           if hasattr(total_seniority_misalignment, "Index")
+           else int(total_seniority_misalignment))
     metrics = {
         "objective": int(solver.ObjectiveValue()),
         "total_unused_capacity": int(solver.Value(total_unused)),
         "total_n_classes": int(solver.Value(total_n_classes_v)),
         "total_n_curricula": int(solver.Value(total_n_curricula_v)),
         "total_weight": int(solver.Value(total_weight_v)),
+        "total_seniority_misalignment": sen,
         "n_under_18": int(solver.Value(n_under_18)),
         "n_under_10": int(solver.Value(n_under_10)),
         "direction": direction,

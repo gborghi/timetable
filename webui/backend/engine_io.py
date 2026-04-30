@@ -87,6 +87,7 @@ def school_dict_from_db(db: Session) -> dict[str, Any]:
             "max_hours": t.max_hours,
             "free_day": t.free_day or "Saturday",
             "weights": {ts.subject: 1 for ts in t.subjects},
+            "graduatoria_score": t.graduatoria_score,
         })
     cconc = defaultdict(dict)
     for row in db.query(models.SubjectGroupWeight).all():

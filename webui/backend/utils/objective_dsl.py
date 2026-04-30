@@ -248,6 +248,7 @@ PER_TEACHER_VARS = {
     "teacher_n_classes",
     "teacher_n_curricula",
     "teacher_weight",
+    "teacher_seniority_misalignment",
 }
 
 # Per-teacher boolean predicates (called like functions). Some take
@@ -267,6 +268,7 @@ SCALAR_VARS = {
     "total_n_classes",
     "total_n_curricula",
     "total_weight",
+    "total_seniority_misalignment",
     "n_under_18",      # backward compat
     "n_under_10",      # backward compat
 }
@@ -432,13 +434,15 @@ class CompileContext:
     teacher_n_classes: list              # IntVar
     teacher_n_curricula: list            # IntVar
     teacher_weight: list                 # IntVar
+    teacher_seniority_misalignment: list = field(default_factory=list)
     # Scalars (CP-SAT IntVar or plain int):
-    total_unused_capacity: Any
-    total_n_classes: Any
-    total_n_curricula: Any
-    total_weight: Any
-    n_under_18: Any
-    n_under_10: Any
+    total_unused_capacity: Any = None
+    total_n_classes: Any = None
+    total_n_curricula: Any = None
+    total_weight: Any = None
+    total_seniority_misalignment: Any = 0
+    n_under_18: Any = None
+    n_under_10: Any = None
     # Helpers built lazily for predicates: cache of {name -> list[BoolVar]}
     _pred_cache: dict[str, list] = field(default_factory=dict)
 
@@ -471,6 +475,8 @@ def _lower(node: dict, ctx: CompileContext, inside_aggregate: bool):
             return ctx.total_n_curricula
         if name == "total_weight":
             return ctx.total_weight
+        if name == "total_seniority_misalignment":
+            return ctx.total_seniority_misalignment
         if name == "n_under_18":
             return ctx.n_under_18
         if name == "n_under_10":
@@ -567,6 +573,14 @@ def _per_teacher_terms(node: dict, ctx: CompileContext) -> list:
 
 
 def _per_teacher_array(name: str, ctx: CompileContext) -> list:
+    if name == "teacher_seniority_misalignment":
+        if not ctx.teacher_seniority_misalignment:
+            # Defensive: when the wrapper hasn't built the array
+            # (e.g. no graduatoria_score data), report zero per
+            # teacher so the DSL silently degrades to "no
+            # contribution" instead of crashing.
+            return [0] * ctx.n_teachers
+        return ctx.teacher_seniority_misalignment
     return {
         "teacher_hours": ctx.teacher_hours,
         "teacher_max_hours": ctx.teacher_max_hours,
@@ -695,6 +709,20 @@ PRESETS: list[tuple[str, str, str, str]] = [
         "minimize 200 * total_n_classes "
         "+ 50 * total_unused_capacity "
         "+ 5000 * n_under_18",
+    ),
+    (
+        "seniority",
+        "Anzianita' graduatoria -> indirizzi pesanti",
+        "Docenti con punteggio graduatoria piu' alto vengono "
+        "assegnati preferenzialmente alle classi degli indirizzi "
+        "con peso piu' alto (curriculum.score). Soft penalty "
+        "proporzionale al disallineamento. Richiede che i docenti "
+        "abbiano graduatoria_score impostato; quelli senza "
+        "punteggio vengono trattati come neutrali (rank medio).",
+        "minimize 50 * total_unused_capacity "
+        "+ 100 * total_n_classes "
+        "+ 5000 * n_under_18 "
+        "+ 10 * total_seniority_misalignment",
     ),
 ]
 

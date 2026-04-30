@@ -137,3 +137,17 @@ def test_get_preset_lookup():
     assert p is not None
     assert p[0] == "balance_curricula"
     assert get_preset("does_not_exist") is None
+
+
+def test_seniority_preset_present():
+    p = get_preset("seniority")
+    assert p is not None
+    res = validate(p[3])
+    assert res.ok, res.errors
+
+
+def test_seniority_vocabulary():
+    res = validate("minimize total_seniority_misalignment")
+    assert res.ok, res.errors
+    res = validate("minimize sum(teacher_seniority_misalignment)")
+    assert res.ok, res.errors
