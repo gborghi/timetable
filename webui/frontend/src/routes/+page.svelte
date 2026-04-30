@@ -1,7 +1,7 @@
 <script>
   import { onMount } from 'svelte';
   import { api } from '$lib/api';
-  import { datasetState, flash, refreshDataset } from '$lib/stores';
+  import { datasetState, flash, refreshDataset, bumpMutation } from '$lib/stores';
   import RunLogPanel from '$lib/components/RunLogPanel.svelte';
   import EntityGraph from '$lib/components/dashboard/EntityGraph.svelte';
 
@@ -97,7 +97,17 @@
     }
   }
 
-  function onEnd() { refreshDataset(); }
+  // SSE end-of-run hook: the worker thread wrote to the DB outside
+  // the HTTP request lifecycle, so neither the server-side TTL cache
+  // nor the client-side TanStack Query cache know to refresh. Bump the
+  // mutationCounter -> the subscription in $lib/queries/client.ts
+  // calls queryClient.invalidateQueries() which expires ALL cached
+  // queries (dataset.state, dashboard.graph.*, every list). The next
+  // read fetches fresh data.
+  function onEnd() {
+    bumpMutation();
+    refreshDataset();
+  }
 </script>
 
 <div class="space-y-6">
@@ -298,9 +308,7 @@
       </div>
 
       <div class="mt-3">
-        {#key graphMode}
-          <EntityGraph mode={graphMode} height={560} />
-        {/key}
+        <EntityGraph mode={graphMode} height={560} />
       </div>
     {/if}
   </section>

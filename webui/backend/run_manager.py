@@ -202,6 +202,17 @@ def _runner(run_id: int, target: Callable[[int], None]) -> None:
         _emit_line(run_id, tb)
     finally:
         buf.mark_finished()
+        # The run wrote to the DB in this worker thread, OUTSIDE the
+        # request lifecycle. The MutationBumpMiddleware does not see
+        # those writes, so the TTL cache (dataset.state,
+        # monitor.summary, dashboard.graph.*) would still serve the
+        # pre-run snapshot. Bump explicitly here so subsequent reads
+        # recompute. Section 2.4 P1 + dashboard graph fix.
+        try:
+            from .utils.ttl_cache import bump_mutation
+            bump_mutation()
+        except Exception:
+            pass
 
 
 # SSE streaming ---------------------------------------------------------

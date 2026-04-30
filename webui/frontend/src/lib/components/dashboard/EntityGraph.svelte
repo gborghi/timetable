@@ -18,9 +18,17 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
   import { api } from "$lib/api";
+  import { mutationCounter } from "$lib/stores";
 
   export let mode: "classes" | "teachers" = "classes";
   export let height = 540;
+
+  // Track the previous mode and mutationCounter so we can react to
+  // changes without using `{#key}` outside (which can race with
+  // Cytoscape's destroy/init cycle).
+  let prevMode: typeof mode = mode;
+  let prevCounter = -1;
+  let mounted = false;
 
   type GraphNode = {
     id: string;
@@ -258,12 +266,23 @@
     });
   }
 
-  // React to mode changes
-  $: if (mode && container) {
+  // React to (a) mode prop changes after first mount, and (b) the
+  // global mutationCounter being bumped (e.g. after an import run
+  // finishes -- _runner in webui/backend/run_manager.py bumps it).
+  $: if (mounted && mode !== prevMode) {
+    prevMode = mode;
     void loadAndRender();
+  }
+  $: if (mounted && $mutationCounter !== prevCounter) {
+    prevCounter = $mutationCounter;
+    // Skip the initial subscription tick (counter starts at 0).
+    if ($mutationCounter > 0) void loadAndRender();
   }
 
   onMount(() => {
+    mounted = true;
+    prevMode = mode;
+    prevCounter = $mutationCounter;
     void loadAndRender();
   });
 
