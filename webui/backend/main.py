@@ -22,6 +22,8 @@ if PARENT not in sys.path:
     sys.path.insert(0, PARENT)
 
 from backend.db import init_db  # noqa: E402
+from backend.logging_setup import configure_logging, get_logger  # noqa: E402
+from backend.utils.request_logging import RequestLoggingMiddleware  # noqa: E402
 from backend.routers import (  # noqa: E402
     assignments,
     bulk,
@@ -42,11 +44,36 @@ from backend.routers import (  # noqa: E402
     teachers,
 )
 
+configure_logging()
+log = get_logger("pitantum.main")
+
+
+def _cors_allow_origins() -> list[str]:
+    """CORS allow_origins. Defaults to localhost dev (127.0.0.1:5173 +
+    localhost:5173). Override via env var `PITANTUM_CORS_ORIGINS` as a
+    comma-separated list, or set to '*' to keep the legacy wildcard.
+
+    Section 2.6 P1 of docs/improvements.md: restringere CORS al dev
+    frontend invece di '*'.
+    """
+    env = os.environ.get("PITANTUM_CORS_ORIGINS")
+    if env:
+        return [s.strip() for s in env.split(",") if s.strip()]
+    return [
+        "http://127.0.0.1:5173",
+        "http://localhost:5173",
+        "http://127.0.0.1:4173",
+        "http://localhost:4173",
+    ]
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    log.info("backend startup -- init_db()")
     init_db()
+    log.info("backend ready")
     yield
+    log.info("backend shutdown")
 
 
 app = FastAPI(
@@ -61,9 +88,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_allow_origins(),
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
