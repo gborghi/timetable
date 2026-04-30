@@ -27,6 +27,7 @@ from sqlalchemy import event
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
+from .tenant import TenantMixin
 
 
 # ---------- value-object helpers ----------
@@ -61,7 +62,7 @@ class TimestampMixin:
 # ---------- Subjects ----------
 
 
-class Subject(TimestampMixin, Base):
+class Subject(TenantMixin, TimestampMixin, Base):
     __tablename__ = "subjects"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(64), unique=True, index=True)
@@ -79,7 +80,7 @@ class Subject(TimestampMixin, Base):
 # ---------- Teachers ----------
 
 
-class Teacher(TimestampMixin, Base):
+class Teacher(TenantMixin, TimestampMixin, Base):
     __tablename__ = "teachers"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(120), unique=True, index=True,
@@ -197,7 +198,7 @@ class TeacherCompatibleClass(Base):
 # ---------- Classes ----------
 
 
-class SchoolClass(TimestampMixin, Base):
+class SchoolClass(TenantMixin, TimestampMixin, Base):
     __tablename__ = "school_classes"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(40), unique=True, index=True)
@@ -424,7 +425,7 @@ class AppState(Base):
 # ---------- Classrooms (aule) ----------
 
 
-class Classroom(TimestampMixin, Base):
+class Classroom(TenantMixin, TimestampMixin, Base):
     __tablename__ = "classrooms"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(64), unique=True, index=True)
@@ -666,7 +667,7 @@ class CoTeachingRule(Base):
 # ---------- Curricula (indirizzi di studio) ----------
 
 
-class Curriculum(TimestampMixin, Base):
+class Curriculum(TenantMixin, TimestampMixin, Base):
     """An indirizzo di studio (e.g. Scientifico, Linguistico, ITIS) with its
     own monte-ore per anno and curriculum-level logical constraints."""
     __tablename__ = "curricula"
@@ -738,7 +739,7 @@ class CurriculumLogicalConstraint(Base):
 # ---------- Students ----------
 
 
-class Student(TimestampMixin, Base):
+class Student(TenantMixin, TimestampMixin, Base):
     """A student record. Optionally associated to a single home class.
     Students can also belong to one or more StudyGroup via GroupMembership
     (e.g. a language group cutting across two classes)."""
@@ -777,7 +778,7 @@ class Student(TimestampMixin, Base):
 # ---------- Study groups (gruppi articolati / classi frazionate) ----------
 
 
-class StudyGroup(TimestampMixin, Base):
+class StudyGroup(TenantMixin, TimestampMixin, Base):
     """A study group cutting across one or more classes (type C semantics).
 
     Examples: 'IRC vs Alternativa', 'Spagnolo vs Tedesco', 'Recupero

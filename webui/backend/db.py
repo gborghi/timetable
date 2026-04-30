@@ -1,4 +1,19 @@
-"""SQLAlchemy engine + session factory + Base for the timetable webui."""
+"""SQLAlchemy engine + session factory + Base for the timetable webui.
+
+Section 2.5 P2: the URL is now env-driven so Postgres can be plugged in
+without code changes. SQLite remains the default for single-user dev.
+
+To switch to Postgres:
+  1. pip install psycopg[binary]    (already in requirements.txt)
+  2. createdb pitantum               (or use docker-compose)
+  3. set PITANTUM_DB_URL=postgresql+psycopg://user:pass@host:5432/pitantum
+  4. cd webui/backend && ./.venv/Scripts/alembic upgrade head
+  5. start.bat / uvicorn
+
+The Alembic baseline (B9 commit 149575a) was generated against SQLite;
+it uses `render_as_batch=True` which is a no-op on Postgres but keeps
+SQLite ALTER TABLE working. No code change needed when switching.
+"""
 from __future__ import annotations
 
 import os
@@ -9,15 +24,43 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.normpath(os.path.join(HERE, "..", "data"))
 os.makedirs(DATA_DIR, exist_ok=True)
 
-DB_PATH = os.path.join(DATA_DIR, "timetable.db")
-DB_URL = f"sqlite:///{DB_PATH}"
 
-engine = create_engine(
-    DB_URL,
-    connect_args={"check_same_thread": False},
-    echo=False,
-    future=True,
+def _resolve_db_url() -> str:
+    """Pick the DB URL in this order:
+      1. PITANTUM_DB_URL env var (highest precedence; overrides
+         everything -- used to point at Postgres or a test DB).
+      2. SQLite at webui/data/timetable.db (default for dev).
+    """
+    env_url = os.environ.get("PITANTUM_DB_URL")
+    if env_url:
+        return env_url.strip()
+    return f"sqlite:///{os.path.join(DATA_DIR, 'timetable.db')}"
+
+
+DB_URL = _resolve_db_url()
+DB_PATH = (
+    DB_URL.replace("sqlite:///", "", 1)
+    if DB_URL.startswith("sqlite:///")
+    else None
 )
+IS_SQLITE = DB_URL.startswith("sqlite")
+
+# Engine kwargs that differ between SQLite and Postgres / others:
+# - SQLite needs `check_same_thread=False` because uvicorn worker
+#   threads share the connection pool.
+# - Postgres benefits from a configurable pool_size (env var). Default
+#   matches uvicorn's default thread pool (8).
+_engine_kwargs: dict = {"echo": False, "future": True}
+if IS_SQLITE:
+    _engine_kwargs["connect_args"] = {"check_same_thread": False}
+else:
+    pool_size = int(os.environ.get("PITANTUM_DB_POOL_SIZE", "8"))
+    max_overflow = int(os.environ.get("PITANTUM_DB_MAX_OVERFLOW", "8"))
+    _engine_kwargs["pool_size"] = pool_size
+    _engine_kwargs["max_overflow"] = max_overflow
+    _engine_kwargs["pool_pre_ping"] = True   # auto-reconnect on stale conns
+
+engine = create_engine(DB_URL, **_engine_kwargs)
 
 
 class Base(DeclarativeBase):
@@ -75,12 +118,21 @@ def init_db():
 
 
 def _apply_lightweight_migrations() -> None:
-    """Idempotent ALTER TABLE migrations for SQLite.
+    """Idempotent ALTER TABLE migrations.
 
     `Base.metadata.create_all` only creates missing TABLES; it does not
     add columns to existing tables. This function adds new columns when
-    needed, querying `PRAGMA table_info` to detect what is already there.
+    needed, querying `PRAGMA table_info` (or the equivalent
+    information_schema view) to detect what is already there.
+
+    Skipped entirely on non-SQLite engines: the canonical migration tool
+    on Postgres is Alembic (`alembic upgrade head`), and SQL syntax
+    differences (PRAGMA, AUTOINCREMENT, CREATE INDEX IF NOT EXISTS)
+    aren't worth duplicating here. SQLite-specific safety net only.
     """
+    if not IS_SQLITE:
+        return
+
     from sqlalchemy import inspect, text
 
     insp = inspect(engine)
@@ -180,3 +232,18 @@ def _apply_lightweight_migrations() -> None:
                         f"UPDATE {tbl} SET {col} = CURRENT_TIMESTAMP "
                         f"WHERE {col} IS NULL"
                     ))
+
+        # tenant_id on user-facing entities (Section 2.5 P3).
+        # Defaults everything to tenant 1 -- the existing single school.
+        for tbl in timestamped:
+            if not insp.has_table(tbl):
+                continue
+            if not has_column(tbl, "tenant_id"):
+                conn.execute(text(
+                    f"ALTER TABLE {tbl} ADD COLUMN tenant_id INTEGER "
+                    f"NOT NULL DEFAULT 1"
+                ))
+                conn.execute(text(
+                    f"CREATE INDEX IF NOT EXISTS "
+                    f"ix_{tbl}_tenant_id ON {tbl} (tenant_id)"
+                ))

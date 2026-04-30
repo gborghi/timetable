@@ -140,8 +140,10 @@ def _apply_migrations_on(engine):
                 "ON lessons (solution_id, classroom_name, day, hour)",
             ):
                 conn.execute(text(stmt))
-        for tbl in ("subjects", "teachers", "school_classes", "classrooms",
-                    "curricula", "students", "study_groups"):
+        timestamped = ("subjects", "teachers", "school_classes",
+                       "classrooms", "curricula", "students",
+                       "study_groups")
+        for tbl in timestamped:
             if not insp.has_table(tbl):
                 continue
             for col in ("created_at", "updated_at"):
@@ -153,11 +155,28 @@ def _apply_migrations_on(engine):
                         f"UPDATE {tbl} SET {col} = CURRENT_TIMESTAMP "
                         f"WHERE {col} IS NULL"
                     ))
+            # tenant_id (Section 2.5 P3)
+            if not has_column(tbl, "tenant_id"):
+                conn.execute(text(
+                    f"ALTER TABLE {tbl} ADD COLUMN tenant_id INTEGER "
+                    f"NOT NULL DEFAULT 1"
+                ))
+                conn.execute(text(
+                    f"CREATE INDEX IF NOT EXISTS "
+                    f"ix_{tbl}_tenant_id ON {tbl} (tenant_id)"
+                ))
 
 
 @pytest.fixture
 def client(app_with_temp_db):
-    """A TestClient bound to the temp-db FastAPI app."""
+    """A TestClient bound to the temp-db FastAPI app.
+
+    Clears the global TTL cache between tests so /api/dataset/state and
+    /api/monitor/summary recompute against the fresh tmp DB instead of
+    serving stale counts from a previous test.
+    """
     from fastapi.testclient import TestClient
+    from backend.utils import ttl_cache
+    ttl_cache.clear()
     app, _ = app_with_temp_db
     return TestClient(app)

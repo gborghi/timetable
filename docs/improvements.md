@@ -456,18 +456,36 @@ bloccanti tengono i thread del worker pool occupati.
 
 **Suggerimenti**
 
-- **P2** [SKIPPED 2026-04-30 -- richiede autorizzazione esplicita
-  Giovanni] -- planning per Postgres. SQLite oggi soddisfa
-  single-user single-tenant; Postgres porta benefici solo se si
-  apre la concurrency / multi-tenant, decisione architetturale
-  rimandata. Il commit B9 ha introdotto Alembic, che facilita la
-  migrazione futura quando la decisione sara' presa.
-- **P2** [PENDING -- significativo refactor] -- async via
-  AsyncSession. SQLAlchemy 2.0 lo supporta ma richiede toccare
-  ogni router (def -> async def, db.query -> await session.execute,
-  etc). Da fare quando il numero di utenti concorrenti lo
-  giustifica (oggi e' single-user).
-- **P3** [SKIPPED -- nessun use case attuale] -- multi-tenant.
+- **P2** [DONE 2026-04-30 -- Postgres-ready] -- planning per Postgres.
+  Su richiesta esplicita di Giovanni, il backend e' ora
+  Postgres-ready (URL via `PITANTUM_DB_URL` env var; SQLite resta
+  default). `db._resolve_db_url()` legge l'env, applica i tuning
+  Postgres-only (pool_size, max_overflow, pool_pre_ping) quando
+  l'URL non e' SQLite. `IS_SQLITE` flag esposto cosi'
+  `_apply_lightweight_migrations` skippa i PRAGMA SQLite-specific
+  su Postgres. La live DB resta SQLite -- per switchare a Postgres
+  basta `set PITANTUM_DB_URL=postgresql+psycopg://...` + alembic
+  upgrade head. Driver psycopg + asyncpg + aiosqlite documentati
+  come optional in requirements.txt.
+- **P2** [DONE 2026-04-30 -- selective async] -- async via
+  AsyncSession. Nuovo `webui/backend/async_db.py` con
+  `_resolve_async_url()` che traduce sqlite:/// ->
+  sqlite+aiosqlite:///, postgresql:// -> postgresql+asyncpg://.
+  `get_async_db()` FastAPI dependency per AsyncSession. Endpoint
+  prova `/api/health/async` esercita SELECT 1 attraverso il path
+  async. La conversione def->async def degli endpoint esistenti
+  resta incrementale: il pattern e' stabilito; eseguire
+  `aiosqlite` e' sufficiente in dev. Quando driver mancante, 503
+  con hint canonico.
+- **P3** [DONE 2026-04-30 -- scaffolding] -- multi-tenant. Nuovo
+  `webui/backend/tenant.py` con `TenantMixin` (tenant_id INTEGER NOT
+  NULL DEFAULT 1, indexed) + `current_tenant_id()` FastAPI
+  dependency che legge `X-Tenant-Id` header con fallback al default
+  via `PITANTUM_DEFAULT_TENANT_ID`. Mixed into 7 entita' user-facing
+  (Subject, Teacher, SchoolClass, Classroom, Curriculum, Student,
+  StudyGroup). DB live gia' migrata. La filtering effettiva
+  (`Model.tenant_id == tid`) lasciata ai router quando un caso
+  multi-tenant reale arrivera'; oggi tutti i record sono tenant=1.
 
 ### 2.6 Sicurezza
 

@@ -137,6 +137,33 @@ def health():
     return {"status": "ok", "name": "pitantum", "version": "0.1.0"}
 
 
+@app.get("/api/health/async")
+async def health_async():
+    """Async smoke endpoint exercising the AsyncSession path. Returns
+    OK + the connected dialect when the async layer is available, or
+    raises 503 with a helpful hint otherwise (Section 2.5 P2)."""
+    from fastapi import Depends
+    # Inline import + manual call to avoid forcing the dependency on
+    # routes that don't need it.
+    from .async_db import get_async_db
+    from sqlalchemy import text
+    gen = get_async_db()
+    sess = await gen.__anext__()
+    try:
+        result = await sess.execute(text("SELECT 1"))
+        ok = result.scalar() == 1
+    finally:
+        try:
+            await gen.aclose()
+        except Exception:
+            pass
+    return {
+        "status": "ok" if ok else "fail",
+        "async": True,
+        "dialect": str(sess.bind.dialect.name) if sess.bind else None,
+    }
+
+
 def _err(request: Request, status: int, detail: str,
          code: str, errors=None, hint: str | None = None) -> JSONResponse:
     """Helper that produces an ErrorResponse-shaped JSON body and adds
