@@ -1,0 +1,280 @@
+# Guida UI
+
+La nav bar elenca tutte le sezioni; ognuna e' una route SvelteKit in
+`webui/frontend/src/routes/`. Tutte le pagine "lista" condividono il
+componente `SortableQueryableList` con DSL di filtro/ordinamento (vedere
+sotto e [api.md](api.md) per i campi disponibili).
+
+## Funzionalita' trasversali
+
+### Query DSL e sort multi-livello
+
+Ogni pagina lista ha:
+
+- una barra **Query** che accetta espressioni come
+  `group=A026 AND max_hours>=18`, `cognome startswith Ross`,
+  `unavailable_on(martedi)`. Operatori: `= != < <= > >= contains
+  startswith endswith in [...]`. Logica: `AND / OR / ()`. Funzioni
+  per-entita' come `unavailable_on(day)`.
+- **Sort multi-livello** (max 4 livelli): doppio-click sull'etichetta
+  di una colonna per aggiungerla; click sulla freccia per invertire
+  direzione; bottone "Reset sort" per pulire.
+- Un pannello "Help" con la lista dei campi disponibili e qualche
+  esempio.
+
+I campi DSL per ogni entita' sono definiti in
+`webui/backend/utils/list_query.py`.
+
+### Multi-select con shift / ctrl
+
+Sulle pagine `Docenti`, `Classi`, `Aule` la lista supporta:
+
+- click semplice -> single-select (replace)
+- Ctrl+click -> toggle
+- Shift+click -> range
+- "Seleziona tutto", "Deseleziona", checkbox header indeterminate
+
+La selezione abilita il bottone "Vincolo collettivo" che apre il
+`BulkApplyModal` (vedere [constraints.md](constraints.md)).
+
+### Excel/CSV import
+
+Ogni pagina lista (Docenti, Classi, Materie, Aule, Indirizzi,
+Studenti, Gruppi) ha un bottone "Importa Excel/CSV" + "Template".
+Lo stesso endpoint `POST /api/import/{entity}` gestisce le 7 entita';
+il template `GET /api/import/{entity}/template` scarica un .xlsx con
+gli header attesi e una riga d'esempio. Modalita': `upsert`
+(default), `append`, `replace`. Header alias italiani e inglesi
+accettati. Vedere `webui/docs/import_format.md` per la specifica
+completa.
+
+## Tab per tab
+
+### Dashboard (`/`)
+
+Punto di partenza. Tre card:
+
+1. **Importa profilo** -- combo `small` / `medium` / `big` / `huge` /
+   `superhuge` + 3 checkbox per i pool aggiuntivi:
+   - Indirizzi (curricula): seed + linkaggio classi
+   - Aule: una per classe + lab/palestre/biblioteca proporzionali
+   - Studenti: ~22 per classe (Faker, deterministico)
+   + bottone "Rigenera solo aule" per la recipe di default.
+2. **Genera scuola di test** -- mock dataset on-the-fly con
+   `MockGenIn`: profilo, mode (`aggregated` / `tight` / `legacy`),
+   `margin`, `base_max_hours`, opzionale `custom_curricula`.
+3. **Stato corrente** -- 7 card-numero (Classi, Docenti, Materie,
+   Aule, Studenti, Cattedre, Soluzioni) + info sulla soluzione
+   attiva.
+
+In basso il `RunLogPanel` streama via SSE i log dell'ultimo run.
+
+### Docenti (`/teachers`)
+
+CRUD docenti. Il modal di edit ha:
+
+- input separati Cognome / Nome + Nickname (placeholder = "Cognome
+  Nome"). Il `name` canonico e' calcolato automaticamente da
+  `last_name + first_name` in `syncName()`.
+- Matricola, Classe di concorso, Max ore-cattedra, Ore di
+  completamento / esonero
+- Giorno libero (select) + Max ore consecutive
+- Materie insegnate (select multipla, scrolla nel `<select multiple>`
+  con la lista globale delle materie)
+- AvailabilityMatrix 5-stati per il docente (vedere
+  [constraints.md](constraints.md))
+- ClassroomGrid 5-stati per assegnare aule preferred / forbidden /
+  enforced specifiche al docente
+- LogicalUnavailabilitiesPanel per i vincoli logici DNF
+
+### Classi (`/classes`)
+
+CRUD classi. Modal di edit:
+
+- Nome, Nickname (mostrato nell'orario), Anno, Sezione, Indirizzo
+  (dropdown da `/api/curricula`) + bottone "Importa griglia" che
+  popola la lista materie con il monte-ore dell'indirizzo per
+  l'anno selezionato
+- N. studenti, Note
+- 7 toggle HARD (vedere [constraints.md](constraints.md))
+- Peso minimizzazione 6a ora (SOFT)
+- Tabella materie+ore con autocomplete sulle materie note
+- AvailabilityMatrix 5-stati
+- LogicalUnavailabilitiesPanel
+
+### Indirizzi (`/curricula`)
+
+CRUD indirizzi. Il modal ha due tab interne:
+
+1. **Materie e ore per anno** -- selettore anno 1..5, tabella materie+ore
+   per quell'anno; tot ore dell'anno mostrato in alto.
+2. **Vincoli logici per anno** -- LogicalUnavailabilitiesPanel-like ma
+   con un campo extra `year_filter` (NULL = tutti gli anni).
+
+### Studenti (`/students`)
+
+CRUD studenti. Modal: cognome, nome, nickname (default "Cognome
+Nome"), data nascita, sesso, email, matricola, classe (dropdown),
+note.
+
+### Gruppi (`/groups`)
+
+Type-C: gruppi articolati che possono pescare studenti da piu'
+classi. Modal:
+
+- Nome, nickname, Tipo (splitting / language / religion / support /
+  other), descrizione
+- Lista studenti del gruppo con filtro testuale (cognome / nome /
+  classe / matricola); checkbox per ogni studente
+- Tabella materie+ore del gruppo (autocomplete su materie note)
+
+### Materie (`/subjects`)
+
+CRUD materie. Modal:
+
+- Nome (chiave), pretty_name, Note
+- Pesi SOFT: distribute_days_weight, dual_hours_weight,
+  no_sixth_hour_weight, fascia oraria preferita (start / end / weight)
+- ClassroomGrid 5-stati per assegnare aule preferred / forbidden /
+  enforced specifiche alla materia (es. Chimica enforced in lab_chimica)
+
+Vista alternativa "Pesi cl. concorso" che gestisce
+`subject_group_weights` (mapping subject -> classe-di-concorso ->
+weight).
+
+### Aule (`/classrooms`)
+
+CRUD aule. Bottone "Genera aule" che lancia la recipe in
+`mock_classrooms.py` (proporzionale alla scuola: 1 standard per
+classe + N lab / palestre / biblioteche / aule speciali).
+
+Modal:
+
+- Nome / codice, Tipo (8 kinds), Capienza, Note
+- Multi-class flag + multi_class_max + multi_class_pref +
+  multi_class_pref_weight
+- AvailabilityMatrix 5-stati
+- Subject preferences (peso per materia, required toggle)
+- Class preferences (home flag)
+- LogicalUnavailabilitiesPanel
+
+### Compresenze (`/coteaching`)
+
+CRUD `coteaching_rules`. Per ogni `(class, subject)` definisce N
+docenti contemporanei, `required` (HARD/SOFT), peso, lista esplicita
+opzionale.
+
+### Cattedre (`/assignments`)
+
+Layout a card: una card per classe, lista materie+docente+ore.
+Bottone "cambia" per ogni riga apre un modal:
+
+- Docente: **dropdown filtrato per materia** (chiama
+  `GET /api/assignments/teachers-for-subject?subject=X`). Ogni
+  opzione mostra `Cognome Nome - assigned/max [SFORA: +Xh]` /
+  `[pieno]` calcolato sulla mossa proposta.
+- Lock: checkbox per impedire all'ottimizzatore di cambiare la cattedra.
+
+In alto il bottone "Warnings cattedre" apre un pannello toggleable
+che lista i docenti con coverage gap: SFORA il max (rosso), ore
+mancanti (ambra), nessuna cattedra (ambra), ok (verde). Filtro
+"solo problemi" / "tutti".
+
+### Orario (`/schedule`)
+
+Vista delle lezioni. Toggle in alto fra 4 viste, ognuna con sotto-toggle
+matrice / lista:
+
+- **per classe** -- selettore classe + matrice 6x6 (default) o tabella
+  lista (1 riga per classe x 36 colonne slot)
+- **per docente** -- analogo
+- **per aula** -- selettore aula + matrice 6x6 (default) o tabella
+  lista (l'esistente). Multi-occupancy (2+ lezioni nello stesso slot)
+  evidenziata in rosso pallido.
+- **per slot** -- form day + hour, lista lezioni in quello slot.
+
+Nelle matrici classi/docenti ogni cella ha un dropdown aula con
+coloring verde (libera) / rosso (occupata, disabled) /
+grigio (nessuna). Drag-and-drop con preview live: trascina una
+lezione su un altro slot, gli altri si colorano per mostrare
+fattibilita' / delta SOFT (vedere [workflow.md](workflow.md)).
+
+Bottoni di export in alto: xlsx classi, xlsx docenti, pdf classi,
+pdf docenti.
+
+In fondo: lista delle soluzioni salvate con bottone "attiva" e
+"elimina".
+
+### Assenze e supplenze (`/assenze-supplenze`)
+
+Vista settimanale. In alto: date picker per la settimana
+(default lunedi corrente) + bottoni "settimana prec.", "settimana
+succ.", "oggi".
+
+Tabella 6 colonne giorno x 6 righe ora. Le celle si colorano:
+
+- bianco/grigio: niente assenze
+- ambra: assenze ma nessuna ora persa
+- rosso: ore scoperte
+- verde: ore scoperte ma tutte coperte da supplenti
+
+Click sull'**intestazione di un giorno** apre il modal "Assenze"
+dove si selezionano i docenti assenti (con filtro testuale) e i
+loro motivi. C'e' un bottone "Clear" sia inline nell'intestazione
+sia nel modal che cancella TUTTE le assenze e le supplenze del giorno.
+
+Click su una **cella** apre il modal cella: a sinistra le classi
+scoperte (rosse o verdi se gia' coperte); a destra i docenti
+disponibili (esclusi: assenti oggi, in giorno libero, gia'
+impegnati, gia' usati come supplenti). Drag-and-drop di un docente
+su una classe scoperta crea la supplenza. Quando tutte le scoperte
+sono coperte, il bottone "Salva e chiudi" e' abilitato; chiudere
+con scoperte residue chiede conferma.
+
+### Monitor (`/monitor`)
+
+Lista degli **eventi** (uno per `Assignment`: docente x classe x
+materia). Per ogni evento: ore attese / assegnate / mancanti, aule
+mancanti, gruppo associato, stato. Sfondo giallino se incompleto.
+
+Header con counts globali: incompleti, senza ore, senza aula, senza
+gruppo.
+
+Click su una riga la espande mostrando le singole lezioni
+(lesson_id, giorno/ora, aula, eventuale "no aula"). Per ogni lezione:
+
+- bottone Giorno/Ora -> apre modal con matrice 6x6 disponibilita'
+  (verde / rosso / ambra / azzurro per slot attuale). Click su uno
+  slot fa dry-run; se conflitto apre modal di risoluzione (Annulla /
+  Disassegna in conflitto / Disassegna e ottimizza dopo).
+- dropdown Aula -> stesso flusso.
+
+### Vincoli (`/constraints`)
+
+Lista piatta di tutti i vincoli editabili: matrici di disponibilita',
+vincoli logici (teacher/class/room/curriculum), preferenze
+materia-aula e docente-aula non default, regole di compresenza.
+
+Pill colorate per livello (HARD rosso / SOFT giallo / PREFERITO blu /
+ENFORCED verde scuro / ALLOWED verde chiaro / FORBIDDEN rosso). Per
+ogni riga: bottoni Modifica (modal con livello + peso + espressione
+per i logici) e Elimina (DELETE generico).
+
+In alto il bottone "Cerca conflitti" che chiama
+`/api/monitor/conflicts` e apre un pannello toggleable con i
+conflitti trovati (matrix HARD+ENFORCED, ENFORCED in giorno libero,
+logical HARD/ENFORCED unsatisfiable). Ogni conflitto mostra il
+`reason` umano e i vincoli coinvolti (con le loro pill colorate).
+
+### Workflow (`/optimize`)
+
+Lancia le 4 fasi di ottimizzazione (vedere [workflow.md](workflow.md)):
+
+1. Phase A: Assegnazione docenti -> classi
+2. Phase B: Scheduling con/senza decomposizione
+3. Cascata metaeuristica (LNS / SA / TS / ILS) o lanci individuali
+4. Assegnazione aule
+
+Pulsante "Pipeline completa" che le incatena. Per ogni run, log
+in tempo reale via Server-Sent Events; obiettivo + metriche
+mostrati alla fine.

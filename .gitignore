@@ -44,6 +44,16 @@ schedule/*.pkl
 # Logs
 *.log
 
+# LaTeX intermediate artifacts (the .tex source and the .pdf output
+# are tracked; the temp files generated during compilation are not)
+docs/*.aux
+docs/*.toc
+docs/*.lof
+docs/*.out
+docs/*.fls
+docs/*.fdb_latexmk
+docs/*.synctex.gz
+
 # Secrets / keys (do NOT commit)
 *.pem
 *.key

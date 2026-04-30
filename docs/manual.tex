@@ -1,0 +1,970 @@
+% Manuale tecnico del progetto timetable.
+% ASCII puro, accenti via macro \`e \'e \`a, virgolette ``...''.
+\documentclass[a4paper,11pt,oneside]{report}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[italian]{babel}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{geometry}
+\geometry{margin=2.4cm,headheight=14pt}
+\usepackage{xcolor}
+\usepackage{graphicx}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta,shapes.geometric,fit,calc}
+\usepackage{listings}
+\usepackage{enumitem}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage{booktabs}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage[hidelinks,bookmarksopen=true]{hyperref}
+
+\definecolor{cHard}{RGB}{220,38,38}
+\definecolor{cSoft}{RGB}{217,119,6}
+\definecolor{cPref}{RGB}{37,99,235}
+\definecolor{cEnf}{RGB}{6,95,70}
+\definecolor{cAllow}{RGB}{16,185,129}
+\definecolor{cBox}{RGB}{229,231,235}
+\definecolor{cCode}{RGB}{30,41,59}
+
+\lstset{
+  basicstyle=\ttfamily\footnotesize,
+  keywordstyle=\color{cPref}\bfseries,
+  commentstyle=\color{gray}\itshape,
+  stringstyle=\color{cEnf},
+  showstringspaces=false,
+  breaklines=true,
+  breakatwhitespace=true,
+  columns=fullflexible,
+  frame=single,
+  rulecolor=\color{cBox},
+  framesep=4pt,
+  xleftmargin=8pt,
+  xrightmargin=4pt,
+  numbers=none,
+}
+\lstdefinestyle{json}{language=,morekeywords={true,false,null}}
+\lstdefinestyle{py}{language=Python}
+\lstdefinestyle{shell}{language=bash,morekeywords={apt,brew,dnf,pacman,pip,npm,git,curl}}
+
+\titleformat{\chapter}[hang]{\Huge\bfseries}{\thechapter.}{12pt}{}
+\titleformat{\section}{\Large\bfseries}{\thesection}{10pt}{}
+\titleformat{\subsection}{\large\bfseries}{\thesubsection}{8pt}{}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\textit{timetable -- manuale tecnico}}
+\fancyhead[R]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+\title{}
+\author{}
+\date{}
+
+\begin{document}
+
+% =========== Cover ===========
+\begin{titlepage}
+\thispagestyle{empty}
+\centering
+\vspace*{2cm}
+
+{\Huge\bfseries timetable\par}
+\vspace{0.6cm}
+{\Large\itshape sistema di generazione orario scolastico\par}
+
+\vspace{1.5cm}
+\rule{0.7\textwidth}{0.4pt}
+
+\vspace{0.6cm}
+{\LARGE Manuale tecnico\par}
+
+\vspace{2.5cm}
+
+\begin{tikzpicture}
+  \node[draw=cBox, very thick, rounded corners=4pt, minimum width=3cm,
+        minimum height=1cm, fill=cBox!30] (a) at (0,0) {\textbf{CP-SAT}};
+  \node[draw=cBox, very thick, rounded corners=4pt, minimum width=3cm,
+        minimum height=1cm, fill=cBox!30, right=0.6cm of a] (b)
+        {\textbf{spectral}};
+  \node[draw=cBox, very thick, rounded corners=4pt, minimum width=3cm,
+        minimum height=1cm, fill=cBox!30, right=0.6cm of b] (c)
+        {\textbf{LNS+SA+TS+ILS}};
+  \draw[-{Stealth[length=3mm]}, thick] (a) -- (b);
+  \draw[-{Stealth[length=3mm]}, thick] (b) -- (c);
+\end{tikzpicture}
+
+\vspace{2cm}
+
+{\large Giovanni Borghi\par}
+\vspace{0.3cm}
+{\large \today\par}
+
+\vfill
+
+{\small
+Repository: \url{https://github.com/gborghi/timetable}\\
+Documentazione sorgente: \texttt{docs/}
+\par}
+\end{titlepage}
+
+\tableofcontents
+\listoffigures
+
+% =========== Cap 1: Introduzione ===========
+\chapter{Introduzione}
+
+Il progetto \emph{timetable} \`e un sistema di generazione e gestione
+dell'orario scolastico per un Liceo italiano. \`E composto di tre layer:
+
+\begin{enumerate}
+  \item \textbf{Solver} (\texttt{experiments/}): pipeline CP-SAT
+        (Google OR-Tools) con decomposizione spettrale per istanze
+        grandi e cascata metaeuristica (LNS, SA, TS, ILS).
+  \item \textbf{Web UI} (\texttt{webui/}): backend FastAPI su
+        SQLite + frontend SvelteKit. \`E il punto di accesso quotidiano:
+        gestisce CRUD, ottimizzazione, visualizzazione, drag-and-drop,
+        assenze e supplenze.
+  \item \textbf{Legacy} (\texttt{schedule/}): script monolitici da cui
+        il solver \`e nato; mantenuti per riferimento storico.
+\end{enumerate}
+
+Il manuale copre tutti e tre i layer ma si concentra sulla web UI,
+che ha assorbito quasi ogni funzionalit\`a operativa.
+
+\section{Avvio rapido}
+
+\paragraph{Windows.} Doppio click su \texttt{webui/start.bat}.
+Apre due finestre cmd: backend \emph{uvicorn} su porta 8000, frontend
+\emph{vite} su porta 5173.
+
+\paragraph{Linux / macOS.}
+\begin{lstlisting}[style=shell]
+cd timetable/webui
+./start.sh           # background; URLs sulla console
+./stop.sh            # ferma backend + frontend
+\end{lstlisting}
+
+Nel browser, aprire \texttt{http://127.0.0.1:5173} e dalla
+\textbf{Dashboard} importare un profilo gi\`a calcolato
+(\texttt{small} per cominciare).
+
+\section{Stato attuale del progetto}
+
+Le funzionalit\`a principali, al momento di questa redazione:
+
+\begin{itemize}
+  \item 16 sezioni (tab) della UI, $\sim$118 endpoint REST.
+  \item $\sim$30 tabelle SQLAlchemy con migrazioni idempotenti.
+  \item 5 stati di vincoli (HARD/SOFT/PREFERITO/ENFORCED/ALLOWED).
+  \item Vincoli logici DNF con DSL esteso (predicate atoms
+        \texttt{aula:}, \texttt{materia:}, \texttt{classe:},
+        \texttt{gruppo:}, \texttt{docente:}).
+  \item Conflict detection automatico nel tab \emph{Vincoli}.
+  \item Drag-and-drop con preview live (rosso/giallo/verde) e
+        \emph{room-follows-lesson}.
+  \item Gestione assenze settimanali con assegnazione supplenti
+        drag-drop.
+  \item Tab \emph{Monitor} con espansione lezione-per-lezione e
+        slot picker matriciale.
+\end{itemize}
+
+% =========== Cap 2: Architettura ===========
+\chapter{Architettura}
+
+\section{Stack}
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Backend}: Python 3.11+, FastAPI, SQLAlchemy 2.0,
+        Pydantic 2, uvicorn, OR-Tools, NumPy, scikit-learn,
+        Faker.
+  \item \textbf{Frontend}: SvelteKit (Svelte 4), Vite 5, Tailwind CSS,
+        JavaScript puro.
+  \item \textbf{DB}: SQLite via SQLAlchemy. Migrazioni idempotenti
+        nel codice (no Alembic).
+  \item \textbf{Engine I/O}: pickle Python; \texttt{engine\_io.py}
+        converte fra DB e dict per il solver.
+\end{itemize}
+
+\section{Diagramma a blocchi}
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[node distance=0.6cm and 0.6cm,
+  every node/.style={draw, rounded corners=4pt, very thick,
+                     minimum width=4.5cm, minimum height=1cm,
+                     align=center, font=\small}]
+  \node[fill=cBox!30] (fe) {SvelteKit / Vite\\\textit{16 tabs}};
+  \node[fill=cBox!30, below=of fe] (be) {FastAPI backend\\\textit{18 router, 118 endpoint}};
+  \node[fill=cBox!30, below=of be] (db) {SQLite\\\textit{$\sim$30 tabelle}};
+  \node[fill=cBox!30, below=of db] (en) {CP-SAT engine\\\textit{decomp. spettrale + meta}};
+  \draw[-{Stealth[length=3mm]}, thick] (fe) -- node[draw=none, right]
+        {\footnotesize \texttt{/api/*} via Vite proxy} (be);
+  \draw[-{Stealth[length=3mm]}, thick] (be) -- node[draw=none, right]
+        {\footnotesize SQLAlchemy 2.0} (db);
+  \draw[-{Stealth[length=3mm]}, thick] (be) to[bend left=45]
+        node[draw=none, right]
+        {\footnotesize \texttt{engine\_io.py} (pickle)} (en);
+\end{tikzpicture}
+\caption{Architettura a blocchi della webapp.}
+\label{fig:arch}
+\end{figure}
+
+\section{Struttura cartelle}
+
+\begin{lstlisting}[style=shell]
+timetable/
++-- README.md                    -- landing page
++-- docs/                        -- manuale tecnico
++-- experiments/                 -- solver code + pickle snapshots
+|   +-- cpsat_v2_assignment.py   -- Phase A
+|   +-- cpsat_v2_timetable.py    -- Phase B
+|   +-- decomposition_spectral_v2.py
+|   +-- metaheuristics.py        -- LNS / SA / TS / ILS
+|   +-- classroom_assignment.py  -- Phase 4
++-- schedule/                    -- legacy single-file prototypes
++-- webui/
+|   +-- start.bat                -- launcher Windows
+|   +-- start.sh                 -- launcher Linux/macOS
+|   +-- stop.sh                  -- stop helper
+|   +-- backend/                 -- FastAPI app
+|   +-- frontend/                -- SvelteKit
+|   +-- data/timetable.db        -- SQLite
+|   +-- docs/                    -- guide brevi user-facing
++-- proposals/                   -- design notes + benchmarks
++-- *.pdf                        -- reference papers
+\end{lstlisting}
+
+\section{Lifecycle del backend}
+
+\texttt{webui/backend/main.py} definisce un \texttt{lifespan} che
+chiama \texttt{init\_db()} allo startup. Esso fa:
+
+\begin{enumerate}
+  \item \texttt{Base.metadata.create\_all(bind=engine)} -- crea le
+        tabelle mancanti.
+  \item \texttt{\_apply\_lightweight\_migrations()} -- ALTER TABLE
+        idempotenti per i campi aggiunti in versioni successive
+        (esempio: \texttt{school\_classes.curriculum\_id},
+        \texttt{teachers.last\_name/first\_name/nickname}, ecc.).
+        Ogni ALTER \`e guardato da \texttt{PRAGMA table\_info} per non
+        duplicare.
+\end{enumerate}
+
+% =========== Cap 3: Modello dati ===========
+\chapter{Modello dati}
+
+Tutto vive in \texttt{webui/backend/models.py}. Le tabelle si
+raggruppano in cinque famiglie tematiche.
+
+\section{Famiglie di tabelle}
+
+\subsection*{Anagrafiche}
+\texttt{subjects}, \texttt{teachers}, \texttt{school\_classes},
+\texttt{classrooms}, \texttt{curricula}, \texttt{students},
+\texttt{study\_groups}.
+
+\subsection*{Assegnazione}
+\texttt{class\_subjects}, \texttt{curriculum\_subject\_hours},
+\texttt{teacher\_subjects}, \texttt{subject\_group\_weights},
+\texttt{assignments}.
+
+\subsection*{Disponibilit\`a / vincoli}
+\texttt{teacher\_unavailability}, \texttt{class\_unavailability},
+\texttt{classroom\_unavailability},
+\texttt{logical\_unavailabilities},
+\texttt{curriculum\_logical\_constraints},
+\texttt{classroom\_subject\_preferences},
+\texttt{teacher\_classroom\_preferences},
+\texttt{coteaching\_rules}.
+
+\subsection*{Soluzioni e scheduling}
+\texttt{solutions}, \texttt{lessons}, \texttt{day\_counts}.
+
+\subsection*{Coverage e Run}
+\texttt{absences}, \texttt{substitute\_assignments},
+\texttt{runs}, \texttt{run\_logs}, \texttt{app\_state}.
+
+\section{Diagramma relazioni}
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[node distance=0.5cm and 0.4cm,
+  rect/.style={draw, rounded corners=2pt, thick, fill=cBox!20,
+               minimum width=2.4cm, minimum height=0.6cm,
+               align=center, font=\footnotesize}]
+  \node[rect] (sub) {subjects};
+  \node[rect, right=of sub] (ts) {teacher\_subjects};
+  \node[rect, right=of ts] (te) {teachers};
+  \node[rect, below=of te] (asn) {assignments};
+  \node[rect, left=of asn] (sc) {school\_classes};
+  \node[rect, left=of sc] (cur) {curricula};
+  \node[rect, below=of asn] (sol) {solutions};
+  \node[rect, below=of sol] (les) {lessons};
+  \node[rect, below=of cur] (cs) {class\_subjects};
+  \node[rect, below=of sc] (cu) {class\_unavail.};
+  \node[rect, right=of les] (rm) {classrooms};
+  \node[rect, above=of rm] (cp) {classroom\_subj\_pref};
+  \draw (sub) -- (ts) -- (te);
+  \draw (te) -- (asn);
+  \draw (sc) -- (asn);
+  \draw (sc) -- (cs);
+  \draw (sc) -- (cu);
+  \draw (cur) -- (sc);
+  \draw (asn) -- (sol);
+  \draw (sol) -- (les);
+  \draw (rm) -- (cp);
+  \draw (sub) to[out=270,in=180,looseness=1.4] (cp);
+\end{tikzpicture}
+\caption{Relazioni rilevanti del modello dati (semplificato).}
+\label{fig:datamodel}
+\end{figure}
+
+\section{Migrazioni idempotenti}
+
+Pattern (in \texttt{db.py}):
+
+\begin{lstlisting}[style=py]
+if insp.has_table("school_classes") \
+        and not has_column("school_classes", "curriculum_id"):
+    conn.execute(text(
+        "ALTER TABLE school_classes ADD COLUMN curriculum_id INTEGER"
+    ))
+\end{lstlisting}
+
+Ogni ALTER \`e guardato da una check su \texttt{PRAGMA table\_info}.
+Quando aggiungi una colonna nuova, segui lo stesso pattern: il DB
+preesistente sopravvive senza interventi manuali.
+
+\section{Pickle dell'engine}
+
+\texttt{engine\_io.py} converte fra DB e tre forme pickle:
+
+\begin{lstlisting}[style=py]
+school = {
+  'profile':   str,
+  'classes':   [{name, year, section, curriculum, subjects:{subj:ore}}],
+  'teachers':  [{name, group, max_hours, free_day,
+                 weights:{subj:int}}],
+  'cconcorsopersubject': {subj: {group: weight}},
+  'curriculum_scores':   {curriculum: int},
+  'curricula':           [...],
+  'students':            [...],
+  'groups':              [...],
+}
+profs = {
+  teacher_name: {
+    'classi':  {class_name: {subject: {'ore': N}}},
+    'glibero': [d1, d2, d3]
+  }
+}
+solution = {(prof, class, subj, day, hour): 0|1}
+\end{lstlisting}
+
+% =========== Cap 4: Vincoli ===========
+\chapter{Vincoli}
+
+\section{I 5 stati / 4 kind}
+
+Il sistema usa una tassonomia uniforme di \emph{5 stati} sia per le
+matrici di disponibilit\`a (cella per cella) sia per le preferenze
+di aula. I vincoli logici disgiuntivi (DNF) hanno \emph{4 kind}
+(\textsc{allowed} non si applica qui).
+
+\begin{center}
+\small
+\begin{tabular}{l l p{8cm}}
+\toprule
+Stato & Colore & Semantica \\
+\midrule
+\textcolor{cAllow}{ALLOWED} & verde chiaro &
+  default (solo grid materia$\leftrightarrow$aula e
+  docente$\leftrightarrow$aula); nessuna contribuzione all'obiettivo \\
+\textcolor{cSoft}{SOFT} & giallo &
+  penalit\`a positiva quando lo slot \`e usato (\texttt{+penalty}
+  aggiunto all'obiettivo, che \`e minimizzato) \\
+\textcolor{cHard}{HARD} & rosso &
+  il solver deve evitare questo slot, oppure il vincolo logico DEVE
+  essere soddisfatto \\
+\textcolor{cPref}{PREFERITO} & blu &
+  bonus negativo quando lo slot \`e usato / il vincolo logico \`e
+  soddisfatto (\texttt{-bonus} riduce l'obiettivo) \\
+\textcolor{cEnf}{ENFORCED} & verde scuro &
+  il solver DEVE far accadere questo slot / soddisfare il vincolo
+  con presence required \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section{Matrici di disponibilit\`a 5-stati}
+
+Il ciclo cliccando una cella \`e:
+
+\begin{center}
+\texttt{free $\to$ soft $\to$ hard $\to$ preferred $\to$ enforced $\to$
+free}
+\end{center}
+
+Le celle gialle e blu mostrano un input numerico per editare la
+penalit\`a (positiva sul giallo, negativa sul blu, sign-clamp
+automatico al salvataggio).
+
+\paragraph{Sincronizzazione free\_day.} Quando il docente ha
+\texttt{free\_day} settato, tutte e 6 le ore di quel giorno appaiono
+HARD nella matrice automaticamente. Se l'utente edita la matrice
+manualmente e tutte le ore di un giorno diventano HARD, il backend
+deduce il \texttt{free\_day}; viceversa cambiare il \texttt{free\_day}
+sostituisce le auto-cells.
+
+\paragraph{Mapping CP-SAT.} In
+\texttt{optimization.py::\_availability\_constraints} ogni tabella
+si traduce in: \texttt{<entity>\_hard} (set di tuple, forbidden
+assignment), \texttt{<entity>\_soft} (dict tuple$\to$penalty signed),
+\texttt{<entity>\_enforced} (set di tuple, presence required nel
+solver).
+
+\section{Vincoli logici (DNF)}
+
+\subsection{Sintassi}
+
+\begin{lstlisting}[basicstyle=\ttfamily\small]
+expr     := or_expr
+or_expr  := and_expr ('OR' and_expr)*
+and_expr := not_expr ('AND' not_expr)*
+not_expr := ('NOT' | 'mai') not_expr | atom
+atom     := slot | predicate | '(' expr ')'
+slot     := <giorno><ora>
+predicate:= <kind> ':' <name> ('@' <giorno> <ora>?)?
+kind     := aula | materia | classe | gruppo | docente | prof
+giorno   := lun|mar|mer|gio|ven|sab (anche lunedi|...|sabato,
+            monday|...|saturday)
+ora      := 1..6 (ordinale, 1=08:00) | 8..13 (assoluta)
+\end{lstlisting}
+
+Sono accettati \texttt{\&} (AND), \texttt{|} (OR), \texttt{!} (NOT).
+\texttt{mai} \`e alias di \texttt{NOT}.
+
+\subsection{Predicate atoms}
+
+\begin{lstlisting}[basicstyle=\ttfamily\small]
+aula:LabFisica           -- l'entita' usa l'aula a qualunque slot
+aula:LabFisica@mar       -- il martedi a qualunque ora
+aula:LabFisica@mar4      -- martedi 4a ora (= 11:00)
+materia:Religione@lun8   -- lezione di religione lunedi alle 8
+classe:1A_Scientifico    -- riferimento alla classe
+gruppo:IRC               -- riferimento al gruppo
+\end{lstlisting}
+
+I literal predicate vengono parsati e persistiti correttamente.
+Il solver li tratta otticamente per ora; l'integrazione strong con
+la fase classroom assignment \`e pianificata.
+
+\subsection{Esempi pratici}
+
+\begin{lstlisting}[basicstyle=\ttfamily\small]
+% Per docenti
+lun8 AND lun9
+(lun8 AND lun9) OR (mar8 AND mar9)
+gio11 OR gio12 OR gio13
+NOT (mer3 AND mer4)
+mai aula:LabFisica@mar
+mai materia:Religione@lun8
+
+% Per classi
+mer4 AND mer5 AND mer6
+mai aula:Palestra@gio
+aula:LabInformatica@mar OR aula:LabInformatica@gio
+
+% Per aule
+gio4 AND gio5 AND gio6
+mai materia:Religione
+gruppo:IRC OR gruppo:Alternativa
+\end{lstlisting}
+
+\subsection{Mapping CP-SAT}
+
+Per ogni regola con DNF \texttt{[clause1, clause2, ...]}:
+
+\begin{itemize}
+  \item HARD: il solver impone almeno una clausola fully active.
+  \item SOFT: se nessuna clausola \`e fully active, paga
+        \texttt{+soft\_penalty}.
+  \item PREFERITO: se almeno una clausola \`e fully active, ottiene
+        \texttt{+soft\_penalty} (negativo, quindi reduce dell'obiettivo).
+  \item ENFORCED: come HARD ma con presence required -- almeno
+        uno degli slot della DNF deve coincidere con un'ora di lezione
+        attiva per quell'entit\`a.
+\end{itemize}
+
+\section{Vincoli HARD a toggle (per classe)}
+
+In \texttt{school\_classes} ci sono 7 boolean strutturali:
+\texttt{hard\_entry\_at\_8}, \texttt{hard\_exit\_after\_12},
+\texttt{hard\_no\_holes}, \texttt{hard\_dual\_math},
+\texttt{hard\_dual\_italian}, \texttt{hard\_motorie\_pairs},
+\texttt{hard\_max\_6\_per\_day}. Il soft
+\texttt{soft\_minimize\_sixth\_weight} regola il peso della 6a ora.
+
+\section{Conflict detection}
+
+Il tab \emph{Vincoli} ha un bottone "Cerca conflitti"
+(\texttt{GET /api/monitor/conflicts}) che segnala:
+
+\begin{itemize}
+  \item \textbf{matrix\_hard\_enforced} -- stessa cella marcata sia
+        HARD sia ENFORCED.
+  \item \textbf{enforced\_on\_free\_day} -- cella ENFORCED del docente
+        nel suo \texttt{free\_day}.
+  \item \textbf{logical\_unsatisfiable} -- vincolo logico
+        HARD/ENFORCED la cui DNF non \`e soddisfacibile dato l'insieme
+        degli HARD slot dell'owner.
+\end{itemize}
+
+% =========== Cap 5: Workflow ===========
+\chapter{Workflow di ottimizzazione}
+
+\section{Schema delle fasi}
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[node distance=0.5cm and 0.6cm,
+  rect/.style={draw, rounded corners=4pt, very thick, fill=cBox!30,
+               minimum width=3.4cm, minimum height=1.2cm,
+               align=center, font=\small}]
+  \node[rect] (a) {Phase A\\\textit{assignment}\\CP-SAT};
+  \node[rect, right=of a] (b) {Phase B\\\textit{scheduling}\\+ decomp. spettrale};
+  \node[rect, right=of b] (m) {Metaeuristiche\\\textit{LNS+SA+TS+ILS}};
+  \node[rect, right=of m] (r) {Phase 4\\\textit{aule}\\CP-SAT};
+  \draw[-{Stealth[length=3mm]}, thick] (a) -- (b);
+  \draw[-{Stealth[length=3mm]}, thick] (b) -- (m);
+  \draw[-{Stealth[length=3mm]}, thick] (m) -- (r);
+
+  \node[below=0.4cm of a, font=\scriptsize] {assignments};
+  \node[below=0.4cm of b, font=\scriptsize] {lessons};
+  \node[below=0.4cm of m, font=\scriptsize] {lessons SOFT-ottime};
+  \node[below=0.4cm of r, font=\scriptsize] {lessons.classroom};
+\end{tikzpicture}
+\caption{Pipeline a 4 fasi.}
+\label{fig:pipeline}
+\end{figure}
+
+\section{Phase A: assegnazione (cattedre)}
+
+\paragraph{Modulo.} \texttt{experiments/cpsat\_v2\_assignment.py}.
+\paragraph{Lancio.} \texttt{POST /api/optimize/assignment} con
+\texttt{\{time\_limit\_s, workers, log\}}.
+
+\paragraph{Input.} L'insieme di \texttt{(class, subject,
+hours\_per\_week)} letto da \texttt{class\_subjects} e/o
+\texttt{curriculum\_subject\_hours} + le abilitazioni docente in
+\texttt{teacher\_subjects} + la classe-di-concorso preference in
+\texttt{subject\_group\_weights}.
+
+\paragraph{Output.} La tabella \texttt{assignments}
+(\texttt{teacher x class x subject} con \texttt{hours}). Problema di
+covering: ogni \texttt{(class, subject)} riceve un docente abilitato,
+rispettando max-hours per docente, classi-di-concorso e
+\texttt{teacher\_compatible\_classes}.
+
+\section{Phase B: scheduling}
+
+\paragraph{Modulo.} \texttt{experiments/cpsat\_v2\_timetable.py} +
+\texttt{experiments/decomposition\_spectral\_v2.py}.
+
+\paragraph{Decomposizione spettrale.}
+Per istanze grandi, il problema CP-SAT integrale \`e intrattabile.
+La pipeline calcola un grafo di co-occupazione fra docenti, ne fa
+un'embedding spettrale via Laplaciano normalizzato e usa K-means su
+quell'embedding per partizionare in $k$ cluster
+\emph{loosely-coupled}. Ogni cluster diventa una sub-istanza CP-SAT
+indipendente; un secondo step "bridges" risolve solo i bordi; un
+terzo step "ricucitura" fa full-CPSAT con tutto il problema partendo
+dalla soluzione stitched.
+
+\section{Metaeuristiche}
+
+\paragraph{Modulo.} \texttt{experiments/metaheuristics.py}.
+Cascata di:
+
+\begin{itemize}
+  \item \textbf{LNS} -- destroy-and-repair su finestre
+        \texttt{(teacher, day)} o \texttt{(class, day)}; freeze del
+        60-70\% delle lezioni e CP-SAT-resolve del resto.
+  \item \textbf{SA} (Simulated Annealing) -- single-swap accettati
+        con Metropolis a $T$ decrescente con fattore $\alpha$.
+  \item \textbf{TS} (Tabu Search) -- best-improvement local search
+        con tabu list (default size 80).
+  \item \textbf{ILS} (Iterated Local Search) -- alterna $n$ cicli di
+        TS con \emph{kick} perturbativi (random 4-opt fra giorni).
+\end{itemize}
+
+Tutti contribuiscono al SOFT score: holes per teacher, isolated 1-
+and 5-hour days, weekly distribution, dual-hour pairs, no 6th hour,
+banded preferences su materie. Il SOFT include la contribuzione delle
+matrici di disponibilit\`a SOFT/PREFERITO e dei logical SOFT/PREFERITO.
+
+\section{Phase 4: assegnazione aule}
+
+\paragraph{Modulo.} \texttt{experiments/classroom\_assignment.py}.
+Input: la tabella \texttt{lessons} (gi\`a temporalmente fissata) +
+le classroom rules (\texttt{kind}, \texttt{capacity},
+\texttt{multi\_class}, preferenze materia$\leftrightarrow$aula,
+classe$\leftrightarrow$aula, docente$\leftrightarrow$aula).
+Output: \texttt{lessons.classroom\_name} popolato.
+
+\section{Drag-and-drop con preview live}
+
+Trascinando una lezione su un altro slot la UI fa due chiamate:
+
+\begin{enumerate}
+  \item \texttt{POST /api/schedule/move-preview} -- il backend simula
+        la mossa per tutte le 36 (day, hour) e per ognuna restituisce:
+        \begin{itemize}
+          \item \texttt{ok} con \texttt{delta\_soft <= 0} -- mossa
+                accettabile (verde se delta $<$ 0, verde chiaro
+                se delta $=$ 0).
+          \item \texttt{soft\_worse} -- mossa accettabile ma peggiora
+                il SOFT (giallo).
+          \item \texttt{hard\_violation} -- vincolo HARD violato
+                (rosso).
+          \item \texttt{noop} -- slot di origine.
+        \end{itemize}
+  \item L'utente droppa, la UI invia \texttt{PUT
+        /api/schedule/move-lesson} che valida e persiste.
+\end{enumerate}
+
+\subsection{Room-follows-lesson}
+
+Il move-preview NON considera l'aula nel calcolo HARD. Se la nuova
+posizione \`e compatibile con docente / classe ma l'aula attuale
+\`e gi\`a occupata o HARD-unavailable in destination, il backend:
+
+\begin{enumerate}
+  \item Sposta la lezione.
+  \item Lascia l'aula libera sul nuovo slot solo se non c'\`e conflitto.
+  \item Se c'\`e conflitto, rimuove l'aula dalla lezione spostata e
+        risponde con \texttt{room\_cleared=true, cleared\_room=<nome>}.
+  \item La UI apre un Modal che spiega cosa \`e successo e chiede di
+        scegliere una nuova aula dal dropdown (verde libera / rosso
+        occupata).
+\end{enumerate}
+
+\section{Slot picker matriciale (Monitor)}
+
+Nel tab \emph{Monitor}, espandendo una cattedra si vedono le singole
+lezioni; cliccando il bottone Giorno/Ora si apre un modal con una
+matrice 6x6 dove ogni cella \`e colorata in base alla disponibilit\`a:
+
+\begin{itemize}
+  \item verde: free (docente e classe liberi)
+  \item rosso: HARD (docente o classe gi\`a impegnati)
+  \item ambra: aula occupata da un'altra lezione
+  \item azzurro: slot attuale
+\end{itemize}
+
+Click su una cella libera fa un dry-run via
+\texttt{PUT /api/monitor/event/\{aid\}/lesson/\{lid\}}. Se
+ci sono conflitti, apre un secondo Modal con 3 opzioni:
+\textbf{Annulla}, \textbf{Disassegna le lezioni in conflitto},
+\textbf{Disassegna e ottimizza dopo}.
+
+% =========== Cap 6: UI guide ===========
+\chapter{Guida UI}
+
+\section{Funzionalit\`a trasversali}
+
+\subsection{Query DSL e sort multi-livello}
+
+Ogni pagina lista ha:
+\begin{itemize}
+  \item barra Query (DSL: \texttt{=, !=, <, <=, >, >=, contains,
+        startswith, endswith, in [...]}, logica
+        \texttt{AND / OR}, parentesi);
+  \item sort multi-livello (max 4 livelli);
+  \item pannello Help con la lista dei campi.
+\end{itemize}
+
+\subsection{Multi-select}
+
+Sulle pagine Docenti / Classi / Aule la lista supporta:
+\begin{itemize}
+  \item click semplice: single-select (replace);
+  \item Ctrl+click: toggle;
+  \item Shift+click: range;
+  \item bottone "Vincolo collettivo" che apre il
+        \emph{BulkApplyModal}.
+\end{itemize}
+
+\subsection{Excel/CSV import}
+
+Ogni pagina lista ha "Importa Excel/CSV" + "Template". Lo stesso
+endpoint \texttt{POST /api/import/\{entity\}} gestisce le 7 entit\`a
+(teachers, subjects, classes, classrooms, curricula, students,
+groups). Modalit\`a: \texttt{upsert} (default), \texttt{append},
+\texttt{replace}. Header alias italiani / inglesi accettati.
+
+\section{Tab per tab}
+
+\subsection*{Dashboard}
+Importa profilo (5 size) con 3 checkbox per i pool
+(curricula, aule, studenti); genera scuola di test; stato corrente
+con 7 card-numero; \emph{RunLogPanel} streaming.
+
+\subsection*{Docenti, Classi, Indirizzi, Studenti, Gruppi, Materie, Aule, Compresenze}
+CRUD entit\`a con modal di edit. Vedere
+\texttt{ui\_guide.md} per i campi specifici di ognuna.
+
+\subsection*{Cattedre}
+Layout a card: una card per classe, lista materie+docente+ore.
+Bottone "cambia": apre modal con dropdown filtrato per materia,
+ogni opzione mostra \texttt{Cognome Nome - assigned/max
+[SFORA: +Xh]} / \texttt{[pieno]}. Bottone "Warnings cattedre":
+pannello con docenti SFORA / sotto / vuoti / ok.
+
+\subsection*{Orario}
+4 viste (per classe, per docente, per aula, per slot), ognuna con
+toggle matrice/lista. Drag-and-drop con preview live, dropdown
+aule colorate (verde libera / rosso occupata).
+
+\subsection*{Assenze e supplenze}
+Vista settimanale 6$\times$6. Click su intestazione giorno: modal
+gestione assenze. Click su cella rossa: modal con classi scoperte
+(sinistra) + docenti disponibili (destra), drag-drop per assegnare
+supplenti.
+
+\subsection*{Monitor}
+Lista \emph{eventi} (uno per Assignment). Espansione lezione-per-lezione
+con bottone Giorno/Ora che apre slot picker matriciale (vedere
+\S5.6).
+
+\subsection*{Vincoli}
+Lista flat di tutti i vincoli editabili con pill colorate per livello.
+Bottone "Cerca conflitti": pannello con conflitti rilevati.
+
+\subsection*{Workflow}
+Pulsanti per lanciare le 4 fasi separatamente o "Pipeline completa".
+SSE log streaming.
+
+% =========== Cap 7: API ===========
+\chapter{API REST}
+
+Tutti gli endpoint sono sotto \texttt{/api/}. Backend espone $\sim$118
+route. Lista non esaustiva delle pi\`u rilevanti.
+
+\section{Pattern CRUD}
+
+Ogni risorsa CRUD ha la stessa forma:
+
+\begin{center}
+\small
+\begin{tabular}{l l l}
+\toprule
+Verbo & Path & Descrizione \\
+\midrule
+GET    & \texttt{/api/<entity>}      & lista (q + sort)  \\
+GET    & \texttt{/api/<entity>/\{id\}} & dettaglio       \\
+POST   & \texttt{/api/<entity>}      & create           \\
+PUT    & \texttt{/api/<entity>/\{id\}} & replace        \\
+DELETE & \texttt{/api/<entity>/\{id\}} & delete         \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section{Esempi curl}
+
+\begin{lstlisting}[style=shell]
+# stato dataset
+curl http://127.0.0.1:8000/api/dataset/state
+
+# import small con tutti i pool
+curl -X POST -H "Content-Type: application/json" \
+  -d '{"profile":"small","use_optimized":true,
+       "import_curricula":true,"import_classrooms":true,
+       "import_students":true}' \
+  http://127.0.0.1:8000/api/dataset/import-profile
+
+# vincolo logico HARD su un docente
+curl -X POST -H "Content-Type: application/json" \
+  -d '{"expression":"mai aula:LabFisica@mar","kind":"hard"}' \
+  http://127.0.0.1:8000/api/teachers/15/logical-unavailabilities
+
+# bulk dry-run su 3 classi
+curl -X POST -H "Content-Type: application/json" \
+  -d '{"entity_ids":[1,2,3],"action":"add_logical",
+       "payload":{"expression":"lun8 AND lun9","is_hard":true,
+                  "soft_penalty":100},
+       "on_conflict":"dry_run"}' \
+  http://127.0.0.1:8000/api/bulk/classes/dry-run
+
+# coverage settimana
+curl 'http://127.0.0.1:8000/api/coverage/week?week_start=2026-04-27'
+
+# event lessons (monitor)
+curl http://127.0.0.1:8000/api/monitor/event/1/lessons
+\end{lstlisting}
+
+\section{Riferimento gruppi di endpoint}
+
+\begin{itemize}
+  \item \textbf{Anagrafiche}: \texttt{/api/teachers},
+        \texttt{/classes}, \texttt{/classrooms},
+        \texttt{/subjects}, \texttt{/curricula},
+        \texttt{/students}, \texttt{/groups}.
+  \item \textbf{Cattedre}: \texttt{/api/assignments} +
+        \texttt{teachers-for-subject} + \texttt{loads}.
+  \item \textbf{Vincoli logici}:
+        \texttt{/api/\{teachers,classes,classrooms\}/\{id\}/logical-unavailabilities},
+        \texttt{/api/curricula/\{cid\}/logical-constraints}.
+  \item \textbf{Bulk ops}:
+        \texttt{/api/bulk/\{entity\}/dry-run|apply}.
+  \item \textbf{Schedule}:
+        \texttt{/api/schedule/by-class|by-teacher|by-room|by-slot},
+        \texttt{move-lesson}, \texttt{move-preview},
+        \texttt{lesson/\{lid\}/classroom}.
+  \item \textbf{Coverage}: \texttt{/api/coverage/week|cell},
+        \texttt{/api/absences}, \texttt{/api/substitutions}.
+  \item \textbf{Optimization}:
+        \texttt{/api/optimize/assignment|phase-b|lns|sa|ts|ils|full|classroom-assignment}.
+  \item \textbf{Monitor}: \texttt{/api/monitor/events|summary|constraints|conflicts},
+        \texttt{event/\{aid\}/lessons|lesson/\{lid\}}.
+  \item \textbf{Import}: \texttt{/api/import/\{entity\}},
+        \texttt{/api/import/\{entity\}/template}.
+\end{itemize}
+
+% =========== Cap 8: Estendere ===========
+\chapter{Estendere il sistema}
+
+\section{Aggiungere una nuova tabella + CRUD}
+
+\begin{enumerate}
+  \item Modello in \texttt{webui/backend/models.py}.
+  \item Pydantic in \texttt{schemas.py} (\texttt{XxxIn}, \texttt{XxxOut}).
+  \item Router in \texttt{routers/xxx.py}. Copia un router esistente
+        come template.
+  \item Includi il router in \texttt{main.py}:
+        \texttt{app.include\_router(xxx.router)}.
+  \item Adapter DSL in \texttt{utils/list\_query.py}.
+  \item Frontend: nuova route
+        \texttt{webui/frontend/src/routes/xxx/+page.svelte},
+        riusando \emph{SortableQueryableList}.
+  \item Voce in \texttt{+layout.svelte} per la nav.
+\end{enumerate}
+
+\section{Migrazione idempotente}
+
+Aggiorna \texttt{db.py::\_apply\_lightweight\_migrations}. Pattern:
+
+\begin{lstlisting}[style=py]
+if insp.has_table("my_table") \
+        and not has_column("my_table", "new_field"):
+    conn.execute(text(
+        "ALTER TABLE my_table ADD COLUMN new_field VARCHAR(64)"
+    ))
+\end{lstlisting}
+
+\section{Aggiungere un nuovo tipo di vincolo}
+
+\paragraph{Per-cella.} Copia il pattern di
+\texttt{TeacherUnavailability}: unique (entity\_id, day, hour),
+columns state/penalty/reason. Aggiorna \texttt{models.py},
+\texttt{schemas.py}, router, \texttt{optimization.py::\_availability\_constraints},
+\texttt{routers/monitor.py::\_build\_constraints} (per il tab
+Vincoli), \texttt{routers/bulk.py::ENTITY\_UNAV\_MODEL} se vuoi
+supportare bulk.
+
+\paragraph{Logico.} Aggiungi \texttt{entity\_type} a
+\texttt{LogicalUnavailability}; aggiorna
+\texttt{routers/logical.py::ENTITY\_MODEL} e \texttt{ENTITY\_TYPE};
+modifica \texttt{routers/monitor.py::\_build\_constraints}; aggiungi
+il branch nel solver.
+
+\section{Aggiungere un nuovo step di ottimizzazione}
+
+\begin{lstlisting}[style=py]
+def my_new_step(...):
+    params = dict(...)
+    run_id = create_run("my_step", "Nome leggibile", profile, params)
+
+    def target(rid: int):
+        # carica dati, lancia solver, persiste
+        update_run(rid, progress=0.5)
+        ...
+        update_run(rid, solution_id=sid, obj_value=v, metrics=m)
+        update_run(rid, progress=1.0)
+
+    start_thread(run_id, target)
+    return run_id
+\end{lstlisting}
+
+Esponi via \texttt{routers/optimize.py} con un endpoint POST.
+Frontend in \texttt{/optimize} per il bottone di lancio + log
+streaming via \emph{RunLogPanel} (SSE).
+
+\section{Testing}
+
+Non c'\`e una test suite formale. Per smoke-testare end-to-end:
+
+\begin{itemize}
+  \item Backend boot pulito: \texttt{uvicorn backend.main:app}.
+  \item Live curl: vedere \S7.2.
+  \item Frontend \texttt{vite build} deve passare clean.
+  \item Migrazione idempotente: rilancia su DB esistente per
+        confermare zero data loss.
+\end{itemize}
+
+% =========== Appendice ===========
+\appendix
+
+\chapter{Launcher}
+
+\section{Windows: \texttt{start.bat}}
+
+Apre due finestre cmd separate. Pre-flight:
+\begin{itemize}
+  \item npm reachable (forza \texttt{nodejs} nel PATH);
+  \item venv esiste in \texttt{backend/.venv};
+  \item \texttt{backend/main.py} e \texttt{frontend/package.json}
+        presenti;
+  \item se \texttt{node\_modules} manca, lancia \texttt{npm install};
+  \item avvisa se 8000 / 5173 sono gi\`a occupate.
+\end{itemize}
+
+I path sono relativi a \texttt{\%\textasciitilde dp0}, quindi lo
+script funziona ovunque venga messo.
+
+\section{Linux / macOS: \texttt{start.sh} + \texttt{stop.sh}}
+
+Default background: log in \texttt{webui/logs/}, PID in
+\texttt{webui/logs/pids}. Flag \texttt{-f} / \texttt{--foreground}
+per Ctrl+C cleanup. Auto-crea venv e fa \texttt{npm install} se
+mancano. Hint per \texttt{apt}, \texttt{dnf}, \texttt{pacman},
+\texttt{brew} se python3 / npm non sono nel PATH.
+
+\texttt{stop.sh} legge \texttt{logs/pids}, manda SIGTERM con
+fallback SIGKILL dopo 3s, killa anche i child via \texttt{pkill -P}
+e ha un fallback per ammazzare qualunque processo ancora in ascolto
+su 8000 / 5173 via \texttt{lsof}.
+
+\chapter{Repository GitHub}
+
+URL: \url{https://github.com/gborghi/timetable}.
+
+Repository privato. La landing page contiene il README di alto
+livello con quickstart, tour della UI, sintassi vincoli,
+architettura, repository layout.
+
+\chapter{Reference}
+
+\begin{itemize}
+  \item Pisinger, "Where are the hard knapsack problems?", 2005.
+  \item Kohl, Karisch, Patriksson, "Very Large-Scale Neighborhood
+        Search Techniques", 2002.
+  \item Burke, Kingston, Pepper, "A standard data format for timetabling
+        instances", 2008 (S1877050919318800).
+  \item Ahuja, Magnanti, Orlin, "Network Flows", 1993.
+\end{itemize}
+
+\end{document}

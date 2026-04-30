@@ -21,6 +21,23 @@ The full feature list is large; see `proposals/analysis.md` and
 `proposals/benchmarks.md` for the design rationale and the empirical
 performance numbers across school sizes.
 
+## Documentation
+
+- **[Technical manual (PDF, 25 pages)](docs/manual.pdf)** -- single
+  printable document with cover, TOC, schemas, code snippets and
+  index of all features.
+- **[docs/](docs/)** -- modular markdown reference:
+  [architecture](docs/architecture.md) /
+  [data model](docs/data_model.md) /
+  [constraints](docs/constraints.md) /
+  [workflow](docs/workflow.md) /
+  [UI guide](docs/ui_guide.md) /
+  [API](docs/api.md) /
+  [extending](docs/extending.md).
+- **[webui/docs/](webui/docs/)** -- short user-facing guides linked
+  from the UI itself (Excel import format, query syntax, bulk
+  operations, classroom auto-generation, ...).
+
 ## Quickstart (Windows)
 
 Prerequisites:
