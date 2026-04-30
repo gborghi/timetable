@@ -6,6 +6,7 @@
   import SortableQueryableList from '$lib/components/SortableQueryableList.svelte';
   import ImportButton from '$lib/components/ImportButton.svelte';
   import { cloneRow } from '$lib/utils.js';
+  import { students as studentsSvc, classes as classesSvc } from '$lib/services';
 
   let editing = null;
   let listRef = null;
@@ -13,7 +14,7 @@
 
   onMount(async () => {
     try {
-      allClasses = await api.get('/api/classes');
+      allClasses = await classesSvc.list();
     } catch { /* */ }
   });
 
@@ -36,8 +37,8 @@
       payload.class_id = null;
     saving = true;
     try {
-      if (editing._new) await api.post('/api/students', payload);
-      else await api.put('/api/students/' + editing.id, payload);
+      if (editing._new) await studentsSvc.create(payload);
+      else await studentsSvc.update(editing.id, payload);
       flash('Studente salvato', 'success');
       editing = null;
       await listRef.reload();
@@ -49,7 +50,7 @@
   async function del(row) {
     if (!confirm('Eliminare ' + row.last_name + ' ' + row.first_name + '?')) return;
     try {
-      await api.del('/api/students/' + row.id);
+      await studentsSvc.remove(row.id);
       await listRef.reload();
     } catch (e) { flash('Errore: ' + e.message, 'error'); }
   }

@@ -7,6 +7,7 @@
   import ImportButton from '$lib/components/ImportButton.svelte';
   import ClassroomGrid from '$lib/components/ClassroomGrid.svelte';
   import { cloneRow } from '$lib/utils.js';
+  import { subjects as subjectsSvc, classrooms as classroomsSvc } from '$lib/services';
 
   let editing = null;
   let weights = [];
@@ -15,8 +16,8 @@
   let listRef = null;
 
   onMount(async () => {
-    try { weights = await api.get('/api/subjects/group-weights'); } catch { /* */ }
-    try { allClassrooms = await api.get('/api/classrooms'); } catch { /* */ }
+    try { weights = await subjectsSvc.groupWeights(); } catch { /* */ }
+    try { allClassrooms = await classroomsSvc.list(); } catch { /* */ }
   });
 
   function newSubject() {
@@ -43,8 +44,8 @@
     const id = editing.id;
     delete payload.id;
     try {
-      if (editing._new) await api.post('/api/subjects', payload);
-      else await api.put('/api/subjects/' + id, payload);
+      if (editing._new) await subjectsSvc.create(payload);
+      else await subjectsSvc.update(id, payload);
       flash('Salvato', 'success');
       editing = null;
       await listRef.reload();
@@ -52,18 +53,18 @@
   }
   async function del(row) {
     if (!confirm('Eliminare ' + row.name + '?')) return;
-    try { await api.del('/api/subjects/' + row.id); await listRef.reload(); }
+    try { await subjectsSvc.remove(row.id); await listRef.reload(); }
     catch (e) { flash('Errore: ' + e.message, 'error'); }
   }
   function addWeightRow() { weights = [...weights, { id: undefined, subject: '', group_name: '', weight: 1 }]; }
   function delWeightRow(i) { weights = weights.filter((_, idx) => idx !== i); }
   async function saveWeights() {
     try {
-      await api.put('/api/subjects/group-weights', weights.map((w) => ({
+      await subjectsSvc.setGroupWeights(weights.map((w) => ({
         subject: w.subject, group_name: w.group_name, weight: Number(w.weight)
       })));
       flash('Pesi salvati', 'success');
-      weights = await api.get('/api/subjects/group-weights');
+      weights = await subjectsSvc.groupWeights();
       editWeights = false;
     } catch (e) { flash('Errore: ' + e.message, 'error'); }
   }

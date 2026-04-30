@@ -4,6 +4,12 @@
   import { flash } from '$lib/stores.js';
   import Modal from '$lib/components/Modal.svelte';
   import { cloneRow } from '$lib/utils.js';
+  import {
+    coteaching as coteachingSvc,
+    classes as classesSvc,
+    teachers as teachersSvc,
+    subjects as subjectsSvc
+  } from '$lib/services';
 
   let rows = [];
   let editing = null;
@@ -12,10 +18,10 @@
   let allSubjects = [];
 
   onMount(async () => {
-    rows = await api.get('/api/coteaching');
-    allClasses = (await api.get('/api/classes')).map((c) => c.name);
-    allTeachers = (await api.get('/api/teachers')).map((t) => t.name);
-    allSubjects = (await api.get('/api/subjects')).map((s) => s.name);
+    rows = await coteachingSvc.list();
+    allClasses = (await classesSvc.list()).map((c) => c.name);
+    allTeachers = (await teachersSvc.list()).map((t) => t.name);
+    allSubjects = (await subjectsSvc.list()).map((s) => s.name);
   });
 
   function newRule() {
@@ -37,11 +43,11 @@
       teachers: editing.teachers.filter((t) => t)
     };
     try {
-      if (editing._new) await api.post('/api/coteaching', payload);
-      else await api.put('/api/coteaching/' + editing.id, payload);
+      if (editing._new) await coteachingSvc.create(payload);
+      else await coteachingSvc.update(editing.id, payload);
       flash('Salvato', 'success');
       editing = null;
-      rows = await api.get('/api/coteaching');
+      rows = await coteachingSvc.list();
     } catch (e) {
       flash('Errore: ' + e.message, 'error');
     }
@@ -50,8 +56,8 @@
   async function del(row) {
     if (!confirm('Eliminare regola compresenza per ' + row.class_name + ' / ' + row.subject + '?')) return;
     try {
-      await api.del('/api/coteaching/' + row.id);
-      rows = await api.get('/api/coteaching');
+      await coteachingSvc.remove(row.id);
+      rows = await coteachingSvc.list();
     } catch (e) {
       flash('Errore: ' + e.message, 'error');
     }

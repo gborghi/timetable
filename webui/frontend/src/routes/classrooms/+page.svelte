@@ -10,6 +10,7 @@
   import ImportButton from '$lib/components/ImportButton.svelte';
   import BulkApplyModal from '$lib/components/BulkApplyModal.svelte';
   import { cloneRow } from '$lib/utils.js';
+  import { classrooms as classroomsSvc, subjects as subjectsSvc, classes as classesSvc } from '$lib/services';
 
   let editing = null;
   let allSubjects = [];
@@ -28,14 +29,14 @@
 
   onMount(async () => {
     try {
-      allSubjects = (await api.get('/api/subjects')).map((s) => s.name).sort();
-      allClasses = (await api.get('/api/classes')).map((c) => c.name).sort();
+      allSubjects = (await subjectsSvc.list()).map((s) => s.name).sort();
+      allClasses = (await classesSvc.list()).map((c) => c.name).sort();
     } catch { /* */ }
   });
 
   async function loadSuggested() {
     try {
-      suggested = await api.get('/api/classrooms/suggested-counts');
+      suggested = await classroomsSvc.suggestedCounts();
       genCounts = { ...suggested.counts };
       showGenPanel = true;
     } catch (e) { flash('Errore: ' + e.message, 'error'); }
@@ -55,7 +56,7 @@
         n_biblioteca: Number(genCounts.biblioteca),
         n_aula_speciale: Number(genCounts.aula_speciale)
       };
-      const r = await api.post('/api/classrooms/auto-generate', payload);
+      const r = await classroomsSvc.autoGenerate(payload);
       flash('Aule generate: ' + r.created + ' (su ' + r.n_classes + ' classi)', 'success');
       showGenPanel = false;
       await listRef.reload();
@@ -88,8 +89,8 @@
     const payload = { ...editing };
     delete payload._new; delete payload.id;
     try {
-      if (editing._new) await api.post('/api/classrooms', payload);
-      else await api.put('/api/classrooms/' + editing.id, payload);
+      if (editing._new) await classroomsSvc.create(payload);
+      else await classroomsSvc.update(editing.id, payload);
       flash('Salvato', 'success');
       editing = null;
       await listRef.reload();
@@ -100,7 +101,7 @@
   async function del(row) {
     if (!confirm('Eliminare ' + row.name + '?')) return;
     try {
-      await api.del('/api/classrooms/' + row.id);
+      await classroomsSvc.remove(row.id);
       await listRef.reload();
       await refreshDataset();
     } catch (e) { flash('Errore: ' + e.message, 'error'); }

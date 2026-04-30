@@ -9,6 +9,7 @@
   import ImportButton from '$lib/components/ImportButton.svelte';
   import BulkApplyModal from '$lib/components/BulkApplyModal.svelte';
   import { cloneRow } from '$lib/utils.js';
+  import { classes as classesSvc, subjects as subjectsSvc, curricula as curriculaSvc } from '$lib/services';
 
   let editing = null;
   let allSubjects = [];
@@ -19,8 +20,8 @@
 
   onMount(async () => {
     try {
-      allSubjects = (await api.get('/api/subjects')).map((s) => s.name).sort();
-      allCurricula = await api.get('/api/curricula');
+      allSubjects = (await subjectsSvc.list()).map((s) => s.name).sort();
+      allCurricula = await curriculaSvc.list();
     } catch { /* */ }
   });
 
@@ -68,8 +69,8 @@
     delete payload.ore_totali; delete payload.n_subjects;
     saving = true;
     try {
-      if (editing._new) await api.post('/api/classes', payload);
-      else await api.put('/api/classes/' + editing.id, payload);
+      if (editing._new) await classesSvc.create(payload);
+      else await classesSvc.update(editing.id, payload);
       flash('Salvato', 'success');
       editing = null;
       await listRef.reload();
@@ -84,7 +85,7 @@
   async function del(row) {
     if (!confirm('Eliminare ' + row.name + '?')) return;
     try {
-      await api.del('/api/classes/' + row.id);
+      await classesSvc.remove(row.id);
       await listRef.reload();
       await refreshDataset();
     } catch (e) { flash('Errore: ' + e.message, 'error'); }

@@ -3,6 +3,7 @@
   import { api } from '$lib/api.js';
   import { flash, refreshDataset } from '$lib/stores.js';
   import { DAY_NAMES_EN, TEACHER_DEFAULTS } from '$lib/constants.js';
+  import { teachers, subjects as subjectsSvc, classrooms as classroomsSvc } from '$lib/services';
   import Modal from '$lib/components/Modal.svelte';
   import AvailabilityMatrix from '$lib/components/AvailabilityMatrix.svelte';
   import SortableQueryableList from '$lib/components/SortableQueryableList.svelte';
@@ -25,11 +26,11 @@
 
   onMount(async () => {
     try {
-      const subs = await api.get('/api/subjects');
+      const subs = await subjectsSvc.list();
       allSubjects = subs.map((s) => s.name).sort();
     } catch { /* */ }
     try {
-      allClassrooms = await api.get('/api/classrooms');
+      allClassrooms = await classroomsSvc.list();
     } catch { /* */ }
   });
 
@@ -146,8 +147,8 @@
     delete payload.soft_penalty_total;
     saving = true;
     try {
-      if (editing._new) await api.post('/api/teachers', payload);
-      else await api.put('/api/teachers/' + editing.id, payload);
+      if (editing._new) await teachers.create(payload);
+      else await teachers.update(editing.id, payload);
       flash('Salvato', 'success');
       editing = null;
       await listRef.reload();
@@ -162,7 +163,7 @@
   async function del(row) {
     if (!confirm('Eliminare ' + row.name + '?')) return;
     try {
-      await api.del('/api/teachers/' + row.id);
+      await teachers.remove(row.id);
       await listRef.reload();
       await refreshDataset();
     } catch (e) {

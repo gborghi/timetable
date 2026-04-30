@@ -6,6 +6,7 @@
   import SortableQueryableList from '$lib/components/SortableQueryableList.svelte';
   import ImportButton from '$lib/components/ImportButton.svelte';
   import { cloneRow } from '$lib/utils.js';
+  import { curricula as curriculaSvc, subjects as subjectsSvc, logic as logicSvc } from '$lib/services';
 
   let editing = null;
   let listRef = null;
@@ -56,7 +57,7 @@
 
   onMount(async () => {
     try {
-      allSubjects = (await api.get('/api/subjects')).map((s) => s.name).sort();
+      allSubjects = (await subjectsSvc.list()).map((s) => s.name).sort();
     } catch { /* */ }
   });
 
@@ -98,8 +99,8 @@
     delete payload.n_classes;
     try {
       let saved;
-      if (editing._new) saved = await api.post('/api/curricula', payload);
-      else saved = await api.put('/api/curricula/' + editing.id, payload);
+      if (editing._new) saved = await curriculaSvc.create(payload);
+      else saved = await curriculaSvc.update(editing.id, payload);
       flash('Indirizzo salvato', 'success');
       editing = saved;
       await listRef.reload();
@@ -114,7 +115,7 @@
   async function del(row) {
     if (!confirm('Eliminare ' + row.code + '? (le classi gia collegate verranno disassociate)')) return;
     try {
-      await api.del('/api/curricula/' + row.id);
+      await curriculaSvc.remove(row.id);
       await listRef.reload();
       await refreshDataset();
     } catch (e) { flash('Errore: ' + e.message, 'error'); }
@@ -132,7 +133,7 @@
 
   async function logicalValidateNow() {
     try {
-      logicalValidate = await api.post('/api/logic/validate', { expression: logicalDraftExpr });
+      logicalValidate = await logicSvc.validate(logicalDraftExpr);
     } catch (e) {
       logicalValidate = { ok: false, error: e.message };
     }

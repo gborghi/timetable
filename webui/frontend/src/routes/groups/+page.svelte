@@ -6,6 +6,7 @@
   import SortableQueryableList from '$lib/components/SortableQueryableList.svelte';
   import ImportButton from '$lib/components/ImportButton.svelte';
   import { cloneRow } from '$lib/utils.js';
+  import { groups as groupsSvc, students as studentsSvc, subjects as subjectsSvc } from '$lib/services';
 
   let editing = null;
   let listRef = null;
@@ -15,13 +16,13 @@
 
   onMount(async () => {
     try {
-      allStudents = await api.get('/api/students');
-      allSubjects = (await api.get('/api/subjects')).map((s) => s.name).sort();
+      allStudents = await studentsSvc.list();
+      allSubjects = (await subjectsSvc.list()).map((s) => s.name).sort();
     } catch { /* */ }
   });
 
   async function reloadStudents() {
-    allStudents = await api.get('/api/students');
+    allStudents = await studentsSvc.list();
   }
 
   function newGroup() {
@@ -66,8 +67,8 @@
     delete payload.n_students; delete payload.n_classes_touched;
     saving = true;
     try {
-      if (editing._new) await api.post('/api/groups', payload);
-      else await api.put('/api/groups/' + editing.id, payload);
+      if (editing._new) await groupsSvc.create(payload);
+      else await groupsSvc.update(editing.id, payload);
       flash('Gruppo salvato', 'success');
       editing = null;
       await listRef.reload();
@@ -79,7 +80,7 @@
   async function del(row) {
     if (!confirm('Eliminare gruppo ' + row.name + '?')) return;
     try {
-      await api.del('/api/groups/' + row.id);
+      await groupsSvc.remove(row.id);
       await listRef.reload();
     } catch (e) { flash('Errore: ' + e.message, 'error'); }
   }
