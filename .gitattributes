@@ -1,0 +1,5 @@
+# Keep shell scripts LF-only so they work on Linux/macOS even when the
+# repo is cloned on a Windows host with autocrlf=true. Windows .bat must
+# stay CRLF for cmd.exe to parse them reliably.
+*.sh   text eol=lf
+*.bat  text eol=crlf
