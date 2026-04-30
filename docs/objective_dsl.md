@@ -49,23 +49,25 @@ not (yet) supported.
 
 | Name                       | Meaning                                                     |
 | -------------------------- | ----------------------------------------------------------- |
-| `total_unused_capacity`    | sum over teachers of `(max_hours - actual_hours)`           |
-| `total_n_classes`          | sum over teachers of "distinct classes assigned"            |
-| `total_n_curricula`        | sum over teachers of "distinct curriculum-tops assigned"    |
-| `total_weight`             | sum over teachers of `teacher_weight[t]`                    |
-| `n_under_18`               | count of teachers with `actual_hours < 18`                  |
-| `n_under_10`               | count of teachers with `actual_hours < 10`                  |
+| `total_unused_capacity`         | sum over teachers of `(max_hours - actual_hours)`     |
+| `total_n_classes`               | sum over teachers of "distinct classes assigned"      |
+| `total_n_curricula`             | sum over teachers of "distinct curriculum-tops assigned" |
+| `total_weight`                  | sum over teachers of `teacher_weight[t]`              |
+| `total_seniority_misalignment`  | sum over teachers of `teacher_seniority_misalignment[t]`. Higher means teachers and classes are badly matched by seniority/curriculum-weight; minimise to align "anziani -> indirizzi pesanti". |
+| `n_under_18`                    | count of teachers with `actual_hours < 18`            |
+| `n_under_10`                    | count of teachers with `actual_hours < 10`            |
 
 ### Per-teacher variables (only inside `sum(...)` / `count(...)`)
 
-| Name                  | Meaning                                                          |
-| --------------------- | ---------------------------------------------------------------- |
-| `teacher_hours`       | actual hours assigned to this teacher                            |
-| `teacher_max_hours`   | max contractual hours for this teacher                           |
-| `teacher_unused`      | `max_hours - actual_hours`                                       |
-| `teacher_n_classes`   | distinct classes assigned                                        |
-| `teacher_n_curricula` | distinct curriculum-tops touched                                 |
-| `teacher_weight`      | sum of `(year + curriculum_score)` over assigned classes; a proxy for "load weight" |
+| Name                              | Meaning                                                          |
+| --------------------------------- | ---------------------------------------------------------------- |
+| `teacher_hours`                   | actual hours assigned to this teacher                            |
+| `teacher_max_hours`               | max contractual hours for this teacher                           |
+| `teacher_unused`                  | `max_hours - actual_hours`                                       |
+| `teacher_n_classes`               | distinct classes assigned                                        |
+| `teacher_n_curricula`             | distinct curriculum-tops touched                                 |
+| `teacher_weight`                  | sum of `(year + curriculum_score)` over assigned classes; a proxy for "load weight" |
+| `teacher_seniority_misalignment`  | `sum_ci has_class[ti,ci] * |teacher_rank[ti] - class_rank[ci]| * curriculum_score[ci]`. Requires `graduatoria_score` on Teacher; teachers without a score get the median rank. |
 
 ### Predicates (boolean per teacher; only inside aggregates)
 
@@ -163,6 +165,26 @@ minimize 200 * total_n_classes
 
 Focused on reducing the number of distinct classes per teacher
 (continuita' didattica). Good for student experience.
+
+### `seniority`
+
+```text
+minimize 50 * total_unused_capacity
+       + 100 * total_n_classes
+       + 5000 * n_under_18
+       + 10 * total_seniority_misalignment
+```
+
+Aligns teacher seniority (`graduatoria_score`) with class
+heaviness (`curriculum.score`): the more senior teacher gets the
+heavier indirizzo. Teachers without a recorded score are treated as
+neutral (median rank). The penalty is `|rank_t - rank_ci| *
+curriculum_score[ci]`, summed per-teacher and across teachers.
+
+Requires the `graduatoria_score` field on Teacher (added 2026-04-30
+via Alembic migration `a8b1a59a0487`). On a school with NO
+graduatoria data, this preset behaves identically to the generic
+balance preset (the seniority term degenerates to 0).
 
 ## Custom expression examples
 

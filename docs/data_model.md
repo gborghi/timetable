@@ -13,11 +13,14 @@ in `webui/backend/db.py::_apply_lightweight_migrations`.
 - **teachers** -- docenti. Campi name (chiave engine, unique),
   `last_name`, `first_name`, `nickname` (display nell'orario);
   `matricola`, `group` (classe di concorso), `max_hours`,
-  `completion_hours`, `exemption_hours`, `free_day` (string, day name),
+  `completion_hours`, `exemption_hours`,
+  `graduatoria_score` (Float nullable, range tipico 0-300, usato dal
+  preset Phase-A "Anzianita'"), `free_day` (string, day name),
   `max_consecutive`, `pref_no_buchi_weight`, `pref_no_five_weight`,
   `pref_no_one_weight`, `preferred_days_csv`. Relazioni:
   `teacher_subjects`, `teacher_unavailability`,
-  `teacher_mandatory_free_days`, `teacher_compatible_classes`.
+  `teacher_mandatory_free_days`, `teacher_compatible_classes`,
+  `teacher_class_preferences`, `teacher_curriculum_preferences`.
 - **school_classes** -- classi. `name` (e.g. "1A_Scientifico"),
   `nickname` (display), `year`, `section`, `curriculum` (string legacy),
   `curriculum_id` (FK opzionale a curricula -- normalizzazione),
@@ -76,6 +79,15 @@ in `webui/backend/db.py::_apply_lightweight_migrations`.
   `state == enforced`.
 - **teacher_classroom_preferences** -- preferenza docente <-> aula con
   stessi 5 stati.
+- **teacher_class_preferences** -- *Phase-A only*: preferenza
+  docente <-> classe specifica. 5 stati (allowed / soft / preferred /
+  forbidden / enforced) + `soft_penalty` Float. Unique `(teacher_id,
+  class_name)`. HARD `forbidden` esclude la classe dalle assegnabili
+  per quel docente; HARD `enforced` impone almeno una materia
+  compatibile della classe a quel docente. Non influisce su Phase B.
+- **teacher_curriculum_preferences** -- *Phase-A only*: come sopra
+  ma a livello di indirizzo (`curriculum_code`). HARD `forbidden`
+  esclude TUTTE le classi di quell'indirizzo dal docente.
 - **coteaching_rules** -- compresenze: per `(class, subject)` la
   lezione e' co-tenuta da `n_teachers` docenti, `required` (HARD/SOFT),
   `weight`, `teacher_csv` opzionale.

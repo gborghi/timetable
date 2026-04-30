@@ -155,6 +155,10 @@ CRUD docenti. Il modal di edit ha:
   `last_name + first_name` in `syncName()`.
 - Matricola, Classe di concorso, Max ore-cattedra, Ore di
   completamento / esonero
+- **Punteggio graduatoria** (opzionale, range tipico 0-300):
+  punteggio in graduatoria provinciale del docente. Usato dal preset
+  Phase-A "Anzianita' -> indirizzi pesanti" (vedere
+  [objective_dsl.md](objective_dsl.md)).
 - Giorno libero (select) + Max ore consecutive
 - Materie insegnate (select multipla, scrolla nel `<select multiple>`
   con la lista globale delle materie)
@@ -163,6 +167,37 @@ CRUD docenti. Il modal di edit ha:
 - ClassroomGrid 5-stati per assegnare aule preferred / forbidden /
   enforced specifiche al docente
 - LogicalUnavailabilitiesPanel per i vincoli logici DNF
+
+#### Preferenze per Phase A (classi + indirizzi)
+
+Sotto i pannelli sopra, separato da una riga di intestazione, c'e'
+un blocco dedicato alle preferenze del docente per Phase A
+(assegnazione docente -> classe). Sono SOLO per Phase A: l'orario
+settimanale (Phase B) NON guarda questi vincoli.
+
+Due grid 5-stati (riusano `EntityPreferenceGrid`, lo stesso
+componente collassabile usato altrove):
+
+- **Classi**: una casella per ogni classe della scuola. Stati:
+  ALLOWED (default verde chiaro), DISLIKED giallo (soft penalty
+  positiva, modificabile inline), PREFERRED blu (peso negativo),
+  FORBIDDEN rosso (HARD: il docente NON puo' essere assegnato a
+  quella classe), ENFORCED verde scuro (HARD: il docente DEVE
+  insegnare in quella classe).
+- **Indirizzi**: una casella per ogni curriculum (`Scientifico`,
+  `Classico`, ...). Vincoli a livello di indirizzo: HARD su un
+  indirizzo significa "questo docente non puo' essere assegnato
+  a NESSUNA classe di quell'indirizzo".
+
+Click cicla; le scorciatoie tastiera del progetto (`H`/`P`/`E`/`D`/
+`A`/`N` + click) funzionano anche qui (vedere "Scorciatoie tastiera
+sulle matrici a colori" sopra).
+
+Le preferenze vengono salvate via due endpoint dedicati
+(`PUT /api/teachers/{id}/class-preferences` e
+`/curriculum-preferences`) chiamati AUTOMATICAMENTE dopo il PUT
+principale del docente. Non serve fare nulla a parte premere
+"Salva" sul modal.
 
 ### Classi (`/classes`)
 
