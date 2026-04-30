@@ -34,6 +34,7 @@ from backend.routers import (  # noqa: E402
     groups,
     imports,
     logical,
+    monitor,
     optimize,
     schedule,
     students,
@@ -78,6 +79,7 @@ app.include_router(groups.router)
 app.include_router(imports.router)
 app.include_router(bulk.router)
 app.include_router(coverage.router)
+app.include_router(monitor.router)
 
 
 @app.get("/")

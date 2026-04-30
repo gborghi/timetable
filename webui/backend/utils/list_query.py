@@ -228,6 +228,67 @@ def group_funcs() -> dict[str, Callable[..., bool]]:
     return {}
 
 
+# ---------- Events (monitor view) ----------
+
+
+def event_fields() -> dict[str, Callable[[Any], Any]]:
+    return {
+        "teacher": lambda r: r.get("teacher_name") or "",
+        "teacher_name": lambda r: r.get("teacher_name") or "",
+        "docente": lambda r: r.get("teacher_display") or r.get("teacher_name") or "",
+        "class": lambda r: r.get("class_name") or "",
+        "class_name": lambda r: r.get("class_name") or "",
+        "classe": lambda r: r.get("class_name") or "",
+        "subject": lambda r: r.get("subject") or "",
+        "materia": lambda r: r.get("subject") or "",
+        "expected_hours": lambda r: r.get("expected_hours", 0),
+        "ore_attese": lambda r: r.get("expected_hours", 0),
+        "assigned_hours": lambda r: r.get("assigned_hours", 0),
+        "ore_assegnate": lambda r: r.get("assigned_hours", 0),
+        "missing_hours": lambda r: r.get("missing_hours", 0),
+        "ore_mancanti": lambda r: r.get("missing_hours", 0),
+        "missing_room": lambda r: r.get("missing_room", 0),
+        "aule_mancanti": lambda r: r.get("missing_room", 0),
+        "missing_group": lambda r: 1 if r.get("missing_group") else 0,
+        "gruppo_mancante": lambda r: 1 if r.get("missing_group") else 0,
+        "is_complete": lambda r: 1 if r.get("is_complete") else 0,
+        "completo": lambda r: 1 if r.get("is_complete") else 0,
+        "group": lambda r: r.get("group_name") or "",
+        "gruppo": lambda r: r.get("group_name") or "",
+        "status": lambda r: r.get("status") or "",
+        "stato": lambda r: r.get("status") or "",
+    }
+
+
+def event_funcs() -> dict[str, Callable[..., bool]]:
+    return {}
+
+
+# ---------- Constraints (monitor view) ----------
+
+
+def constraint_fields() -> dict[str, Callable[[Any], Any]]:
+    return {
+        "kind": lambda r: r.get("kind") or "",
+        "tipo": lambda r: r.get("kind") or "",
+        "scope": lambda r: r.get("scope") or "",
+        "ambito": lambda r: r.get("scope") or "",
+        "owner": lambda r: r.get("owner_name") or "",
+        "owner_name": lambda r: r.get("owner_name") or "",
+        "level": lambda r: r.get("level") or "",
+        "stato": lambda r: r.get("level") or "",
+        "weight": lambda r: r.get("weight", 0),
+        "peso": lambda r: r.get("weight", 0),
+        "detail": lambda r: r.get("detail") or "",
+        "dettaglio": lambda r: r.get("detail") or "",
+        "extra": lambda r: r.get("extra") or "",
+    }
+
+
+def constraint_funcs() -> dict[str, Callable[..., bool]]:
+    return {}
+
+
 _FIELDS_FOR = {
     "teachers":   (teacher_fields, teacher_funcs),
     "classes":    (class_fields, class_funcs),
@@ -236,6 +297,8 @@ _FIELDS_FOR = {
     "curricula":  (curriculum_fields, curriculum_funcs),
     "students":   (student_fields, student_funcs),
     "groups":     (group_fields, group_funcs),
+    "events":     (event_fields, event_funcs),
+    "constraints": (constraint_fields, constraint_funcs),
 }
 
 

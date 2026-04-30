@@ -16,9 +16,11 @@
     { href: '/classrooms', label: 'Aule'                     },
     { href: '/coteaching', label: 'Compresenze'              },
     { href: '/assignments',label: 'Cattedre'                 },
-    { href: '/optimize',   label: 'Workflow'                 },
     { href: '/schedule',   label: 'Orario'                   },
     { href: '/assenze-supplenze', label: 'Assenze e supplenze' },
+    { href: '/monitor',    label: 'Monitor'                  },
+    { href: '/constraints',label: 'Vincoli'                  },
+    { href: '/optimize',   label: 'Workflow'                 },
   ];
 
   onMount(refreshDataset);
