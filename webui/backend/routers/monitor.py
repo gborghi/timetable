@@ -152,12 +152,18 @@ def list_events(q: str | None = Query(None,
                   description="DSL filter, e.g. 'is_complete = 0' or "
                               "'subject = Matematica AND missing_hours > 0'"),
                 sort: str | None = Query(None),
+                limit: int | None = Query(None, ge=0, le=10000),
+                offset: int | None = Query(None, ge=0),
                 db: Session = Depends(get_db)):
+    """Section 2.3 P1: pagination opt-in via ?limit=N&offset=M.
+    When either is set, returns `{items, total, limit, offset}`."""
     rows = _build_events(db)
     try:
-        return filter_and_sort(rows, "events", q, sort)
+        filtered = filter_and_sort(rows, "events", q, sort)
     except QueryError as e:
         raise HTTPException(400, f"Errore query: {e}")
+    from ..utils.pagination import paginated_or_list
+    return paginated_or_list(filtered, limit, offset)
 
 
 @router.get("/event/{assignment_id}/lessons")

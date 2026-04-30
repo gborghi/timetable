@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from .. import models, schemas
 from ..db import get_db
 from ..utils.list_query import filter_and_sort, QueryError
+from ..utils.pagination import paginated_or_list
 
 router = APIRouter(prefix="/api/students", tags=["students"])
 
@@ -34,7 +35,13 @@ def _to_out(s: models.Student, db: Session) -> schemas.StudentOut:
 def list_students(q: str | None = Query(None),
                   sort: str | None = Query(None),
                   class_id: int | None = Query(None),
+                  limit: int | None = Query(None, ge=0, le=10000),
+                  offset: int | None = Query(None, ge=0),
                   db: Session = Depends(get_db)):
+    """List students. Pagination opt-in via `?limit=N&offset=M`:
+    when either is set, response is `{items, total, limit, offset}`;
+    otherwise the bare list is returned (legacy shape).
+    """
     qry = db.query(models.Student)
     if class_id is not None:
         qry = qry.filter(models.Student.class_id == class_id)
@@ -42,9 +49,10 @@ def list_students(q: str | None = Query(None),
                         models.Student.first_name).all()
     out = [_to_out(s, db).model_dump() for s in rows]
     try:
-        return filter_and_sort(out, "students", q, sort)
+        filtered = filter_and_sort(out, "students", q, sort)
     except QueryError as e:
         raise HTTPException(400, f"Errore query: {e}")
+    return paginated_or_list(filtered, limit, offset)
 
 
 @router.get("/{sid}", response_model=schemas.StudentOut)
