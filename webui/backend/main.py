@@ -14,6 +14,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
@@ -25,6 +26,7 @@ if PARENT not in sys.path:
 
 from backend.db import init_db  # noqa: E402
 from backend.logging_setup import configure_logging, get_logger  # noqa: E402
+from backend.utils.auth import APIKeyMiddleware  # noqa: E402
 from backend.utils.mutation_bump import MutationBumpMiddleware  # noqa: E402
 from backend.utils.request_logging import RequestLoggingMiddleware  # noqa: E402
 from backend.routers import (  # noqa: E402
@@ -92,7 +94,12 @@ app = FastAPI(
 )
 
 app.add_middleware(RequestLoggingMiddleware)
+# Optional API-key gate. No-op when PITANTUM_API_KEY is unset
+# (default for localhost dev). Section 2.6 P1.
+app.add_middleware(APIKeyMiddleware)
 app.add_middleware(MutationBumpMiddleware)
+# GZip JSON responses >= 1 KB. Section 2.4 P3.
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_allow_origins(),
