@@ -178,7 +178,7 @@ cd timetable/webui
 \end{lstlisting}
 
 Nel browser, aprire \texttt{http://127.0.0.1:5173} e dalla
-\textbf{Dashboard} importare un profilo gi\`a calcolato
+\textbf{Dashboard} importare un profilo g\`ia calcolato
 (\texttt{small} per cominciare).
 
 \section{Stato attuale del progetto}
@@ -201,7 +201,252 @@ Le funzionalit\`a principali, al momento di questa redazione:
         slot picker matriciale.
 \end{itemize}
 
-% =========== Cap 2: Architettura ===========
+% =========== Cap 2: Installazione ===========
+\chapter{Installazione}
+
+Guida cross-platform per installare ed eseguire piTantum su Windows,
+Linux e macOS. La versione \emph{di riferimento} di questa guida \`e
+\texttt{docs/installation.md} nel repo (Markdown, sempre aggiornato);
+qui se ne riproduce il contenuto in forma compatta per il manuale
+PDF. In caso di divergenza, fa fede il file Markdown.
+
+\paragraph{Architettura del lancio.} Il progetto \`e composto da due
+processi:
+\begin{itemize}
+  \item \textbf{Backend}: \texttt{uvicorn} che serve l'app FastAPI in
+        \texttt{webui/backend} sulla porta 8000.
+  \item \textbf{Frontend}: server di sviluppo \texttt{vite} che serve
+        l'app SvelteKit in \texttt{webui/frontend} sulla porta 5173.
+\end{itemize}
+Uno script unico (\texttt{start.bat} su Windows,
+\texttt{start.sh} su Linux/macOS) li avvia entrambi. Al primo lancio
+crea la \emph{venv} Python, installa i requirements, fa
+\texttt{npm install}; ai lanci successivi parte in pochi secondi.
+
+% ----------------------------------------------------------------
+\section{Windows}
+
+\paragraph{Prerequisiti.}
+\begin{itemize}
+  \item Python $\geq$ 3.11 -- installer ufficiale:
+        \url{https://www.python.org/downloads/windows/}
+  \item Node.js $\geq$ 20 LTS -- installer ufficiale:
+        \url{https://nodejs.org/en/download} (scegliere ``LTS'').
+  \item Git -- installer ufficiale:
+        \url{https://git-scm.com/download/win}.
+\end{itemize}
+
+\paragraph{Note importanti.}
+\begin{itemize}
+  \item Sull'installer Python, \textbf{spuntare} ``Add python.exe to
+        PATH''. Senza, lo script non trova il comando \texttt{python}.
+  \item Riavviare il terminale dopo le installazioni: il PATH non
+        si aggiorna nelle finestre g\`ia aperte.
+\end{itemize}
+
+\paragraph{Clone + lancio.}
+\begin{lstlisting}[style=shell]
+git clone https://github.com/gborghi/timetable.git
+cd timetable
+webui\start.bat
+\end{lstlisting}
+Lo script apre due finestre cmd (``piTantum -- backend'' e
+``piTantum -- frontend''). Aprire il browser su
+\url{http://localhost:5173}.
+
+\paragraph{Stop.} Chiudere le due finestre cmd, oppure
+\texttt{Ctrl+C} in ciascuna.
+
+\paragraph{Troubleshooting Windows.}
+\begin{itemize}
+  \item ``\texttt{python} non riconosciuto'': l'installer Python non
+        \`e stato eseguito con ``Add to PATH''. Reinstallare oppure
+        aggiungere \texttt{C:\textbackslash Users\textbackslash
+        \emph{tu}\textbackslash AppData\textbackslash Local\textbackslash
+        Programs\textbackslash Python\textbackslash Python311} al PATH.
+  \item Porta 8000 occupata: \texttt{netstat -ano | findstr :8000}
+        + \texttt{taskkill /PID <pid> /F}.
+  \item Antivirus blocca \texttt{start.bat}: aggiungere alle
+        eccezioni di Windows Defender.
+\end{itemize}
+
+% ----------------------------------------------------------------
+\section{Linux (Ubuntu, Debian, Fedora, Arch)}
+
+\paragraph{Prerequisiti.} Python $\geq$ 3.11, Node $\geq$ 20 LTS,
+Git, build-essential.
+
+\paragraph{Ubuntu / Debian.}
+\begin{lstlisting}[style=shell]
+sudo apt update
+sudo apt install -y python3 python3-venv python3-pip nodejs npm \
+                    git build-essential
+\end{lstlisting}
+
+I repo \texttt{apt} di Ubuntu 22.04 / Debian 12 hanno Node \emph{12-18},
+troppo vecchio per SvelteKit 2 (richiede 20+). In quel caso usare
+\textbf{nvm}:
+\begin{lstlisting}[style=shell]
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+source ~/.bashrc
+nvm install --lts && nvm use --lts
+\end{lstlisting}
+
+\paragraph{Fedora.}
+\begin{lstlisting}[style=shell]
+sudo dnf install -y python3 python3-virtualenv nodejs npm git \
+                    gcc make
+\end{lstlisting}
+
+\paragraph{Arch / Manjaro.}
+\begin{lstlisting}[style=shell]
+sudo pacman -S python python-pip nodejs npm git base-devel
+\end{lstlisting}
+
+\paragraph{Clone + lancio.}
+\begin{lstlisting}[style=shell]
+git clone https://github.com/gborghi/timetable.git
+cd timetable
+chmod +x webui/start.sh webui/stop.sh
+./webui/start.sh                # background; log in webui/logs/
+./webui/start.sh --foreground   # log live in console (Ctrl+C ferma)
+\end{lstlisting}
+
+\paragraph{Stop.}
+\begin{lstlisting}[style=shell]
+./webui/stop.sh
+\end{lstlisting}
+
+\paragraph{Troubleshooting Linux.}
+\begin{itemize}
+  \item Porta in uso: \texttt{sudo lsof -i :8000} + \texttt{kill <pid>}
+        (eventualmente \texttt{kill -9 <pid>}).
+  \item \texttt{python3} mancante su distro minimal: usare
+        l'eseguibile chiamato \texttt{python} (3.x).
+  \item WSL2: \texttt{start.sh} funziona normalmente. Aprire il
+        browser dal lato Windows su
+        \url{http://localhost:5173}; WSL2 inoltra le porte
+        automaticamente.
+\end{itemize}
+
+% ----------------------------------------------------------------
+\section{macOS (Intel + Apple Silicon)}
+
+\paragraph{Prerequisiti.}
+\begin{itemize}
+  \item Xcode Command Line Tools: \texttt{xcode-select --install}.
+  \item Homebrew: vedere \url{https://brew.sh/}.
+  \item Python $\geq$ 3.11, Node $\geq$ 20 LTS, Git: tutti via Homebrew.
+\end{itemize}
+
+\paragraph{Installazione.}
+\begin{lstlisting}[style=shell]
+# Homebrew (se non presente)
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+# Toolchain
+brew install python@3.12 node git
+
+# Verifica
+python3 --version    # >= 3.11
+node --version       # >= v20
+\end{lstlisting}
+
+\paragraph{Note Apple Silicon.}
+\begin{itemize}
+  \item \texttt{ortools} dalla v9.7 spedisce wheel ARM64 nativi:
+        Rosetta non serve.
+  \item Se Python \`e installato da python.org invece che Homebrew,
+        scegliere l'installer ``macOS 64-bit universal2''.
+\end{itemize}
+
+\paragraph{Clone + lancio + stop.} Identico a Linux.
+
+\paragraph{Troubleshooting macOS.}
+\begin{itemize}
+  \item Gatekeeper blocca \texttt{start.sh}:
+        \texttt{xattr -d com.apple.quarantine webui/start.sh
+        webui/stop.sh}.
+  \item \texttt{ortools} senza wheel ARM (versioni vecchie):
+        \texttt{pip install --upgrade ortools} dentro la venv del
+        backend.
+  \item \texttt{brew} non in PATH:
+        \texttt{eval "\$(/opt/homebrew/bin/brew shellenv)"} in
+        \texttt{\textasciitilde/.zprofile}.
+\end{itemize}
+
+% ----------------------------------------------------------------
+\section{Verifica installazione}
+
+Dopo il primo lancio andato a buon fine:
+
+\begin{lstlisting}[style=shell]
+python --version       # >= 3.11   (Linux/macOS: spesso python3)
+node --version         # >= v20
+npm --version          # >= 10
+
+# Backend health
+curl http://127.0.0.1:8000/api/health
+# atteso: {"status":"ok","name":"pitantum","version":"0.1.0"}
+
+# Async layer (Section 2.5 P2)
+curl http://127.0.0.1:8000/api/health/async
+# atteso: {"status":"ok","async":true,"dialect":"sqlite"}
+
+# Frontend
+curl -I http://127.0.0.1:5173
+# atteso: HTTP/1.1 200 OK
+\end{lstlisting}
+
+% ----------------------------------------------------------------
+\section{Aggiornamento}
+
+Quando si fa \texttt{git pull} per portare a casa nuovi commit:
+
+\begin{lstlisting}[style=shell]
+cd /path/to/timetable
+git pull origin main
+
+# se sono cambiate dipendenze Python:
+webui/backend/.venv/bin/pip install -r webui/backend/requirements.txt
+# (Windows: webui\backend\.venv\Scripts\pip install ...)
+
+# se sono cambiate dipendenze frontend:
+cd webui/frontend && npm install && cd ../..
+
+# se ci sono migration DB:
+cd webui/backend && ./.venv/bin/alembic upgrade head && cd ../..
+# (Windows: webui\backend\.venv\Scripts\alembic upgrade head)
+\end{lstlisting}
+
+In pratica \texttt{start.sh}/\texttt{start.bat} rilanciato dopo un
+\texttt{git pull} gestisce automaticamente \texttt{pip install} e
+\texttt{npm install} quando servono. Le migration DB sono coperte da
+\texttt{\_apply\_lightweight\_migrations()} allo startup come
+safety-net (vedi capitolo \emph{Modello dati}); per la via canonica
+usare \texttt{alembic upgrade head}.
+
+Dopo un aggiornamento backend, fare un \textbf{hard reload} del
+browser (\texttt{Ctrl+Shift+R}) per pulire chunk JavaScript cached.
+
+% ----------------------------------------------------------------
+\section{Disinstallazione}
+
+\begin{lstlisting}[style=shell]
+cd /path/to/timetable
+./webui/stop.sh                 # Linux/macOS
+# (Windows: chiudere le finestre cmd di start.bat)
+
+rm -rf webui/backend/.venv      # ~150 MB
+rm -rf webui/frontend/node_modules  # ~400 MB
+rm -rf webui/data/timetable.db  # DATI UTENTE (salvarli prima!)
+\end{lstlisting}
+
+Per rimuovere completamente, cancellare la cartella \texttt{timetable/}.
+Python, Node, Git restano installati nel sistema; rimuoverli dal
+gestore di pacchetti solo se non servono ad altri progetti.
+
+% =========== Cap 3: Architettura ===========
 \chapter{Architettura}
 
 \section{Stack}
@@ -638,7 +883,7 @@ matrici di disponibilit\`a SOFT/PREFERITO e dei logical SOFT/PREFERITO.
 \section{Phase 4: assegnazione aule}
 
 \paragraph{Modulo.} \texttt{experiments/classroom\_assignment.py}.
-Input: la tabella \texttt{lessons} (gi\`a temporalmente fissata) +
+Input: la tabella \texttt{lessons} (g\`ia temporalmente fissata) +
 le classroom rules (\texttt{kind}, \texttt{capacity},
 \texttt{multi\_class}, preferenze materia$\leftrightarrow$aula,
 classe$\leftrightarrow$aula, docente$\leftrightarrow$aula).
@@ -669,7 +914,7 @@ Trascinando una lezione su un altro slot la UI fa due chiamate:
 
 Il move-preview NON considera l'aula nel calcolo HARD. Se la nuova
 posizione \`e compatibile con docente / classe ma l'aula attuale
-\`e gi\`a occupata o HARD-unavailable in destination, il backend:
+\`e g\`ia occupata o HARD-unavailable in destination, il backend:
 
 \begin{enumerate}
   \item Sposta la lezione.
@@ -689,7 +934,7 @@ matrice 6x6 dove ogni cella \`e colorata in base alla disponibilit\`a:
 
 \begin{itemize}
   \item verde: free (docente e classe liberi)
-  \item rosso: HARD (docente o classe gi\`a impegnati)
+  \item rosso: HARD (docente o classe g\`ia impegnati)
   \item ambra: aula occupata da un'altra lezione
   \item azzurro: slot attuale
 \end{itemize}
@@ -781,7 +1026,7 @@ SSE log streaming.
 \chapter{API REST}
 
 Tutti gli endpoint sono sotto \texttt{/api/}. Backend espone $\sim$118
-route. Lista non esaustiva delle pi\`u rilevanti.
+route. Lista non esaustiva delle p\`iu rilevanti.
 
 \section{Pattern CRUD}
 
@@ -958,7 +1203,7 @@ Apre due finestre cmd separate. Pre-flight:
   \item \texttt{backend/main.py} e \texttt{frontend/package.json}
         presenti;
   \item se \texttt{node\_modules} manca, lancia \texttt{npm install};
-  \item avvisa se 8000 / 5173 sono gi\`a occupate.
+  \item avvisa se 8000 / 5173 sono g\`ia occupate.
 \end{itemize}
 
 I path sono relativi a \texttt{\%\textasciitilde dp0}, quindi lo

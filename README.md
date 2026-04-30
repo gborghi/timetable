@@ -38,15 +38,22 @@ performance numbers across school sizes.
 
 ## Documentation
 
-- **[Technical manual (PDF, 25 pages)](docs/manual.pdf)** -- single
+- **[Installation guide](docs/installation.md)** -- cross-platform
+  setup (Windows / Linux / macOS): prerequisiti, installer ufficiali,
+  comandi di clone, note Apple Silicon, troubleshooting per OS,
+  verifica installazione, aggiornamento, disinstallazione. **Quick
+  start** per ciascun OS in cima al file.
+- **[Technical manual (PDF, 29 pages)](docs/manual.pdf)** -- single
   printable document with cover, TOC, schemas, code snippets and
-  index of all features.
+  index of all features. Include il capitolo "Installazione".
 - **[docs/](docs/)** -- modular markdown reference:
+  [installation](docs/installation.md) /
   [architecture](docs/architecture.md) /
   [data model](docs/data_model.md) /
   [constraints](docs/constraints.md) /
   [workflow](docs/workflow.md) /
   [UI guide](docs/ui_guide.md) /
+  [objective DSL](docs/objective_dsl.md) /
   [API](docs/api.md) /
   [extending](docs/extending.md).
 - **[webui/docs/](webui/docs/)** -- short user-facing guides linked
