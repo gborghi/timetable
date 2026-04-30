@@ -11,9 +11,11 @@ import os
 import sys
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 # Make this folder importable as a package even when started by uvicorn
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -126,9 +128,127 @@ def health():
     return {"status": "ok", "name": "pitantum", "version": "0.1.0"}
 
 
+def _err(request: Request, status: int, detail: str,
+         code: str, errors=None, hint: str | None = None) -> JSONResponse:
+    """Helper that produces an ErrorResponse-shaped JSON body and adds
+    request_id (matching the X-Request-Id middleware injects)."""
+    rid = request.headers.get("X-Request-Id")
+    body = {
+        "detail": detail,
+        "code": code,
+        "request_id": rid,
+    }
+    if errors:
+        body["errors"] = errors
+    if hint:
+        body["hint"] = hint
+    # Stay backward-compatible: also surface `error` key for the legacy
+    # frontend which may not have been redeployed yet.
+    body["error"] = detail
+    return JSONResponse(status_code=status, content=body)
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """Wrap FastAPI's default HTTPException so the body matches the
+    canonical ErrorResponse shape. Status-code -> code mapping is best
+    effort; explicit codes can be passed via `exc.detail` if it's a
+    dict {detail, code}.
+
+    Section 2.3 P2.
+    """
+    detail = exc.detail
+    code: str | None = None
+    if isinstance(detail, dict):
+        code = detail.get("code")
+        detail = detail.get("detail", str(exc.detail))
+    if code is None:
+        if exc.status_code == 404:
+            code = "not_found"
+        elif exc.status_code in (400, 422):
+            code = "validation_error"
+        elif exc.status_code in (401, 403):
+            code = "unauthorized"
+        elif exc.status_code == 409:
+            code = "conflict"
+        else:
+            code = "http_error"
+    return _err(request, exc.status_code, str(detail), code)
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(
+    request: Request, exc: RequestValidationError
+):
+    """Pydantic / FastAPI body-validation errors -> ErrorResponse with
+    per-field `errors[]`."""
+    errs = []
+    for e in exc.errors():
+        loc = ".".join(str(x) for x in e.get("loc", ()))
+        errs.append({
+            "msg": e.get("msg"),
+            "field": loc or None,
+            "type": e.get("type"),
+        })
+    return _err(
+        request, 422,
+        "Input non valido (errore di validazione).",
+        "validation_error",
+        errors=errs,
+        hint="Controlla i campi evidenziati e riprova.",
+    )
+
+
+@app.exception_handler(IntegrityError)
+async def integrity_exception_handler(
+    request: Request, exc: IntegrityError
+):
+    """SQLAlchemy IntegrityError -> 409 Conflict with a friendly
+    summary. The most common cases are unique-constraint violations
+    and foreign-key violations on delete.
+    """
+    msg = str(getattr(exc, "orig", exc)) or "Vincolo di integrita' violato."
+    log.warning("integrity_error path=%s err=%s",
+                request.url.path, msg)
+    return _err(
+        request, 409,
+        "Operazione rifiutata: vincolo di integrita' violato.",
+        "integrity_error",
+        hint=msg,
+    )
+
+
+@app.exception_handler(SQLAlchemyError)
+async def sqlalchemy_exception_handler(
+    request: Request, exc: SQLAlchemyError
+):
+    log.exception("sqlalchemy_error path=%s", request.url.path)
+    return _err(
+        request, 500,
+        "Errore database interno.",
+        "database_error",
+    )
+
+
 @app.exception_handler(RuntimeError)
-async def runtime_error_handler(request, exc: RuntimeError):
-    return JSONResponse(
-        status_code=400,
-        content={"error": str(exc)},
+async def runtime_error_handler(request: Request, exc: RuntimeError):
+    """Engine-level RuntimeErrors stay as 400 to preserve the previous
+    contract with the frontend (the engine raises these for
+    user-recoverable problems like 'no active solution')."""
+    return _err(
+        request, 400,
+        str(exc) or "Errore di runtime.",
+        "runtime_error",
+    )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    """Last-ditch handler. Logs full traceback, returns 500 with
+    internal_error code. Never swallows: re-raises in DEBUG."""
+    log.exception("unhandled_exception path=%s", request.url.path)
+    return _err(
+        request, 500,
+        "Errore interno del server.",
+        "internal_error",
     )

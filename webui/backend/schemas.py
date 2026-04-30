@@ -8,6 +8,52 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 
+# ---------- Error response (Section 2.3 P2) ----------
+
+
+class ErrorDetail(BaseModel):
+    """A single error item. Used by ErrorResponse.errors[]."""
+    msg: str
+    field: str | None = Field(
+        default=None,
+        description="Path to the offending field, if known "
+                    "(e.g. 'body.max_hours')",
+    )
+    type: str | None = Field(
+        default=None,
+        description="Error category (e.g. 'value_error', "
+                    "'integrity_error', 'not_found')",
+    )
+
+
+class ErrorResponse(BaseModel):
+    """Uniform error envelope returned by global exception handlers.
+
+    Frontend `formatApiError()` already understands `{detail: string}`,
+    `{detail: [{loc, msg, type}]}` (FastAPI/Pydantic native), and
+    `{error: string}`. This `ErrorResponse` is the new canonical shape;
+    the previous shapes remain accepted for backward compatibility.
+    """
+    detail: str = Field(description="Human-readable summary")
+    code: str | None = Field(
+        default=None,
+        description="Stable machine code (e.g. 'integrity_error', "
+                    "'not_found', 'validation_error', 'internal_error')",
+    )
+    errors: list[ErrorDetail] | None = Field(
+        default=None,
+        description="Per-field details for validation errors",
+    )
+    hint: str | None = Field(
+        default=None,
+        description="Optional next-step suggestion shown to the user",
+    )
+    request_id: str | None = Field(
+        default=None,
+        description="Correlation id from the X-Request-Id header",
+    )
+
+
 # ---------- Subject ----------
 
 
