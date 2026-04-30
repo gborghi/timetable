@@ -306,6 +306,10 @@ def _cp_repair(sol, profs, dc_value, free_keys, time_limit, workers=4):
         model = cp_model.CpModel()
         slot = {}
         triples_active = []
+        # Lista di (var, hint_value) per le variabili LIBERE -- saranno
+        # warm-started con il valore corrente. Le variabili FISSATE
+        # sono inutili per AddHint perche' sono gia' = corrente.
+        hints = []
         for (p, cl, subj, ore) in triples:
             cnt = dc_value.get((p, cl, subj, day), 0)
             if cnt == 0:
@@ -319,9 +323,20 @@ def _cp_repair(sol, profs, dc_value, free_keys, time_limit, workers=4):
                 if (p, cl, subj, day, h) not in free_in_day:
                     cur = new_sol.get((p, cl, subj, day, h), 0)
                     model.Add(v == cur)
+                else:
+                    # Warm-start: la soluzione corrente e' feasible,
+                    # quindi e' un punto di partenza valido. CP-SAT usa
+                    # gli AddHint come prima ipotesi nella ricerca.
+                    cur = new_sol.get((p, cl, subj, day, h), 0)
+                    hints.append((v, cur))
             model.Add(
                 sum(slot[(p, cl, subj, h)] for h in HOURS) == cnt
             )
+        # Applica gli hint dopo aver aggiunto i vincoli (l'API CP-SAT
+        # accetta hint anche su var non ancora vincolate, ma metterli
+        # qui mantiene il flusso lineare).
+        for v, val in hints:
+            model.AddHint(v, val)
 
         # No overlap prof
         for p in {pp for (pp, _, _, _) in triples_active}:
@@ -488,9 +503,18 @@ def neighborhood_cluster_day(sol, profs, classes_in_cluster, day):
 
 
 def run_lns(sol, profs, dc_value, time_budget_s,
-            classes_clusters=None, log=True, workers=4):
+            classes_clusters=None, log=True, workers=4,
+            adaptive=True):
     """Esegui Large Neighborhood Search per `time_budget_s` secondi.
-    Restituisce (best_sol, log_entries)."""
+
+    Se `adaptive=True` (default), gli operator non sono scelti uniformi
+    ma con probabilita' proporzionali al delta_soft medio che ognuno ha
+    prodotto fin qui (algoritmo "score" classico per Adaptive LNS).
+    Inizialmente tutti gli operator hanno punteggio uguale; dopo i primi
+    successi/fallimenti lo schema bias-a verso chi paga di piu'.
+
+    Restituisce (best_sol, log_entries).
+    """
     rng = random.Random(42)
     best = deepcopy_sol(sol)
     best_val, _ = compute_soft(best, profs)
@@ -500,13 +524,33 @@ def run_lns(sol, profs, dc_value, time_budget_s,
     log_entries = []
     t_start = time.time()
     iter_count = 0
+
+    # Adaptive scoring: per ogni operator memorizziamo
+    #   total_delta: somma dei (best_val_pre - new_val) per i successi
+    #   n_calls:     numero di chiamate (incluse le reject e infeasible)
+    # Score = 1.0 + total_delta / max(n_calls, 1).
+    # Se l'operator non ha mai migliorato, mantiene baseline 1.0.
+    # Quando un operator e' >> degli altri, riceve piu' chiamate.
+    op_stats = defaultdict(lambda: dict(total_delta=0, n_calls=0))
+
+    def op_score(name):
+        s = op_stats[name]
+        if s["n_calls"] == 0:
+            return 1.0
+        return 1.0 + max(0, s["total_delta"]) / s["n_calls"]
+
     while time.time() - t_start < time_budget_s:
         iter_count += 1
-        # scegli operator
+        # Lista di operator disponibili
         ops = ["one_day", "prof_day", "prof_week"]
         if classes_clusters:
             ops.append("cluster_day")
-        op = rng.choice(ops)
+        # Scegli operator: random pesato in modalita' adaptive
+        if adaptive:
+            weights = [op_score(o) for o in ops]
+            op = rng.choices(ops, weights=weights, k=1)[0]
+        else:
+            op = rng.choice(ops)
         if op == "one_day":
             d = rng.choice(DAYS)
             free = neighborhood_one_day(best, profs, d)
@@ -531,6 +575,7 @@ def run_lns(sol, profs, dc_value, time_budget_s,
         new_sol, ok = _cp_repair(
             best, profs, dc_value, free, time_local, workers=workers
         )
+        op_stats[op]["n_calls"] += 1
         if not ok:
             log_entries.append(
                 (iter_count, op, "infeasible", best_val, best_val)
@@ -538,6 +583,7 @@ def run_lns(sol, profs, dc_value, time_budget_s,
             continue
         new_val, _ = compute_soft(new_sol, profs)
         if new_val < best_val:
+            op_stats[op]["total_delta"] += (best_val - new_val)
             log_entries.append(
                 (iter_count, op, "accept", best_val, new_val)
             )
@@ -551,9 +597,13 @@ def run_lns(sol, profs, dc_value, time_budget_s,
                 (iter_count, op, "reject", best_val, new_val)
             )
     if log:
+        # Riassunto adaptive scores
+        scores = {o: round(op_score(o), 1) for o in op_stats}
+        calls = {o: op_stats[o]["n_calls"] for o in op_stats}
         print(f"  [LNS] {iter_count} iter, "
               f"obj {init_val} -> {best_val} "
-              f"({100.0 * (init_val - best_val) / max(init_val, 1):.1f}% imp)")
+              f"({100.0 * (init_val - best_val) / max(init_val, 1):.1f}% imp)"
+              f" | calls={calls} scores={scores}")
     return best, log_entries
 
 
@@ -776,7 +826,20 @@ def _perturb(sol, profs, dc_value, rng,
 
 def run_ils(sol, profs, dc_value, time_budget_s,
             classes_clusters=None, ts_budget_per_cycle=60,
-            n_cycles=3, log=True):
+            n_cycles=3, log=True, lns_kick=True,
+            lns_kick_budget=8.0):
+    """Iterated Local Search.
+
+    Sequenza per ogni ciclo:
+      1. local_search = run_tabu (greedy with tabu list)
+      2. perturb     = se `lns_kick=True`, run_lns su una porzione di
+                       budget breve (default 8s); cosi' il "kick" e'
+                       un mini-LNS a 2-3 iterazioni invece del singolo
+                       _perturb (CP repair + 2 giorni). Cosi' ILS
+                       beneficia dell'adaptive LNS scoring.
+                       Se `lns_kick=False`, fallback al perturb
+                       basico (CP repair su 2 giorni random).
+    """
     rng = random.Random(789)
     best = dict(sol)
     best_val, _ = compute_soft(best, profs)
@@ -795,12 +858,26 @@ def run_ils(sol, profs, dc_value, time_budget_s,
         if cur_val < best_val:
             best = dict(cur)
             best_val = cur_val
-        if time.time() - t_start >= time_budget_s:
+        rem = time_budget_s - (time.time() - t_start)
+        if rem <= 0:
             break
-        # perturb
-        if log:
-            print(f"  [ILS cycle {cycle}] perturb")
-        cur = _perturb(cur, profs, dc_value, rng, classes_clusters)
+        if lns_kick and rem >= lns_kick_budget:
+            # LNS kick: 2-3 iterazioni di adaptive LNS = perturb piu'
+            # ricco del semplice _perturb. Le mosse risultanti sono
+            # ancora HARD-feasible per costruzione di _cp_repair.
+            if log:
+                print(f"  [ILS cycle {cycle}] LNS kick "
+                      f"({lns_kick_budget:.0f}s)")
+            cur, _ = run_lns(
+                cur, profs, dc_value,
+                min(lns_kick_budget, rem * 0.3),
+                classes_clusters=classes_clusters,
+                log=False,
+            )
+        else:
+            if log:
+                print(f"  [ILS cycle {cycle}] perturb")
+            cur = _perturb(cur, profs, dc_value, rng, classes_clusters)
     if log:
         print(f"  [ILS] {cycle} cycles, obj {init_val} -> {best_val} "
               f"({100.0 * (init_val - best_val) / max(init_val, 1):.1f}%)")

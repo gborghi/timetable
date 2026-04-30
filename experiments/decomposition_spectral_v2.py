@@ -76,6 +76,81 @@ def spectral_cluster(M, k):
     return km.fit_predict(embedding), eigvals[: k + 1]
 
 
+def auto_k_eigengap(M, k_min=2, k_max=8):
+    """Eigengap heuristic: scegli k* dove il salto fra eigenvalues
+    consecutivi del Laplaciano normalizzato e' massimo.
+
+    Restituisce (k_star, eigvals[:k_max+1], gaps[:k_max-1]).
+
+    Riferimento: von Luxburg, "A Tutorial on Spectral Clustering" (2007),
+    sezione 8.2. Idea: i primi k autovalori del Laplaciano sono "vicini
+    a 0" se il grafo ha k componenti quasi-disconnesse; il primo grosso
+    salto separa i cluster naturali dal resto del rumore spettrale.
+
+    `M` e' la matrice di adiacenza (simmetrica, non negativa).
+    """
+    A = M.astype(float)
+    d = A.sum(axis=1)
+    d_safe = np.where(d > 0, d, 1.0)
+    inv_sqrt = 1.0 / np.sqrt(d_safe)
+    L = np.eye(len(M)) - (A * inv_sqrt[:, None]) * inv_sqrt[None, :]
+    eigvals = np.linalg.eigvalsh(L)
+    # Calcola gap[i] = eigvals[i+1] - eigvals[i] per i nel range utile.
+    # Cerchiamo il k che MASSIMIZZA gaps[k-1] (il salto FRA il k-esimo
+    # autovalore e il k+1-esimo) per k in [k_min, k_max].
+    gaps = np.diff(eigvals)
+    if len(gaps) <= k_min:
+        return max(k_min, 2), eigvals, gaps
+    upper = min(k_max, len(gaps))
+    candidate = np.argmax(gaps[k_min - 1:upper]) + k_min
+    return int(candidate), eigvals, gaps
+
+
+def partition_metrics(M, classes, labels, bridges):
+    """Metriche di qualita' della partizione spettrale.
+
+    - n_clusters
+    - cluster_sizes: dict cluster_id -> n_classi
+    - cluster_size_balance: rapporto fra cluster piu' grande e piu'
+      piccolo (1.0 = bilanciato; >2 = sbilanciato).
+    - n_internal_edges: somma pesi sugli edge intra-cluster.
+    - n_cut_edges: somma pesi sugli edge cross-cluster.
+    - cut_ratio: n_cut / (n_internal + n_cut). 0 = decomposizione
+      perfetta; idealmente sotto 0.20.
+    - n_bridges: docenti ponte (con classi in piu' cluster).
+    - bridge_ratio: bridges / total docenti.
+    """
+    n = len(classes)
+    cluster_sizes = defaultdict(int)
+    for lbl in labels:
+        cluster_sizes[int(lbl)] += 1
+    sizes = sorted(cluster_sizes.values())
+    balance = (sizes[-1] / max(sizes[0], 1)) if sizes else 1.0
+    n_internal = 0
+    n_cut = 0
+    for i in range(n):
+        for j in range(i + 1, n):
+            w = int(M[i, j])
+            if w == 0:
+                continue
+            if labels[i] == labels[j]:
+                n_internal += w
+            else:
+                n_cut += w
+    total = n_internal + n_cut
+    cut_ratio = (n_cut / total) if total else 0.0
+    return dict(
+        n_clusters=len(cluster_sizes),
+        cluster_sizes=dict(cluster_sizes),
+        cluster_size_balance=round(balance, 2),
+        n_internal_edges=n_internal,
+        n_cut_edges=n_cut,
+        cut_ratio=round(cut_ratio, 3),
+        n_bridges=len(bridges),
+        bridge_ratio=round(len(bridges) / max(len(labels), 1), 3),
+    )
+
+
 def find_bridges(profs, classes, labels):
     cl_to_label = {c: int(labels[i]) for i, c in enumerate(classes)}
     bridges = {}
@@ -431,7 +506,13 @@ def main():
     parser.add_argument("--profile", required=True,
                         choices=["small", "big", "medium", "huge",
                                  "superhuge"])
-    parser.add_argument("--k", type=int, default=4)
+    parser.add_argument("--k", type=int, default=0,
+                        help="numero di cluster (0 = auto via eigengap "
+                             "heuristic, default).")
+    parser.add_argument("--k-min", type=int, default=2,
+                        help="auto-K: k minimo da considerare.")
+    parser.add_argument("--k-max", type=int, default=8,
+                        help="auto-K: k massimo da considerare.")
     parser.add_argument("--time-bridges", type=float, default=60.0,
                         help="time-limit per giorno per Stage A bridges")
     parser.add_argument("--time-cluster", type=float, default=30.0,
@@ -458,20 +539,39 @@ def main():
     print(f"[v2] profilo={args.profile}: {len(profs)} docenti, "
           f"{len(set(c for p in profs.values() for c in p['classi']))} classi")
 
-    # 1) Adiacenza + clustering
+    # 1) Adiacenza + clustering (auto-K se --k 0)
     M, classes, _ = build_adjacency(profs)
     n = len(classes)
     print(f"[v2] adiacenza {n}x{n} max={M.max()} mean={M.mean():.1f}")
+    if args.k == 0:
+        k_star, eigvals_full, gaps = auto_k_eigengap(
+            M, k_min=args.k_min, k_max=args.k_max
+        )
+        # Log dei primi gap per debug
+        gaps_str = ", ".join(
+            f"{i + 1}->{i + 2}={gaps[i]:.4f}"
+            for i in range(min(args.k_max, len(gaps)))
+        )
+        print(f"[v2] eigengap heuristic: k*={k_star} "
+              f"(gaps: {gaps_str})")
+        k_used = k_star
+    else:
+        k_used = args.k
     t0 = time.time()
-    labels, eigvals = spectral_cluster(M, args.k)
+    labels, eigvals = spectral_cluster(M, k_used)
     t_cluster = time.time() - t0
-    print(f"[v2] spectral clustering k={args.k}: {t_cluster:.2f}s")
-    cluster_sizes = {int(c): int((labels == c).sum())
-                     for c in range(args.k)}
-    print(f"[v2] dimensioni cluster: {cluster_sizes}")
+    print(f"[v2] spectral clustering k={k_used}: {t_cluster:.2f}s")
     bridges, cl_to_label = find_bridges(profs, classes, labels)
-    print(f"[v2] docenti ponte: {len(bridges)}/{len(profs)} "
-          f"({100.0 * len(bridges) / len(profs):.1f}%)")
+    pmetrics = partition_metrics(M, classes, labels, bridges)
+    print(f"[v2] partition metrics:")
+    print(f"     cluster_sizes={pmetrics['cluster_sizes']} "
+          f"balance={pmetrics['cluster_size_balance']}")
+    print(f"     internal_edges={pmetrics['n_internal_edges']} "
+          f"cut_edges={pmetrics['n_cut_edges']} "
+          f"cut_ratio={pmetrics['cut_ratio']}")
+    print(f"[v2] docenti ponte: {pmetrics['n_bridges']}/{len(profs)} "
+          f"({100.0 * pmetrics['bridge_ratio']:.1f}%)")
+    args.k = k_used  # per il resto della funzione
 
     classes_per_cluster = defaultdict(set)
     for c, lbl in cl_to_label.items():

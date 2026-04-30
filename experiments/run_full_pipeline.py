@@ -38,16 +38,30 @@ from exporters import (                          # noqa: E402
 
 def run_decomposition(profs, profile, k, args):
     """Esegue le 4 fasi della decomposizione e restituisce
-    (full_solution, classes_per_cluster, dc_value, timing)."""
+    (full_solution, classes_per_cluster, dc_value, timing).
+
+    Se `k == 0`, sceglie k automaticamente via eigengap heuristic
+    nel range [k_min, k_max] (`args.k_min`/`args.k_max`).
+    """
     M, classes, _ = dec.build_adjacency(profs)
+    if k == 0:
+        k_star, _, _ = dec.auto_k_eigengap(
+            M, k_min=getattr(args, "k_min", 2),
+            k_max=getattr(args, "k_max", 8),
+        )
+        print(f"[pipe] auto-K eigengap: k*={k_star}")
+        k = k_star
     labels, _ = dec.spectral_cluster(M, k)
     bridges, cl_to_label = dec.find_bridges(profs, classes, labels)
     classes_per_cluster = defaultdict(set)
     for c, lbl in cl_to_label.items():
         classes_per_cluster[lbl].add(c)
+    pmetrics = dec.partition_metrics(M, classes, labels, bridges)
     print(
-        f"[pipe] cluster sizes={dict((int(c), len(cs)) for c, cs in classes_per_cluster.items())}, "
-        f"bridges={len(bridges)}/{len(profs)}"
+        f"[pipe] cluster sizes={pmetrics['cluster_sizes']} "
+        f"balance={pmetrics['cluster_size_balance']} "
+        f"cut_ratio={pmetrics['cut_ratio']} "
+        f"bridges={pmetrics['n_bridges']}/{len(profs)}"
     )
     dc_value, t_pa = dec.load_or_build_phase_a(
         profs, profile, args.time_a, args.workers, args.log
@@ -75,6 +89,11 @@ def run_decomposition(profs, profile, k, args):
     cluster_solutions = {}
     b_failed = defaultdict(set)
     t0 = time.time()
+    # Lista di task (cluster_id, day) -> ognuno e' indipendente. La
+    # parallelizzazione con ThreadPoolExecutor sfrutta il fatto che
+    # ortools.sat rilascia il GIL durante Solve(); model-build in
+    # Python e' serializzato ma quasi gratis rispetto al solve.
+    tasks = []
     for d in dec.DAYS:
         if d not in bridge_solutions:
             continue
@@ -83,6 +102,34 @@ def run_decomposition(profs, profile, k, args):
             cl_set = classes_per_cluster[k_id]
             if not cl_set:
                 continue
+            tasks.append((k_id, d, cl_set))
+
+    n_jobs = max(1, int(getattr(args, "parallel_cluster_b", 1)))
+    # Per evitare oversubscription, ripartiamo workers fra i task
+    # paralleli quando possibile.
+    workers_per_task = max(1, args.workers // n_jobs)
+    if n_jobs > 1:
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        print(f"[pipe] stage B: parallel n_jobs={n_jobs} "
+              f"workers_per_task={workers_per_task} ({len(tasks)} tasks)")
+
+        def _solve_task(t):
+            k_id, d, cl_set = t
+            out, status = dec.stage_b_cluster_internals(
+                cl_set, d, profs, bridges_set, triples, dc_value,
+                bridge_solutions[d], args.time_cluster,
+                workers_per_task,
+            )
+            return (k_id, d, out, status)
+
+        with ThreadPoolExecutor(max_workers=n_jobs) as pool:
+            for k_id, d, out, status in pool.map(_solve_task, tasks):
+                if out is None:
+                    b_failed[d].add(k_id)
+                else:
+                    cluster_solutions[(k_id, d)] = out
+    else:
+        for k_id, d, cl_set in tasks:
             out, status = dec.stage_b_cluster_internals(
                 cl_set, d, profs, bridges_set, triples, dc_value,
                 bridge_solutions[d], args.time_cluster, args.workers
@@ -156,7 +203,15 @@ def run_decomposition(profs, profile, k, args):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--profile", required=True)
-    parser.add_argument("--k", type=int, default=4)
+    parser.add_argument("--k", type=int, default=0,
+                        help="numero di cluster (0 = auto via eigengap, "
+                             "default).")
+    parser.add_argument("--k-min", type=int, default=2)
+    parser.add_argument("--k-max", type=int, default=8)
+    parser.add_argument("--parallel-cluster-b", type=int, default=1,
+                        help="N task (cluster, day) Stage B in "
+                             "parallelo (default 1 = sequenziale). "
+                             "I workers CP-SAT vengono ripartiti.")
     parser.add_argument("--time-a", type=float, default=180.0)
     parser.add_argument("--time-bridges", type=float, default=60.0)
     parser.add_argument("--time-cluster", type=float, default=30.0)
