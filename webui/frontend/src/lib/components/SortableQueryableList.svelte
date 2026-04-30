@@ -49,6 +49,7 @@
   let sortLevels = [];           // [{column, direction: 'asc'|'desc'}]
   let rows = [];
   let busy = false;
+  let firstLoad = true;     // true until the first reload() resolves
   let error = '';
   let showHelp = false;
   let lastUrl = '';
@@ -71,6 +72,7 @@
       flash('Query error: ' + error, 'error');
     } finally {
       busy = false;
+      firstLoad = false;
     }
   }
 
@@ -216,7 +218,18 @@
         <span class="pill pill-blue">{selectedIds.length} selezionati</span>
       {/if}
     {/if}
-    <span class="text-xs text-ink-500 ml-auto">{rows.length} risultati</span>
+    <span class="text-xs text-ink-500 ml-auto">
+      {#if busy}
+        <span class="inline-flex items-center gap-1">
+          <span class="inline-block w-2 h-2 bg-accent-500 rounded-full animate-pulse"
+                aria-hidden="true"></span>
+          <span class="sr-only">Caricamento...</span>
+          aggiorno...
+        </span>
+      {:else}
+        {rows.length} risultati
+      {/if}
+    </span>
   </div>
 
   {#if sortLevels.length > 0}
@@ -313,6 +326,25 @@
         </tr>
       </thead>
       <tbody>
+        {#if firstLoad && busy}
+          {@const colSpan = columns.length + (selectable ? 2 : 1)}
+          {#each Array(6) as _, i}
+            <tr aria-hidden="true">
+              <td colspan={colSpan} class="px-2 py-3">
+                <div class="h-4 bg-ink-100 rounded animate-pulse"
+                     style="width: {Math.max(40, 100 - (i * 7))}%"></div>
+              </td>
+            </tr>
+          {/each}
+        {:else if !firstLoad && rows.length === 0 && !error}
+          {@const colSpan = columns.length + (selectable ? 2 : 1)}
+          <tr>
+            <td colspan={colSpan} class="text-center text-ink-400 italic py-6">
+              {q ? 'Nessun risultato per questa ricerca.'
+                 : 'Lista vuota. Crea o importa elementi per cominciare.'}
+            </td>
+          </tr>
+        {/if}
         {#each rows as row, idx (rowKey(row))}
           {#if selectable}
             <tr class:bg-accent-500={false}

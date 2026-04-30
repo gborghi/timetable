@@ -58,10 +58,12 @@
         || (s.student_code || '').toLowerCase().includes(t);
   });
 
+  let saving = false;
   async function save() {
     const payload = { ...editing };
     delete payload._new; delete payload.id;
     delete payload.n_students; delete payload.n_classes_touched;
+    saving = true;
     try {
       if (editing._new) await api.post('/api/groups', payload);
       else await api.put('/api/groups/' + editing.id, payload);
@@ -70,6 +72,7 @@
       await listRef.reload();
       await refreshDataset();
     } catch (e) { flash('Errore: ' + e.message, 'error'); }
+    finally { saving = false; }
   }
 
   async function del(row) {
@@ -211,7 +214,9 @@
 
     <div class="mt-5 flex justify-end gap-2">
       <button class="btn" on:click={() => (editing = null)}>Annulla</button>
-      <button class="btn-primary" on:click={save}>Salva</button>
+      <button class="btn-primary focus-ring" on:click={save} disabled={saving}>
+        {saving ? 'Salvataggio...' : 'Salva'}
+      </button>
     </div>
   {/if}
 </Modal>

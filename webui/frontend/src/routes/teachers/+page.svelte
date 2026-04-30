@@ -129,6 +129,7 @@
     // If multiple full-hard days, leave free_day untouched (ambiguous).
   }
 
+  let saving = false;
   async function save() {
     const payload = { ...editing };
     delete payload._new;
@@ -136,6 +137,7 @@
     delete payload.scheduled_hours;
     delete payload.n_classes;
     delete payload.soft_penalty_total;
+    saving = true;
     try {
       if (editing._new) await api.post('/api/teachers', payload);
       else await api.put('/api/teachers/' + editing.id, payload);
@@ -145,6 +147,8 @@
       await refreshDataset();
     } catch (e) {
       flash('Errore: ' + e.message, 'error');
+    } finally {
+      saving = false;
     }
   }
 
@@ -312,7 +316,9 @@
 
     <div class="mt-5 flex justify-end gap-2">
       <button class="btn" on:click={() => (editing = null)}>Annulla</button>
-      <button class="btn-primary" on:click={save}>Salva</button>
+      <button class="btn-primary focus-ring" on:click={save} disabled={saving}>
+        {saving ? 'Salvataggio...' : 'Salva'}
+      </button>
     </div>
   {/if}
 </Modal>

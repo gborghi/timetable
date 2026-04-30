@@ -60,10 +60,12 @@
     editing = { ...editing, unavailability: newCells };
   }
 
+  let saving = false;
   async function save() {
     const payload = { ...editing };
     delete payload._new; delete payload.id;
     delete payload.ore_totali; delete payload.n_subjects;
+    saving = true;
     try {
       if (editing._new) await api.post('/api/classes', payload);
       else await api.put('/api/classes/' + editing.id, payload);
@@ -73,6 +75,8 @@
       await refreshDataset();
     } catch (e) {
       flash('Errore: ' + e.message, 'error');
+    } finally {
+      saving = false;
     }
   }
 
@@ -238,7 +242,9 @@
 
     <div class="mt-5 flex justify-end gap-2">
       <button class="btn" on:click={() => (editing = null)}>Annulla</button>
-      <button class="btn-primary" on:click={save}>Salva</button>
+      <button class="btn-primary focus-ring" on:click={save} disabled={saving}>
+        {saving ? 'Salvataggio...' : 'Salva'}
+      </button>
     </div>
   {/if}
 </Modal>
