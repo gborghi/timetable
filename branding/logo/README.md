@@ -1,34 +1,45 @@
 # branding/logo/
 
-Loghi principali del progetto Carpe Diem.
+Loghi principali del progetto piTantum.
 
-## File attesi
+## File
 
-| File                 | Tipo            | Dimensioni minime  | Note |
-| -------------------- | --------------- | ------------------ | ---- |
-| `logo_light.png`     | PNG trasparente | 512x512            | logo per sfondi chiari, usato dall'header del frontend (`/branding/logo/logo_light.png`) |
-| `logo_dark.png`      | PNG trasparente | 512x512            | variante per dark mode (futuro) |
-| `logo_wordmark.png`  | PNG trasparente | 800x200            | solo wordmark "Carpe Diem", senza icona |
-| `logo_square.png`    | PNG             | 512x512            | versione squadrata con sfondo solido (per favicon e social) |
-| `logo_horizontal.png`| PNG trasparente | 1200x300           | versione orizzontale (icona a sinistra, wordmark a destra) |
-| `logo.svg`           | SVG             | -                  | versione vettoriale per export print / scalabilita' |
+| File                       | Tipo            | Stato          | Note |
+| -------------------------- | --------------- | -------------- | ---- |
+| `logo_light.svg`           | SVG vettoriale  | placeholder    | wirato in `webui/frontend/src/routes/+layout.svelte` come header logo, ship-pa con il repo |
+| `logo_dark.svg`            | SVG vettoriale  | placeholder    | per dark mode (futuro) |
+| `logo_light.png`           | PNG trasparente | da generare    | 512x512, sostituisce eventualmente l'SVG |
+| `logo_dark.png`            | PNG trasparente | da generare    | 512x512 |
+| `logo_horizontal.png`      | PNG trasparente | da generare    | 1200x300, wordmark + mark |
+| `logo_mark.png`            | PNG             | da generare    | 512x512 con sfondo solido, per favicon-derivati |
 
-## Idee per il design
+## Stile
 
-- Il latino "Carpe diem" e' stato adottato come tagline; il logo dovrebbe
-  evocare l'idea di "afferrare il momento": metafore visive possibili
-  sono una clessidra, un sole nascente, una mano che chiude su una
-  spiga (riferimento al "carpere" = cogliere, raccogliere, anche le
-  spighe).
-- La componente "scolastica" puo' essere rendered con un griglia
-  6x6 stilizzata (la matrice oraria e' la cifra grafica costante della
-  UI).
-- Tone: classico ma moderno; non corsivo decorativo, ma neanche
-  flat-design freddo.
+Tre componenti visivi:
+
+1. **$\pi$** (greca minuscola) come elemento centrale
+2. **Clessidra** (sabbia, vetro) embedded fra i due tratti verticali
+   della $\pi$
+3. **Alloro** stilizzato attorno (richiamo classico romano)
+
+Palette: indaco profondo `#1e3a5f`, oro caldo `#c9a23a`, terra di Siena
+`#9c4a1c`, avorio `#f7f1de`. Vedere `branding/README.md` per la tavola
+completa.
 
 ## Wire frontend
 
-Il file `logo_light.png` viene letto da
-`webui/frontend/src/routes/+layout.svelte` come immagine dell'header
-(`<img src="/branding/logo/logo_light.png" .../>`). Se manca, l'UI
-mostra il wordmark "Carpe Diem" in puro testo.
+Il file `logo_light.svg` (o, in alternativa, `logo_light.png` se
+caricato) e' letto da `webui/frontend/src/routes/+layout.svelte`:
+
+```html
+<img src="/branding/logo/logo_light.svg" alt="piTantum" .../>
+```
+
+Se il file non esiste o non carica, l'UI mostra il wordmark
+"$\pi$Tantum" in puro testo (CSS variables `--brand-primary` per il
+testo, `--brand-secondary` per il glifo $\pi$ italic).
+
+## Generare le versioni definitive
+
+Vedere [`grok_prompts.md`](grok_prompts.md) per i 4 prompt
+copia-incolla pronti.

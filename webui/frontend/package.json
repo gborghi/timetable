@@ -1,7 +1,7 @@
 {
-  "name": "carpe-diem-frontend",
+  "name": "pitantum-frontend",
   "version": "0.1.0",
-  "description": "Carpe Diem - Cogli il giorno presente, fidandoti il meno possibile del domani.",
+  "description": "piTantum (Tempus Tantum) -- Omnia, Lucili, aliena sunt, tempus tantum nostrum est. (Seneca, Ep. I,1) -- school timetable manager.",
   "private": true,
   "type": "module",
   "scripts": {

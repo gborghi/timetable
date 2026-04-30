@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  piTantum logo placeholder (light variant).
+  pi (greek lowercase) + hourglass embedded between vertical strokes
+  + laurel wreath. Designed to ship with the repo as a brand-coherent
+  fallback while Giovanni generates the final art via Grok (see
+  grok_prompts.md in this folder). Replace this file in-place when
+  the final PNG arrives.
+-->
+<svg xmlns="http://www.w3.org/2000/svg"
+     viewBox="0 0 512 512"
+     width="512" height="512"
+     role="img" aria-label="piTantum">
+  <title>piTantum</title>
+  <desc>Lettera greca pi minuscola con clessidra fra i tratti verticali, circondata da una corona d'alloro stilizzata.</desc>
+
+  <!-- Laurel wreath: two symmetric arcs of stylised leaves -->
+  <g fill="none" stroke="#1e3a5f" stroke-width="6" stroke-linecap="round">
+    <!-- Left half wreath -->
+    <path d="M 100 256 C 100 160, 160 80, 256 70" />
+    <!-- Right half wreath -->
+    <path d="M 412 256 C 412 160, 352 80, 256 70" />
+    <!-- Bottom tie / closing -->
+    <path d="M 100 256 C 100 360, 170 432, 256 442" />
+    <path d="M 412 256 C 412 360, 342 432, 256 442" />
+  </g>
+  <!-- Laurel leaves (gold filled, indigo outline) -->
+  <g fill="#c9a23a" stroke="#1e3a5f" stroke-width="2.5">
+    <!-- Left side leaves -->
+    <ellipse cx="120" cy="200" rx="22" ry="9" transform="rotate(-65 120 200)" />
+    <ellipse cx="135" cy="160" rx="22" ry="9" transform="rotate(-50 135 160)" />
+    <ellipse cx="160" cy="125" rx="22" ry="9" transform="rotate(-35 160 125)" />
+    <ellipse cx="195" cy="100" rx="22" ry="9" transform="rotate(-20 195 100)" />
+    <ellipse cx="120" cy="312" rx="22" ry="9" transform="rotate(65 120 312)" />
+    <ellipse cx="135" cy="352" rx="22" ry="9" transform="rotate(50 135 352)" />
+    <ellipse cx="160" cy="387" rx="22" ry="9" transform="rotate(35 160 387)" />
+    <ellipse cx="195" cy="412" rx="22" ry="9" transform="rotate(20 195 412)" />
+    <!-- Right side leaves -->
+    <ellipse cx="392" cy="200" rx="22" ry="9" transform="rotate(65 392 200)" />
+    <ellipse cx="377" cy="160" rx="22" ry="9" transform="rotate(50 377 160)" />
+    <ellipse cx="352" cy="125" rx="22" ry="9" transform="rotate(35 352 125)" />
+    <ellipse cx="317" cy="100" rx="22" ry="9" transform="rotate(20 317 100)" />
+    <ellipse cx="392" cy="312" rx="22" ry="9" transform="rotate(-65 392 312)" />
+    <ellipse cx="377" cy="352" rx="22" ry="9" transform="rotate(-50 377 352)" />
+    <ellipse cx="352" cy="387" rx="22" ry="9" transform="rotate(-35 352 387)" />
+    <ellipse cx="317" cy="412" rx="22" ry="9" transform="rotate(-20 317 412)" />
+  </g>
+
+  <!-- Greek pi (lowercase) -->
+  <g fill="#1e3a5f">
+    <!-- Top horizontal bar -->
+    <rect x="180" y="160" width="152" height="20" rx="4" />
+    <!-- Left vertical stroke -->
+    <rect x="190" y="180" width="22" height="180" />
+    <!-- Right vertical stroke (curled foot) -->
+    <path d="M 300 180
+             L 322 180
+             L 322 340
+             Q 322 360 308 360
+             Q 296 360 296 348
+             L 304 348
+             Q 308 348 308 344
+             L 308 180 Z" />
+  </g>
+
+  <!-- Hourglass embedded between the two vertical strokes -->
+  <g>
+    <!-- Frame -->
+    <path d="M 226 200 L 286 200 L 286 220 L 256 260 L 286 300 L 286 340 L 226 340 L 226 300 L 256 260 L 226 220 Z"
+          fill="#f7f1de" stroke="#1e3a5f" stroke-width="3" />
+    <!-- Sand: top triangle -->
+    <path d="M 232 206 L 280 206 L 256 252 Z" fill="#c9a23a" />
+    <!-- Sand: bottom triangle -->
+    <path d="M 256 268 L 280 334 L 232 334 Z" fill="#c9a23a" />
+    <!-- Sand stream -->
+    <line x1="256" y1="252" x2="256" y2="268" stroke="#c9a23a" stroke-width="2" />
+  </g>
+</svg>

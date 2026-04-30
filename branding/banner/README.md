@@ -1,31 +1,29 @@
 # branding/banner/
 
-Banner promozionali del progetto Carpe Diem.
+Banner promozionali del progetto piTantum.
 
-## File attesi
+## File
 
-| File                       | Tipo  | Dimensioni       | Uso |
-| -------------------------- | ----- | ---------------- | --- |
-| `banner_dashboard.png`     | PNG   | 1500x300         | banner della Dashboard / hero image della UI (futuro) |
-| `banner_github.png`        | PNG   | 1280x640         | "social preview" del repo su GitHub (Settings / Social preview) |
-| `banner_readme.png`        | PNG   | 1200x400         | hero image del README principale (in alto, sopra il titolo) |
-| `og_image.png`             | PNG   | 1200x630         | Open Graph image per quando il sito e' linkato su Telegram / WhatsApp / Discord |
-
-## Note sul design
-
-- L'OG image per GitHub deve essere **leggibile in piccolo** e contenere
-  il nome "Carpe Diem", il sottotitolo / tagline e magari la grid 6x6.
-- I banner sono opzionali: il progetto funziona benissimo senza, e si
-  possono aggiungere in qualunque momento.
+| File                       | Dimensioni       | Stato          | Uso |
+| -------------------------- | ---------------- | -------------- | --- |
+| `banner_placeholder.svg`   | 1200x400         | placeholder    | banner editoriale, usabile direttamente nei .md |
+| `banner_github.png`        | 1280x640         | da generare    | GitHub Settings -> Social preview |
+| `og_image.png`             | 1200x630         | da generare    | Open Graph (Telegram/WhatsApp/Discord) |
+| `banner_readme.png`        | 1200x300         | da generare    | hero del README principale |
+| `banner_dashboard.png`     | 1500x300         | da generare    | hero della Dashboard (UI futura) |
 
 ## Wire
 
-- `banner_github.png` va caricato dalla pagina del repo
-  (Settings -> General -> Social preview -> Edit), non viene letto in
-  automatico dal codice.
-- `og_image.png` puo' essere referenziato in
-  `webui/frontend/src/app.html` con un meta tag
-  `<meta property="og:image" content="/branding/banner/og_image.png" />`
-  (da aggiungere quando esiste).
-- `banner_readme.png`, una volta caricato, va incluso nel
-  `README.md` principale come prima riga (img markdown).
+- `banner_github.png` va caricato dalla pagina GitHub del repo
+  (Settings -> General -> Social preview), non viene letto dal codice.
+- `og_image.png` -> aggiungere in `webui/frontend/src/app.html` un
+  `<meta property="og:image" content="/branding/banner/og_image.png" />`.
+- `banner_readme.png` -> referenziare in `README.md` con
+  `![piTantum](branding/banner/banner_readme.png)`.
+- `banner_dashboard.png` -> includere nella Dashboard
+  (`webui/frontend/src/routes/+page.svelte`) come hero futuro.
+
+## Generare le versioni definitive
+
+Vedere [`grok_prompts.md`](grok_prompts.md) per i 4 prompt
+copia-incolla pronti.

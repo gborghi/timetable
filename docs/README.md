@@ -1,12 +1,13 @@
-# Carpe Diem - documentation index
+# piTantum - documentation index
 
-> *Carpe diem, quam minimum credula postero.*
-> &mdash; Orazio, *Odi*, I, 11
+> *Omnia, Lucili, aliena sunt, tempus tantum nostrum est.*
+> &mdash; Seneca, *Ep.*, I, 1
 
-Manuale tecnico e di riferimento del progetto **Carpe Diem** (codename
-interno: `timetable`). La documentazione e' organizzata in sette file
-tematici + un'analisi di miglioramento; per una versione PDF stampabile
-con copertina e indice, vedere [manual.pdf](manual.pdf).
+Manuale tecnico e di riferimento del progetto **piTantum** (alias
+**Tempus Tantum**, codename interno: `timetable`). La documentazione
+e' organizzata in sette file tematici + un'analisi di miglioramento;
+per una versione PDF stampabile con copertina e indice, vedere
+[manual.pdf](manual.pdf).
 
 | File                                       | Contenuto |
 | ------------------------------------------ | --------- |

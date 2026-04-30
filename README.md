@@ -1,16 +1,20 @@
-# Carpe Diem
+# piTantum
 
-> *Carpe diem, quam minimum credula postero.*
-> &mdash; Orazio, *Odi*, I, 11
+> *Omnia, Lucili, aliena sunt, tempus tantum nostrum est.*
+> &mdash; Seneca, *Epistulae morales ad Lucilium*, I, 1
 
-> "Cogli il giorno presente, fidandoti il meno possibile del domani."
+> "Tutto, Lucilio mio, ci appartiene di altri; soltanto il tempo e'
+> nostro."
 
-Carpe Diem e' un sistema di generazione e gestione dell'orario
-scolastico per un Liceo italiano: assegnazioni docenti-classi,
-ottimizzazione dell'orario settimanale, gestione di assenze e
-supplenze, drag-and-drop con preview live. Il nome e' un
-promemoria del programma: organizzare il tempo della scuola
-**adesso**, senza rimandare al domani la copertura dei buchi.
+**piTantum** (alias **Tempus Tantum**) e' un sistema di generazione
+e gestione dell'orario scolastico per un Liceo italiano:
+assegnazioni docenti-classi, ottimizzazione dell'orario settimanale,
+gestione di assenze e supplenze, drag-and-drop con preview live.
+
+Il nome gioca sulla forma della lettera greca **&pi;**: i due tratti
+verticali della pi minuscola ricordano le due **T** di **T**empus
+**T**antum. Il senso del verso senechiano sintetizza il programma:
+del tempo non se ne ha altro che quello che si organizza adesso.
 
 Tre layer, in un unico repo:
 
@@ -52,9 +56,15 @@ performance numbers across school sizes.
 ## Brand assets
 
 Loghi, banner, icone e screenshot vivono in [`branding/`](branding/).
-Le immagini sono generate da Giovanni Borghi con Grok e licenziate per
-uso interno del progetto. La UI degrada elegantemente al wordmark
-testuale "Carpe Diem" finch&eacute; gli asset non vengono caricati.
+Ogni sottocartella include un `grok_prompts.md` con prompt
+copia-incolla pronti per generare gli asset definitivi via Grok.
+Sono inoltre presenti degli **placeholder SVG funzionanti** che
+ship-ano con il repo: la UI rimane brand-coherent dal primo avvio.
+
+Palette: indaco profondo (`#1e3a5f`), oro caldo (`#c9a23a`), terra
+di Siena (`#9c4a1c`), avorio (`#f7f1de`). Esposta via CSS variables
+`--brand-{primary,secondary,accent,bg,fg}` in
+`webui/frontend/src/app.css`.
 
 ## Quickstart (Windows)
 

@@ -17,6 +17,17 @@ export default {
           500: '#3a6df0',
           600: '#2c58cf'
         },
+        // piTantum brand palette (hex tokens; see also CSS variables
+        // --brand-* in app.css for runtime/dark-mode overrides).
+        brand: {
+          primary:   '#1e3a5f',
+          secondary: '#c9a23a',
+          accent:    '#9c4a1c',
+          bg:        '#f7f1de',
+          fg:        '#1a1612',
+          'primary-d':   '#88a5d8',
+          'secondary-d': '#f0c869',
+        },
         // Constraint level palette (HARD/SOFT/PREFERITO/ENFORCED/ALLOWED).
         // Used everywhere a vincolo is rendered. Inline `style="background:...;
         // color:..."` blocks are being replaced by these tokens.

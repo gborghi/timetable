@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # ============================================================
-#  Carpe Diem - launcher (Linux / macOS)
-#  "Carpe diem, quam minimum credula postero." (Orazio, Odi I,11)
+#  piTantum - launcher (Linux / macOS)
+#  "Omnia, Lucili, aliena sunt, tempus tantum nostrum est."
+#                                  (Seneca, Ep. I,1)
 # ------------------------------------------------------------
 #  Avvia in background:
 #    - Backend  : uvicorn su  http://127.0.0.1:8000
@@ -47,17 +48,15 @@ c_blue()   { printf '\033[34m%s\033[0m\n' "$*"; }
 echo
 cat <<'BANNER'
 ============================================================
-  _____                          ____  _
- / ____|                        |  _ \| |
-| |     __ _ _ __ _ __   ___    | |_) | |
-| |    / _` | '__| '_ \ / _ \   |  _ <| |
-| |___| (_| | |  | |_) |  __/   | |_) | |
- \_____\__,_|_|  | .__/ \___|   |____/|_|
-                 | |
-                 |_|        C A R P E   D I E M
+              _____            _
+   _ __ (_) |_   _|_ _ _ __ | |_ _   _ _ __ ___
+  | '_ \| |   | |/ _` | '_ \| __| | | | '_ ` _ \
+  | |_) | |   | | (_| | | | | |_| |_| | | | | | |
+  | .__/|_|   |_|\__,_|_| |_|\__|\__,_|_| |_| |_|
+  |_|         "Tempus tantum nostrum est"
 ------------------------------------------------------------
- "Carpe diem, quam minimum credula postero."
-                                Orazio, Odi I,11
+ "Omnia, Lucili, aliena sunt, tempus tantum nostrum est."
+                                       Seneca, Ep. I,1
 ============================================================
 BANNER
 echo " Cartella:  $HERE"

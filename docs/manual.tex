@@ -1,4 +1,5 @@
-% Manuale tecnico del progetto Carpe Diem (codename: timetable).
+% Manuale tecnico del progetto piTantum (Tempus Tantum;
+% codename interno: timetable).
 % ASCII puro, accenti via macro \`e \'e \`a, virgolette ``...''.
 \documentclass[a4paper,11pt,oneside]{report}
 
@@ -56,7 +57,7 @@
 
 \pagestyle{fancy}
 \fancyhf{}
-\fancyhead[L]{\textit{Carpe Diem -- manuale tecnico}}
+\fancyhead[L]{\textit{piTantum -- manuale tecnico}}
 \fancyhead[R]{\thepage}
 \renewcommand{\headrulewidth}{0.4pt}
 
@@ -70,9 +71,11 @@
 \begin{titlepage}
 \thispagestyle{empty}
 \centering
-\vspace*{1.6cm}
+\vspace*{1.4cm}
 
-{\Huge\bfseries Carpe Diem\par}
+{\Huge\bfseries $\pi$\,Tantum\par}
+\vspace{0.2cm}
+{\Large alias \emph{Tempus Tantum}\par}
 \vspace{0.4cm}
 {\Large\itshape sistema di generazione orario scolastico\par}
 
@@ -83,12 +86,13 @@
 \begin{minipage}{0.85\textwidth}
 \centering
 \itshape
-``Carpe diem, quam minimum credula postero.''\\
-\upshape\small Orazio, \emph{Odi}, I, 11
+``Omnia, Lucili, aliena sunt, tempus tantum nostrum est.''\\
+\upshape\small Seneca, \emph{Epistulae morales ad Lucilium}, I, 1
 
 \medskip
 \itshape\small
-``Cogli il giorno presente, fidandoti il meno possibile del domani.''
+``Tutto, Lucilio mio, ci appartiene di altri; soltanto il tempo
+e' nostro.''
 \end{minipage}
 
 \vspace{1.0cm}
@@ -132,12 +136,16 @@ Documentazione sorgente: \texttt{docs/}
 % =========== Cap 1: Introduzione ===========
 \chapter{Introduzione}
 
-\emph{Carpe Diem} (codename interno: \texttt{timetable}) \`e un
-sistema di generazione e gestione dell'orario scolastico per un
-Liceo italiano. Il nome richiama il celebre verso oraziano
-``Carpe diem, quam minimum credula postero'' (Orazio, \emph{Odi}, I,
-11): l'app organizza il tempo della scuola \emph{adesso}, senza
-fidarsi del domani per coprire i buchi.
+\emph{$\pi$Tantum} (alias \emph{Tempus Tantum}, codename interno:
+\texttt{timetable}) \`e un sistema di generazione e gestione
+dell'orario scolastico per un Liceo italiano. Il nome richiama il
+celebre incipit dell'epistola I di Seneca a Lucilio:
+``Omnia, Lucili, aliena sunt, tempus tantum nostrum est'' (Seneca,
+\emph{Epistulae morales ad Lucilium}, I, 1) -- ``tutto ci appartiene
+di altri, soltanto il tempo \`e nostro''. Il gioco grafico fra la
+lettera greca $\pi$ e le due ``T'' di \emph{Tempus Tantum} riassume
+l'idea: organizzare il tempo della scuola, dato che del tempo non
+si dispone se non gestendolo.
 
 \`E composto di tre layer:
 

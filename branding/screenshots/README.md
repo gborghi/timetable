@@ -22,6 +22,9 @@ Screenshot della UI per la documentazione (README, manuale tecnico).
 
 ## Note
 
-Questi screenshot sono utili dalla **versione finale dei loghi**: aggiungili
-solo dopo che il branding e' definitivo, altrimenti vanno
+Questi screenshot sono utili dalla **versione finale dei loghi**:
+aggiungili solo dopo che il branding e' definitivo, altrimenti vanno
 rifatti.
+
+(Nessun `grok_prompts.md` qui: gli screenshot sono catture reali
+della UI piTantum, non immagini sintetiche.)

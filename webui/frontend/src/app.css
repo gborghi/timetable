@@ -2,6 +2,26 @@
 @tailwind components;
 @tailwind utilities;
 
+/* piTantum brand palette. Tweak here, propagates to all components
+   that read `var(--brand-*)`. The app.html and frontend layout/footer
+   use these for the wordmark colour and accent dot. */
+:root {
+  --brand-primary:   #1e3a5f;  /* indaco profondo */
+  --brand-secondary: #c9a23a;  /* oro caldo */
+  --brand-accent:    #9c4a1c;  /* terra di siena */
+  --brand-bg:        #f7f1de;  /* avorio */
+  --brand-fg:        #1a1612;  /* nero caldo */
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --brand-primary:   #88a5d8;  /* indaco chiaro */
+    --brand-secondary: #f0c869;  /* oro chiaro */
+    --brand-accent:    #d57a4c;  /* terra di siena chiara */
+    --brand-bg:        #1a2330;
+    --brand-fg:        #f7f1de;
+  }
+}
+
 @layer base {
   html { -webkit-text-size-adjust: 100%; }
   body { font-feature-settings: 'cv11', 'ss01'; }

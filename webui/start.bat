@@ -1,7 +1,8 @@
 @echo off
 REM ============================================================
-REM  Carpe Diem - launcher (Windows)
-REM  "Carpe diem, quam minimum credula postero." (Orazio, Odi I,11)
+REM  piTantum - launcher (Windows)
+REM  "Omnia, Lucili, aliena sunt, tempus tantum nostrum est."
+REM                            (Seneca, Ep. I,1)
 REM ------------------------------------------------------------
 REM  Apre due finestre cmd visibili e separate:
 REM    - Backend  : uvicorn su  http://127.0.0.1:8000
@@ -20,17 +21,15 @@ if "%HERE:~-1%"=="\" set "HERE=%HERE:~0,-1%"
 
 echo.
 echo ============================================================
-echo   _____                          ____  _
-echo  / ____^|                        ^|  _ \^| ^|
-echo ^| ^|     __ _ _ __ _ __   ___    ^| ^|_^) ^| ^|
-echo ^| ^|    / _` ^| '__^| '_ \ / _ \   ^|  _ ^<^| ^|
-echo ^| ^|___^| ^(_^| ^| ^|  ^| ^|_^) ^|  __/   ^| ^|_^) ^| ^|
-echo  \_____\__,_^|_^|  ^| .__/ \___^|   ^|____/^|_^|
-echo                  ^| ^|
-echo                  ^|_^|     C A R P E   D I E M
+echo                _____            _
+echo      _ __ (_) ^|_   _^|_ _ _ __ ^| ^|_ _   _ _ __ ___
+echo     ^| '_ \^| ^|   ^| ^|/ _` ^| '_ \^| __^| ^| ^| ^| '_ ` _ \
+echo     ^| ^|_^) ^| ^|   ^| ^| ^(_^| ^| ^| ^| ^| ^|_^| ^|_^| ^| ^| ^| ^| ^| ^|
+echo     ^| .__/^|_^|   ^|_^|\__,_^|_^| ^|_^|\__^|\__,_^|_^| ^|_^| ^|_^|
+echo     ^|_^|         "Tempus tantum nostrum est"
 echo ------------------------------------------------------------
-echo  "Carpe diem, quam minimum credula postero."
-echo                                  Orazio, Odi I,11
+echo  "Omnia, Lucili, aliena sunt, tempus tantum nostrum est."
+echo                                       Seneca, Ep. I,1
 echo ============================================================
 echo  Cartella:  %HERE%
 echo ============================================================
@@ -127,10 +126,10 @@ if not errorlevel 1 (
 REM --- Avvio backend e frontend in due finestre separate ---
 echo.
 echo  Avvio backend Uvicorn  (porta 8000)...
-start "Carpe Diem - backend" cmd /k "cd /d ""%HERE%"" && backend\.venv\Scripts\python.exe -m uvicorn backend.main:app --host 127.0.0.1 --port 8000"
+start "piTantum - backend" cmd /k "cd /d ""%HERE%"" && backend\.venv\Scripts\python.exe -m uvicorn backend.main:app --host 127.0.0.1 --port 8000"
 
 echo  Avvio frontend Vite    (porta 5173)...
-start "Carpe Diem - frontend" cmd /k "cd /d ""%HERE%\frontend"" && npm run dev"
+start "piTantum - frontend" cmd /k "cd /d ""%HERE%\frontend"" && npm run dev"
 
 echo.
 echo ============================================================
@@ -143,8 +142,8 @@ echo  Aspetta ~10 secondi che entrambi siano pronti, poi apri
 echo  http://127.0.0.1:5173 nel browser.
 echo.
 echo  Per fermare:
-echo    - chiudi le due finestre cmd "Carpe Diem - backend" e
-echo      "Carpe Diem - frontend", oppure
+echo    - chiudi le due finestre cmd "piTantum - backend" e
+echo      "piTantum - frontend", oppure
 echo    - premi Ctrl+C in ciascuna.
 echo ============================================================
 echo.

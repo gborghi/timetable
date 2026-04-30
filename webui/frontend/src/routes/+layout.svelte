@@ -7,16 +7,18 @@
   import Toast from '$lib/components/Toast.svelte';
 
   // Brand assets: paths into webui/frontend/static/branding/. The
-  // images are not in the repo until Giovanni uploads them; the UI
-  // gracefully degrades to text-only "Carpe Diem" if the file 404s.
-  const LOGO_LIGHT = '/branding/logo/logo_light.png';
+  // SVG placeholder ships with the repo (logo_light.svg); when Giovanni
+  // generates the final art via Grok he replaces the file in-place.
+  // The img falls back to text-only when the file is missing entirely.
+  const LOGO_LIGHT = '/branding/logo/logo_light.svg';
   let logoOk = false;
   function onLogoOk() { logoOk = true; }
   function onLogoErr() { logoOk = false; }
 
   const APP_VERSION = '0.1';
-  const HORACE_LATIN = 'Carpe diem, quam minimum credula postero.';
-  const HORACE_IT = 'Cogli il giorno presente, fidandoti il meno possibile del domani.';
+  // Brand: piTantum / Tempus Tantum, after Seneca, Ep. I, 1.
+  const SENECA_LATIN = 'Omnia, Lucili, aliena sunt, tempus tantum nostrum est.';
+  const SENECA_IT = 'Tutto, Lucilio mio, ci appartiene di altri; soltanto il tempo e\' nostro.';
 
   const links = [
     { href: '/',           label: 'Dashboard',   exact: true  },
@@ -58,15 +60,18 @@
   <header class="bg-white border-b border-ink-200" role="banner">
     <div class="max-w-[1500px] mx-auto px-6 py-3 flex items-center gap-4">
       <a href="/" class="flex items-center gap-3 leading-tight"
-         title={HORACE_LATIN}>
-        <img src={LOGO_LIGHT} alt="Carpe Diem"
-             class="h-9 w-auto"
+         title={SENECA_LATIN}>
+        <img src={LOGO_LIGHT} alt="piTantum"
+             class="h-10 w-auto"
              class:hidden={!logoOk}
              on:load={onLogoOk} on:error={onLogoErr}/>
         <span class="flex flex-col">
-          <span class="text-xl font-semibold tracking-tight text-accent-500">Carpe Diem</span>
-          <span class="text-[10px] italic text-ink-400 -mt-0.5">
-            {HORACE_LATIN}
+          <span class="text-xl font-semibold tracking-tight"
+                style="color: var(--brand-primary);">
+            <span class="font-serif italic" style="color: var(--brand-secondary);">π</span>Tantum
+          </span>
+          <span class="text-[10px] italic text-ink-400 -mt-0.5 max-w-md">
+            {SENECA_LATIN}
           </span>
         </span>
       </a>
@@ -101,8 +106,10 @@
 
   <footer class="border-t border-ink-200 bg-white" role="contentinfo">
     <div class="max-w-[1500px] mx-auto px-6 py-3 text-xs text-ink-500 flex flex-wrap gap-3 items-baseline">
-      <span class="font-semibold text-ink-600">Carpe Diem</span>
-      <span class="italic">Cogli il giorno</span>
+      <span class="font-semibold" style="color: var(--brand-primary);">
+        <span class="font-serif italic" style="color: var(--brand-secondary);">π</span>Tantum
+      </span>
+      <span class="italic">Tempus tantum nostrum est</span>
       <span>v{APP_VERSION}</span>
       <span class="ml-auto">Backend: localhost:8000 &middot; Frontend: localhost:5173 &middot; Engine: ortools</span>
     </div>

@@ -28,8 +28,15 @@ Il frontend si aspetta i file alle path standard (vedere
 [`branding/logo/README.md`](../../../../branding/logo/README.md) e
 [`branding/icons/README.md`](../../../../branding/icons/README.md)).
 Finche' i file non sono qui, la UI degrada elegantemente al wordmark
-testuale "Carpe Diem".
+testuale "piTantum".
 
 I file in questa cartella **non sono master**: vivono in
 `branding/<sottocartella>/` (archivio tracciato in git, con anche
 versioni alternative). Qui ci sono solo le versioni "shipped".
+
+I placeholder SVG (logo_light.svg, favicon.svg, banner_placeholder.svg)
+ship-ano gia' in `branding/<sottocartella>/`. Quando vengono usati nel
+frontend tramite path `/branding/...`, Vite serve dalla cartella
+`webui/frontend/static/branding/`. Per renderli effettivamente raggiun-
+gibili dal frontend, copia (o crea symlink) i file dalla cartella
+master `branding/` a questa.
