@@ -54,15 +54,62 @@ def solve_assignment_dsl(data: dict, dsl_expression: str,
 
     model = cp_model.CpModel()
 
+    # === Phase-A class / curriculum preferences (HARD pre-filter) =====
+    cl_index_by_name = {cl["name"]: i for i, cl in enumerate(classes)}
+    forbidden_teacher_class: dict[int, set[int]] = {}    # ti -> {ci}
+    enforced_teacher_class: dict[int, set[int]] = {}     # ti -> {ci}
+    soft_pref_pairs: list[tuple[int, int, float]] = []   # (ti, ci, w)
+    for ti, t in enumerate(teachers):
+        cps = t.get("class_preferences", []) or []
+        cups = t.get("curriculum_preferences", []) or []
+        for p in cps:
+            cn = p.get("class_name")
+            ci = cl_index_by_name.get(cn)
+            if ci is None:
+                continue
+            st = p.get("state", "allowed")
+            sp = float(p.get("soft_penalty") or 0.0)
+            if st == "forbidden":
+                forbidden_teacher_class.setdefault(ti, set()).add(ci)
+            elif st == "enforced":
+                enforced_teacher_class.setdefault(ti, set()).add(ci)
+            elif st == "soft":
+                soft_pref_pairs.append((ti, ci, abs(sp) or 100.0))
+            elif st == "preferred":
+                soft_pref_pairs.append(
+                    (ti, ci, -abs(sp) if sp != 0 else -100.0)
+                )
+        for p in cups:
+            code = p.get("curriculum_code")
+            st = p.get("state", "allowed")
+            sp = float(p.get("soft_penalty") or 0.0)
+            for ci, cl in enumerate(classes):
+                if cl["curriculum"] != code:
+                    continue
+                if st == "forbidden":
+                    forbidden_teacher_class.setdefault(ti, set()).add(ci)
+                elif st == "enforced":
+                    enforced_teacher_class.setdefault(ti, set()).add(ci)
+                elif st == "soft":
+                    soft_pref_pairs.append((ti, ci, abs(sp) or 100.0))
+                elif st == "preferred":
+                    soft_pref_pairs.append(
+                        (ti, ci, -abs(sp) if sp != 0 else -100.0)
+                    )
+
     # === Variables (mirror of cpsat_v2_assignment) ====================
     assign: dict[tuple[int, str, int], Any] = {}
     for ci, cl in enumerate(classes):
         for subj in cl["subjects"]:
             for ti, t in enumerate(teachers):
-                if t["group"] in cconcorso.get(subj, {}):
-                    assign[(ci, subj, ti)] = model.NewBoolVar(
-                        f"a_{ci}_{subj}_{ti}"
-                    )
+                if t["group"] not in cconcorso.get(subj, {}):
+                    continue
+                # Skip the variable entirely for forbidden pairs.
+                if ci in forbidden_teacher_class.get(ti, set()):
+                    continue
+                assign[(ci, subj, ti)] = model.NewBoolVar(
+                    f"a_{ci}_{subj}_{ti}"
+                )
 
     # HARD: every (class, subject) covered by exactly 1 teacher.
     for ci, cl in enumerate(classes):
@@ -75,9 +122,34 @@ def solve_assignment_dsl(data: dict, dsl_expression: str,
             if not keys:
                 raise RuntimeError(
                     f"Nessun docente compatibile per "
-                    f"classe={cl['name']} materia={subj}"
+                    f"classe={cl['name']} materia={subj} "
+                    f"(considerate anche le preferenze "
+                    f"classe/curriculum del docente)."
                 )
             model.Add(sum(keys) == 1)
+
+    # ENFORCED: each (ti, ci) in enforced_teacher_class means "teacher
+    # ti MUST be assigned at least one (subject) in class ci". We
+    # express it as: sum over subjects of assign[ci, subj, ti] >= 1
+    # (over any subject the teacher is compatible with). Soft fallback
+    # to "infeasible" if there are no compatible subjects.
+    for ti, ciset in enforced_teacher_class.items():
+        for ci in ciset:
+            cl = classes[ci]
+            ks = [
+                assign[(ci, subj, ti)]
+                for subj in cl["subjects"]
+                if (ci, subj, ti) in assign
+            ]
+            if not ks:
+                # Cannot enforce: no compatible (subject, teacher).
+                # Treat as a non-fatal warning so the rest of the
+                # solve can proceed.
+                print(f"[assign-dsl] WARN: enforced (teacher={ti}, "
+                      f"class={cl['name']}) impossible: no compatible "
+                      f"subject. Constraint skipped.")
+                continue
+            model.Add(sum(ks) >= 1)
 
     n_t = len(teachers)
     n_c = len(classes)
@@ -310,6 +382,30 @@ def solve_assignment_dsl(data: dict, dsl_expression: str,
         n_under_10=n_under_10,
     )
     obj_expr, direction = dsl.compile_to_objective(dsl_expression, ctx)
+
+    # Add SOFT class/curriculum preference terms to the objective.
+    # These are proportional to has_class[ti, ci]:
+    #   soft (state='soft', penalty +) -> obj penalised when assigned
+    #   preferred (state='preferred', penalty -) -> obj rewarded
+    # We sum them at the end so they take effect regardless of the
+    # current preset, which is the user expectation: "preferenze
+    # docente/classe sono SEMPRE applicate sopra al criterio".
+    pref_terms = []
+    for (ti, ci, w) in soft_pref_pairs:
+        if (ti, ci) not in has_class:
+            continue
+        # Coefficient is integer for ortools; multiply by 10 to keep
+        # subdecimal granularity, then cast.
+        coeff = int(round(w * 10))
+        if coeff != 0:
+            pref_terms.append(coeff * has_class[(ti, ci)])
+    if pref_terms:
+        # We add (or subtract) according to direction so they always
+        # "act in favour of preferred / against soft".
+        if direction == "maximize":
+            obj_expr = obj_expr - sum(pref_terms)
+        else:
+            obj_expr = obj_expr + sum(pref_terms)
 
     if direction == "maximize":
         model.Maximize(obj_expr)

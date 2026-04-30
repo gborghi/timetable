@@ -3,7 +3,9 @@
   import { flash, refreshDataset } from '$lib/stores';
   import { DAY_NAMES_EN, TEACHER_DEFAULTS } from '$lib/constants';
   import { teachers } from '$lib/services';
-  import { subjectsQuery, classroomsQuery } from '$lib/queries';
+  import {
+    subjectsQuery, classroomsQuery, classesQuery, curriculaQuery
+  } from '$lib/queries';
   import Modal from '$lib/components/Modal.svelte';
   import AvailabilityMatrix from '$lib/components/AvailabilityMatrix.svelte';
   import SortableQueryableList from '$lib/components/SortableQueryableList.svelte';
@@ -11,6 +13,7 @@
   import ImportButton from '$lib/components/ImportButton.svelte';
   import BulkApplyModal from '$lib/components/BulkApplyModal.svelte';
   import ClassroomGrid from '$lib/components/ClassroomGrid.svelte';
+  import EntityPreferenceGrid from '$lib/components/EntityPreferenceGrid.svelte';
   import { cloneRow } from '$lib/utils';
 
   let editing = null;
@@ -23,8 +26,63 @@
   // $lib/queries/client.ts).
   const subjectsQ = subjectsQuery.useList();
   const classroomsQ = classroomsQuery.useList();
+  const classesQ = classesQuery.useList();
+  const curriculaQ = curriculaQuery.useList();
   $: allSubjects = ($subjectsQ.data ?? []).map((s) => s.name).sort();
   $: allClassrooms = $classroomsQ.data ?? [];
+  // For the Phase-A preference grids:
+  $: classItems = ($classesQ.data ?? [])
+      .map((c) => ({ key: c.name, label: c.name,
+                     hint: c.curriculum ?? '' }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  $: curriculumItems = ($curriculaQ.data ?? [])
+      .map((c) => ({ key: c.code, label: c.code,
+                     hint: c.name ?? '' }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+
+  // Phase-A preferences live alongside the modal's editing record but
+  // are saved via dedicated endpoints AFTER the main teacher PUT
+  // succeeds (see save()).
+  let editingClassPrefs = [];   // [{key, state, soft_penalty}]
+  let editingCurrPrefs = [];
+
+  async function loadPhaseAPrefs(teacher_id) {
+    if (!teacher_id) {
+      editingClassPrefs = [];
+      editingCurrPrefs = [];
+      return;
+    }
+    try {
+      const cps = await api.get(`/api/teachers/${teacher_id}/class-preferences`);
+      editingClassPrefs = (cps || []).map((p) => ({
+        key: p.class_name, state: p.state, soft_penalty: p.soft_penalty
+      }));
+    } catch { editingClassPrefs = []; }
+    try {
+      const cups = await api.get(`/api/teachers/${teacher_id}/curriculum-preferences`);
+      editingCurrPrefs = (cups || []).map((p) => ({
+        key: p.curriculum_code, state: p.state, soft_penalty: p.soft_penalty
+      }));
+    } catch { editingCurrPrefs = []; }
+  }
+
+  async function savePhaseAPrefs(teacher_id) {
+    if (!teacher_id) return;
+    try {
+      await api.put(`/api/teachers/${teacher_id}/class-preferences`,
+        editingClassPrefs.map((p) => ({
+          class_name: p.key, state: p.state, soft_penalty: p.soft_penalty
+        }))
+      );
+      await api.put(`/api/teachers/${teacher_id}/curriculum-preferences`,
+        editingCurrPrefs.map((p) => ({
+          curriculum_code: p.key, state: p.state, soft_penalty: p.soft_penalty
+        }))
+      );
+    } catch (e) {
+      flash('Errore salvando preferenze Phase A: ' + e.message, 'error');
+    }
+  }
 
   function onClassroomPrefsChange(newPrefs) {
     editing = { ...editing, classroom_prefs: newPrefs };
@@ -55,6 +113,9 @@
   function edit(row) {
     editing = cloneRow(row);
     if (!Array.isArray(editing.unavailability)) editing.unavailability = [];
+    // Load Phase-A preferences asynchronously; the modal opens
+    // immediately, prefs render once the fetch resolves.
+    loadPhaseAPrefs(row.id);
     if (!editing.last_name && !editing.first_name && editing.name) {
       // back-fill split fields from the legacy 'name' column
       const parts = editing.name.trim().split(/\s+/);
@@ -144,8 +205,12 @@
     delete payload.soft_penalty_total;
     saving = true;
     try {
-      if (editing._new) await teachers.create(payload);
-      else await teachers.update(editing.id, payload);
+      let savedTeacher;
+      if (editing._new) savedTeacher = await teachers.create(payload);
+      else savedTeacher = await teachers.update(editing.id, payload);
+      // Phase-A class/curriculum preferences are saved via dedicated
+      // endpoints AFTER the main teacher row exists (id needed).
+      await savePhaseAPrefs(savedTeacher?.id ?? editing.id);
       flash('Salvato', 'success');
       editing = null;
       await listRef.reload();
@@ -348,6 +413,30 @@
 
     <div class="mt-4">
       <LogicalUnavailabilitiesPanel entityType="teachers" entityId={editing.id ?? null}/>
+    </div>
+
+    <!-- Phase-A only preferences: class + curriculum (5-state) -->
+    <div class="mt-4 space-y-3 border-t border-ink-200 pt-3">
+      <div class="text-xs text-ink-500 italic">
+        <strong class="text-ink-700">Preferenze per Phase A</strong>
+        (assegnazione docente -&gt; classe). Queste preferenze
+        influenzano SOLO l'assegnazione docenti↔classi, non l'orario
+        settimanale (Phase B).
+      </div>
+      <EntityPreferenceGrid
+        items={classItems}
+        value={editingClassPrefs}
+        onChange={(v) => (editingClassPrefs = v)}
+        title="Classi (preferenze)"
+        subtitle="HARD rosso = niente assegnazione su quella classe; ENFORCED = assegnamento obbligatorio."
+        collapsedByDefault={true}/>
+      <EntityPreferenceGrid
+        items={curriculumItems}
+        value={editingCurrPrefs}
+        onChange={(v) => (editingCurrPrefs = v)}
+        title="Indirizzi (preferenze)"
+        subtitle="Vincoli a livello di indirizzo; HARD = niente classi di quell'indirizzo."
+        collapsedByDefault={true}/>
     </div>
 
     <div class="mt-5 flex justify-end gap-2">

@@ -253,3 +253,103 @@ def delete_teacher(teacher_id: int, db: Session = Depends(get_db)):
     db.delete(t)
     db.commit()
     return {"ok": True}
+
+
+# ====================================================================
+# Phase-A only: class preferences + curriculum preferences
+# (5-state per (teacher, class) and per (teacher, curriculum))
+# ====================================================================
+
+
+def _ensure_teacher(db: Session, tid: int) -> models.Teacher:
+    t = db.get(models.Teacher, tid)
+    if t is None:
+        raise HTTPException(404, "teacher not found")
+    return t
+
+
+@router.get(
+    "/{teacher_id}/class-preferences",
+    response_model=list[schemas.TeacherClassPrefOut],
+)
+def list_class_prefs(teacher_id: int, db: Session = Depends(get_db)):
+    _ensure_teacher(db, teacher_id)
+    rows = db.query(models.TeacherClassPreference).filter(
+        models.TeacherClassPreference.teacher_id == teacher_id
+    ).all()
+    return rows
+
+
+@router.put(
+    "/{teacher_id}/class-preferences",
+    response_model=list[schemas.TeacherClassPrefOut],
+)
+def replace_class_prefs(
+    teacher_id: int,
+    payload: list[schemas.TeacherClassPrefIn],
+    db: Session = Depends(get_db),
+):
+    """Replace the full set of preferences for this teacher.
+    'allowed' rows with soft_penalty=0 are dropped (default state)."""
+    _ensure_teacher(db, teacher_id)
+    db.query(models.TeacherClassPreference).filter(
+        models.TeacherClassPreference.teacher_id == teacher_id
+    ).delete()
+    out = []
+    for p in payload:
+        if p.state == "allowed" and p.soft_penalty == 0.0:
+            continue
+        row = models.TeacherClassPreference(
+            teacher_id=teacher_id,
+            class_name=p.class_name,
+            state=p.state,
+            soft_penalty=p.soft_penalty,
+        )
+        db.add(row)
+        out.append(row)
+    db.commit()
+    for r in out:
+        db.refresh(r)
+    return out
+
+
+@router.get(
+    "/{teacher_id}/curriculum-preferences",
+    response_model=list[schemas.TeacherCurriculumPrefOut],
+)
+def list_curr_prefs(teacher_id: int, db: Session = Depends(get_db)):
+    _ensure_teacher(db, teacher_id)
+    return db.query(models.TeacherCurriculumPreference).filter(
+        models.TeacherCurriculumPreference.teacher_id == teacher_id
+    ).all()
+
+
+@router.put(
+    "/{teacher_id}/curriculum-preferences",
+    response_model=list[schemas.TeacherCurriculumPrefOut],
+)
+def replace_curr_prefs(
+    teacher_id: int,
+    payload: list[schemas.TeacherCurriculumPrefIn],
+    db: Session = Depends(get_db),
+):
+    _ensure_teacher(db, teacher_id)
+    db.query(models.TeacherCurriculumPreference).filter(
+        models.TeacherCurriculumPreference.teacher_id == teacher_id
+    ).delete()
+    out = []
+    for p in payload:
+        if p.state == "allowed" and p.soft_penalty == 0.0:
+            continue
+        row = models.TeacherCurriculumPreference(
+            teacher_id=teacher_id,
+            curriculum_code=p.curriculum_code,
+            state=p.state,
+            soft_penalty=p.soft_penalty,
+        )
+        db.add(row)
+        out.append(row)
+    db.commit()
+    for r in out:
+        db.refresh(r)
+    return out

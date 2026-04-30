@@ -308,6 +308,31 @@ class ObjectivePresetOut(BaseModel):
     expression: str
 
 
+# ---------- Teacher class / curriculum preferences (Phase-A only) ----
+
+
+class TeacherClassPrefIn(BaseModel):
+    class_name: str
+    state: str = "allowed"
+    soft_penalty: float = 0.0
+
+
+class TeacherClassPrefOut(TeacherClassPrefIn):
+    id: int
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TeacherCurriculumPrefIn(BaseModel):
+    curriculum_code: str
+    state: str = "allowed"
+    soft_penalty: float = 0.0
+
+
+class TeacherCurriculumPrefOut(TeacherCurriculumPrefIn):
+    id: int
+    model_config = ConfigDict(from_attributes=True)
+
+
 class PhaseBRunIn(BaseModel):
     k: int = 4
     time_a: float = 60.0

@@ -81,6 +81,16 @@ def school_dict_from_db(db: Session) -> dict[str, Any]:
         })
     teachers_dump = []
     for t in db.query(models.Teacher).order_by(models.Teacher.name).all():
+        cls_prefs = [
+            {"class_name": p.class_name, "state": p.state,
+             "soft_penalty": p.soft_penalty}
+            for p in t.class_preferences
+        ]
+        cur_prefs = [
+            {"curriculum_code": p.curriculum_code, "state": p.state,
+             "soft_penalty": p.soft_penalty}
+            for p in t.curriculum_preferences
+        ]
         teachers_dump.append({
             "name": t.name,
             "group": t.group or "",
@@ -88,6 +98,8 @@ def school_dict_from_db(db: Session) -> dict[str, Any]:
             "free_day": t.free_day or "Saturday",
             "weights": {ts.subject: 1 for ts in t.subjects},
             "graduatoria_score": t.graduatoria_score,
+            "class_preferences": cls_prefs,
+            "curriculum_preferences": cur_prefs,
         })
     cconc = defaultdict(dict)
     for row in db.query(models.SubjectGroupWeight).all():

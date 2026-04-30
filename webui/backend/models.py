@@ -136,6 +136,16 @@ class Teacher(TenantMixin, TimestampMixin, Base):
     compatible_classes: Mapped[list["TeacherCompatibleClass"]] = relationship(
         back_populates="teacher", cascade="all, delete-orphan"
     )
+    # Phase-A only preferences (Section: workflow extensions). The
+    # solver maps state to HARD/SOFT terms in the assignment model.
+    class_preferences: Mapped[list["TeacherClassPreference"]] = relationship(
+        back_populates="teacher", cascade="all, delete-orphan"
+    )
+    curriculum_preferences: Mapped[
+        list["TeacherCurriculumPreference"]
+    ] = relationship(
+        back_populates="teacher", cascade="all, delete-orphan"
+    )
 
 
 class TeacherSubject(Base):
@@ -200,6 +210,63 @@ class TeacherCompatibleClass(Base):
     )
     class_name: Mapped[str] = mapped_column(String(40))
     teacher: Mapped["Teacher"] = relationship(back_populates="compatible_classes")
+
+
+class TeacherClassPreference(Base):
+    """Phase-A only: how the teacher relates to each class.
+
+    state: 'allowed' (default) | 'preferred' | 'soft' | 'forbidden' |
+           'enforced'
+    soft_penalty: numeric weight for 'soft' (positive) and
+                  'preferred' (negative); 0 for the HARD states.
+
+    Distinct from TeacherCompatibleClass which is a HARD allow-list:
+    here we have the full 5-state taxonomy + per-row penalty, and
+    these preferences are applied as HARD/SOFT terms in the Phase-A
+    DSL solver only -- they do NOT affect Phase B scheduling."""
+    __tablename__ = "teacher_class_preferences"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    teacher_id: Mapped[int] = mapped_column(
+        ForeignKey("teachers.id", ondelete="CASCADE"), index=True
+    )
+    class_name: Mapped[str] = mapped_column(String(40), index=True)
+    state: Mapped[str] = mapped_column(
+        String(16), default="allowed",
+        comment="allowed | preferred | soft | forbidden | enforced"
+    )
+    soft_penalty: Mapped[float] = mapped_column(Float, default=0.0)
+    teacher: Mapped["Teacher"] = relationship(
+        back_populates="class_preferences"
+    )
+    __table_args__ = (
+        UniqueConstraint("teacher_id", "class_name",
+                         name="uq_tcp_teacher_class"),
+    )
+
+
+class TeacherCurriculumPreference(Base):
+    """Phase-A only: how the teacher relates to each curriculum
+    (indirizzo). Same 5-state taxonomy as TeacherClassPreference, but
+    keyed on `curriculum_code` -- a HARD here means "this teacher
+    cannot be assigned to ANY class of this curriculum"."""
+    __tablename__ = "teacher_curriculum_preferences"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    teacher_id: Mapped[int] = mapped_column(
+        ForeignKey("teachers.id", ondelete="CASCADE"), index=True
+    )
+    curriculum_code: Mapped[str] = mapped_column(String(40), index=True)
+    state: Mapped[str] = mapped_column(
+        String(16), default="allowed",
+        comment="allowed | preferred | soft | forbidden | enforced"
+    )
+    soft_penalty: Mapped[float] = mapped_column(Float, default=0.0)
+    teacher: Mapped["Teacher"] = relationship(
+        back_populates="curriculum_preferences"
+    )
+    __table_args__ = (
+        UniqueConstraint("teacher_id", "curriculum_code",
+                         name="uq_tcurp_teacher_curriculum"),
+    )
 
 
 # ---------- Classes ----------
