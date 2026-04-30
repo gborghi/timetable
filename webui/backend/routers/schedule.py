@@ -300,6 +300,229 @@ def move_preview(payload: dict, db: Session = Depends(get_db)):
             "results": results}
 
 
+def _conflicts_at_slot(
+    db: Session,
+    active_id: int,
+    teacher_name: str | None,
+    class_name: str | None,
+    classroom_name: str | None,
+    day: int,
+    hour: int,
+    exclude_lesson_id: int | None = None,
+) -> dict:
+    """Return existing Lessons that conflict with a candidate placement
+    at (day, hour). Detects three categories:
+      - teacher_busy : same teacher already has a lesson in that slot
+      - class_busy   : same class already has a lesson in that slot
+      - room_busy    : same classroom already used in that slot
+    """
+    qry = db.query(models.Lesson).filter(
+        models.Lesson.solution_id == active_id,
+        models.Lesson.day == int(day),
+        models.Lesson.hour == int(hour),
+    )
+    if exclude_lesson_id is not None:
+        qry = qry.filter(models.Lesson.id != int(exclude_lesson_id))
+    rows = qry.all()
+    teacher_busy: list[models.Lesson] = []
+    class_busy: list[models.Lesson] = []
+    room_busy: list[models.Lesson] = []
+    for r in rows:
+        if teacher_name and r.teacher_name == teacher_name:
+            teacher_busy.append(r)
+        if class_name and r.class_name == class_name:
+            class_busy.append(r)
+        if (classroom_name and r.classroom_name == classroom_name
+                and (classroom_name or "") != ""):
+            room_busy.append(r)
+    return {
+        "teacher_busy": teacher_busy,
+        "class_busy": class_busy,
+        "room_busy": room_busy,
+    }
+
+
+def _summarise_conflicts(rows: list[models.Lesson]) -> list[dict]:
+    return [
+        {"lesson_id": r.id, "teacher_name": r.teacher_name,
+         "class_name": r.class_name, "subject": r.subject,
+         "day": r.day, "hour": r.hour,
+         "classroom_name": r.classroom_name}
+        for r in rows
+    ]
+
+
+# Backward-compat aliases for the resolution strategy.
+_RESOLUTION_ALIASES = {
+    "unassign": "delete",
+    "optimize": "delete",
+}
+
+
+def _resolve_conflicts(
+    db: Session,
+    cinfo: dict,
+    strategy: str,
+) -> None:
+    """Apply the chosen conflict resolution to the conflicting Lesson
+    rows in `cinfo`. Mutates DB rows in-place; caller commits.
+
+    `strategy` in {'unbind', 'delete'} (after alias normalisation).
+    On 'unbind': teacher/class busy -> deleted (no per-attribute
+    unbinding possible since the row IS the (teacher, class, day,
+    hour) tuple). Room busy -> classroom_name set to NULL.
+    On 'delete': all conflicting rows are deleted.
+    """
+    strategy = _RESOLUTION_ALIASES.get(strategy, strategy)
+    deleted: set[int] = set()
+    if strategy == "delete":
+        for bucket in ("teacher_busy", "class_busy", "room_busy"):
+            for r in cinfo[bucket]:
+                if r.id in deleted:
+                    continue
+                deleted.add(r.id)
+                db.delete(r)
+    else:  # unbind
+        # Teacher/class conflicts: must delete (no partial unbind).
+        for bucket in ("teacher_busy", "class_busy"):
+            for r in cinfo[bucket]:
+                if r.id in deleted:
+                    continue
+                deleted.add(r.id)
+                db.delete(r)
+        # Room-only conflicts: clear classroom_name.
+        for r in cinfo["room_busy"]:
+            if r.id in deleted:
+                continue
+            r.classroom_name = None
+    db.flush()
+
+
+@router.post("/lesson", response_model=schemas.AddLessonOut)
+def add_lesson(payload: schemas.AddLessonIn,
+               db: Session = Depends(get_db)) -> dict:
+    """Create a new Lesson cell at (day, hour) for an existing
+    Assignment. Used by the empty-cell "+" buttons on /schedule
+    matrix views.
+
+    The (class, teacher, subject) triple MUST already correspond to an
+    Assignment; if `subject` is omitted, we look up which Assignments
+    link the (class, teacher) pair and pick the only matching subject
+    (422 with the candidate list when ambiguous).
+    """
+    if payload.day not in DAYS or payload.hour not in HOURS:
+        raise HTTPException(400, "day/hour fuori range")
+    active = _active(db)
+
+    cls = db.query(models.SchoolClass).filter(
+        models.SchoolClass.name == payload.class_name).first()
+    if cls is None:
+        raise HTTPException(404, f"classe {payload.class_name!r} non trovata")
+    t = db.query(models.Teacher).filter(
+        models.Teacher.name == payload.teacher_name).first()
+    if t is None:
+        raise HTTPException(
+            404, f"docente {payload.teacher_name!r} non trovato"
+        )
+
+    # Resolve subject via existing Assignment(s) for (class, teacher).
+    candidate_subjects = [
+        a.subject for a in db.query(models.Assignment).filter(
+            models.Assignment.class_id == cls.id,
+            models.Assignment.teacher_id == t.id,
+        ).all()
+    ]
+    subject = payload.subject
+    if subject is None:
+        if len(candidate_subjects) == 0:
+            raise HTTPException(
+                422,
+                {
+                    "detail":
+                        f"Nessuna cattedra fra {payload.class_name!r} e "
+                        f"{payload.teacher_name!r}: crea prima la cattedra "
+                        f"in Cattedre / Phase A.",
+                    "code": "no_assignment",
+                },
+            )
+        if len(candidate_subjects) > 1:
+            raise HTTPException(
+                422,
+                {
+                    "detail":
+                        f"Materie multiple disponibili per "
+                        f"({payload.class_name}, {payload.teacher_name}): "
+                        f"{candidate_subjects}. Specifica `subject`.",
+                    "code": "ambiguous_subject",
+                    "candidates": candidate_subjects,
+                },
+            )
+        subject = candidate_subjects[0]
+    elif subject not in candidate_subjects:
+        raise HTTPException(
+            422,
+            {
+                "detail":
+                    f"Cattedra inesistente: {payload.class_name!r}, "
+                    f"{payload.teacher_name!r}, {subject!r}. "
+                    f"Disponibili: {candidate_subjects}.",
+                "code": "no_assignment",
+            },
+        )
+
+    cinfo = _conflicts_at_slot(
+        db, active.id,
+        teacher_name=payload.teacher_name,
+        class_name=payload.class_name,
+        classroom_name=payload.classroom_name,
+        day=payload.day,
+        hour=payload.hour,
+    )
+    has_conflict = bool(
+        cinfo["teacher_busy"] or cinfo["class_busy"] or cinfo["room_busy"]
+    )
+    conflict_payload = {
+        "teacher_busy": _summarise_conflicts(cinfo["teacher_busy"]),
+        "class_busy":   _summarise_conflicts(cinfo["class_busy"]),
+        "room_busy":    _summarise_conflicts(cinfo["room_busy"]),
+    }
+
+    strategy = _RESOLUTION_ALIASES.get(
+        payload.on_conflict, payload.on_conflict
+    )
+
+    if has_conflict and strategy in ("dry_run", "cancel"):
+        return {
+            "ok": False,
+            "conflict": True,
+            "details": conflict_payload,
+        }
+    if has_conflict and strategy in ("unbind", "delete"):
+        _resolve_conflicts(db, cinfo, strategy)
+
+    lesson = models.Lesson(
+        solution_id=active.id,
+        teacher_name=payload.teacher_name,
+        class_name=payload.class_name,
+        subject=subject,
+        day=payload.day,
+        hour=payload.hour,
+        classroom_name=payload.classroom_name or None,
+        cotaught_with=(",".join(payload.cotaught_with)
+                       if payload.cotaught_with else None),
+    )
+    db.add(lesson)
+    db.commit()
+    db.refresh(lesson)
+    return {
+        "ok": True,
+        "conflict": has_conflict,
+        "resolution": strategy if has_conflict else None,
+        "lesson_id": lesson.id,
+        "details": conflict_payload,
+    }
+
+
 @router.put("/lesson/{lesson_id}/classroom")
 def set_lesson_classroom(lesson_id: int, classroom_name: str | None = None,
                          db: Session = Depends(get_db)):

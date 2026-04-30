@@ -333,6 +333,84 @@ class TeacherCurriculumPrefOut(TeacherCurriculumPrefIn):
     model_config = ConfigDict(from_attributes=True)
 
 
+# ---------- Add-lesson (schedule) ------------------------------------
+
+
+class AddLessonIn(BaseModel):
+    """Create a new Lesson cell at (day, hour). Used by the empty-cell
+    "+" buttons on the per-class / per-teacher / per-room / per-slot
+    schedule views.
+
+    Conflict resolution semantics:
+      * dry_run -> never write; return the conflict description.
+      * cancel  -> abort and return the conflict (no write).
+      * unbind  -> on room conflicts, clear `classroom_name` of the
+                   conflicting lesson(s) so the room frees up. On
+                   teacher/class conflicts, falls back to `delete`
+                   because there's no per-attribute unbinding for
+                   those (a Lesson IS a (teacher, class, day, hour)
+                   tuple). Then write the new lesson.
+      * delete  -> delete the conflicting Lesson rows entirely (those
+                   Assignments lose hours and surface as incomplete in
+                   /api/monitor/events). Then write the new lesson.
+
+    Backward-compat: `unassign` and `optimize` are accepted as
+    aliases of `delete` (used to be the names in the older monitor
+    flow).
+    """
+    class_name: str
+    teacher_name: str
+    subject: str | None = Field(
+        default=None,
+        description="If omitted and the (class, teacher) pair has "
+                    "exactly one matching Assignment, that subject is "
+                    "used; otherwise 422 with the candidate list.",
+    )
+    classroom_name: str | None = None
+    day: int
+    hour: int
+    on_conflict: str = "dry_run"
+    cotaught_with: list[str] = Field(default_factory=list)
+
+
+class AddLessonOut(BaseModel):
+    ok: bool
+    conflict: bool = False
+    no_change: bool = False
+    resolution: str | None = None
+    lesson_id: int | None = None
+    details: dict[str, Any] = Field(default_factory=dict)
+
+
+# ---------- Add-event (monitor) --------------------------------------
+
+
+class AddEventIn(BaseModel):
+    """Create a new Assignment (event) optionally with one initial
+    Lesson at a given time. If day/hour are omitted, the Assignment
+    is created as "incomplete" (no Lesson rows yet) and surfaces in
+    the red panel of the Monitor tab.
+    """
+    class_name: str
+    teacher_name: str
+    subject: str
+    hours: int = 1
+    classroom_name: str | None = None
+    day: int | None = None
+    hour: int | None = None
+    locked: bool = False
+    on_conflict: str = "dry_run"
+
+
+class AddEventOut(BaseModel):
+    ok: bool
+    conflict: bool = False
+    assignment_id: int | None = None
+    lesson_id: int | None = None
+    resolution: str | None = None
+    details: dict[str, Any] = Field(default_factory=dict)
+
+
 class PhaseBRunIn(BaseModel):
     k: int = 4
     time_a: float = 60.0
@@ -343,6 +421,12 @@ class PhaseBRunIn(BaseModel):
     workers: int = 8
     log: bool = False
     use_decomposition: bool = True
+    # Per-step rooms toggle: when True, after Phase B persists the
+    # solution the classroom-assignment step is run inline so that
+    # gym/lab capacity is solved jointly with the timetable.
+    optimize_rooms: bool = False
+    rooms_time_limit_s: float = 30.0
+    rooms_prefer_home: bool = True
 
 
 class MetaRunIn(BaseModel):
@@ -358,6 +442,18 @@ class MetaRunIn(BaseModel):
     sa_alpha: float = 0.995
     # TS-only:
     tabu_size: int = 80
+    # Per-step rooms toggle (same semantics as PhaseBRunIn): if True
+    # the rooms step runs on the new active solution at the end.
+    optimize_rooms: bool = False
+    rooms_time_limit_s: float = 30.0
+    rooms_prefer_home: bool = True
+
+
+# Default ordering of the pipeline. The frontend lets the user reorder
+# and untick items; only the enabled keys (in user-defined order) are
+# sent back. "phase_a" = step 2 (Assegnazione), "phase_b" = step 3.
+DEFAULT_PIPELINE_STEPS = ["phase_a", "phase_b", "lns", "sa", "ts", "ils"]
+PIPELINE_STEP_KEYS = {"phase_a", "phase_b", "lns", "sa", "ts", "ils", "rooms"}
 
 
 class FullPipelineIn(BaseModel):
@@ -369,6 +465,17 @@ class FullPipelineIn(BaseModel):
     budget_sa: float = 30.0
     budget_ts: float = 30.0
     budget_ils: float = 60.0
+    # User-defined step list (ordered). Only keys present here are run
+    # and they run in this order. Each phase_b/meta step independently
+    # honours its own `optimize_rooms` flag (carried inside `phase_b`
+    # for step 3, and in the meta-budget defaults for 4-7 -- the
+    # frontend collapses all four meta cards onto one shared toggle).
+    steps: list[str] = Field(default_factory=lambda: list(DEFAULT_PIPELINE_STEPS))
+    # When the meta toggle "optimize rooms" is on, every meta step in
+    # the pipeline runs the rooms helper inline after itself.
+    meta_optimize_rooms: bool = False
+    meta_rooms_time_limit_s: float = 30.0
+    meta_rooms_prefer_home: bool = True
 
 
 class ImportPickleIn(BaseModel):

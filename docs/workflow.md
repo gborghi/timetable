@@ -118,7 +118,7 @@ dei logical SOFT/PREFERITO (vedere
 ## Phase 4: assegnazione aule
 
 **Modulo**: `experiments/classroom_assignment.py`. **Lancio**:
-`POST /api/optimize/classroom-assignment`.
+`POST /api/optimize/rooms`.
 
 Input: la tabella `lessons` (gia' temporalmente fissata) + le
 classroom rules: `kind`, `capacity`, `multi_class`, `multi_class_max`,
@@ -130,6 +130,39 @@ E' un MIP/CP-SAT separato perche' la fase B opera senza vincoli di
 aula (semplifica il modello principale); le room HARD-unavailability
 matrix e i `forbidden`/`enforced` di
 `classroom_subject_preferences` entrano qui.
+
+### Aule "PRIMA" / "DOPO" / "INSIEME" all'orario
+
+Il passo aule e' indipendente per default: lo step 8 puo' essere
+eseguito **prima** dell'orario (ad es. per fissare a mano un
+sottoinsieme di assegnamenti palestra/laboratorio) oppure **dopo**
+la pipeline (default).
+
+Per risolvere aule e orario **insieme**, ciascuno degli step che
+producono una soluzione (Phase B sulla card 3, e ognuna delle
+metaeuristiche LNS/SA/TS/ILS sulla card 4-7) espone un toggle
+**"Ottimizza aule insieme a questo step"**: quando attivo, dopo che
+quello step ha persistito la nuova soluzione attiva, il backend
+esegue `_apply_rooms_to_solution(sid, ...)` sulla stessa soluzione
+con i parametri `rooms_time_limit_s` / `rooms_prefer_home`. Le
+metriche delle aule (`rooms_assigned`, `rooms_total_lessons`,
+eventualmente `rooms_error`) confluiscono nel run del passo padre.
+
+La pipeline (card 9) NON ha un proprio toggle per le aule: presenta
+invece una lista **trascinabile** (drag-and-drop) e **tickabile** dei
+sei step `phase_a / phase_b / lns / sa / ts / ils`. L'utente decide
+quali eseguire e in che ordine; ogni passo che entra nella pipeline
+porta con se' la propria decisione su "ottimizza aule" presa sulla
+relativa card. Cosi' la schedulazione monolitica orario+aula resta
+fuori scope (per scalabilita' del CP-SAT), ma il toggle per-step
+permette di intercalare l'assegnazione aule dove serve, senza
+duplicare configurazione.
+
+Il backend riceve `FullPipelineIn { steps: list[str], phase_b:
+PhaseBRunIn, meta_optimize_rooms: bool, ... }` e dispatcha ogni
+chiave in `steps` in ordine; phase_b consuma il proprio
+`optimize_rooms`, le quattro metaeuristiche condividono il
+`meta_optimize_rooms` (un solo toggle per la card 4-7).
 
 ## Drag-and-drop con preview live
 

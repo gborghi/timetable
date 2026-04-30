@@ -5,10 +5,22 @@
   import Modal from '$lib/components/Modal.svelte';
   import SortableQueryableList from '$lib/components/SortableQueryableList.svelte';
   import { DAYS, HOURS, DAY_NAMES_IT } from '$lib/constants';
+  import ScheduleConflictModal from '$lib/components/schedule/ScheduleConflictModal.svelte';
+  import AddEventModal from '$lib/components/schedule/AddEventModal.svelte';
 
   let summary = null;
   let listRef = null;
   let allRooms = [];
+  let allTeachers = [];
+  let allClasses = [];
+
+  // Red panel: events without temporal assignment.
+  let incomplete = null;     // { n_total, n_incomplete, items[] }
+  let incompleteOpen = false;
+  let incompleteBusy = false;
+
+  // Add-event modal state
+  let addEventOpen = false;
 
   // For each event row we keep: expanded? + lessons array.
   let expanded = new Set();
@@ -31,10 +43,30 @@
     try { summary = await api.get('/api/monitor/summary'); } catch { /* */ }
     try { allRooms = (await api.get('/api/classrooms')).map((r) => r.name).sort(); }
     catch { allRooms = []; }
+    try {
+      const t = await api.get('/api/teachers');
+      allTeachers = (t || []).map((x) => x.name).sort();
+    } catch { allTeachers = []; }
+    try {
+      const c = await api.get('/api/classes');
+      allClasses = (c || []).map((x) => x.name).sort();
+    } catch { allClasses = []; }
+    await refreshIncomplete();
   });
 
   async function refreshSummary() {
     try { summary = await api.get('/api/monitor/summary'); } catch { /* */ }
+  }
+
+  async function refreshIncomplete() {
+    incompleteBusy = true;
+    try {
+      incomplete = await api.get('/api/monitor/incomplete-events');
+    } catch (e) {
+      incomplete = null;
+    } finally {
+      incompleteBusy = false;
+    }
   }
 
   async function toggleRow(row) {
@@ -168,6 +200,7 @@
         flash('Lezione spostata.', 'success');
         await reloadLessonsFor(eventId);
         await refreshSummary();
+        await refreshIncomplete();
         if (listRef) await listRef.reload();
         return;
       }
@@ -185,20 +218,21 @@
   }
 
   async function resolveConflict(strategy) {
+    // strategy is 'unbind' (svincola) or 'delete' (elimina)
     if (!conflictDialog) return;
     const { event_id, lesson, day, hour, classroom_name } = conflictDialog;
     try {
       const r = await applyMove(event_id, lesson, day, hour, classroom_name,
                                 strategy);
       if (r.ok) {
-        if (strategy === 'optimize') {
-          flash('Lezione spostata; riavvia l\'ottimizzatore dal Workflow per ricoprire le ore liberate.', 'success');
-        } else {
-          flash('Lezione spostata.', 'success');
-        }
+        flash(strategy === 'unbind'
+              ? 'Lezione spostata; conflitti svincolati.'
+              : 'Lezione spostata; conflitti eliminati.',
+              'success');
         conflictDialog = null;
         await reloadLessonsFor(event_id);
         await refreshSummary();
+        await refreshIncomplete();
         if (listRef) await listRef.reload();
       } else if (r.cancelled) {
         flash('Modifica annullata.', 'success');
@@ -267,6 +301,71 @@
     posizione e' in conflitto con un'altra lezione/aula apparira' un
     modal con le opzioni di risoluzione.
   </p>
+
+  <div class="flex items-center gap-2 flex-wrap">
+    <button class="btn-primary !text-xs"
+            on:click={() => (addEventOpen = true)}>
+      + Nuovo evento
+    </button>
+    <button class="btn !text-xs"
+            on:click={() => (incompleteOpen = !incompleteOpen)}
+            disabled={!incomplete}
+            title="Mostra/nascondi pannello eventi senza assegnazione temporale">
+      {#if incomplete}
+        {incompleteOpen ? 'Nascondi' : 'Mostra'} pannello rosso
+        ({incomplete.n_incomplete})
+      {:else}
+        Pannello rosso (caricamento...)
+      {/if}
+    </button>
+    <button class="btn !text-xs" on:click={refreshIncomplete}
+            disabled={incompleteBusy}>refresh</button>
+  </div>
+
+  {#if incompleteOpen && incomplete}
+    <div class="card p-4 border-2 border-red-300 bg-red-50">
+      <h2 class="mb-2 text-red-900">
+        Eventi senza assegnazione temporale
+        ({incomplete.n_incomplete} su {incomplete.n_total})
+      </h2>
+      <p class="text-xs text-red-700 mb-2">
+        Cattedre per cui non tutte le ore attese sono state schedulate
+        nella soluzione attiva. Per ognuna assegna le ore mancanti
+        cliccando "+ nuovo" su uno slot libero in /schedule, oppure
+        crea l'evento gia' fissato a giorno/ora con "+ Nuovo evento".
+      </p>
+      {#if incomplete.items.length === 0}
+        <p class="text-sm text-red-600">Nessun evento incompleto: tutto a posto.</p>
+      {:else}
+        <table class="tbl text-xs">
+          <thead>
+            <tr>
+              <th>Docente</th><th>Classe</th><th>Materia</th>
+              <th class="text-center">Ore attese</th>
+              <th class="text-center">Ore assegnate</th>
+              <th class="text-center">Ore mancanti</th>
+              <th>Stato</th>
+            </tr>
+          </thead>
+          <tbody>
+            {#each incomplete.items as it}
+              <tr style="background-color:#fef2f2;">
+                <td><strong>{it.teacher_display}</strong></td>
+                <td>{it.class_name}</td>
+                <td>{it.subject}</td>
+                <td class="text-center">{it.expected_hours}</td>
+                <td class="text-center">{it.assigned_hours}</td>
+                <td class="text-center">
+                  <span class="pill-red">{it.missing_hours}</span>
+                </td>
+                <td class="text-xs">{it.status}</td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      {/if}
+    </div>
+  {/if}
 
   <SortableQueryableList
     bind:this={listRef}
@@ -428,44 +527,23 @@
   {/if}
 </Modal>
 
-<Modal open={!!conflictDialog}
-       title="Conflitto sull'orario di destinazione"
-       onClose={() => (conflictDialog = null)}>
-  {#if conflictDialog}
-    <div class="space-y-3 text-sm">
-      <p>
-        Lo spostamento della lezione in
-        <code>{DAY_NAMES_IT[conflictDialog.day]} {conflictDialog.hour}:00</code>
-        {#if conflictDialog.classroom_name}
-          aula <strong>{conflictDialog.classroom_name}</strong>
-        {/if}
-        confligge con altre lezioni:
-      </p>
-      <ul class="list-disc ml-5 text-xs">
-        {#each conflictDialog.details.teacher_busy as r}
-          <li><span class="pill-red">docente</span> {r.teacher_name} - {r.class_name} / {r.subject} ({DAY_NAMES_IT[r.day]} {r.hour}:00)</li>
-        {/each}
-        {#each conflictDialog.details.class_busy as r}
-          <li><span class="pill-red">classe</span> {r.class_name} - {r.subject} ({r.teacher_name})</li>
-        {/each}
-        {#each conflictDialog.details.room_busy as r}
-          <li><span class="pill-amber">aula</span> {r.classroom_name} usata da {r.class_name} / {r.subject} ({r.teacher_name})</li>
-        {/each}
-      </ul>
-      <p class="text-xs text-ink-500">
-        Cosa vuoi fare?
-      </p>
-      <div class="flex flex-wrap gap-2 justify-end">
-        <button class="btn !text-xs" on:click={() => (conflictDialog = null)}>
-          Annulla la modifica
-        </button>
-        <button class="btn-danger !text-xs" on:click={() => resolveConflict('unassign')}>
-          Disassegna le lezioni in conflitto
-        </button>
-        <button class="btn-primary !text-xs" on:click={() => resolveConflict('optimize')}>
-          Disassegna e ottimizza dopo (Workflow)
-        </button>
-      </div>
-    </div>
-  {/if}
-</Modal>
+<ScheduleConflictModal open={!!conflictDialog}
+                       title="Conflitto sull'orario di destinazione"
+                       subject={conflictDialog
+                          ? `${DAY_NAMES_IT[conflictDialog.day]} ${conflictDialog.hour}:00`
+                            + (conflictDialog.classroom_name ? ` - aula ${conflictDialog.classroom_name}` : '')
+                          : ''}
+                       details={conflictDialog?.details ?? {}}
+                       onCancel={() => (conflictDialog = null)}
+                       onResolve={resolveConflict}/>
+
+<AddEventModal bind:open={addEventOpen}
+               teachers={allTeachers}
+               classes={allClasses}
+               rooms={allRooms}
+               onClose={() => (addEventOpen = false)}
+               onCreated={async () => {
+                 await refreshSummary();
+                 await refreshIncomplete();
+                 if (listRef) await listRef.reload();
+               }}/>

@@ -139,6 +139,9 @@ def launch_phase_b(payload: schemas.PhaseBRunIn):
         time_mono=payload.time_mono,
         workers=payload.workers, log=payload.log,
         use_decomposition=payload.use_decomposition,
+        optimize_rooms=payload.optimize_rooms,
+        rooms_time_limit_s=payload.rooms_time_limit_s,
+        rooms_prefer_home=payload.rooms_prefer_home,
     )
     return {"run_id": rid}
 
@@ -147,6 +150,7 @@ def launch_phase_b(payload: schemas.PhaseBRunIn):
 def launch_full(payload: schemas.FullPipelineIn):
     rid = optimization.run_full_pipeline(
         profile=payload.profile,
+        steps=payload.steps,
         time_assign=payload.time_assign,
         phase_b_kwargs=payload.phase_b.model_dump(),
         budget_lns=payload.budget_lns,
@@ -154,6 +158,9 @@ def launch_full(payload: schemas.FullPipelineIn):
         budget_ts=payload.budget_ts,
         budget_ils=payload.budget_ils,
         workers=payload.workers,
+        meta_optimize_rooms=payload.meta_optimize_rooms,
+        meta_rooms_time_limit_s=payload.meta_rooms_time_limit_s,
+        meta_rooms_prefer_home=payload.meta_rooms_prefer_home,
     )
     return {"run_id": rid}
 
@@ -182,5 +189,8 @@ def launch_meta(stage: str, payload: schemas.MetaRunIn):
         ts_budget_per_cycle=payload.ts_budget_per_cycle,
         sa_T0=payload.sa_T0, sa_alpha=payload.sa_alpha,
         tabu_size=payload.tabu_size,
+        optimize_rooms=payload.optimize_rooms,
+        rooms_time_limit_s=payload.rooms_time_limit_s,
+        rooms_prefer_home=payload.rooms_prefer_home,
     )
     return {"run_id": rid}

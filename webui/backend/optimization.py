@@ -422,11 +422,17 @@ def manual_assignment(db: Session, class_name: str, subject: str,
 def run_phase_b(k: int, time_a: float, time_bridges: float,
                 time_cluster: float, time_ricucitura: float,
                 time_mono: float, workers: int, log: bool,
-                use_decomposition: bool = True) -> int:
+                use_decomposition: bool = True,
+                optimize_rooms: bool = False,
+                rooms_time_limit_s: float = 30.0,
+                rooms_prefer_home: bool = True) -> int:
     params = dict(k=k, time_a=time_a, time_bridges=time_bridges,
                   time_cluster=time_cluster, time_ricucitura=time_ricucitura,
                   time_mono=time_mono, workers=workers, log=log,
-                  use_decomposition=use_decomposition)
+                  use_decomposition=use_decomposition,
+                  optimize_rooms=optimize_rooms,
+                  rooms_time_limit_s=rooms_time_limit_s,
+                  rooms_prefer_home=rooms_prefer_home)
     run_id = create_run("phase_b", "Schedulazione orario", None, params)
 
     def target(rid: int):
@@ -558,10 +564,23 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                 metrics={**m, "feasible": feasible},
                 make_active=True,
             )
+        rooms_metrics: dict[str, Any] = {}
+        if optimize_rooms:
+            update_run(rid, progress=0.95)
+            print("[phaseB] running joint classroom-assignment step")
+            try:
+                rooms_metrics = _apply_rooms_to_solution(
+                    sid, time_limit_s=rooms_time_limit_s,
+                    workers=workers, prefer_home=rooms_prefer_home,
+                    log_prefix="phaseB.rooms", log=False,
+                )
+            except Exception as e:  # noqa: BLE001
+                print(f"[phaseB] rooms step failed: {e}")
+                rooms_metrics = {"rooms_error": str(e)}
         update_run(rid, solution_id=sid, obj_value=float(v),
-                   metrics={**m, "feasible": feasible},
+                   metrics={**m, "feasible": feasible, **rooms_metrics},
                    progress=1.0)
-        print(f"[phaseB] solution id={sid} obj={v} metrics={m}")
+        print(f"[phaseB] solution id={sid} obj={v} metrics={m} rooms={rooms_metrics}")
 
     start_thread(run_id, target)
     return run_id
@@ -597,12 +616,18 @@ def _restore_dc_from_solution(sol: dict) -> dict:
 def run_meta(stage: str, budget_s: float, workers: int, log: bool,
              *, n_cycles: int = 3, ts_budget_per_cycle: float = 20.0,
              sa_T0: float = 10.0, sa_alpha: float = 0.995,
-             tabu_size: int = 80) -> int:
+             tabu_size: int = 80,
+             optimize_rooms: bool = False,
+             rooms_time_limit_s: float = 30.0,
+             rooms_prefer_home: bool = True) -> int:
     params = dict(stage=stage, budget_s=budget_s, workers=workers, log=log,
                   n_cycles=n_cycles,
                   ts_budget_per_cycle=ts_budget_per_cycle,
                   sa_T0=sa_T0, sa_alpha=sa_alpha,
-                  tabu_size=tabu_size)
+                  tabu_size=tabu_size,
+                  optimize_rooms=optimize_rooms,
+                  rooms_time_limit_s=rooms_time_limit_s,
+                  rooms_prefer_home=rooms_prefer_home)
     run_id = create_run(stage, f"{stage.upper()} on active solution",
                         None, params)
 
@@ -666,9 +691,22 @@ def run_meta(stage: str, budget_s: float, workers: int, log: bool,
                 metrics={**m, "feasible": feasible},
                 make_active=True,
             )
+        rooms_metrics: dict[str, Any] = {}
+        if optimize_rooms:
+            update_run(rid, progress=0.95)
+            try:
+                rooms_metrics = _apply_rooms_to_solution(
+                    sid, time_limit_s=rooms_time_limit_s,
+                    workers=workers, prefer_home=rooms_prefer_home,
+                    log_prefix=f"{stage}.rooms", log=False,
+                )
+            except Exception as e:  # noqa: BLE001
+                print(f"[{stage}] rooms step failed: {e}")
+                rooms_metrics = {"rooms_error": str(e)}
         update_run(rid, solution_id=sid, obj_value=float(v),
-                   metrics={**m, "feasible": feasible}, progress=1.0)
-        print(f"[{stage}] solution id={sid} obj={v} metrics={m}")
+                   metrics={**m, "feasible": feasible, **rooms_metrics},
+                   progress=1.0)
+        print(f"[{stage}] solution id={sid} obj={v} metrics={m} rooms={rooms_metrics}")
 
     start_thread(run_id, target)
     return run_id
@@ -679,16 +717,33 @@ def run_meta(stage: str, budget_s: float, workers: int, log: bool,
 # ----------------------------------------------------------------------
 
 
-def run_full_pipeline(profile: str, time_assign: float,
+def run_full_pipeline(profile: str,
+                      steps: list[str],
+                      time_assign: float,
                       phase_b_kwargs: dict[str, Any],
                       budget_lns: float, budget_sa: float,
                       budget_ts: float, budget_ils: float,
-                      workers: int = 8) -> int:
-    params = dict(profile=profile, time_assign=time_assign,
+                      workers: int = 8,
+                      meta_optimize_rooms: bool = False,
+                      meta_rooms_time_limit_s: float = 30.0,
+                      meta_rooms_prefer_home: bool = True) -> int:
+    """User-defined pipeline.
+
+    `steps` is an ordered list whose entries are taken from
+    {"phase_a", "phase_b", "lns", "sa", "ts", "ils", "rooms"}; only
+    the listed steps run, in the listed order. Each Phase B / meta
+    step honours its own `optimize_rooms` flag (carried inside
+    `phase_b_kwargs` for Phase B; via `meta_optimize_rooms` for the
+    four meta steps which share one toggle on the frontend)."""
+    params = dict(profile=profile, steps=list(steps),
+                  time_assign=time_assign,
                   phase_b=phase_b_kwargs,
                   budget_lns=budget_lns, budget_sa=budget_sa,
                   budget_ts=budget_ts, budget_ils=budget_ils,
-                  workers=workers)
+                  workers=workers,
+                  meta_optimize_rooms=meta_optimize_rooms,
+                  meta_rooms_time_limit_s=meta_rooms_time_limit_s,
+                  meta_rooms_prefer_home=meta_rooms_prefer_home)
     run_id = create_run("full", f"Full pipeline ({profile})", profile, params)
 
     def target(rid: int):
@@ -697,136 +752,284 @@ def run_full_pipeline(profile: str, time_assign: float,
         import decomposition_spectral_v2 as dec  # type: ignore
         import metaheuristics as meta  # type: ignore
 
+        # Sanitize the steps list. Unknown keys are silently dropped;
+        # an empty list is a no-op (still creates a 'done' run).
+        valid = {"phase_a", "phase_b", "lns", "sa", "ts", "ils", "rooms"}
+        seq = [s for s in (steps or []) if s in valid]
+        n_steps = max(1, len(seq))
         with SessionLocal() as db:
-            data = engine_io.school_dict_from_db(db)
             n_cl = db.query(models.SchoolClass).count()
             n_te = db.query(models.Teacher).count()
-        print(f"[full] starting on {n_cl} classes, {n_te} teachers")
+        print(f"[full] starting on {n_cl} classes, {n_te} teachers; "
+              f"steps={seq}")
 
-        print("[full] === STEP 2: assignment ===")
-        cattedre, solver, status = ca.solve_assignment(
-            data, time_limit_s=time_assign, workers=workers, log=False,
-        )
-        with SessionLocal() as db:
-            engine_io.import_assignments_into_db(db, cattedre)
-            profs = engine_io.profs_dict_from_db(db)
+        # Mutable pipeline state passed across steps.
+        state: dict[str, Any] = {
+            "profs": None,           # built lazily after phase_a
+            "full_solution": None,   # last produced (p,c,s,d,h)->1 dict
+            "dc_value": None,        # day-count cache (filled by phase_b)
+            "sid": None,             # latest active solution id
+            "obj": None,
+            "metrics": {},
+            "rooms_metrics": {},
+        }
 
-        update_run(rid, progress=0.15)
-        print("[full] === STEP 3: phase B (decomposed) ===")
-        classes, triples, class_profs = cv2.build_indices(profs)
-        dc_value = cv2.solve_phase_a(
-            profs, classes, triples, class_profs,
-            time_limit=phase_b_kwargs.get("time_a", 60),
-            workers=workers, log=False,
-        )
-
-        full_solution: dict = {}
-        if phase_b_kwargs.get("use_decomposition", True) and len(classes) >= 8:
-            M, classes_v, _ = dec.build_adjacency(profs)
-            k = phase_b_kwargs.get("k", 4)
-            labels, _ = dec.spectral_cluster(M, k)
-            bridges, cl_to_label = dec.find_bridges(profs, classes_v, labels)
-            classes_per_cluster = defaultdict(set)
-            for c, lbl in cl_to_label.items():
-                classes_per_cluster[lbl].add(c)
-            bridges_set = set(bridges.keys())
-            bridge_solutions: dict[int, dict] = {}
-            a_failed = []
-            for d in DAYS:
-                out, _st = dec.stage_a_bridges(
-                    d, profs, bridges_set, triples, dc_value,
-                    phase_b_kwargs.get("time_bridges", 30), workers,
+        def _maybe_rooms_for(stage_label: str, *, enabled: bool,
+                              tlim: float, prefer_home: bool):
+            if not enabled or state["sid"] is None:
+                return
+            try:
+                rm = _apply_rooms_to_solution(
+                    state["sid"], time_limit_s=tlim,
+                    workers=workers, prefer_home=prefer_home,
+                    log_prefix=f"{stage_label}.rooms", log=False,
                 )
-                if out is None:
-                    a_failed.append(d)
-                else:
-                    bridge_solutions[d] = out
-            cluster_solutions: dict[tuple[int, int], dict] = {}
-            b_failed: dict[int, set] = defaultdict(set)
-            for d in DAYS:
-                if d not in bridge_solutions:
-                    continue
-                for k_id in sorted(classes_per_cluster,
-                                    key=lambda kk: -len(classes_per_cluster[kk])):
-                    out, _st = dec.stage_b_cluster_internals(
-                        classes_per_cluster[k_id], d, profs, bridges_set,
-                        triples, dc_value, bridge_solutions[d],
-                        phase_b_kwargs.get("time_cluster", 20), workers,
-                    )
-                    if out is None:
-                        b_failed[d].add(k_id)
-                    else:
-                        cluster_solutions[(k_id, d)] = out
-            for d in DAYS:
-                if d in bridge_solutions:
-                    full_solution.update(bridge_solutions[d])
-                for k_id in classes_per_cluster:
-                    if (k_id, d) in cluster_solutions:
-                        full_solution.update(cluster_solutions[(k_id, d)])
-            for d in sorted(set(b_failed.keys()) | set(a_failed)):
-                succ = {}
-                for k_id in classes_per_cluster:
-                    if k_id in b_failed.get(d, set()):
-                        continue
-                    if (k_id, d) in cluster_solutions:
-                        succ.update(cluster_solutions[(k_id, d)])
-                out, _st = dec.stage_c_ricucitura(
-                    d, profs, bridges_set, triples, dc_value, succ,
-                    phase_b_kwargs.get("time_ricucitura", 60), workers,
-                )
-                if out is not None:
-                    full_solution = {
-                        kk: vv for kk, vv in full_solution.items()
-                        if kk[3] != d
-                    }
-                    full_solution.update(out)
-        else:
-            for d in DAYS:
-                out, _st = cv2.solve_phase_b_for_day(
-                    d, profs, classes, triples, class_profs, dc_value,
-                    time_limit=phase_b_kwargs.get("time_mono", 120),
+                state["rooms_metrics"] = {**state["rooms_metrics"], **rm}
+            except Exception as e:  # noqa: BLE001
+                print(f"[{stage_label}] rooms step failed: {e}")
+                state["rooms_metrics"]["rooms_error"] = str(e)
+
+        for i, step in enumerate(seq):
+            update_run(rid, progress=i / n_steps)
+            if step == "phase_a":
+                print("[full] === STEP phase_a: assignment ===")
+                with SessionLocal() as db:
+                    data = engine_io.school_dict_from_db(db)
+                cattedre, _solver, _status = ca.solve_assignment(
+                    data, time_limit_s=time_assign,
                     workers=workers, log=False,
                 )
-                if out is not None:
-                    full_solution.update(out)
-        update_run(rid, progress=0.45)
+                with SessionLocal() as db:
+                    engine_io.import_assignments_into_db(db, cattedre)
+                    state["profs"] = engine_io.profs_dict_from_db(db)
+                continue
 
-        v0, m0 = meta.compute_soft(full_solution, profs)
-        print(f"[full] phase B done: obj={v0} metrics={m0}")
+            if step == "phase_b":
+                print("[full] === STEP phase_b: schedule ===")
+                if state["profs"] is None:
+                    with SessionLocal() as db:
+                        state["profs"] = engine_io.profs_dict_from_db(db)
+                profs = state["profs"]
+                if not profs:
+                    raise RuntimeError(
+                        "phase_b: nessuna assegnazione; "
+                        "metti 'phase_a' prima nella pipeline."
+                    )
+                classes, triples, class_profs = cv2.build_indices(profs)
+                dc_value = cv2.solve_phase_a(
+                    profs, classes, triples, class_profs,
+                    time_limit=phase_b_kwargs.get("time_a", 60),
+                    workers=workers, log=False,
+                )
+                state["dc_value"] = dc_value
+                full_solution: dict = {}
+                if (phase_b_kwargs.get("use_decomposition", True)
+                        and len(classes) >= 8):
+                    M, classes_v, _ = dec.build_adjacency(profs)
+                    k = phase_b_kwargs.get("k", 4)
+                    labels, _ = dec.spectral_cluster(M, k)
+                    bridges, cl_to_label = dec.find_bridges(
+                        profs, classes_v, labels,
+                    )
+                    classes_per_cluster = defaultdict(set)
+                    for c, lbl in cl_to_label.items():
+                        classes_per_cluster[lbl].add(c)
+                    bridges_set = set(bridges.keys())
+                    bridge_solutions: dict[int, dict] = {}
+                    a_failed = []
+                    for d in DAYS:
+                        out, _st = dec.stage_a_bridges(
+                            d, profs, bridges_set, triples, dc_value,
+                            phase_b_kwargs.get("time_bridges", 30), workers,
+                        )
+                        if out is None:
+                            a_failed.append(d)
+                        else:
+                            bridge_solutions[d] = out
+                    cluster_solutions: dict[tuple[int, int], dict] = {}
+                    b_failed: dict[int, set] = defaultdict(set)
+                    for d in DAYS:
+                        if d not in bridge_solutions:
+                            continue
+                        for k_id in sorted(
+                            classes_per_cluster,
+                            key=lambda kk: -len(classes_per_cluster[kk])
+                        ):
+                            out, _st = dec.stage_b_cluster_internals(
+                                classes_per_cluster[k_id], d, profs,
+                                bridges_set, triples, dc_value,
+                                bridge_solutions[d],
+                                phase_b_kwargs.get("time_cluster", 20),
+                                workers,
+                            )
+                            if out is None:
+                                b_failed[d].add(k_id)
+                            else:
+                                cluster_solutions[(k_id, d)] = out
+                    for d in DAYS:
+                        if d in bridge_solutions:
+                            full_solution.update(bridge_solutions[d])
+                        for k_id in classes_per_cluster:
+                            if (k_id, d) in cluster_solutions:
+                                full_solution.update(
+                                    cluster_solutions[(k_id, d)]
+                                )
+                    for d in sorted(set(b_failed.keys()) | set(a_failed)):
+                        succ = {}
+                        for k_id in classes_per_cluster:
+                            if k_id in b_failed.get(d, set()):
+                                continue
+                            if (k_id, d) in cluster_solutions:
+                                succ.update(cluster_solutions[(k_id, d)])
+                        out, _st = dec.stage_c_ricucitura(
+                            d, profs, bridges_set, triples, dc_value, succ,
+                            phase_b_kwargs.get("time_ricucitura", 60),
+                            workers,
+                        )
+                        if out is not None:
+                            full_solution = {
+                                kk: vv for kk, vv in full_solution.items()
+                                if kk[3] != d
+                            }
+                            full_solution.update(out)
+                else:
+                    for d in DAYS:
+                        out, _st = cv2.solve_phase_b_for_day(
+                            d, profs, classes, triples, class_profs,
+                            dc_value,
+                            time_limit=phase_b_kwargs.get("time_mono", 120),
+                            workers=workers, log=False,
+                        )
+                        if out is not None:
+                            full_solution.update(out)
+                v, m = meta.compute_soft(full_solution, profs)
+                feasible = meta.is_hard_feasible(
+                    full_solution, profs, verbose=False,
+                )
+                with SessionLocal() as db:
+                    sid = engine_io.import_solution_into_db(
+                        db, full_solution,
+                        name=f"Full pipeline run {rid} (phase_b)",
+                        kind="phase_b",
+                        obj_value=float(v),
+                        metrics={**m, "feasible": feasible},
+                        make_active=True,
+                    )
+                state.update(full_solution=full_solution, sid=sid,
+                             obj=float(v),
+                             metrics={**m, "feasible": feasible})
+                print(f"[full] phase_b done: obj={v} metrics={m} sid={sid}")
+                _maybe_rooms_for(
+                    "phase_b",
+                    enabled=bool(phase_b_kwargs.get("optimize_rooms", False)),
+                    tlim=float(phase_b_kwargs.get(
+                        "rooms_time_limit_s", 30.0)),
+                    prefer_home=bool(phase_b_kwargs.get(
+                        "rooms_prefer_home", True)),
+                )
+                continue
 
-        # Cluster for LNS/ILS
-        M, classes_v, _ = dec.build_adjacency(profs)
-        labels, _ = dec.spectral_cluster(
-            M, max(2, min(4, len(classes_v) // 5))
-        )
-        cc = defaultdict(set)
-        for i, c in enumerate(classes_v):
-            cc[int(labels[i])].add(c)
-        classes_clusters = dict(cc)
+            if step in ("lns", "sa", "ts", "ils"):
+                print(f"[full] === STEP {step} ===")
+                if state["full_solution"] is None or state["profs"] is None:
+                    # Try to load from active DB solution
+                    with SessionLocal() as db:
+                        active = engine_io.get_active_solution(db)
+                        if active is None:
+                            raise RuntimeError(
+                                f"{step}: nessuna soluzione attiva; "
+                                "metti 'phase_b' prima nella pipeline."
+                            )
+                        state["profs"] = engine_io.profs_dict_from_db(db)
+                        state["full_solution"] = (
+                            engine_io.lessons_to_solution_dict(db, active.id)
+                        )
+                        state["sid"] = active.id
+                profs = state["profs"]
+                sol = state["full_solution"]
+                if state["dc_value"] is None:
+                    state["dc_value"] = _restore_dc_from_solution(sol)
+                dc_value = state["dc_value"]
+                # Cluster for LNS/ILS (cheap, recomputed each call)
+                try:
+                    M, classes_v, _ = dec.build_adjacency(profs)
+                    labels, _ = dec.spectral_cluster(
+                        M, max(2, min(4, len(classes_v) // 5)),
+                    )
+                    cc = defaultdict(set)
+                    for j, c in enumerate(classes_v):
+                        cc[int(labels[j])].add(c)
+                    classes_clusters = dict(cc)
+                except Exception:
+                    classes_clusters = None
 
-        budgets = dict(
-            lns=budget_lns, sa=budget_sa,
-            ts=budget_ts, ils=budget_ils,
-        )
-        sol_final, history = meta.run_cascade(
-            full_solution, profs, dc_value, budgets,
-            classes_clusters=classes_clusters, log=True,
-        )
-        v, m = meta.compute_soft(sol_final, profs)
-        feasible = meta.is_hard_feasible(sol_final, profs, verbose=False)
+                if step == "lns":
+                    new_sol, _hist = meta.run_lns(
+                        sol, profs, dc_value, budget_lns,
+                        classes_clusters=classes_clusters,
+                        log=True, workers=workers,
+                    )
+                elif step == "sa":
+                    new_sol = meta.run_sa(
+                        sol, profs, dc_value, budget_sa, log=True,
+                    )
+                elif step == "ts":
+                    new_sol = meta.run_tabu(
+                        sol, profs, dc_value, budget_ts, log=True,
+                    )
+                else:  # "ils"
+                    new_sol = meta.run_ils(
+                        sol, profs, dc_value, budget_ils,
+                        classes_clusters=classes_clusters, log=True,
+                    )
+                v, m = meta.compute_soft(new_sol, profs)
+                feasible = meta.is_hard_feasible(
+                    new_sol, profs, verbose=False,
+                )
+                with SessionLocal() as db:
+                    sid = engine_io.import_solution_into_db(
+                        db, new_sol,
+                        name=f"Full pipeline run {rid} ({step})",
+                        kind=step,
+                        obj_value=float(v),
+                        metrics={**m, "feasible": feasible},
+                        make_active=True,
+                    )
+                state.update(full_solution=new_sol, sid=sid,
+                             obj=float(v),
+                             metrics={**m, "feasible": feasible})
+                print(f"[full] {step} done: obj={v} sid={sid}")
+                _maybe_rooms_for(
+                    step,
+                    enabled=meta_optimize_rooms,
+                    tlim=meta_rooms_time_limit_s,
+                    prefer_home=meta_rooms_prefer_home,
+                )
+                continue
 
-        with SessionLocal() as db:
-            sid = engine_io.import_solution_into_db(
-                db, sol_final,
-                name=f"Full pipeline run {rid}",
-                kind="full",
-                obj_value=float(v),
-                metrics={**m, "feasible": feasible},
-                make_active=True,
-            )
-        update_run(rid, solution_id=sid, obj_value=float(v),
-                   metrics={**m, "feasible": feasible}, progress=1.0)
-        print(f"[full] DONE id={sid} obj={v} metrics={m}")
+            if step == "rooms":
+                print("[full] === STEP rooms (standalone) ===")
+                if state["sid"] is None:
+                    with SessionLocal() as db:
+                        active = engine_io.get_active_solution(db)
+                        if active is None:
+                            raise RuntimeError(
+                                "rooms: nessuna soluzione attiva."
+                            )
+                        state["sid"] = active.id
+                _maybe_rooms_for(
+                    "full",
+                    enabled=True,
+                    tlim=meta_rooms_time_limit_s,
+                    prefer_home=meta_rooms_prefer_home,
+                )
+                continue
+
+        update_run(rid, solution_id=state["sid"], obj_value=state["obj"],
+                   metrics={**state["metrics"], **state["rooms_metrics"]},
+                   progress=1.0)
+        print(f"[full] DONE id={state['sid']} obj={state['obj']} "
+              f"metrics={state['metrics']} rooms={state['rooms_metrics']}")
 
     start_thread(run_id, target)
     return run_id
@@ -835,6 +1038,48 @@ def run_full_pipeline(profile: str, time_assign: float,
 # ----------------------------------------------------------------------
 # Drag & drop validation: HARD-only check
 # ----------------------------------------------------------------------
+
+
+def _apply_rooms_to_solution(sid: int, *, time_limit_s: float,
+                             workers: int, prefer_home: bool,
+                             log_prefix: str = "rooms",
+                             log: bool = False) -> dict[str, Any]:
+    """Run the classroom-assignment step on solution `sid` synchronously
+    (inside another run's worker thread). Returns a metrics dict that
+    can be merged into the parent run's metrics_json.
+
+    Used by:
+      - run_phase_b / run_meta when their `optimize_rooms` toggle is on
+      - run_full_pipeline when one of its steps in the pipeline list
+        carries the per-step rooms toggle
+      - the standalone "rooms" pipeline step
+    """
+    from classroom_assignment import (  # type: ignore
+        solve_classroom_assignment, greedy_classroom_assignment,
+    )
+    with SessionLocal() as db:
+        lessons = engine_io.lessons_for_classroom_step(db, sid)
+        rooms = engine_io.classrooms_dicts_from_db(db)
+    if not rooms:
+        print(f"[{log_prefix}] no rooms in DB; skipping room step")
+        return {"rooms_skipped": "no_rooms"}
+    if not lessons:
+        print(f"[{log_prefix}] solution has no lessons; skipping room step")
+        return {"rooms_skipped": "no_lessons"}
+    print(f"[{log_prefix}] {len(lessons)} lessons, {len(rooms)} rooms")
+    result, status = solve_classroom_assignment(
+        lessons, rooms, time_limit_s=time_limit_s,
+        workers=workers, log=log,
+    )
+    if result is None:
+        print(f"[{log_prefix}] CP-SAT infeasible ({status}); fallback greedy")
+        result = greedy_classroom_assignment(
+            lessons, rooms, prefer_home=prefer_home,
+        )
+    with SessionLocal() as db:
+        n_rooms = engine_io.apply_room_mapping(db, sid, result)
+    print(f"[{log_prefix}] {n_rooms}/{len(lessons)} lessons got a room")
+    return {"rooms_assigned": n_rooms, "rooms_total_lessons": len(lessons)}
 
 
 def run_classroom_assignment(time_limit_s: float, workers: int, log: bool,

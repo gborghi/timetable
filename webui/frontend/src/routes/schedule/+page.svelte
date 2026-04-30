@@ -8,6 +8,7 @@
   import PreviewCellHint from '$lib/components/schedule/PreviewCellHint.svelte';
   import RoomClearedNoticeModal from '$lib/components/schedule/RoomClearedNoticeModal.svelte';
   import SolutionsTable from '$lib/components/schedule/SolutionsTable.svelte';
+  import AddLessonModal from '$lib/components/schedule/AddLessonModal.svelte';
 
   let view = 'classes';   // classes | teachers | rooms | slot
   // each entity gets an independent layout toggle:
@@ -37,6 +38,23 @@
   // modal alert so the user knows the old classroom couldn't follow the
   // lesson and must be replaced manually.
   let roomClearedNotice = null;  // {room, day, hour, ctx, class_name, teacher}
+
+  // Empty-cell create-lesson modal state.
+  let addLessonOpen = false;
+  let addLessonMode = 'class';
+  let addLessonDay = 1;
+  let addLessonHour = 8;
+  let addLessonPreset = {};
+
+  function openAddLesson(mode, day, hour, preset) {
+    addLessonMode = mode;
+    addLessonDay = day;
+    addLessonHour = hour;
+    addLessonPreset = preset || {};
+    addLessonOpen = true;
+  }
+  $: allTeachers = teacherData?.teachers ?? [];
+  $: allClasses  = classData?.classes  ?? [];
 
   onMount(async () => {
     await loadAll();
@@ -396,6 +414,14 @@
                   </div>
                 {:else}
                   <PreviewCellHint preview={pv} active={!!moveSrc}/>
+                  {#if !moveSrc}
+                    <button type="button"
+                      class="absolute top-1 right-1 text-[10px] text-accent-500 hover:underline focus-ring"
+                      title="Crea nuova lezione qui"
+                      on:click|stopPropagation={() => openAddLesson('class', d, h, { class_name: selectedClass })}>
+                      + nuovo
+                    </button>
+                  {/if}
                 {/if}
               </div>
             {/each}
@@ -522,6 +548,14 @@
                   </div>
                 {:else}
                   <PreviewCellHint preview={pv} active={!!moveSrc}/>
+                  {#if !moveSrc}
+                    <button type="button"
+                      class="absolute top-1 right-1 text-[10px] text-accent-500 hover:underline focus-ring"
+                      title="Crea nuova lezione qui"
+                      on:click|stopPropagation={() => openAddLesson('teacher', d, h, { teacher_name: selectedTeacher })}>
+                      + nuovo
+                    </button>
+                  {/if}
                 {/if}
               </div>
             {/each}
@@ -643,6 +677,14 @@
                   {/each}
                 {:else}
                   <PreviewCellHint preview={pv} active={!!moveSrc}/>
+                  {#if !moveSrc}
+                    <button type="button"
+                      class="absolute top-1 right-1 text-[10px] text-accent-500 hover:underline focus-ring"
+                      title="Crea nuova lezione qui"
+                      on:click|stopPropagation={() => openAddLesson('room', d, h, { classroom_name: selectedRoom })}>
+                      + nuovo
+                    </button>
+                  {/if}
                 {/if}
               </div>
             {/each}
@@ -693,6 +735,10 @@
         </select>
       </div>
       <button class="btn" on:click={loadSlot}>Aggiorna</button>
+      <button class="btn-primary ml-auto"
+              on:click={() => openAddLesson('slot', slotDay, slotHour, {})}>
+        + Nuovo evento in questo slot
+      </button>
     </div>
     {#if slotData}
       <div class="card overflow-x-auto">
@@ -732,6 +778,17 @@
 
 <RoomClearedNoticeModal notice={roomClearedNotice}
                        onClose={() => (roomClearedNotice = null)}/>
+
+<AddLessonModal bind:open={addLessonOpen}
+                mode={addLessonMode}
+                day={addLessonDay}
+                hour={addLessonHour}
+                preset={addLessonPreset}
+                teachers={allTeachers}
+                classes={allClasses}
+                rooms={allRooms}
+                onClose={() => (addLessonOpen = false)}
+                onCreated={async () => { await loadAll(); if (view === 'slot') loadSlot(); refreshDataset(); }}/>
 
 <SolutionsTable {solutions}
                 onActivate={activateSolution}

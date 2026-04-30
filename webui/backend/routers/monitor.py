@@ -40,7 +40,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from .. import models, engine_io
+from .. import models, engine_io, schemas
 from ..db import get_db
 from ..utils.list_query import filter_and_sort, QueryError
 
@@ -210,19 +210,109 @@ def event_lessons(assignment_id: int, db: Session = Depends(get_db)):
 from pydantic import BaseModel as _BM
 
 
+# ---------------------------------------------------------------------
+# Shared conflict helpers (used by reassign_lesson and add_event)
+# ---------------------------------------------------------------------
+
+# Strategy aliases. 'unassign' / 'optimize' are the legacy names from
+# the old monitor flow; the user-facing UI now uses 'svincola' (unbind)
+# and 'elimina' (delete) per Giovanni's spec.
+_RESOLUTION_ALIASES = {
+    "unassign": "delete",
+    "optimize": "delete",
+    "svincola": "unbind",
+    "elimina":  "delete",
+}
+
+
+def _summarise_lessons(rows: list[models.Lesson]) -> list[dict]:
+    return [{"lesson_id": r.id, "teacher_name": r.teacher_name,
+             "class_name": r.class_name, "subject": r.subject,
+             "day": r.day, "hour": r.hour,
+             "classroom_name": r.classroom_name}
+            for r in rows]
+
+
+def _add_event_conflicts(
+    db: Session,
+    active_id: int,
+    teacher_name: str | None,
+    class_name: str | None,
+    classroom_name: str | None,
+    day: int,
+    hour: int,
+    exclude_lesson_id: int | None = None,
+) -> dict:
+    """Generic conflict probe at (day, hour) for any of the three
+    dimensions. Used for new-lesson insertion (no `target` Lesson)."""
+    qry = db.query(models.Lesson).filter(
+        models.Lesson.solution_id == active_id,
+        models.Lesson.day == int(day),
+        models.Lesson.hour == int(hour),
+    )
+    if exclude_lesson_id is not None:
+        qry = qry.filter(models.Lesson.id != int(exclude_lesson_id))
+    rows = qry.all()
+    teacher_busy: list[models.Lesson] = []
+    class_busy: list[models.Lesson] = []
+    room_busy: list[models.Lesson] = []
+    for r in rows:
+        if teacher_name and r.teacher_name == teacher_name:
+            teacher_busy.append(r)
+        if class_name and r.class_name == class_name:
+            class_busy.append(r)
+        if (classroom_name and r.classroom_name == classroom_name
+                and classroom_name != ""):
+            room_busy.append(r)
+    return {
+        "teacher_busy": teacher_busy,
+        "class_busy": class_busy,
+        "room_busy": room_busy,
+    }
+
+
+def _apply_conflict_resolution(db: Session, cinfo: dict, strategy: str) -> None:
+    """In-place: apply 'unbind' (svincola) or 'delete' (elimina) to
+    the conflicting Lessons in `cinfo`. Caller commits."""
+    deleted: set[int] = set()
+    if strategy == "delete":
+        for bucket in ("teacher_busy", "class_busy", "room_busy"):
+            for r in cinfo[bucket]:
+                if r.id in deleted:
+                    continue
+                deleted.add(r.id)
+                db.delete(r)
+    else:  # 'unbind' (svincola)
+        # teacher/class conflicts cannot be partially unbound: delete.
+        for bucket in ("teacher_busy", "class_busy"):
+            for r in cinfo[bucket]:
+                if r.id in deleted:
+                    continue
+                deleted.add(r.id)
+                db.delete(r)
+        # room-only conflicts: clear the classroom field, keep the row.
+        for r in cinfo["room_busy"]:
+            if r.id in deleted:
+                continue
+            r.classroom_name = None
+    db.flush()
+
+
 class LessonReassignIn(_BM):
     """Move/edit a single lesson realising an assignment.
 
     Either day+hour (re-time) or classroom_name (re-room) or both can
-    change. Set on_conflict to choose how to handle a clash:
-        'dry_run'    - just report; do not persist
-        'unassign'   - clear the conflicting lesson(s) at dst (or evict
-                       the room from another lesson when only the room
-                       conflicts)
-        'cancel'     - 400 with no change
-        'optimize'   - same as 'unassign' for now; the UI is expected
-                       to follow up by launching the optimizer on the
-                       freed slot. We do not auto-launch here.
+    change. `on_conflict` accepts (after alias normalisation):
+        'dry_run' - just report; do not persist.
+        'cancel'  - abort with the conflict report.
+        'unbind'  - svincola: room conflicts -> clear conflicting
+                    classroom_name only; teacher/class conflicts ->
+                    delete the conflicting Lesson rows (no per-attribute
+                    unbind possible).
+        'delete'  - elimina: delete every conflicting Lesson row.
+
+    Backward-compat aliases: 'unassign' -> 'delete', 'optimize' ->
+    'delete'.
     """
     day: int | None = None
     hour: int | None = None
@@ -233,30 +323,12 @@ class LessonReassignIn(_BM):
 def _conflict_lessons(db, active_id: int, target: models.Lesson,
                       new_day: int, new_hour: int,
                       new_room: str | None) -> dict:
-    """Look for HARD conflicts at the destination (day, hour).
-    Returns dict with sets of conflict lessons."""
-    teacher_busy: list[models.Lesson] = []
-    class_busy: list[models.Lesson] = []
-    room_busy: list[models.Lesson] = []
-    rows = db.query(models.Lesson).filter(
-        models.Lesson.solution_id == active_id,
-        models.Lesson.day == new_day,
-        models.Lesson.hour == new_hour,
-        models.Lesson.id != target.id,
-    ).all()
-    for r in rows:
-        if r.teacher_name == target.teacher_name:
-            teacher_busy.append(r)
-        if r.class_name == target.class_name:
-            class_busy.append(r)
-        if (new_room and r.classroom_name == new_room
-                and (new_room or "") != ""):
-            room_busy.append(r)
-    return {
-        "teacher_busy": teacher_busy,
-        "class_busy": class_busy,
-        "room_busy": room_busy,
-    }
+    """Look for HARD conflicts at the destination (day, hour) excluding
+    `target` itself. Returns dict with three buckets."""
+    return _add_event_conflicts(
+        db, active_id, target.teacher_name, target.class_name,
+        new_room, new_day, new_hour, exclude_lesson_id=target.id,
+    )
 
 
 @router.put("/event/{assignment_id}/lesson/{lesson_id}")
@@ -289,46 +361,31 @@ def reassign_lesson(assignment_id: int, lesson_id: int,
 
     cinfo = _conflict_lessons(db, active.id, target, new_day, new_hour,
                               new_room)
-    has_conflict = (cinfo["teacher_busy"] or cinfo["class_busy"]
-                    or cinfo["room_busy"])
-
-    def _summarise(rows: list[models.Lesson]) -> list[dict]:
-        return [{"lesson_id": r.id, "teacher_name": r.teacher_name,
-                 "class_name": r.class_name, "subject": r.subject,
-                 "day": r.day, "hour": r.hour,
-                 "classroom_name": r.classroom_name}
-                for r in rows]
+    has_conflict = bool(cinfo["teacher_busy"] or cinfo["class_busy"]
+                         or cinfo["room_busy"])
 
     conflict_payload = {
-        "teacher_busy": _summarise(cinfo["teacher_busy"]),
-        "class_busy": _summarise(cinfo["class_busy"]),
-        "room_busy": _summarise(cinfo["room_busy"]),
+        "teacher_busy": _summarise_lessons(cinfo["teacher_busy"]),
+        "class_busy": _summarise_lessons(cinfo["class_busy"]),
+        "room_busy": _summarise_lessons(cinfo["room_busy"]),
     }
+    strategy = _RESOLUTION_ALIASES.get(
+        payload.on_conflict, payload.on_conflict,
+    )
 
     if has_conflict and payload.on_conflict == "dry_run":
         return {"ok": False, "conflict": True, "details": conflict_payload}
 
     if has_conflict and payload.on_conflict == "cancel":
-        return {"ok": False, "cancelled": True, "details": conflict_payload}
+        return {"ok": False, "cancelled": True, "conflict": True,
+                "details": conflict_payload}
 
-    if has_conflict and payload.on_conflict in ("unassign", "optimize"):
-        # Same teacher/class busy: those lessons CANNOT coexist with the
-        # target on the same slot. We delete them (they become
-        # un-scheduled, surfacing as missing_hours in /monitor).
-        for r in cinfo["teacher_busy"]:
-            db.delete(r)
-        for r in cinfo["class_busy"]:
-            # Avoid double-delete (some lessons may be in both sets)
-            if r in cinfo["teacher_busy"]:
-                continue
-            db.delete(r)
-        # Room conflict: only clear the room of the conflicting lesson;
-        # don't delete the lesson, just free its classroom.
-        for r in cinfo["room_busy"]:
-            if r in cinfo["teacher_busy"] or r in cinfo["class_busy"]:
-                continue
-            r.classroom_name = None
-        db.flush()
+    if has_conflict:
+        if strategy not in ("unbind", "delete"):
+            raise HTTPException(
+                400, f"on_conflict sconosciuto: {payload.on_conflict!r}",
+            )
+        _apply_conflict_resolution(db, cinfo, strategy)
 
     # Apply the move
     target.day = new_day
@@ -339,11 +396,146 @@ def reassign_lesson(assignment_id: int, lesson_id: int,
 
     return {
         "ok": True,
-        "conflict": bool(has_conflict),
-        "resolution": payload.on_conflict if has_conflict else None,
+        "conflict": has_conflict,
+        "resolution": (strategy if has_conflict else None),
         "details": conflict_payload,
         "moved_to": {"day": new_day, "hour": new_hour,
                      "classroom_name": target.classroom_name},
+    }
+
+
+@router.get("/incomplete-events")
+def list_incomplete_events(db: Session = Depends(get_db)):
+    """Events whose Assignment lacks at least one Lesson row (missing
+    temporal assignment). Powers the red/toggleable panel on /monitor.
+
+    An event is "incomplete by time" when `missing_hours > 0`, i.e.
+    when the active solution does not (yet) realise all hours of the
+    Assignment. We also surface events with `assigned_hours == 0` so
+    that brand-new assignments without any Lesson row appear here.
+    """
+    rows = _build_events(db)
+    out = [r for r in rows
+           if int(r.get("missing_hours") or 0) > 0
+           or int(r.get("assigned_hours") or 0) == 0]
+    out.sort(key=lambda r: (r["class_name"], r["subject"], r["teacher_name"]))
+    return {
+        "n_total": len(rows),
+        "n_incomplete": len(out),
+        "items": out,
+    }
+
+
+@router.post("/event", response_model=schemas.AddEventOut)
+def add_event(payload: schemas.AddEventIn,
+              db: Session = Depends(get_db)) -> dict:
+    """Create a new Assignment (event), optionally also creating one
+    Lesson row at (day, hour). When day/hour are omitted the
+    Assignment is created in "incomplete" state and surfaces in the
+    red panel of /monitor.
+
+    Conflict resolution semantics for the optional Lesson placement
+    mirror /api/schedule/lesson:
+        dry_run | cancel | unbind | delete (+ aliases unassign/optimize).
+    """
+    # Validate refs
+    cls = db.query(models.SchoolClass).filter(
+        models.SchoolClass.name == payload.class_name).first()
+    if cls is None:
+        raise HTTPException(404, f"classe {payload.class_name!r} non trovata")
+    t = db.query(models.Teacher).filter(
+        models.Teacher.name == payload.teacher_name).first()
+    if t is None:
+        raise HTTPException(404, f"docente {payload.teacher_name!r} non trovato")
+    if not payload.subject or not payload.subject.strip():
+        raise HTTPException(400, "subject obbligatorio")
+    if int(payload.hours) <= 0:
+        raise HTTPException(400, "hours deve essere > 0")
+
+    # An Assignment is unique on (class_id, subject). If one already
+    # exists for this (class, subject), 409 with explicit guidance.
+    existing = db.query(models.Assignment).filter(
+        models.Assignment.class_id == cls.id,
+        models.Assignment.subject == payload.subject,
+    ).first()
+    if existing is not None:
+        raise HTTPException(
+            409,
+            f"Esiste gia' una cattedra per {cls.name}/{payload.subject} "
+            f"(docente: id={existing.teacher_id}). Modifica quella "
+            f"invece di crearne una nuova."
+        )
+
+    # Optionally place an initial Lesson; detect conflicts only if both
+    # a day/hour AND an active solution are present.
+    place_lesson = payload.day is not None and payload.hour is not None
+    active = engine_io.get_active_solution(db) if place_lesson else None
+    conflict_payload: dict = {}
+    has_conflict = False
+    strategy = (_RESOLUTION_ALIASES.get(payload.on_conflict, payload.on_conflict)
+                if place_lesson else payload.on_conflict)
+    if place_lesson:
+        if int(payload.day) not in _DAYS or int(payload.hour) not in _HOURS:
+            raise HTTPException(400, "day/hour fuori range")
+        if active is not None:
+            cinfo = _add_event_conflicts(
+                db, active.id, payload.teacher_name, payload.class_name,
+                payload.classroom_name, int(payload.day), int(payload.hour),
+            )
+            has_conflict = bool(
+                cinfo["teacher_busy"] or cinfo["class_busy"]
+                or cinfo["room_busy"]
+            )
+            if has_conflict:
+                conflict_payload = {
+                    "teacher_busy": _summarise_lessons(cinfo["teacher_busy"]),
+                    "class_busy": _summarise_lessons(cinfo["class_busy"]),
+                    "room_busy": _summarise_lessons(cinfo["room_busy"]),
+                }
+                if payload.on_conflict == "dry_run":
+                    return {"ok": False, "conflict": True,
+                            "details": conflict_payload}
+                if payload.on_conflict == "cancel":
+                    return {"ok": False, "conflict": True,
+                            "resolution": "cancel",
+                            "details": conflict_payload}
+                if strategy not in ("unbind", "delete"):
+                    raise HTTPException(
+                        400, f"on_conflict sconosciuto: {payload.on_conflict!r}",
+                    )
+                _apply_conflict_resolution(db, cinfo, strategy)
+
+    # Persist Assignment.
+    a = models.Assignment(
+        class_id=cls.id, teacher_id=t.id,
+        subject=payload.subject, hours=int(payload.hours),
+        locked=bool(payload.locked),
+    )
+    db.add(a)
+    db.flush()
+
+    # Persist optional initial Lesson.
+    lesson_id: int | None = None
+    if place_lesson and active is not None:
+        l = models.Lesson(
+            solution_id=active.id,
+            teacher_name=t.name, class_name=cls.name,
+            subject=payload.subject,
+            day=int(payload.day), hour=int(payload.hour),
+            classroom_name=payload.classroom_name or None,
+        )
+        db.add(l)
+        db.flush()
+        lesson_id = l.id
+
+    db.commit()
+    return {
+        "ok": True,
+        "conflict": has_conflict,
+        "assignment_id": a.id,
+        "lesson_id": lesson_id,
+        "resolution": (strategy if (place_lesson and has_conflict) else None),
+        "details": conflict_payload,
     }
 
 

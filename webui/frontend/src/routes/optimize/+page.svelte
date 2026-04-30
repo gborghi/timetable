@@ -17,17 +17,62 @@
   let step3 = {
     k: 4, time_a: 60, time_bridges: 30, time_cluster: 20,
     time_ricucitura: 60, time_mono: 120, workers: 8, log: false,
-    use_decomposition: true
+    use_decomposition: true,
+    optimize_rooms: false,
+    rooms_time_limit_s: 30,
+    rooms_prefer_home: true,
   };
   let step4 = { budget_s: 60, workers: 4, log: true,
                 n_cycles: 3, ts_budget_per_cycle: 20,
-                sa_T0: 10, sa_alpha: 0.995, tabu_size: 80 };
+                sa_T0: 10, sa_alpha: 0.995, tabu_size: 80,
+                optimize_rooms: false,
+                rooms_time_limit_s: 30,
+                rooms_prefer_home: true };
   let stepRooms = { time_limit_s: 30, workers: 4, log: true, prefer_home: true };
+  // Pipeline (card 9): user-defined ordered list of {key,label,enabled}.
+  // Drag a row to reorder; tick to include/exclude. Each phase_b/meta
+  // step honours its OWN optimize_rooms toggle on cards 3 / 4-7 -- the
+  // pipeline itself does not have a separate rooms toggle.
+  const PIPELINE_LABEL = {
+    phase_a: '2) Assegnazione (Phase A)',
+    phase_b: '3) Schedulazione orario (Phase B)',
+    lns:     '4) LNS',
+    sa:      '5) SA',
+    ts:      '6) TS',
+    ils:     '7) ILS',
+  };
+  let pipelineList = [
+    { key: 'phase_a', enabled: true },
+    { key: 'phase_b', enabled: true },
+    { key: 'lns',     enabled: true },
+    { key: 'sa',      enabled: true },
+    { key: 'ts',      enabled: true },
+    { key: 'ils',     enabled: true },
+  ];
   let stepFull = {
     profile: 'small', workers: 8, time_assign: 30,
-    phase_b: { ...step3 },
-    budget_lns: 60, budget_sa: 30, budget_ts: 30, budget_ils: 60
+    budget_lns: 60, budget_sa: 30, budget_ts: 30, budget_ils: 60,
   };
+
+  // Drag-and-drop state for the pipeline list (HTML5 native).
+  let dragSrcIdx = null;
+  function onDragStart(i, ev) {
+    dragSrcIdx = i;
+    ev.dataTransfer.effectAllowed = 'move';
+    // Required for Firefox to actually start the drag
+    try { ev.dataTransfer.setData('text/plain', String(i)); } catch (_) {}
+  }
+  function onDragOver(ev) { ev.preventDefault(); ev.dataTransfer.dropEffect = 'move'; }
+  function onDrop(i, ev) {
+    ev.preventDefault();
+    if (dragSrcIdx === null || dragSrcIdx === i) { dragSrcIdx = null; return; }
+    const next = pipelineList.slice();
+    const [moved] = next.splice(dragSrcIdx, 1);
+    next.splice(i, 0, moved);
+    pipelineList = next;
+    dragSrcIdx = null;
+  }
+  function onDragEnd() { dragSrcIdx = null; }
 
   onMount(reloadRuns);
   async function reloadRuns() {
@@ -58,7 +103,25 @@
   const launchPhaseB = () => go('/api/optimize/phase-b', step3);
   const launchMeta = (stage) => go('/api/optimize/meta/' + stage, step4);
   const launchRooms = () => go('/api/optimize/rooms', stepRooms);
-  const launchFull = () => go('/api/optimize/full-pipeline', stepFull);
+  const launchFull = () => {
+    const steps = pipelineList.filter((it) => it.enabled).map((it) => it.key);
+    if (steps.length === 0) {
+      flash('Pipeline vuota: tickare almeno uno step.', 'error');
+      return;
+    }
+    const payload = {
+      ...stepFull,
+      steps,
+      // Phase B inside the pipeline reuses step3 (so its rooms toggle
+      // and parameters come from card 3).
+      phase_b: { ...step3 },
+      // Meta steps share one rooms toggle on card 4-7.
+      meta_optimize_rooms: !!step4.optimize_rooms,
+      meta_rooms_time_limit_s: step4.rooms_time_limit_s,
+      meta_rooms_prefer_home: !!step4.rooms_prefer_home,
+    };
+    go('/api/optimize/full-pipeline', payload);
+  };
 </script>
 
 <div class="space-y-6">
@@ -129,6 +192,30 @@
         <div class="field"><label>workers</label><input type="number" bind:value={step3.workers}/></div>
         <label class="flex gap-2 text-sm col-span-3"><input type="checkbox" bind:checked={step3.use_decomposition}/> Decomposizione spettrale</label>
       </div>
+      <div class="mt-3 p-3 rounded border border-ink-200 bg-ink-50/40 space-y-2">
+        <label class="flex items-center gap-2 text-sm font-medium">
+          <input type="checkbox" bind:checked={step3.optimize_rooms}/>
+          Ottimizza aule insieme a questo step
+        </label>
+        <p class="text-xs text-ink-500">
+          Quando attivo, dopo Phase B la lezioni-aule (step 8) viene
+          eseguita sulla soluzione appena prodotta -- utile per palestre
+          e laboratori la cui capienza puo' rendere infeasibile la
+          schedulazione.
+        </p>
+        <div class="grid grid-cols-2 gap-3">
+          <div class="field">
+            <label>Time-limit aule (s)</label>
+            <input type="number" bind:value={step3.rooms_time_limit_s}
+                   disabled={!step3.optimize_rooms}/>
+          </div>
+          <label class="flex items-center gap-2 text-sm self-end pb-2">
+            <input type="checkbox" bind:checked={step3.rooms_prefer_home}
+                   disabled={!step3.optimize_rooms}/>
+            Preferisci aula della classe
+          </label>
+        </div>
+      </div>
       <button class="btn-primary mt-3" on:click={launchPhaseB}>Avvia Phase B</button>
     </div>
 
@@ -142,6 +229,29 @@
         <div class="field"><label>SA alpha</label><input type="number" step="0.001" bind:value={step4.sa_alpha}/></div>
         <div class="field"><label>TS tabu size</label><input type="number" bind:value={step4.tabu_size}/></div>
         <div class="field"><label>ILS cycles</label><input type="number" bind:value={step4.n_cycles}/></div>
+      </div>
+      <div class="mt-3 p-3 rounded border border-ink-200 bg-ink-50/40 space-y-2">
+        <label class="flex items-center gap-2 text-sm font-medium">
+          <input type="checkbox" bind:checked={step4.optimize_rooms}/>
+          Ottimizza aule insieme a questo step
+        </label>
+        <p class="text-xs text-ink-500">
+          Quando attivo, dopo OGNI metaeuristica lanciata da qui (sia
+          singolarmente sia dentro la pipeline) la lezioni-aule (step 8)
+          viene eseguita sulla nuova soluzione attiva.
+        </p>
+        <div class="grid grid-cols-2 gap-3">
+          <div class="field">
+            <label>Time-limit aule (s)</label>
+            <input type="number" bind:value={step4.rooms_time_limit_s}
+                   disabled={!step4.optimize_rooms}/>
+          </div>
+          <label class="flex items-center gap-2 text-sm self-end pb-2">
+            <input type="checkbox" bind:checked={step4.rooms_prefer_home}
+                   disabled={!step4.optimize_rooms}/>
+            Preferisci aula della classe
+          </label>
+        </div>
       </div>
       <div class="flex gap-2 mt-3">
         <button class="btn-primary" on:click={() => launchMeta('lns')}>4) LNS</button>
@@ -162,13 +272,17 @@
       <button class="btn-primary mt-3" on:click={launchRooms}>Avvia</button>
     </div>
 
-    <!-- Step full -->
+    <!-- Step 9: pipeline (draggable + tickable) -->
     <div class="card p-5">
       <h2 class="mb-3">9) Pipeline completa</h2>
       <p class="text-xs text-ink-500 mb-3">
-        Esegue 2 -&gt; 3 -&gt; 4 -&gt; 5 -&gt; 6 -&gt; 7 in sequenza sulla scuola
-        attualmente in DB. La step "Aule" non e inclusa per default; lanciala
-        a parte dopo la pipeline.
+        Trascina le righe per riordinare gli step e usa la spunta per
+        includere o escludere uno step dalla pipeline. La pipeline esegue
+        gli step abilitati nell'ordine indicato. L'assegnazione aule
+        (step 8) NON e' un toggle qui: si attiva sulle card 3 (Phase B)
+        e 4-7 (Metaeuristiche) tramite "Ottimizza aule insieme a questo
+        step", quindi ogni step nella lista decide autonomamente se
+        eseguire le aule dopo se' stesso.
       </p>
       <div class="grid grid-cols-3 gap-3">
         <div class="field"><label>Profilo (etichetta)</label><input bind:value={stepFull.profile}/></div>
@@ -179,6 +293,26 @@
         <div class="field"><label>Budget TS</label><input type="number" bind:value={stepFull.budget_ts}/></div>
         <div class="field"><label>Budget ILS</label><input type="number" bind:value={stepFull.budget_ils}/></div>
       </div>
+
+      <ul class="mt-4 divide-y divide-ink-200 border border-ink-200 rounded select-none">
+        {#each pipelineList as item, i (item.key)}
+          <li class="flex items-center gap-3 px-3 py-2 bg-white"
+              class:opacity-50={!item.enabled}
+              class:bg-ink-50={dragSrcIdx === i}
+              draggable="true"
+              on:dragstart={(ev) => onDragStart(i, ev)}
+              on:dragover={onDragOver}
+              on:drop={(ev) => onDrop(i, ev)}
+              on:dragend={onDragEnd}>
+            <span class="cursor-grab text-ink-400 text-lg leading-none"
+                  title="Trascina per riordinare">&#x2630;</span>
+            <input type="checkbox" bind:checked={item.enabled}/>
+            <span class="text-sm flex-1">{PIPELINE_LABEL[item.key]}</span>
+            <span class="text-xs text-ink-400">{i + 1}</span>
+          </li>
+        {/each}
+      </ul>
+
       <button class="btn-primary mt-3" on:click={launchFull}>Avvia pipeline completa</button>
     </div>
   </div>
