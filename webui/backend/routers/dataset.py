@@ -8,42 +8,10 @@ from sqlalchemy.orm import Session
 
 from .. import models, schemas, optimization, engine_io
 from ..db import get_db
+from ..services.dataset_state import compute_state
 from ..utils.ttl_cache import cached as ttl_cached
 
 router = APIRouter(prefix="/api/dataset", tags=["dataset"])
-
-
-def _compute_state(db: Session) -> dict:
-    n_classes = db.query(models.SchoolClass).count()
-    n_teachers = db.query(models.Teacher).count()
-    n_subjects = db.query(models.Subject).count()
-    n_assignments = db.query(models.Assignment).count()
-    n_rooms = db.query(models.Classroom).count()
-    n_solutions = db.query(models.Solution).count()
-    n_curricula = db.query(models.Curriculum).count()
-    n_students = db.query(models.Student).count()
-    n_groups = db.query(models.StudyGroup).count()
-    active = engine_io.get_active_solution(db)
-    return {
-        "classes": n_classes,
-        "teachers": n_teachers,
-        "subjects": n_subjects,
-        "assignments": n_assignments,
-        "classrooms": n_rooms,
-        "solutions": n_solutions,
-        "curricula": n_curricula,
-        "students": n_students,
-        "groups": n_groups,
-        "active_solution": (
-            None if active is None else {
-                "id": active.id,
-                "name": active.name,
-                "kind": active.kind,
-                "obj_value": active.obj_value,
-                "metrics": active.metrics,
-            }
-        ),
-    }
 
 
 @router.get("/state")
@@ -55,7 +23,7 @@ def get_state(db: Session = Depends(get_db)):
     not per-call latency."""
     return ttl_cached(
         "dataset.state", ttl_s=30.0, mutation_aware=True,
-        compute=lambda: _compute_state(db),
+        compute=lambda: compute_state(db),
     )
 
 
