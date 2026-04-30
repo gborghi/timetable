@@ -2,7 +2,8 @@
   import '../app.css';
   import { onMount } from 'svelte';
   import { page } from '$app/stores';
-  import { datasetState, refreshDataset } from '$lib/stores.js';
+  import { datasetState, refreshDataset, networkOnline,
+           startNetworkMonitor } from '$lib/stores.js';
   import Toast from '$lib/components/Toast.svelte';
 
   // Brand assets: paths into webui/frontend/static/branding/. The
@@ -35,13 +36,25 @@
     { href: '/optimize',   label: 'Workflow'                 },
   ];
 
-  onMount(refreshDataset);
+  onMount(() => {
+    refreshDataset();
+    startNetworkMonitor(30000);
+  });
 
   $: cur = $page.url.pathname;
 </script>
 
 <div class="min-h-screen flex flex-col">
   <a href="#main-content" class="skip-link">Vai al contenuto principale</a>
+  {#if !$networkOnline}
+    <div class="bg-red-600 text-white text-sm px-4 py-2 text-center"
+         role="alert" aria-live="assertive">
+      <strong>Backend non raggiungibile.</strong>
+      Verifica che il server FastAPI sia attivo
+      (<code>start.bat</code> / <code>./start.sh</code>).
+      Le modifiche fatte ora non saranno salvate.
+    </div>
+  {/if}
   <header class="bg-white border-b border-ink-200" role="banner">
     <div class="max-w-[1500px] mx-auto px-6 py-3 flex items-center gap-4">
       <a href="/" class="flex items-center gap-3 leading-tight"
