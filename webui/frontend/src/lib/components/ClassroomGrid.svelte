@@ -21,6 +21,15 @@
   //
   // The grid is filtered by an optional kind filter and a free-text name filter.
 
+  import { onMount, onDestroy } from 'svelte';
+  import { get } from 'svelte/store';
+  import {
+    heldKey,
+    startKeyboardConstraintMode,
+    shortcutToRoomState
+  } from '../keyboardConstraintMode';
+  import KeyboardConstraintLegend from './KeyboardConstraintLegend.svelte';
+
   export let classrooms = [];
   export let value = [];
   export let onChange = (_v) => {};
@@ -31,6 +40,12 @@
   let collapsed = collapsedByDefault;
   let kindFilter = '';
   let nameFilter = '';
+  let hovering = false;
+
+  // Keyboard listener (ref-counted globally).
+  let kbCleanup;
+  onMount(() => { kbCleanup = startKeyboardConstraintMode(); });
+  onDestroy(() => kbCleanup?.());
 
   $: byName = new Map((value || []).map((p) => [p.classroom_name, p]));
   $: kinds = [...new Set((classrooms || []).map((c) => c.kind))];
@@ -74,6 +89,13 @@
     if (readonly) return;
     const t = ev.target;
     if (t && (t.tagName === 'INPUT')) return;
+    // If a shortcut key is held, set the state directly; otherwise
+    // advance the click-cycle.
+    const shortcutState = shortcutToRoomState(get(heldKey));
+    if (shortcutState !== null) {
+      setRoom(room.name, shortcutState);
+      return;
+    }
     const cur = byName.get(room.name);
     setRoom(room.name, nextState(cur ? cur.state : 'allowed'));
   }
@@ -98,7 +120,9 @@
   }
 </script>
 
-<div class="select-none space-y-2">
+<div class="select-none space-y-2"
+     on:mouseenter={() => (hovering = true)}
+     on:mouseleave={() => (hovering = false)}>
   <div class="flex items-baseline gap-2 flex-wrap">
     <button class="btn !text-xs !px-2 !py-1"
             on:click={() => (collapsed = !collapsed)}>
@@ -138,11 +162,12 @@
           {@const state = pref ? pref.state : 'allowed'}
           <div class="rounded border-2 p-2 cursor-pointer transition-colors {colorClasses(state)}"
                on:click={(e) => onClick(e, room)}
-               title={state === 'allowed' ? 'Aula consentita (default)' :
+               title={(state === 'allowed' ? 'Aula consentita (default)' :
                       state === 'soft' ? 'SOFT - penalita ' + (pref?.weight ?? '') :
                       state === 'preferred' ? 'PREFERITA - bonus ' + (pref?.weight ?? '') :
                       state === 'forbidden' ? 'VIETATA (HARD, no penalty)' :
-                      'OBBLIGATORIA (enforced)'}>
+                      'OBBLIGATORIA (enforced)')
+                      + ' \nTieni H/P/E/D/A/N + click per impostare direttamente.'}>
             <div class="flex items-baseline justify-between">
               <strong class="text-sm truncate">{room.name}</strong>
               <span class="text-[10px] opacity-75">{room.kind}</span>
@@ -161,5 +186,6 @@
         {/each}
       </div>
     {/if}
+    <KeyboardConstraintLegend visible={hovering} variant="room"/>
   {/if}
 </div>

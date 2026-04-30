@@ -22,12 +22,28 @@
   // editable; commit happens on `change` (blur or Enter). Sign: positive on
   // yellow, negative on blue (auto-flipped if you toggle).
 
+  import { onMount, onDestroy } from 'svelte';
+  import { get } from 'svelte/store';
   import { DAYS, HOURS, DAY_NAMES_IT } from '../constants';
+  import {
+    heldKey,
+    startKeyboardConstraintMode,
+    shortcutToMatrixState
+  } from '../keyboardConstraintMode';
+  import KeyboardConstraintLegend from './KeyboardConstraintLegend.svelte';
 
   export let value = [];
   export let onChange = (_v) => {};
   export let title = 'Disponibilita oraria';
   export let readonly = false;
+
+  // Keyboard shortcut listeners (ref-counted globally).
+  let kbCleanup;
+  onMount(() => { kbCleanup = startKeyboardConstraintMode(); });
+  onDestroy(() => kbCleanup?.());
+
+  // Hover state -> show the small legend strip below the matrix.
+  let hovering = false;
 
   let dragOriginKey = null;
   let dragMoved = false;
@@ -83,6 +99,18 @@
     return 'free';
   }
 
+  /**
+   * Resolve the effective target state for a click on cell (d, h):
+   * if a keyboard shortcut is held use it; otherwise advance the
+   * existing click-cycle.
+   */
+  function _targetState(d, h) {
+    const shortcutState = shortcutToMatrixState(get(heldKey));
+    if (shortcutState !== null) return shortcutState;
+    const cur = cells.find((c) => c.day === d && c.hour === h) || null;
+    return nextState(cur ? cur.state : null);
+  }
+
   function onMouseDown(ev, d, h) {
     if (readonly || ev.button !== 0 || ev.shiftKey) return;
     dragOriginKey = _key(d, h);
@@ -97,8 +125,10 @@
     if (!dragMoved) {
       dragMoved = true;
       const [d0, h0] = dragOriginKey.split('-').map(Number);
-      const cur = cells.find((c) => c.day === d0 && c.hour === h0) || null;
-      dragMode = nextState(cur ? cur.state : null);
+      // Use the held shortcut if any -- the modifier applies to the
+      // entire drag, exactly like for a single click. Falls back to
+      // the click-cycle when no key is held.
+      dragMode = _targetState(d0, h0);
       setCell(d0, h0, dragMode);
       dragApplied.add(dragOriginKey);
     }
@@ -119,8 +149,7 @@
       dragMoved = false;
       return;
     }
-    const cur = cells.find((c) => c.day === d && c.hour === h) || null;
-    setCell(d, h, nextState(cur ? cur.state : null));
+    setCell(d, h, _targetState(d, h));
   }
 
   function onPenaltyInput(ev, d, h) {
@@ -154,7 +183,9 @@
 
 <svelte:window on:mouseup={onMouseUp}/>
 
-<div class="select-none">
+<div class="select-none"
+     on:mouseenter={() => (hovering = true)}
+     on:mouseleave={() => (hovering = false)}>
   <div class="flex items-baseline justify-between mb-2 flex-wrap gap-2">
     <h3 class="!text-base">{title}</h3>
     <div class="flex gap-3 text-xs flex-wrap">
@@ -180,6 +211,15 @@
     blu (preferito, -100) -&gt; libero.
     Quando la cella e\` gialla o blu, modifica la penalita nel campo numerico.
     Trascina per applicare lo stesso stato a un blocco.
+    <span class="text-ink-700">
+      Tieni premuto <kbd class="px-1 border border-ink-300 rounded text-[10px]">H</kbd>/<kbd
+      class="px-1 border border-ink-300 rounded text-[10px]">P</kbd>/<kbd
+      class="px-1 border border-ink-300 rounded text-[10px]">E</kbd>/<kbd
+      class="px-1 border border-ink-300 rounded text-[10px]">D</kbd>/<kbd
+      class="px-1 border border-ink-300 rounded text-[10px]">A</kbd>/<kbd
+      class="px-1 border border-ink-300 rounded text-[10px]">N</kbd> + click
+      per impostare direttamente lo stato.
+    </span>
   </p>
   <div class="overflow-x-auto">
     <table class="tbl">
@@ -216,7 +256,7 @@
                   on:click={(e) => onCellClick(e, d, h)}
                   on:mousedown={(e) => onMouseDown(e, d, h)}
                   on:mouseenter={() => onMouseEnter(d, h)}
-                  title={isSoft
+                  title={(isSoft
                     ? 'SOFT - penalita ' + cell.soft_penalty
                     : isPref
                     ? 'PREFERITO - bonus ' + cell.soft_penalty
@@ -224,7 +264,8 @@
                     ? 'ENFORCED - DEVE essere occupata' + (cell.reason ? ' - ' + cell.reason : '')
                     : isHard
                     ? 'HARD non disponibile' + (cell.reason ? ' - ' + cell.reason : '')
-                    : 'Libero - click per cambiare'}>
+                    : 'Libero')
+                    + ' \nTieni H/P/E/D/A/N + click per impostare direttamente.'}>
                   {#if isFree}
                     <span class="text-emerald-700 font-semibold text-xs">-</span>
                   {:else if isEnf}
@@ -270,4 +311,6 @@
       </tbody>
     </table>
   </div>
+
+  <KeyboardConstraintLegend visible={hovering} variant="matrix"/>
 </div>

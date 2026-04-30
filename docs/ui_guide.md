@@ -37,6 +37,41 @@ Sulle pagine `Docenti`, `Classi`, `Aule` la lista supporta:
 La selezione abilita il bottone "Vincolo collettivo" che apre il
 `BulkApplyModal` (vedere [constraints.md](constraints.md)).
 
+### Scorciatoie tastiera sulle matrici a colori
+
+Su ogni matrice di celle a stati di colore (matrice disponibilita'
+docenti / classi / aule, e la "ClassroomGrid" delle preferenze aula
+nei modal di docenti e materie) tieni premuto un tasto e clicca per
+impostare lo stato della cella **direttamente**, saltando il
+click-cycle.
+
+| Tasto | Su matrice oraria (free/soft/hard/preferred/enforced) | Su griglia aule (allowed/soft/preferred/forbidden/enforced) | Colore       |
+| ----- | ---------------------------------------------------- | ----------------------------------------------------------- | ------------ |
+| `H`   | HARD (non disponibile)                               | FORBIDDEN (vietata)                                         | rosso        |
+| `P`   | PREFERRED (bonus)                                    | PREFERITA                                                   | blu          |
+| `E`   | ENFORCED (deve essere occupata)                      | OBBLIGATORIA (deve essere quella)                           | verde scuro  |
+| `D`   | SOFT positive (disliked)                             | SOFT positive                                               | giallo       |
+| `A`   | FREE (libero, nessun vincolo)                        | ALLOWED (consentita)                                        | verde chiaro |
+| `N`   | RESET (alias di A)                                   | RESET (alias di A)                                          | verde chiaro |
+
+Click semplice senza tasto premuto = comportamento storico (cicla
+tra gli stati nell'ordine definito dal componente).
+
+Il modifier funziona **anche con il drag**: tieni premuto il tasto
+prima di iniziare a trascinare e tutta la zona selezionata prende
+quello stato.
+
+Una **legenda compatta** appare in fondo alla matrice quando il
+cursore vi entra sopra; la kbd del tasto attualmente premuto si
+illumina di indaco. La legenda si nasconde quando esci dalla matrice
+per non lasciare rumore visivo permanente.
+
+Implementazione: `$lib/keyboardConstraintMode.ts` espone uno store
+`heldKey` aggiornato da listener `keydown`/`keyup` ref-counted (una
+sola coppia di listener globali anche se piu' matrici sono visibili
+contemporaneamente). `$lib/components/KeyboardConstraintLegend.svelte`
+e' il componente visivo.
+
 ### Excel/CSV import
 
 Ogni pagina lista (Docenti, Classi, Materie, Aule, Indirizzi,
