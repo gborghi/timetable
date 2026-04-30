@@ -55,7 +55,20 @@ def get_db():
 
 
 def init_db():
-    """Create tables if missing. Imported here lazily to avoid cycles."""
+    """Create tables if missing. Imported here lazily to avoid cycles.
+
+    Migration strategy (Section 2.7 P1):
+    - Alembic is the canonical migration tool. New schema changes
+      land as new alembic revisions in `webui/backend/alembic/versions`.
+      Run `alembic upgrade head` from `webui/backend/` to apply them.
+    - The legacy `_apply_lightweight_migrations()` runs on every
+      startup as a safety net for users who don't run alembic; it's
+      idempotent (PRAGMA table_info + IF NOT EXISTS) so it works
+      alongside alembic.
+    - For fresh DBs, `Base.metadata.create_all` builds the canonical
+      schema directly; alembic_version is then stamped to head on
+      first start (TODO: optional auto-stamp when DB is empty).
+    """
     from . import models  # noqa: F401
     Base.metadata.create_all(bind=engine)
     _apply_lightweight_migrations()

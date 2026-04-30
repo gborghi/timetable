@@ -202,7 +202,7 @@ class SchoolClass(TimestampMixin, Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(40), unique=True, index=True)
     nickname: Mapped[str | None] = mapped_column(
-        String(40), nullable=True,
+        String(80), nullable=True,
         comment="abbreviation shown in the timetable; defaults to name"
     )
     year: Mapped[int] = mapped_column(Integer, default=1)
