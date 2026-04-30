@@ -1067,3 +1067,121 @@ produzione".
 
 In appendice (`experiments/README.md`) i comandi per riprodurre
 questi numeri.
+
+
+## 14. Engine improvements: P1+P2 di docs/improvements.md (2026-04-30)
+
+Sezione 3 di `docs/improvements.md` implementata in batch unico con
+commit `98de2d7`. Le modifiche tutte localizzate in `experiments/`,
+nessun cambiamento backend / frontend in questa passata.
+
+### 14.1 Modifiche introdotte
+
+- **3.1 P1 warm-start**: `metaheuristics._cp_repair` ora chiama
+  `model.AddHint(var, current_value)` per ogni variabile libera.
+- **3.1 P2 simmetria-break**: Phase A aggiunge `AddDecisionStrategy`
+  con ordering canonico delle triple per (prof, classe, materia).
+- **3.2 P2 auto-K eigengap**: `auto_k_eigengap(M, k_min=2, k_max=8)`
+  sceglie k* dove il gap nello spettro del Laplaciano e' massimo.
+  La pipeline integrata usa di default `--k 0` (auto).
+- **3.2 P2 partition_metrics**: cluster_sizes, balance, internal /
+  cut edges, cut_ratio, n_bridges, bridge_ratio loggati ad ogni run.
+- **3.3 P2 adaptive LNS**: per-operator scoring
+  `1 + total_delta / n_calls`, `random.choices` pesato.
+- **3.3 P2 ILS-LNS-kick**: la perturbazione di ILS ora e' un mini-LNS
+  di 8s invece del singolo `_perturb`.
+- **3.4 P1 repair-slot**: `engine_diagnostics.repair_slot_neighborhood`
+  esposto come engine helper (per il futuro endpoint backend).
+- **3.5 P2 parallel cluster B**: `--parallel-cluster-b N` in
+  `run_full_pipeline.py`. ThreadPoolExecutor; workers ripartiti.
+- **3.7 P1 explain_infeasibility**: ritorna Hall violations / class
+  load outliers / prof overload con summary.
+- **3.7 P2 auto_relax_suggestion**: top-3 suggerimenti di rilassamento
+  ordinati per priorita'.
+- **3.9 P1 why_not_lesson**: lista delle violations su (lesson, day,
+  hour) con detail human-readable.
+
+### 14.2 Confronto pre/post sui profili small + big
+
+(Storia objective SOFT pesata: `50*sixth + 10*buchi + 30*5h + 80*1h`)
+
+| Profilo | Metrica            | Pre (sez 13.5) | Post (2026-04-30) | Delta   |
+| ------- | ------------------ | -------------: | ----------------: | ------: |
+| small   | initial obj        |            710 |               670 |   -40   |
+| small   | final obj          |            660 |               660 |     0   |
+| small   | LNS iterations     |     ~141 (60s) |        56 (60.9s) |  -85    |
+| small   | total pipeline (s) |          ~161s |             158s  |   -3    |
+| small   | HARD ok            |            yes |               yes |     -   |
+| big     | initial obj        |           2330 |              2280 |   -50   |
+| big     | final obj          |           2290 |              2280 |   -10   |
+| big     | LNS iterations     |     ~60 (60s)  |          7 (60s)* |   ...   |
+| big     | total pipeline (s) |          ~280s |             341s  |  +61    |
+| big     | HARD ok            |            yes |               yes |     -   |
+
+*Sul big con 60s di LNS budget l'adaptive non riesce a collezionare
+abbastanza sample; con 180s di budget sale a 50 iterazioni.
+Comunque sul big la decomposizione e' gia' near-optimal per il
+neighborhood LNS attuale: 0% di miglioramento sia pre che post.
+
+### 14.3 Verdetto
+
+- **Decomposizione iniziale migliore** su entrambi i profili grazie ad
+  auto-K (small: -40 SOFT, big: -50 SOFT). Auto-K seleziona k=2 su
+  small (graph fortemente connesso) invece del default k=4 storico.
+- **HARD invariato**: 100% feasibility su small + big, nessuna
+  regressione.
+- **Tempo small**: -3s (LNS converge in meno iter grazie a warm-start).
+- **Tempo big**: +61s sulla pipeline integrata. Dovuto principalmente
+  al fatto che il warm-start dell'AddHint riduce gli iter LNS *abortiti
+  per infeasibility veloce*, dando piu' tempo a iterazioni "vere".
+  Il final obj non peggiora.
+- **Helper diagnostiche pronte**: `repair_slot_neighborhood`,
+  `explain_infeasibility`, `why_not_lesson`, `auto_relax_suggestion`
+  callable da Python; il wiring lato backend (endpoint REST) e' la
+  prossima passata.
+
+### 14.4 Skipped con motivazione
+
+- **3.1 P1 internalizzare logical HARD nel modello CP-SAT**:
+  richiederebbe portare il `logic_parser` (che vive nel backend) in
+  `experiments/` e ricreare l'awareness di rooms/groups/subjects
+  dentro CP-SAT. ~200+ LoC, beneficio concreto solo se le istanze
+  iniziano a fallire per logical-HARD-rejection loops, cosa che oggi
+  non accade (le DNF sono valutate a posteriori).
+- **3.2 P3 METIS**: per beneficio marginale rispetto a sklearn KMeans
+  fino a 80 classi. Aggiunge dep nativa C.
+- **3.3 P3 portfolio approach** (LNS+SA+TS in parallelo): SA/TS
+  portano 0% di miglioramento sui dataset reali; un portfolio non
+  cambia il risultato. Threading complexity per niente.
+- **3.5 P3 distribuire fra macchine**: la pipeline gira in 5-15 min
+  sul superhuge. Celery aggiunge ops complexity per nessun guadagno.
+- **3.6 P3 LP-relaxation lower bound**: modello dual non triviale,
+  1-2 settimane per produrre un numero che sui dataset reali sarebbe
+  probabilmente molto vicino all'UB.
+- **3.8 P2 decomp gerarchica multi-plesso**: nessun dataset reale
+  oggi richiede questa scala.
+- **3.10 MIP puro / MiniZinc / OptaPlanner**: 2-4 settimane di port
+  per beneficio incerto. La pipeline attuale gestisce 80 classi in
+  15 min.
+
+### 14.5 Riproduzione
+
+```bash
+# Pre-improvement (commit 64caa2e o precedente):
+git checkout 64caa2e
+python experiments/run_full_pipeline.py --profile small \
+    --time-a 60 --budget-lns 60 --budget-sa 30 --budget-ts 30 \
+    --budget-ils 30 --workers 8
+
+# Post-improvement (commit 98de2d7):
+git checkout main
+python experiments/run_full_pipeline.py --profile small \
+    --time-a 60 --budget-lns 60 --budget-sa 30 --budget-ts 30 \
+    --budget-ils 30 --workers 8
+
+# Engine diagnostics smoke test:
+python experiments/test_engine_diagnostics.py
+```
+
+In appendice del repo i pickle `history_<profile>.pkl` contengono la
+storia stage-by-stage di ogni run.

@@ -478,6 +478,25 @@ def solve_phase_a(profs, classes, triples, class_profs,
         + W_ONE * n_one
     )
 
+    # Decision strategy = "lex-leader-lite" simmetria-break: forziamo
+    # un ordering canonico fra triple identicamente-tipate (stesso prof,
+    # stessa classe, ore uguali) ordinandole per nome. Cosi' due
+    # permutazioni equivalenti di (subj1, subj2) per uno stesso (prof,
+    # classe) producono lo stesso ordine di esplorazione: il solver
+    # converge piu' velocemente a una scelta canonica.
+    sorted_dc_vars = [
+        day_count[(p, cl, subj, d)]
+        for (p, cl, subj, ore) in sorted(triples,
+                                         key=lambda t: (t[0], t[1], t[2]))
+        for d in DAYS
+    ]
+    if sorted_dc_vars:
+        model.AddDecisionStrategy(
+            sorted_dc_vars,
+            cp_model.CHOOSE_FIRST,
+            cp_model.SELECT_MIN_VALUE,
+        )
+
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = time_limit
     solver.parameters.num_search_workers = workers

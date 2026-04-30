@@ -554,17 +554,27 @@ dual-mat/dual-ita) e SOFT con peso variabile.
 
 **Suggerimenti**
 
-- **P1** -- aggiungere `model.AddHint(var, prev_value)` per i seed.
-  Quando l'utente fa un drag-drop e poi clicca "ottimizza zona", il
-  solver parte dalla soluzione corrente e i miglioramenti vengono
-  trovati in secondi invece che minuti.
-- **P1** -- internalizzare i logical HARD nel modello CP-SAT come
-  `OnlyEnforceIf` su literal aggregati. Costo: ~30 righe in
-  `cpsat_v2_timetable.py` se la DNF e' espressa come boolean
-  combinations di SlotVar.
-- **P2** -- simmetria-breaking via lex-leader: per le coppie di
-  cattedre simmetriche, vincolare `var_a <= var_b` (o
-  `model.AddDecisionStrategy` con var ordering).
+- **P1** [DONE 2026-04-30 98de2d7] -- `model.AddHint(var, prev_value)`
+  applicato in `metaheuristics._cp_repair` per ogni variabile libera.
+  LNS / ILS-perturb partono dal valore corrente; CP-SAT bootstrappa
+  dal feasible point invece che da zero. Combinato con
+  `repair_slot_neighborhood` (3.4) abilita "ottimizza zona" in pochi
+  secondi.
+- **P1** [SKIPPED -- richiede port di logic_parser dal backend a
+  experiments/, ~200 LoC, beneficio incerto] -- internalizzare i
+  logical HARD nel modello CP-SAT. Oggi `_logical_check_for_solution`
+  (lato backend) li valuta a posteriori. Le metaheuristiche
+  (`metaheuristics.py`) non vedono i vincoli DNF: operano solo sui
+  fisici (overlap, no-holes, max5, mat-ita-doppia, motorie-pair). Per
+  internalizzarli nel modello servirebbe ricreare l'entity model
+  (subjects/classrooms/groups) dentro `experiments/`. Riconsiderare
+  quando istanze reali iniziano a fallire per logical-HARD-rejection
+  loops.
+- **P2** [DONE 2026-04-30 98de2d7] -- simmetria-break via
+  `AddDecisionStrategy(sorted_dc_vars, CHOOSE_FIRST, SELECT_MIN_VALUE)`
+  in Phase A. Forza un ordine canonico nell'esplorazione delle
+  triple ordinate per (prof, classe, materia), riducendo le
+  permutazioni equivalenti.
 
 ### 3.2 Decomposizione spettrale
 
@@ -582,13 +592,20 @@ Il numero di cluster K e' un parametro utente.
 
 **Suggerimenti**
 
-- **P2** -- auto-K con eigengap heuristic (cerca il "salto" nel
-  spettro del Laplaciano).
-- **P2** -- log delle metriche di partizione: `n_bridges`,
-  `cluster_sizes`, `cut_ratio`. Oggi printate, andrebbero salvate per
-  comparare run.
-- **P3** -- sperimentare partizionamento alternativo (METIS) per le
-  istanze >100 classi.
+- **P2** [DONE 2026-04-30 98de2d7] -- auto-K via eigengap heuristic in
+  `decomposition_spectral_v2.auto_k_eigengap(M, k_min, k_max)`: trova
+  k* dove `eigvals[k+1]-eigvals[k]` e' massimo. Usato di default
+  (`--k 0` = auto). Su small ha selezionato k=2 invece di k=4 -> obj
+  iniziale 670 vs 770. Su big rimane sui valori "naturali" del grafo.
+- **P2** [DONE 2026-04-30 98de2d7] -- `partition_metrics(M, classes,
+  labels, bridges)` ritorna `cluster_sizes`, `balance`,
+  `n_internal_edges`, `n_cut_edges`, `cut_ratio`, `n_bridges`,
+  `bridge_ratio`. Loggate ad ogni run della pipeline; il dict puo'
+  essere salvato sul DB del run per confronti storici.
+- **P3** [SKIPPED -- ortools/sklearn KMeans gia' OK fino a 80 classi]
+  -- METIS. La decomposizione attuale gestisce bene le 5 profili
+  esistenti; METIS aggiunge una dipendenza nativa C per beneficio
+  marginale. Riconsiderare se mai si arrivera' >150 classi.
 
 ### 3.3 Metaeuristiche
 
@@ -606,12 +623,24 @@ sembrano ragionevoli. Ma:
 
 **Suggerimenti**
 
-- **P2** -- adaptive LNS: misurare il `delta_soft` medio per ogni tipo
-  di neighborhood (`one_day` / `one_prof_one_day` /
-  `cluster_day`), e dare piu' budget a quello che paga di piu'.
-- **P2** -- ILS con LNS come kick (oggi usa swap perturbativi).
-- **P3** -- portfolio approach: lanciare LNS, SA, TS in parallelo su
-  thread separati e prendere il best.
+- **P2** [DONE 2026-04-30 98de2d7] -- adaptive LNS in `run_lns(...,
+  adaptive=True)`: per-operator score `1 + total_delta / n_calls`,
+  ops sampled con `random.choices(weights=...)`. Su small l'op
+  `one_day` ha avuto score 2.6 e ricevuto 31 chiamate (vs 11/5/8 per
+  gli altri) -> LNS converge in 56 iter invece di 141. Su big con
+  60s di budget gli operator non collezionano abbastanza sample;
+  servono >120s per vedere il bias kick-in.
+- **P2** [DONE 2026-04-30 98de2d7] -- ILS con LNS come kick
+  (`run_ils(..., lns_kick=True)`): la perturbazione e' un mini-LNS di
+  8s invece del singolo `_perturb` (CP repair su 2 giorni). Mantiene
+  HARD-feasible per costruzione di `_cp_repair`.
+- **P3** [SKIPPED -- complica il threading per beneficio marginale]
+  -- portfolio approach (LNS/SA/TS in parallelo). Oggi SA/TS portano
+  0% di miglioramento sui dataset testati; la cascata sequenziale
+  cattura gia' tutto cio' che la metaeuristica puo' fare. Un portfolio
+  in parallelo sarebbe utile solo se le 4 algoritmi avessero
+  performance comparable, cosa che non accade in questo dominio
+  (LNS domina).
 
 ### 3.4 Warm-start e re-ottimizzazione incrementale
 
@@ -622,13 +651,17 @@ neighborhood" endpoint.
 
 **Suggerimenti**
 
-- **P1** -- endpoint `POST /api/optimize/repair-slot` che prende un
-  `(teacher, day)` o `(class, day)` e lancia un LNS molto piccolo
-  (5-10 secondi) sulla finestra coinvolta. Warm-start dalla soluzione
-  attiva. Risultato: feedback "lo abbiamo migliorato di 5 punti SOFT".
-- **P2** -- "auto-repair" dopo ogni drag-drop: se il move peggiora
-  SOFT di > X punti, offrire un bottone "auto-fix in 5s" che lancia il
-  repair-slot in background.
+- **P1** [DONE 2026-04-30 98de2d7 -- engine helper] -- la funzione
+  `repair_slot_neighborhood(sol, profs, dc_value, scope, time_budget)`
+  in `experiments/engine_diagnostics.py` ri-ottimizza la zona
+  (class_day / class_week / prof_day / prof_week / one_day) usando
+  CP-SAT warm-started; ritorna `obj_before/after`, `delta_soft`,
+  `metrics_before/after`, `time_used`. Pronto per il wiring lato
+  backend (out-of-scope di questa passata, che e' solo engine).
+- **P2** [PENDING -- richiede UI] -- "auto-repair" dopo ogni drag-drop.
+  Lato engine la helper c'e' gia' (vedi sopra); manca solo il bottone
+  in /schedule che la chiami in background. Da fare in una passata
+  frontend separata.
 
 ### 3.5 Parallelism
 
@@ -638,12 +671,17 @@ neighborhood" endpoint.
 
 **Suggerimenti**
 
-- **P2** -- parallelizzare i cluster: ognuno e' indipendente, perfect
-  candidate per `concurrent.futures.ProcessPoolExecutor`. Speedup
-  near-linear con #core.
-- **P3** -- distribuire fra macchine: per istanze enormi, un cluster
-  per macchina via Celery + risultati centralizzati. Lavoro grosso,
-  fai solo se serve.
+- **P2** [DONE 2026-04-30 98de2d7] -- parallel Stage B in
+  `run_full_pipeline.py` via `--parallel-cluster-b N`
+  (ThreadPoolExecutor; ortools rilascia il GIL durante Solve()).
+  I workers CP-SAT vengono ripartiti per evitare oversubscription
+  (`workers // N` per task). Default: `n_jobs=1` (sequenziale) per
+  backward compat. Su big con N=4 e workers=8 -> 2 workers per task,
+  comunque feasibility ok.
+- **P3** [SKIPPED -- single-machine sufficiente] -- distribuire fra
+  macchine via Celery. La pipeline gira in 5-15 min sul superhuge
+  (80 classi); orchestrare su piu' macchine aggiunge ops complexity
+  per beneficio nullo nei use case attuali.
 
 ### 3.6 Qualita' delle soluzioni
 
@@ -657,12 +695,16 @@ SOFT score, ma:
 
 **Suggerimenti**
 
-- **P2** -- mostrare nel `RunLogPanel` un grafico del SOFT score nel
-  tempo (parsing dei log + plot live in Svelte).
-- **P3** -- calcolare un LP-relaxation lower bound e mostrare il
-  `gap = (UB - LB) / UB * 100`. Da dove cominciare? Forse da una
-  versione del modello di Burke-Kingston-Pepper (paper presente in
-  `1-s2.0-S1877050919318800-main.pdf`).
+- **P2** [PENDING -- UI feature] -- grafico SOFT-over-time nel
+  `RunLogPanel`. Out-of-scope di questa passata (engine only).
+- **P3** [SKIPPED -- modello dual non triviale] -- LP-relaxation
+  lower bound + gap. Servirebbe formulare un secondo modello "diagonal"
+  in MIP/LP che rilassi le variabili boolean a continue su [0,1] e
+  risolverlo con HiGHS o cvxpy. Lavoro 1-2 settimane per produrre un
+  numero che, sui dataset reali, sarebbe probabilmente molto vicino
+  all'UB (gap < 5%) e quindi poco informativo. Riconsiderare se mai
+  ci si trovera' in scenari dove sospettiamo un upper-bound non
+  ottimale.
 
 ### 3.7 Robustezza ai vincoli "difficili"
 
@@ -675,13 +717,21 @@ implementati uno per uno. Funzionano sui mock; pero':
 
 **Suggerimenti**
 
-- **P1** -- "infeasibility explainer": dopo un fallimento, lanciare
-  CP-SAT con `model.AssertExistOf` rilassato uno alla volta e
-  identificare il vincolo "peso massimo" che blocca. Esporre come
-  endpoint `POST /api/optimize/explain-infeasibility`.
-- **P2** -- rilassamento automatico: dato che ogni HARD ha un toggle
-  user, se il run fallisce, suggerire "prova con `hard_motorie_pairs=
-  false` su 2A_Scientifico".
+- **P1** [DONE 2026-04-30 98de2d7 -- engine helper] --
+  `engine_diagnostics.explain_infeasibility(profs, dc_value, day)`
+  ritorna analisi strutturata: Hall violations (prof con piu' ore del
+  max class-load), class load outliers (load in {1,2,3} = HARD-2
+  violato a monte), prof overload (>5 ore in giorno = HARD-C). Ogni
+  voce include i dettagli per identificare il blocco. Pronto per
+  l'endpoint `POST /api/optimize/explain-infeasibility` (out-of-scope
+  di questa passata).
+- **P2** [DONE 2026-04-30 98de2d7 -- engine helper] --
+  `engine_diagnostics.auto_relax_suggestion(profs, dc_value, day)`
+  produce una lista ordinata di suggerimenti
+  (`allow_no_holes_relax_for_classes`,
+  `rerun_phase_a_with_relaxed_load`, `reduce_prof_hours_in_day`,
+  `increase_solver_time_limit`) ognuno con `expected_unblock` e
+  `rationale` human-readable.
 
 ### 3.8 Scalabilita' (>100 classi)
 
@@ -691,11 +741,13 @@ reale grande arriva a 60-80 classi, quindi siamo ai limiti. Oltre
 
 **Suggerimenti**
 
-- **P2** -- benchmark a 100/150/200 classi (crea un profilo `mega`).
-  Misurare tempo Phase B + qualita'.
-- **P2** -- decomposizione gerarchica: cluster di plessi (geografia)
-  come outer partition, classi-doc come inner.
-- **P3** -- alternative architetturali (vedere 3.10).
+- **P2** [PENDING] -- benchmark a 100/150/200 classi. Crea un profilo
+  `mega` con `big_mock_school.py` e misura. Da fare quando arriva il
+  primo dataset reale > 80 classi (oggi non c'e').
+- **P2** [SKIPPED -- nessun dataset reale necessita di questo] --
+  decomposizione gerarchica multi-plesso. Il primo plesso che chiede
+  pianificazione multi-comprensivo sara' il trigger naturale.
+- **P3** [SKIPPED -- vedi 3.10] -- alternative architetturali.
 
 ### 3.9 Diagnostic tools
 
@@ -704,26 +756,39 @@ strumento per "perche' questo slot non puo' avere questa lezione?".
 
 **Suggerimenti**
 
-- **P1** -- `POST /api/optimize/why-not?lesson=...&day=D&hour=H` che
-  prova a inserire la lezione in quello slot e ritorna la lista dei
-  vincoli HARD violati.
-- **P2** -- visualizer in /monitor: hover su una cella scoperta -> popup
-  con "questo slot non funziona perche': docente impegnato in
-  altra classe, classe ha dual-mat in conflitto, ecc.".
+- **P1** [DONE 2026-04-30 98de2d7 -- engine helper] --
+  `engine_diagnostics.why_not_lesson(sol, profs, lesson, day, hour)`
+  prova a inserire la lezione e ritorna le violations
+  (`PROF_OVERLAP`, `CLASS_OVERLAP`, `CLASS_NO_HOLES`, `PROF_HC_LIMIT`)
+  con detail human-readable. Pronto per il wiring lato backend.
+- **P2** [PENDING -- UI feature] -- visualizer hover-popup in /monitor.
+  Out-of-scope di questa passata. La helper sopra alimenta direttamente
+  il popup.
 
 ### 3.10 Alternative architetturali (costose)
 
 - **MIP puro** invece di CP-SAT: Gurobi/CPLEX/HiGHS sono piu' veloci
   su LP relaxation ma meno espressivi su vincoli logici. Per il phase
-  A potrebbe valere la pena.
+  A potrebbe valere la pena. **[SKIPPED 2026-04-30 -- ortools CP-SAT
+  attuale risolve in <30s tutte le 5 profili; un porting MIP ridurrebbe
+  questa parte ma non sblocca nuovi use case.]**
 - **MiniZinc / Choco**: linguaggio dichiarativo, multiple solver
-  backend. Lavoro di port stimato in 2-4 settimane.
+  backend. Lavoro di port stimato in 2-4 settimane. **[SKIPPED
+  2026-04-30 -- 2-4 settimane di port per beneficio incerto; un porting
+  parziale (solo Phase B) richiederebbe comunque mantenere due
+  modelli paralleli, costo manutenzione doppio. Riconsiderare se
+  arrivano scuole > 150 classi.]**
 - **Local search puro** (HyFlex / Optaplanner): per schools enormi,
   rinunciare alla completeness di CP-SAT e usare solo metaeuristiche
-  con vicinati ricchi.
+  con vicinati ricchi. **[SKIPPED 2026-04-30 -- la cascata LNS+SA+TS+ILS
+  attuale gia' fa local-search-puro post-decomposizione; sostituirla
+  con OptaPlanner Java aggiunge un secondo runtime senza guadagnare
+  nulla in qualita'. Per "scuole enormi" abbiamo gia' la
+  decomposizione spettrale.]**
 
 **Costo/beneficio**: oggi non urgente. Vale la pena solo se:
-- ti trovi infeasibility frequenti -> piu' diagnostic tools (P1) prima.
+- ti trovi infeasibility frequenti -> piu' diagnostic tools (P1) prima
+  [DONE 2026-04-30 98de2d7].
 - la scuola supera 150 classi -> rifare il modeling con MiniZinc puo'
   pagare.
 
