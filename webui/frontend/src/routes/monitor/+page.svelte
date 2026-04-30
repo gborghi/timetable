@@ -7,6 +7,7 @@
   import { DAYS, HOURS, DAY_NAMES_IT } from '$lib/constants';
   import ScheduleConflictModal from '$lib/components/schedule/ScheduleConflictModal.svelte';
   import AddEventModal from '$lib/components/schedule/AddEventModal.svelte';
+  import AddLessonModal from '$lib/components/schedule/AddLessonModal.svelte';
 
   let summary = null;
   let listRef = null;
@@ -21,6 +22,179 @@
 
   // Add-event modal state
   let addEventOpen = false;
+
+  // Schedule-an-unscheduled-placeholder modal state. Driven by the
+  // "Modifica" button on placeholder rows in the grouped events view.
+  let addLessonOpen = false;
+  let addLessonPreset = {};
+
+  // Grouped events view: one row per Lesson + placeholder per missing
+  // hour. Two grouping dropdowns let the user split by any pair of
+  // attributes.
+  let eventRows = null;       // { items[], n_total, n_unscheduled }
+  let eventRowsBusy = false;
+  let groupBy1 = 'docente';
+  let groupBy2 = 'classe';
+  let rowFilter = '';         // free-text filter applied to each row
+  // Group key options. The label is shown in the dropdown; the value
+  // is the row attribute name.
+  const GROUP_OPTIONS = [
+    { value: 'none',           label: '— nessuno —' },
+    { value: 'teacher_name',   label: 'Docente' },
+    { value: 'class_name',     label: 'Classe' },
+    { value: 'subject',        label: 'Materia' },
+    { value: 'day_name',       label: 'Giorno' },
+    { value: 'hour',           label: 'Ora' },
+    { value: 'classroom_name', label: 'Aula' },
+    { value: 'group_name',     label: 'Gruppo' },
+    { value: 'is_scheduled',   label: 'Schedulato?' },
+    { value: 'is_complete',    label: 'Completo?' },
+  ];
+
+  async function refreshEventRows() {
+    eventRowsBusy = true;
+    try {
+      eventRows = await api.get('/api/monitor/event-rows');
+    } catch (e) {
+      eventRows = null;
+    } finally {
+      eventRowsBusy = false;
+    }
+  }
+
+  // Map a row's value for a group key into a display label + sort key.
+  function groupValue(row, key) {
+    if (key === 'none') return { label: '', sort: 0 };
+    let raw = row[key];
+    if (key === 'classroom_name' || key === 'group_name'
+        || key === 'day_name') {
+      if (!raw) raw = '(nessuno)';
+    } else if (key === 'is_scheduled') {
+      raw = raw ? 'schedulato' : 'non schedulato';
+    } else if (key === 'is_complete') {
+      raw = raw ? 'completo' : 'incompleto';
+    } else if (key === 'hour') {
+      raw = raw == null ? '(non schedulato)' : (raw + ':00');
+    }
+    return { label: String(raw ?? ''), sort: String(raw ?? '') };
+  }
+
+  // Filter rows by a free-text query (matches teacher / class /
+  // subject / room).
+  function filterRows(rows, q) {
+    if (!q) return rows;
+    const lc = q.toLowerCase();
+    return rows.filter((r) =>
+      [r.teacher_name, r.teacher_display, r.class_name, r.class_nickname,
+       r.subject, r.classroom_name, r.group_name, r.day_name]
+        .filter(Boolean)
+        .some((s) => String(s).toLowerCase().includes(lc)));
+  }
+
+  // Two-level grouping: returns Array<{ key1, rows1, sub: Array<{key2, rows2}> }>.
+  // When groupBy1 = 'none', returns a single bucket containing everything.
+  // When groupBy2 = 'none', each bucket has a single sub-bucket.
+  function groupRows(rows, k1, k2) {
+    const m1 = new Map();   // label1 -> rows
+    for (const r of rows) {
+      const v1 = groupValue(r, k1).label;
+      if (!m1.has(v1)) m1.set(v1, []);
+      m1.get(v1).push(r);
+    }
+    const buckets = Array.from(m1.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([label1, rows1]) => {
+        const m2 = new Map();
+        for (const r of rows1) {
+          const v2 = groupValue(r, k2).label;
+          if (!m2.has(v2)) m2.set(v2, []);
+          m2.get(v2).push(r);
+        }
+        const sub = Array.from(m2.entries())
+          .sort((a, b) => a[0].localeCompare(b[0]))
+          .map(([label2, rows2]) => ({
+            key2: label2,
+            rows2: rows2.slice().sort(_byTime),
+          }));
+        return { key1: label1, rows1, sub };
+      });
+    return buckets;
+  }
+  function _byTime(a, b) {
+    if (a.day !== b.day) return (a.day ?? 99) - (b.day ?? 99);
+    if (a.hour !== b.hour) return (a.hour ?? 99) - (b.hour ?? 99);
+    return String(a.classroom_name).localeCompare(String(b.classroom_name));
+  }
+
+  $: filteredRows = eventRows ? filterRows(eventRows.items, rowFilter) : [];
+  $: groupedBuckets = groupRows(filteredRows, groupBy1, groupBy2);
+
+  // Row "id" for keyed each-blocks: lesson_id when scheduled, otherwise
+  // a synthetic key based on the assignment + index.
+  function rowId(r, idx) {
+    return r.lesson_id != null
+      ? `lesson:${r.lesson_id}`
+      : `placeholder:${r.assignment_id}:${idx}`;
+  }
+
+  // Per-row actions
+  async function deleteEventRow(row) {
+    if (row.is_scheduled && row.lesson_id != null) {
+      if (!confirm(`Eliminare la lezione di ${row.subject} `
+          + `(${row.class_name}, ${row.teacher_name}) di `
+          + `${row.day_name} ${row.hour}:00? `
+          + `La cattedra rimane ma diventa incompleta.`)) return;
+      try {
+        await api.del('/api/monitor/lesson/' + row.lesson_id);
+        flash('Lezione eliminata.', 'success');
+        await refreshAll();
+      } catch (e) {
+        flash('Errore: ' + e.message, 'error');
+      }
+    } else {
+      if (!confirm(`Eliminare l'intera cattedra di ${row.subject} `
+          + `(${row.class_name}, ${row.teacher_name})? `
+          + `Saranno eliminate ANCHE tutte le sue lezioni gia' schedulate.`)) return;
+      try {
+        await api.del('/api/monitor/event/' + row.assignment_id);
+        flash('Cattedra e lezioni eliminate.', 'success');
+        await refreshAll();
+      } catch (e) {
+        flash('Errore: ' + e.message, 'error');
+      }
+    }
+  }
+
+  async function modifyEventRow(row) {
+    if (row.is_scheduled && row.lesson_id != null) {
+      // Re-use the existing slot picker for moving a Lesson.
+      await openSlotPicker({
+        assignment_id: row.assignment_id,
+        teacher_name:  row.teacher_name,
+        teacher_display: row.teacher_display,
+        class_name:    row.class_name,
+        subject:       row.subject,
+      }, {
+        lesson_id: row.lesson_id,
+        day: row.day,
+        hour: row.hour,
+        classroom_name: row.classroom_name || null,
+      });
+    } else {
+      // Schedule the placeholder via AddLessonModal in mode='slot'.
+      addLessonPreset = {
+        class_name: row.class_name,
+        teacher_name: row.teacher_name,
+      };
+      addLessonOpen = true;
+    }
+  }
+
+  async function refreshAll() {
+    await refreshSummary();
+    await refreshIncomplete();
+    await refreshEventRows();
+  }
 
   // For each event row we keep: expanded? + lessons array.
   let expanded = new Set();
@@ -58,6 +232,7 @@
       allClasses = (c || []).map((x) => x.name).sort();
     } catch { allClasses = []; }
     await refreshIncomplete();
+    await refreshEventRows();
   });
 
   async function refreshSummary() {
@@ -207,6 +382,7 @@
         await reloadLessonsFor(eventId);
         await refreshSummary();
         await refreshIncomplete();
+        await refreshEventRows();
         if (listRef) await listRef.reload();
         return;
       }
@@ -239,6 +415,7 @@
         await reloadLessonsFor(event_id);
         await refreshSummary();
         await refreshIncomplete();
+        await refreshEventRows();
         if (listRef) await listRef.reload();
       } else if (r.cancelled) {
         flash('Modifica annullata.', 'success');
@@ -373,96 +550,137 @@
     </div>
   {/if}
 
-  <SortableQueryableList
-    bind:this={listRef}
-    endpoint="/api/monitor/events"
-    {columns}
-    {help}
-    rowKey={(r) => r.assignment_id}
-    let:row let:columns>
-    <tr style={rowBg(row)} class="cursor-pointer"
-        on:click={() => toggleRow(row)}>
-      <td>
-        <span class="text-xs text-ink-400 mr-1">
-          {expanded.has(row.assignment_id) ? '▼' : '▶'}
-        </span>
-        <strong>{row.teacher_display}</strong>
-        <span class="text-[10px] text-ink-400">({row.teacher_name})</span>
-      </td>
-      <td>{row.class_name}</td>
-      <td>{row.subject}</td>
-      <td class="text-center">{row.expected_hours}</td>
-      <td class="text-center">{row.assigned_hours}</td>
-      <td class="text-center">
-        {#if row.missing_hours > 0}
-          <span class="pill-red">{row.missing_hours}</span>
-        {:else}<span class="text-ink-300">-</span>{/if}
-      </td>
-      <td class="text-center">
-        {#if row.missing_room > 0}
-          <span class="pill-amber">{row.missing_room}</span>
-        {:else}<span class="text-ink-300">-</span>{/if}
-      </td>
-      <td class="text-xs">
-        {#if row.group_name}{row.group_name}
-        {:else if row.missing_group}<span class="pill-amber">manca</span>
-        {:else}<span class="text-ink-300">-</span>{/if}
-      </td>
-      <td class="text-xs">
-        {#if row.is_complete}<span class="pill-green">ok</span>
-        {:else}{row.status}{/if}
-      </td>
-    </tr>
-    {#if expanded.has(row.assignment_id)}
-      <tr style="background-color:#f9fafb;">
-        <td colspan={columns.length + 1} class="p-2">
-          {#if busyEvent === row.assignment_id && !lessonsByEvent[row.assignment_id]}
-            <span class="text-xs text-ink-400 italic">caricamento...</span>
-          {:else if lessonsByEvent[row.assignment_id]?.length === 0}
-            <span class="text-xs text-ink-400 italic">nessuna lezione assegnata in questa cattedra</span>
-          {:else if lessonsByEvent[row.assignment_id]}
-            <table class="tbl text-xs w-full">
-              <thead>
-                <tr>
-                  <th>#</th><th>Giorno / Ora</th><th>Aula</th><th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {#each lessonsByEvent[row.assignment_id] as l}
-                  <tr>
-                    <td class="text-ink-400">#{l.lesson_id}</td>
-                    <td>
-                      <button class="btn !text-xs !px-2 !py-1"
-                        on:click|stopPropagation={() => openSlotPicker(row, l)}
-                        disabled={slotPickerLoading}
-                        title="Apri matrice giorni/ore con disponibilita"
-                      >{DAY_NAMES_IT[l.day]} {l.hour}:00</button>
-                    </td>
-                    <td>
-                      <select class="text-xs px-1 py-0.5 border border-ink-200 rounded"
-                        on:click|stopPropagation
-                        on:change={(e) => tryMove(
-                          row.assignment_id, l, l.day, l.hour,
-                          e.target.value || null)}
-                        value={l.classroom_name || ''}>
-                        <option value="">(nessuna)</option>
-                        {#each allRooms as r}<option value={r}>{r}</option>{/each}
-                      </select>
-                    </td>
-                    <td>
-                      {#if !l.classroom_name}
-                        <span class="pill-amber !text-[10px]">no aula</span>
-                      {/if}
-                    </td>
-                  </tr>
-                {/each}
-              </tbody>
-            </table>
-          {/if}
-        </td>
-      </tr>
+  <!-- Grouped events view: lesson-granularity rows + placeholders for
+       unscheduled hours. Two dropdowns let the user split the list by
+       any pair of attributes (docente, classe, materia, giorno, ora,
+       aula, gruppo, stato). -->
+  <div class="card p-3 flex items-center gap-3 flex-wrap">
+    <span class="text-sm font-medium">Raggruppa per:</span>
+    <select class="text-sm px-2 py-1 border border-ink-200 rounded"
+            bind:value={groupBy1}>
+      {#each GROUP_OPTIONS as o}<option value={o.value}>{o.label}</option>{/each}
+    </select>
+    <span class="text-sm">e poi per:</span>
+    <select class="text-sm px-2 py-1 border border-ink-200 rounded"
+            bind:value={groupBy2}>
+      {#each GROUP_OPTIONS as o}<option value={o.value}>{o.label}</option>{/each}
+    </select>
+    <input type="text" placeholder="filtra (docente, classe, materia, aula...)"
+           class="text-sm px-2 py-1 border border-ink-200 rounded ml-3 flex-1 min-w-32"
+           bind:value={rowFilter}/>
+    <button class="btn !text-xs" on:click={refreshEventRows}
+            disabled={eventRowsBusy}>refresh</button>
+    {#if eventRows}
+      <span class="text-xs text-ink-500">
+        {eventRows.n_total} righe ({eventRows.n_unscheduled} non schedulate)
+      </span>
     {/if}
-  </SortableQueryableList>
+  </div>
+
+  {#if !eventRows}
+    <div class="card p-4 text-sm text-ink-500">
+      {eventRowsBusy ? 'Caricamento eventi...' : 'Nessun evento.'}
+    </div>
+  {:else}
+    <div class="card p-2 overflow-x-auto">
+      <table class="tbl text-xs w-full">
+        <thead>
+          <tr>
+            <th>Docente</th>
+            <th>Classe</th>
+            <th>Materia</th>
+            <th>Giorno</th>
+            <th>Ora</th>
+            <th>Aula</th>
+            <th>Gruppo</th>
+            <th>Stato</th>
+            <th class="text-right">Azioni</th>
+          </tr>
+        </thead>
+        <tbody>
+          {#each groupedBuckets as bucket (bucket.key1)}
+            {#if groupBy1 !== 'none'}
+              <tr style="background-color:#e0e7ff;">
+                <td colspan="9" class="font-semibold py-1 px-2">
+                  {GROUP_OPTIONS.find((o) => o.value === groupBy1)?.label || ''}:
+                  {bucket.key1 || '(vuoto)'}
+                  <span class="text-ink-500 font-normal text-[10px] ml-2">
+                    {bucket.rows1.length} righe
+                  </span>
+                </td>
+              </tr>
+            {/if}
+            {#each bucket.sub as sb (bucket.key1 + '|' + sb.key2)}
+              {#if groupBy1 !== 'none' && groupBy2 !== 'none'}
+                <tr style="background-color:#eef2ff;">
+                  <td colspan="9" class="text-[11px] pl-6 py-1">
+                    {GROUP_OPTIONS.find((o) => o.value === groupBy2)?.label || ''}:
+                    <strong>{sb.key2 || '(vuoto)'}</strong>
+                    <span class="text-ink-400 ml-2">{sb.rows2.length}</span>
+                  </td>
+                </tr>
+              {/if}
+              {#each sb.rows2 as r, i (rowId(r, i))}
+                <tr style={r.is_scheduled
+                            ? (r.is_complete ? '' : 'background-color:#fef9c3;')
+                            : 'background-color:#fef2f2;'}>
+                  <td>
+                    <strong>{r.teacher_display}</strong>
+                    <span class="text-[10px] text-ink-400">({r.teacher_name})</span>
+                  </td>
+                  <td>{r.class_name}</td>
+                  <td>{r.subject}</td>
+                  <td>{r.day_name || (r.is_scheduled ? '' : '-')}</td>
+                  <td>{r.hour != null ? r.hour + ':00' : '-'}</td>
+                  <td>
+                    {#if r.classroom_name}
+                      {r.classroom_name}
+                    {:else if r.is_scheduled}
+                      <span class="pill-amber !text-[10px]">no aula</span>
+                    {:else}
+                      <span class="text-ink-300">-</span>
+                    {/if}
+                  </td>
+                  <td>
+                    {#if r.group_name}{r.group_name}
+                    {:else}<span class="text-ink-300">-</span>{/if}
+                  </td>
+                  <td>
+                    {#if r.is_scheduled}
+                      <span class="pill-green !text-[10px]">{r.status}</span>
+                    {:else}
+                      <span class="pill-red !text-[10px]">non schedulato</span>
+                    {/if}
+                  </td>
+                  <td class="text-right whitespace-nowrap">
+                    <button class="btn !text-[10px] !px-2 !py-0.5"
+                            on:click={() => modifyEventRow(r)}
+                            title={r.is_scheduled
+                              ? 'Sposta su un altro giorno/ora'
+                              : 'Schedula questo evento'}>
+                      Modifica
+                    </button>
+                    <button class="btn-red !text-[10px] !px-2 !py-0.5 ml-1"
+                            on:click={() => deleteEventRow(r)}
+                            title={r.is_scheduled
+                              ? 'Rimuovi questa lezione (cattedra preservata)'
+                              : 'Elimina la cattedra (e tutte le sue lezioni)'}>
+                      Elimina
+                    </button>
+                  </td>
+                </tr>
+              {/each}
+            {/each}
+          {/each}
+          {#if filteredRows.length === 0}
+            <tr><td colspan="9" class="text-center text-ink-400 italic py-4">
+              Nessun evento da mostrare con questi filtri.
+            </td></tr>
+          {/if}
+        </tbody>
+      </table>
+    </div>
+  {/if}
 </div>
 
 <Modal open={!!slotPicker}
@@ -548,8 +766,14 @@
                classes={allClasses}
                rooms={allRooms}
                onClose={() => (addEventOpen = false)}
-               onCreated={async () => {
-                 await refreshSummary();
-                 await refreshIncomplete();
-                 if (listRef) await listRef.reload();
-               }}/>
+               onCreated={refreshAll}/>
+
+<AddLessonModal bind:open={addLessonOpen}
+                mode="slot"
+                day={1} hour={8}
+                preset={addLessonPreset}
+                teachers={allTeachers}
+                classes={allClasses}
+                rooms={allRooms}
+                onClose={() => (addLessonOpen = false)}
+                onCreated={refreshAll}/>

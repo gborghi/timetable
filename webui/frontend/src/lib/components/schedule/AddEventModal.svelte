@@ -23,6 +23,8 @@
   import { DAYS, HOURS, DAY_NAMES_IT } from '$lib/constants';
   import Modal from '$lib/components/Modal.svelte';
   import ScheduleConflictModal from './ScheduleConflictModal.svelte';
+  // Warning is rendered inline as a small Modal (no separate component
+  // -- only used here).
 
   export let open = false;
   export let teachers = [];   // [{name, subjects:[]}] OR [string] (legacy)
@@ -45,6 +47,10 @@
   let conflictOpen = false;
   let conflictDetails = null;
 
+  // Cattedra-clash warning state
+  let warningOpen = false;
+  let warningDetails = null;
+
   $: teacherList = (teachers || []).map((t) =>
     typeof t === 'string' ? { name: t, subjects: [] } : t,
   );
@@ -62,6 +68,8 @@
     attempted = false;
     conflictOpen = false;
     conflictDetails = null;
+    warningOpen = false;
+    warningDetails = null;
   }
 
   // Clear stale subject when teacher changes.
@@ -70,7 +78,7 @@
     subject = '';
   }
 
-  function buildPayload(strategy) {
+  function buildPayload(strategy, force = false) {
     return {
       class_name: className,
       teacher_name: teacherName,
@@ -80,6 +88,7 @@
       day: day === '' ? null : Number(day),
       hour: hour === '' ? null : Number(hour),
       on_conflict: strategy,
+      force,
     };
   }
 
@@ -112,7 +121,7 @@
     return '';
   }
 
-  async function trySubmit(strategy) {
+  async function trySubmit(strategy, force = false) {
     attempted = true;
     const missing = validate();
     if (missing.length) {
@@ -121,7 +130,16 @@
     }
     busy = true;
     try {
-      const r = await api.post('/api/monitor/event', buildPayload(strategy));
+      const r = await api.post('/api/monitor/event',
+                               buildPayload(strategy, force));
+      // Cattedra clash: another teacher already owns the (class, subject).
+      // Surface a warning modal letting the user proceed as an
+      // "orphan lesson" if they really want to.
+      if (r && r.warning === 'cattedra_clash') {
+        warningDetails = r.details || {};
+        warningOpen = true;
+        return;
+      }
       if (r.conflict && (strategy === 'dry_run' || strategy === 'cancel')) {
         conflictDetails = r.details || {};
         conflictOpen = true;
@@ -130,6 +148,9 @@
       if (day === '' || hour === '') {
         flash('Evento creato senza assegnazione temporale '
               + '(visibile nel pannello rosso).', 'success');
+      } else if (r.warning === 'cattedra_orphan_lesson') {
+        flash('Evento orfano creato (la cattedra esistente '
+              + 'di un altro docente non e\' stata toccata).', 'success');
       } else {
         flash('Evento creato.', 'success');
       }
@@ -145,6 +166,17 @@
   function onResolveConflict(strategy) {
     conflictOpen = false;
     trySubmit(strategy);
+  }
+
+  function confirmCattedraClash() {
+    warningOpen = false;
+    if (day === '' || hour === '') {
+      flash('Per creare un evento orfano servono giorno e ora '
+            + '(altrimenti la cattedra esistente non e\' modificabile).',
+            'error');
+      return;
+    }
+    trySubmit('dry_run', true);   // force=true
   }
 </script>
 
@@ -233,3 +265,41 @@
                        details={conflictDetails || {}}
                        onCancel={() => { conflictOpen = false; }}
                        onResolve={onResolveConflict}/>
+
+<Modal open={warningOpen}
+       title="Cattedra gia' assegnata a un altro docente"
+       onClose={() => (warningOpen = false)}>
+  <div class="space-y-3 text-sm">
+    <p>
+      La cattedra <strong>{warningDetails?.class_name}</strong> /
+      <strong>{warningDetails?.subject}</strong> e' gia' assegnata a
+      <strong>{warningDetails?.owned_by_teacher_display
+              || warningDetails?.owned_by_teacher_name}</strong>.
+    </p>
+    <p class="text-xs text-ink-500">
+      Puoi creare comunque l'evento richiesto come <em>lezione
+      orfana</em>: la cattedra esistente non viene toccata, ma una
+      nuova lezione di {teacherName} per {className}/{subject} viene
+      inserita nello slot scelto. Questo crea un'incoerenza fra la
+      cattedra (di un altro docente) e la lezione (tua), ma a volte
+      e' quello che vuoi (compresenze improvvisate, sostituzioni
+      manuali, eventi una-tantum).
+    </p>
+    {#if day === '' || hour === ''}
+      <p class="text-xs text-amber-700">
+        Servono <strong>giorno + ora</strong> per creare una lezione
+        orfana. Annulla, compila i due campi, e riprova.
+      </p>
+    {/if}
+    <div class="flex justify-end gap-2">
+      <button class="btn" on:click={() => (warningOpen = false)}>
+        Annulla
+      </button>
+      <button class="btn-amber"
+              disabled={day === '' || hour === ''}
+              on:click={confirmCattedraClash}>
+        Crea evento orfano comunque
+      </button>
+    </div>
+  </div>
+</Modal>

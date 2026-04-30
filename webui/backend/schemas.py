@@ -390,6 +390,18 @@ class AddEventIn(BaseModel):
     Lesson at a given time. If day/hour are omitted, the Assignment
     is created as "incomplete" (no Lesson rows yet) and surfaces in
     the red panel of the Monitor tab.
+
+    `force=False` (default): if (class, subject) already has a
+    cattedra owned by another teacher, the call returns
+    `warning='cattedra_clash'` with details and does NOT write.
+    The frontend then asks the user; if they confirm, the same call
+    is repeated with `force=True`.
+
+    `force=True`: skip Assignment creation/check entirely and create
+    the Lesson alone (only valid when day+hour are given). The
+    Lesson is "orphan" -- it exists in the solution but does not
+    have a corresponding cattedra. Use this when the user is sure
+    they want the event regardless of cattedra ownership.
     """
     class_name: str
     teacher_name: str
@@ -400,11 +412,13 @@ class AddEventIn(BaseModel):
     hour: int | None = None
     locked: bool = False
     on_conflict: str = "dry_run"
+    force: bool = False
 
 
 class AddEventOut(BaseModel):
     ok: bool
     conflict: bool = False
+    warning: str | None = None
     assignment_id: int | None = None
     lesson_id: int | None = None
     resolution: str | None = None

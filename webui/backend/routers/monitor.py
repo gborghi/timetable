@@ -147,6 +147,157 @@ def _build_events(db: Session) -> list[dict]:
     return out
 
 
+_DAY_NAMES_IT_FULL = {
+    1: "Lunedi", 2: "Martedi", 3: "Mercoledi",
+    4: "Giovedi", 5: "Venerdi", 6: "Sabato",
+}
+
+
+def _build_event_rows(db: Session) -> list[dict]:
+    """Lesson-level events with placeholder rows for unscheduled hours.
+
+    Returns ONE row per Lesson in the active solution PLUS one
+    placeholder row for every "missing hour" of every Assignment
+    (Assignment.hours - existing Lessons). Each row has all the
+    attributes the user can group by:
+
+        teacher_name, class_name, subject, day, hour, classroom_name,
+        group_name, day_name, is_scheduled, is_complete, status
+
+    Placeholder rows have day=None, hour=None, classroom_name=None,
+    is_scheduled=False. They power the red panel and are also the
+    primary way "incomplete" cattedre show up in the new grouped view.
+    """
+    # Re-use the Assignment-level summary so we share group lookup +
+    # status computation logic.
+    summary_rows = _build_events(db)
+    summary_by_aid = {r["assignment_id"]: r for r in summary_rows}
+
+    teachers_by_id = {t.id: t for t in db.query(models.Teacher).all()}
+    classes_by_id = {c.id: c for c in db.query(models.SchoolClass).all()}
+
+    active = engine_io.get_active_solution(db)
+    lessons_by_key: dict[tuple, list[models.Lesson]] = {}
+    if active is not None:
+        for l in db.query(models.Lesson).filter(
+            models.Lesson.solution_id == active.id
+        ).all():
+            key = (l.teacher_name, l.class_name, l.subject)
+            lessons_by_key.setdefault(key, []).append(l)
+
+    out: list[dict] = []
+    for a in db.query(models.Assignment).all():
+        t = teachers_by_id.get(a.teacher_id)
+        c = classes_by_id.get(a.class_id)
+        if t is None or c is None:
+            continue
+        sumrow = summary_by_aid.get(a.id, {})
+        group_name = sumrow.get("group_name")
+        is_complete = bool(sumrow.get("is_complete"))
+        status = sumrow.get("status", "")
+        teacher_disp = _teacher_display(t)
+        key = (t.name, c.name, a.subject)
+        lessons = lessons_by_key.get(key, [])
+
+        # One row per existing Lesson.
+        for l in lessons:
+            out.append({
+                "assignment_id": a.id,
+                "lesson_id": l.id,
+                "teacher_name": t.name,
+                "teacher_display": teacher_disp,
+                "class_name": c.name,
+                "class_nickname": c.nickname,
+                "subject": a.subject,
+                "day": l.day,
+                "day_name": _DAY_NAMES_IT_FULL.get(l.day, ""),
+                "hour": l.hour,
+                "classroom_name": l.classroom_name or "",
+                "group_name": group_name or "",
+                "is_scheduled": True,
+                "is_complete": is_complete,
+                "status": ("ok" if l.classroom_name
+                           else "no aula"),
+                "locked": bool(a.locked),
+            })
+
+        # Placeholder rows for missing hours (Assignment.hours - len(lessons)).
+        missing = max(int(a.hours) - len(lessons), 0)
+        for i in range(missing):
+            out.append({
+                "assignment_id": a.id,
+                "lesson_id": None,
+                "teacher_name": t.name,
+                "teacher_display": teacher_disp,
+                "class_name": c.name,
+                "class_nickname": c.nickname,
+                "subject": a.subject,
+                "day": None,
+                "day_name": "",
+                "hour": None,
+                "classroom_name": "",
+                "group_name": group_name or "",
+                "is_scheduled": False,
+                "is_complete": False,
+                "status": "non schedulato",
+                "locked": bool(a.locked),
+            })
+    return out
+
+
+@router.get("/event-rows")
+def list_event_rows(db: Session = Depends(get_db)):
+    """Lesson-granular events for the new grouped Monitor view. See
+    `_build_event_rows` for the row shape."""
+    rows = _build_event_rows(db)
+    return {"items": rows, "n_total": len(rows),
+            "n_unscheduled": sum(1 for r in rows if not r["is_scheduled"])}
+
+
+@router.delete("/lesson/{lesson_id}")
+def delete_lesson(lesson_id: int, db: Session = Depends(get_db)):
+    """Delete a single Lesson row from the active solution. The parent
+    Assignment is preserved -- so the cattedra remains and surfaces
+    as 'incomplete' in the red panel until rescheduled."""
+    l = db.get(models.Lesson, lesson_id)
+    if l is None:
+        raise HTTPException(404, "lezione non trovata")
+    active = engine_io.get_active_solution(db)
+    if active is None or l.solution_id != active.id:
+        raise HTTPException(
+            400, "lezione non appartiene alla soluzione attiva"
+        )
+    db.delete(l)
+    db.commit()
+    return {"ok": True}
+
+
+@router.delete("/event/{assignment_id}")
+def delete_event(assignment_id: int, db: Session = Depends(get_db)):
+    """Delete an entire cattedra (Assignment) AND every Lesson in the
+    active solution that realised it. Use this from the grouped
+    Monitor view when the user wants to remove a placeholder
+    (unscheduled) event entirely.
+    """
+    a = db.get(models.Assignment, assignment_id)
+    if a is None:
+        raise HTTPException(404, "cattedra non trovata")
+    t = db.get(models.Teacher, a.teacher_id)
+    c = db.get(models.SchoolClass, a.class_id)
+    if t is not None and c is not None:
+        active = engine_io.get_active_solution(db)
+        if active is not None:
+            db.query(models.Lesson).filter(
+                models.Lesson.solution_id == active.id,
+                models.Lesson.teacher_name == t.name,
+                models.Lesson.class_name == c.name,
+                models.Lesson.subject == a.subject,
+            ).delete(synchronize_session=False)
+    db.delete(a)
+    db.commit()
+    return {"ok": True}
+
+
 @router.get("/events")
 def list_events(q: str | None = Query(None,
                   description="DSL filter, e.g. 'is_complete = 0' or "
@@ -453,18 +604,42 @@ def add_event(payload: schemas.AddEventIn,
         raise HTTPException(400, "hours deve essere > 0")
 
     # An Assignment is unique on (class_id, subject). If one already
-    # exists for this (class, subject), 409 with explicit guidance.
+    # exists for this (class, subject) and is owned by ANOTHER teacher,
+    # we don't crash anymore (per Giovanni's spec): we return a
+    # `warning='cattedra_clash'` so the frontend can ask the user to
+    # confirm. On confirmation it re-posts with `force=True`, which
+    # SKIPS the Assignment creation entirely and creates an "orphan"
+    # Lesson at (day, hour). Without day+hour the orphan path is
+    # meaningless, so force=True without day/hour returns 400.
     existing = db.query(models.Assignment).filter(
         models.Assignment.class_id == cls.id,
         models.Assignment.subject == payload.subject,
     ).first()
-    if existing is not None:
-        raise HTTPException(
-            409,
-            f"Esiste gia' una cattedra per {cls.name}/{payload.subject} "
-            f"(docente: id={existing.teacher_id}). Modifica quella "
-            f"invece di crearne una nuova."
-        )
+    cattedra_clash = (existing is not None
+                      and existing.teacher_id != t.id)
+    if cattedra_clash and not payload.force:
+        other_t = db.get(models.Teacher, existing.teacher_id)
+        return {
+            "ok": False,
+            "warning": "cattedra_clash",
+            "details": {
+                "class_name": cls.name,
+                "subject": payload.subject,
+                "owned_by_teacher_name": (other_t.name if other_t else None),
+                "owned_by_teacher_display": (
+                    _teacher_display(other_t) if other_t else None
+                ),
+                "existing_assignment_id": existing.id,
+            },
+        }
+    if cattedra_clash and payload.force:
+        if payload.day is None or payload.hour is None:
+            raise HTTPException(
+                400,
+                "force=True senza giorno/ora non ha effetto: la "
+                "cattedra esiste gia' di un altro docente. Specifica "
+                "almeno (day, hour) per creare un evento orfano."
+            )
 
     # Optionally place an initial Lesson; detect conflicts only if both
     # a day/hour AND an active solution are present.
@@ -505,16 +680,23 @@ def add_event(payload: schemas.AddEventIn,
                     )
                 _apply_conflict_resolution(db, cinfo, strategy)
 
-    # Persist Assignment.
-    a = models.Assignment(
-        class_id=cls.id, teacher_id=t.id,
-        subject=payload.subject, hours=int(payload.hours),
-        locked=bool(payload.locked),
-    )
-    db.add(a)
-    db.flush()
+    # Persist Assignment unless we're in the "orphan lesson" path
+    # (cattedra already exists with another teacher and force=True).
+    a_id: int | None = None
+    if not cattedra_clash:
+        a = models.Assignment(
+            class_id=cls.id, teacher_id=t.id,
+            subject=payload.subject, hours=int(payload.hours),
+            locked=bool(payload.locked),
+        )
+        db.add(a)
+        db.flush()
+        a_id = a.id
 
-    # Persist optional initial Lesson.
+    # Persist optional initial Lesson. NOTE: a Lesson is identified by
+    # (teacher_name, class_name, subject) -- it does NOT FK-link to an
+    # Assignment, so creating an orphan Lesson is supported by the
+    # data model.
     lesson_id: int | None = None
     if place_lesson and active is not None:
         l = models.Lesson(
@@ -532,7 +714,8 @@ def add_event(payload: schemas.AddEventIn,
     return {
         "ok": True,
         "conflict": has_conflict,
-        "assignment_id": a.id,
+        "warning": "cattedra_orphan_lesson" if cattedra_clash else None,
+        "assignment_id": a_id,
         "lesson_id": lesson_id,
         "resolution": (strategy if (place_lesson and has_conflict) else None),
         "details": conflict_payload,
