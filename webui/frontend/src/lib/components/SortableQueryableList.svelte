@@ -26,8 +26,8 @@
   //
   // Slots: default takes (row, columns) and renders a <tr>.
 
-  import { api } from '../api.js';
-  import { flash } from '../stores.js';
+  import { api } from '../api';
+  import { flash } from '../stores';
 
   export let endpoint;
   export let columns = [];

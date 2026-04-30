@@ -6,7 +6,7 @@
 -->
 <script>
   import Modal from '$lib/components/Modal.svelte';
-  import { DAY_NAMES_IT } from '$lib/constants.js';
+  import { DAY_NAMES_IT } from '$lib/constants';
 
   export let notice;     // {room, day, hour, class_name, teacher, subject} | null
   export let onClose;

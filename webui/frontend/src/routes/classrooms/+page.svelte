@@ -1,15 +1,15 @@
 <script>
   import { onMount } from 'svelte';
-  import { api } from '$lib/api.js';
-  import { flash, refreshDataset } from '$lib/stores.js';
-  import { ROOM_KINDS } from '$lib/constants.js';
+  import { api } from '$lib/api';
+  import { flash, refreshDataset } from '$lib/stores';
+  import { ROOM_KINDS } from '$lib/constants';
   import Modal from '$lib/components/Modal.svelte';
   import AvailabilityMatrix from '$lib/components/AvailabilityMatrix.svelte';
   import SortableQueryableList from '$lib/components/SortableQueryableList.svelte';
   import LogicalUnavailabilitiesPanel from '$lib/components/LogicalUnavailabilitiesPanel.svelte';
   import ImportButton from '$lib/components/ImportButton.svelte';
   import BulkApplyModal from '$lib/components/BulkApplyModal.svelte';
-  import { cloneRow } from '$lib/utils.js';
+  import { cloneRow } from '$lib/utils';
   import { classrooms as classroomsSvc, subjects as subjectsSvc, classes as classesSvc } from '$lib/services';
 
   let editing = null;

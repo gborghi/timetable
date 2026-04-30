@@ -1,9 +1,9 @@
 <script>
-  import { onMount } from 'svelte';
-  import { api } from '$lib/api.js';
-  import { flash, refreshDataset } from '$lib/stores.js';
-  import { DAY_NAMES_EN, TEACHER_DEFAULTS } from '$lib/constants.js';
-  import { teachers, subjects as subjectsSvc, classrooms as classroomsSvc } from '$lib/services';
+  import { api } from '$lib/api';
+  import { flash, refreshDataset } from '$lib/stores';
+  import { DAY_NAMES_EN, TEACHER_DEFAULTS } from '$lib/constants';
+  import { teachers } from '$lib/services';
+  import { subjectsQuery, classroomsQuery } from '$lib/queries';
   import Modal from '$lib/components/Modal.svelte';
   import AvailabilityMatrix from '$lib/components/AvailabilityMatrix.svelte';
   import SortableQueryableList from '$lib/components/SortableQueryableList.svelte';
@@ -11,28 +11,24 @@
   import ImportButton from '$lib/components/ImportButton.svelte';
   import BulkApplyModal from '$lib/components/BulkApplyModal.svelte';
   import ClassroomGrid from '$lib/components/ClassroomGrid.svelte';
-  import { cloneRow } from '$lib/utils.js';
+  import { cloneRow } from '$lib/utils';
 
   let editing = null;
-  let allSubjects = [];
-  let allClassrooms = [];
   let listRef = null;
   let selectedIds = [];
   let showBulk = false;
 
+  // Lookup data via TanStack Query: cached, deduplicated across pages,
+  // auto-invalidated by the global mutation counter (see
+  // $lib/queries/client.ts).
+  const subjectsQ = subjectsQuery.useList();
+  const classroomsQ = classroomsQuery.useList();
+  $: allSubjects = ($subjectsQ.data ?? []).map((s) => s.name).sort();
+  $: allClassrooms = $classroomsQ.data ?? [];
+
   function onClassroomPrefsChange(newPrefs) {
     editing = { ...editing, classroom_prefs: newPrefs };
   }
-
-  onMount(async () => {
-    try {
-      const subs = await subjectsSvc.list();
-      allSubjects = subs.map((s) => s.name).sort();
-    } catch { /* */ }
-    try {
-      allClassrooms = await classroomsSvc.list();
-    } catch { /* */ }
-  });
 
   function newTeacher() {
     editing = {

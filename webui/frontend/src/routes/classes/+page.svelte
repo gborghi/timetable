@@ -1,29 +1,26 @@
 <script>
-  import { onMount } from 'svelte';
-  import { api } from '$lib/api.js';
-  import { flash, refreshDataset } from '$lib/stores.js';
+  import { api } from '$lib/api';
+  import { flash, refreshDataset } from '$lib/stores';
   import Modal from '$lib/components/Modal.svelte';
   import AvailabilityMatrix from '$lib/components/AvailabilityMatrix.svelte';
   import SortableQueryableList from '$lib/components/SortableQueryableList.svelte';
   import LogicalUnavailabilitiesPanel from '$lib/components/LogicalUnavailabilitiesPanel.svelte';
   import ImportButton from '$lib/components/ImportButton.svelte';
   import BulkApplyModal from '$lib/components/BulkApplyModal.svelte';
-  import { cloneRow } from '$lib/utils.js';
-  import { classes as classesSvc, subjects as subjectsSvc, curricula as curriculaSvc } from '$lib/services';
+  import { cloneRow } from '$lib/utils';
+  import { classes as classesSvc } from '$lib/services';
+  import { subjectsQuery, curriculaQuery } from '$lib/queries';
 
   let editing = null;
-  let allSubjects = [];
-  let allCurricula = [];
   let listRef = null;
   let selectedIds = [];
   let showBulk = false;
 
-  onMount(async () => {
-    try {
-      allSubjects = (await subjectsSvc.list()).map((s) => s.name).sort();
-      allCurricula = await curriculaSvc.list();
-    } catch { /* */ }
-  });
+  // Lookup data cached via TanStack Query: instant on revisit.
+  const subjectsQ = subjectsQuery.useList();
+  const curriculaQ = curriculaQuery.useList();
+  $: allSubjects = ($subjectsQ.data ?? []).map((s) => s.name).sort();
+  $: allCurricula = $curriculaQ.data ?? [];
 
   function newClass() {
     editing = {

@@ -22,7 +22,7 @@
   // editable; commit happens on `change` (blur or Enter). Sign: positive on
   // yellow, negative on blue (auto-flipped if you toggle).
 
-  import { DAYS, HOURS, DAY_NAMES_IT } from '../constants.js';
+  import { DAYS, HOURS, DAY_NAMES_IT } from '../constants';
 
   export let value = [];
   export let onChange = (_v) => {};

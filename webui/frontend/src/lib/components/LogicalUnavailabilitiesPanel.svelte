@@ -10,8 +10,8 @@
   // parent's own form state. It calls onChange(rules[]) whenever the
   // backend list updates (parent can use it for counters).
 
-  import { api } from '../api.js';
-  import { flash } from '../stores.js';
+  import { api } from '../api';
+  import { flash } from '../stores';
 
   export let entityType = 'teachers';
   export let entityId = null;

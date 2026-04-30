@@ -5,7 +5,7 @@
   small and the wording centralised.
 -->
 <script>
-  import { DAY_NAMES_IT } from '$lib/constants.js';
+  import { DAY_NAMES_IT } from '$lib/constants';
 
   export let moveSrc;            // {subject, cls, teacher, day, hour}
   export let movePreviewBusy = false;

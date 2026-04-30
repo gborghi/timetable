@@ -1,8 +1,8 @@
 <script>
   import { onMount } from 'svelte';
-  import { api } from '$lib/api.js';
-  import { flash, refreshDataset } from '$lib/stores.js';
-  import { OPTIMIZE_DEFAULTS } from '$lib/constants.js';
+  import { api } from '$lib/api';
+  import { flash, refreshDataset } from '$lib/stores';
+  import { OPTIMIZE_DEFAULTS } from '$lib/constants';
   import RunLogPanel from '$lib/components/RunLogPanel.svelte';
 
   let runId = null;

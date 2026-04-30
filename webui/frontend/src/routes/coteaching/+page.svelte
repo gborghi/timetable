@@ -1,9 +1,9 @@
 <script>
   import { onMount } from 'svelte';
-  import { api } from '$lib/api.js';
-  import { flash } from '$lib/stores.js';
+  import { api } from '$lib/api';
+  import { flash } from '$lib/stores';
   import Modal from '$lib/components/Modal.svelte';
-  import { cloneRow } from '$lib/utils.js';
+  import { cloneRow } from '$lib/utils';
   import {
     coteaching as coteachingSvc,
     classes as classesSvc,

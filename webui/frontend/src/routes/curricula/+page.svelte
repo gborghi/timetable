@@ -1,11 +1,11 @@
 <script>
   import { onMount } from 'svelte';
-  import { api } from '$lib/api.js';
-  import { flash, refreshDataset } from '$lib/stores.js';
+  import { api } from '$lib/api';
+  import { flash, refreshDataset } from '$lib/stores';
   import Modal from '$lib/components/Modal.svelte';
   import SortableQueryableList from '$lib/components/SortableQueryableList.svelte';
   import ImportButton from '$lib/components/ImportButton.svelte';
-  import { cloneRow } from '$lib/utils.js';
+  import { cloneRow } from '$lib/utils';
   import { curricula as curriculaSvc, subjects as subjectsSvc, logic as logicSvc } from '$lib/services';
 
   let editing = null;

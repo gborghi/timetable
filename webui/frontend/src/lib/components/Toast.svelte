@@ -1,5 +1,5 @@
 <script>
-  import { toast } from '../stores.js';
+  import { toast } from '../stores';
 
   // Pick the right ARIA live channel: errors are 'assertive' (announced
   // immediately), successes/info are 'polite' (queued, less intrusive).

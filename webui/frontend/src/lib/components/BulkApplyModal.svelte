@@ -10,8 +10,8 @@
   //   onDone:       callback after successful apply
 
   import Modal from './Modal.svelte';
-  import { api } from '../api.js';
-  import { flash } from '../stores.js';
+  import { api } from '../api';
+  import { flash } from '../stores';
 
   export let entity = 'teachers';
   export let open = false;

@@ -1,6 +1,6 @@
 <script>
   import { onDestroy } from 'svelte';
-  import { streamRun, api } from '../api.js';
+  import { streamRun, api } from '../api';
   export let runId = null;
   export let title = 'Log';
   export let onEnd = () => {};

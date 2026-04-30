@@ -1,7 +1,7 @@
 <script>
   import { onMount } from 'svelte';
-  import { api } from '$lib/api.js';
-  import { flash, refreshDataset } from '$lib/stores.js';
+  import { api } from '$lib/api';
+  import { flash, refreshDataset } from '$lib/stores';
   import Modal from '$lib/components/Modal.svelte';
 
   let byClass = {};

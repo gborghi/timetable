@@ -1,10 +1,10 @@
 <script>
   import { onMount } from 'svelte';
-  import { api } from '$lib/api.js';
-  import { flash } from '$lib/stores.js';
+  import { api } from '$lib/api';
+  import { flash } from '$lib/stores';
   import Modal from '$lib/components/Modal.svelte';
   import SortableQueryableList from '$lib/components/SortableQueryableList.svelte';
-  import { DAYS, HOURS, DAY_NAMES_IT } from '$lib/constants.js';
+  import { DAYS, HOURS, DAY_NAMES_IT } from '$lib/constants';
 
   let summary = null;
   let listRef = null;

@@ -1,8 +1,8 @@
 <script>
   import { onMount } from 'svelte';
-  import { api } from '$lib/api.js';
-  import { flash } from '$lib/stores.js';
-  import { DAYS, HOURS, DAY_NAMES_IT } from '$lib/constants.js';
+  import { api } from '$lib/api';
+  import { flash } from '$lib/stores';
+  import { DAYS, HOURS, DAY_NAMES_IT } from '$lib/constants';
   import Modal from '$lib/components/Modal.svelte';
 
   // ----- state -----

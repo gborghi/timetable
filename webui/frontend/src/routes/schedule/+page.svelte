@@ -1,8 +1,8 @@
 <script>
   import { onMount } from 'svelte';
-  import { api, downloadUrl } from '$lib/api.js';
-  import { flash, refreshDataset } from '$lib/stores.js';
-  import { DAYS, HOURS, DAY_NAMES_IT } from '$lib/constants.js';
+  import { api, downloadUrl } from '$lib/api';
+  import { flash, refreshDataset } from '$lib/stores';
+  import { DAYS, HOURS, DAY_NAMES_IT } from '$lib/constants';
   import MoveModeBanner from '$lib/components/schedule/MoveModeBanner.svelte';
   import RoomDropdown from '$lib/components/schedule/RoomDropdown.svelte';
   import PreviewCellHint from '$lib/components/schedule/PreviewCellHint.svelte';

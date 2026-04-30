@@ -2,8 +2,10 @@
   import '../app.css';
   import { onMount } from 'svelte';
   import { page } from '$app/stores';
+  import { QueryClientProvider } from '@tanstack/svelte-query';
   import { datasetState, refreshDataset, networkOnline,
-           startNetworkMonitor } from '$lib/stores.js';
+           startNetworkMonitor } from '$lib/stores';
+  import { queryClient } from '$lib/queries/client';
   import Toast from '$lib/components/Toast.svelte';
 
   // Brand assets: paths into webui/frontend/static/branding/. The
@@ -46,6 +48,7 @@
   $: cur = $page.url.pathname;
 </script>
 
+<QueryClientProvider client={queryClient}>
 <div class="min-h-screen flex flex-col">
   <a href="#main-content" class="skip-link">Vai al contenuto principale</a>
   {#if !$networkOnline}
@@ -117,3 +120,4 @@
 </div>
 
 <Toast />
+</QueryClientProvider>

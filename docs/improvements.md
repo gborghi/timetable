@@ -52,10 +52,18 @@ sono in `lib/api.js` (thin fetch wrapper), gli store globali in
   `RoomClearedNoticeModal`, `SolutionsTable` in
   `lib/components/schedule/`. Le matrici intere lasciate inline (drag
   state condiviso).
-- **P2** -- migrare a TypeScript. Il fetch wrapper restituisce `any`,
-  i payload modal sono `any`, lo schema Pydantic backend non ha riflesso
-  client. Generare client tipizzato dall'OpenAPI di FastAPI (`openapi-fetch`,
-  `openapi-typescript`) elimina una classe di bug ed espone gli IDE.
+- **P2** [DONE 2026-04-30] -- migrazione TypeScript graduale e
+  completa. tsconfig.json + svelte-check + typescript + tslib +
+  @types/node aggiunti. 6 file `lib/*.js` -> `lib/*.ts` (api,
+  stores, utils, constants, constraint_levels, services/index).
+  Nuovo `lib/types.ts` con i tipi delle 13+ entita' (Teacher,
+  Subject, SchoolClass, Classroom, Curriculum, Student, StudyGroup,
+  CoteachingRule, Assignment, Solution, RunSummary, DatasetState,
+  ApiErrorResponse, Paginated<T>, ConstraintLevel, etc.). I tipi
+  riflettono manualmente gli schemi Pydantic backend; il follow-up
+  e' `openapi-typescript` per auto-generazione (lasciato come
+  task futuro nel docs). `npm run check` verde (0 errori, 152
+  warning a11y pre-esistenti). `npm run build` verde.
 - **P3** -- valutare Svelte 5 (runes mode). Migra la reattivita' a
   `$state` / `$derived`, scompare il pattern fragile
   `editing = JSON.parse(JSON.stringify(row))` (deep-clone manuale).
@@ -81,11 +89,20 @@ con date come Student (`birth_date`) c'e' gia' coercion implicita.
   che si aggiorna automaticamente dopo ogni mutazione. Implementato in
   `lib/stores.js` come `mutationCounter` + `bumpMutation()` con debounce
   di 120ms su `refreshDataset`.
-- **P2** -- adottare un piccolo "query cache" tipo
-  [TanStack Query](https://github.com/svalrog/svelte-query) per i GET di
-  lista. Oggi ogni `listRef.reload()` e' una fetch fresca; un cache con
-  invalidate-on-mutation rende le navigazioni istantanee e abilita
-  optimistic updates.
+- **P2** [DONE 2026-04-30] -- query cache via
+  `@tanstack/svelte-query` ^6.1. `lib/queries/client.ts` espone un
+  QueryClient globale (staleTime 30s, gcTime 5min,
+  refetchOnWindowFocus). `lib/queries/index.ts` espone hook per
+  resource (`teachersQuery.useList()`, `subjectsQuery.useList()`,
+  `classroomsQuery.useList()`, ecc.) + mutation hooks che invalidano
+  la list-key on success. `QueryClientProvider` montato in
+  `+layout.svelte` come root della tree. `mutationCounter` store
+  globale aggancia `invalidateQueries()` su ogni POST/PUT/DELETE
+  cosi' il cache resta consistente con l'auto-bump backend
+  (`MutationBumpMiddleware`). Migrate teachers + classes pages
+  (lookup data subjects/classrooms/curricula): navigazione tornare
+  ad esse e' istantanea (cache hit). Le pagine restanti possono
+  migrare incrementalmente; il pattern e' stabilito.
 
 ### 1.3 Accessibilita'
 

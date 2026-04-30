@@ -1,0 +1,247 @@
+/**
+ * Services layer: per-resource thin facades over $lib/api.ts.
+ *
+ * Each resource exposes the standard CRUD verbs:
+ *   list(), create(body), update(id, body), remove(id)
+ * Plus domain-specific verbs where useful (e.g. classrooms.suggestedCounts,
+ * subjects.groupWeights, schedule.byClass, ...).
+ *
+ * The services are thin on purpose: NO error handling, NO logging,
+ * NO caching. Cross-cutting concerns belong in api.ts / stores.ts and
+ * (now) the TanStack Query layer in `$lib/queries`.
+ */
+
+import { api } from "../api";
+import type {
+  Assignment,
+  Classroom,
+  Curriculum,
+  CoteachingRule,
+  DatasetState,
+  SchoolClass,
+  Solution,
+  Student,
+  StudyGroup,
+  Subject,
+  SubjectGroupWeight,
+  Teacher,
+} from "../types";
+
+// ---------------- Teachers ----------------
+
+export const teachers = {
+  list: () => api.get<Teacher[]>("/api/teachers"),
+  create: (b: Partial<Teacher>) => api.post<Teacher>("/api/teachers", b),
+  update: (id: number, b: Partial<Teacher>) =>
+    api.put<Teacher>("/api/teachers/" + id, b),
+  remove: (id: number) => api.del<void>("/api/teachers/" + id),
+};
+
+// ---------------- Classes -----------------
+
+export const classes = {
+  list: () => api.get<SchoolClass[]>("/api/classes"),
+  create: (b: Partial<SchoolClass>) => api.post<SchoolClass>("/api/classes", b),
+  update: (id: number, b: Partial<SchoolClass>) =>
+    api.put<SchoolClass>("/api/classes/" + id, b),
+  remove: (id: number) => api.del<void>("/api/classes/" + id),
+};
+
+// ---------------- Subjects ----------------
+
+export const subjects = {
+  list: () => api.get<Subject[]>("/api/subjects"),
+  create: (b: Partial<Subject>) => api.post<Subject>("/api/subjects", b),
+  update: (id: number, b: Partial<Subject>) =>
+    api.put<Subject>("/api/subjects/" + id, b),
+  remove: (id: number) => api.del<void>("/api/subjects/" + id),
+  groupWeights: () =>
+    api.get<SubjectGroupWeight[]>("/api/subjects/group-weights"),
+  setGroupWeights: (w: SubjectGroupWeight[]) =>
+    api.put<SubjectGroupWeight[]>("/api/subjects/group-weights", w),
+};
+
+// ---------------- Classrooms --------------
+
+export const classrooms = {
+  list: () => api.get<Classroom[]>("/api/classrooms"),
+  create: (b: Partial<Classroom>) =>
+    api.post<Classroom>("/api/classrooms", b),
+  update: (id: number, b: Partial<Classroom>) =>
+    api.put<Classroom>("/api/classrooms/" + id, b),
+  remove: (id: number) => api.del<void>("/api/classrooms/" + id),
+  suggestedCounts: () =>
+    api.get<{ counts: Record<string, number>; n_classes: number }>(
+      "/api/classrooms/suggested-counts",
+    ),
+  autoGenerate: (b: Record<string, unknown> = {}) =>
+    api.post<{ created: number; n_classes: number }>(
+      "/api/classrooms/auto-generate",
+      b,
+    ),
+};
+
+// ---------------- Students ----------------
+
+export const students = {
+  list: () => api.get<Student[]>("/api/students"),
+  create: (b: Partial<Student>) => api.post<Student>("/api/students", b),
+  update: (id: number, b: Partial<Student>) =>
+    api.put<Student>("/api/students/" + id, b),
+  remove: (id: number) => api.del<void>("/api/students/" + id),
+};
+
+// ---------------- Groups ------------------
+
+export const groups = {
+  list: () => api.get<StudyGroup[]>("/api/groups"),
+  create: (b: Partial<StudyGroup>) =>
+    api.post<StudyGroup>("/api/groups", b),
+  update: (id: number, b: Partial<StudyGroup>) =>
+    api.put<StudyGroup>("/api/groups/" + id, b),
+  remove: (id: number) => api.del<void>("/api/groups/" + id),
+};
+
+// ---------------- Curricula ---------------
+
+export const curricula = {
+  list: () => api.get<Curriculum[]>("/api/curricula"),
+  create: (b: Partial<Curriculum>) =>
+    api.post<Curriculum>("/api/curricula", b),
+  update: (id: number, b: Partial<Curriculum>) =>
+    api.put<Curriculum>("/api/curricula/" + id, b),
+  remove: (id: number) => api.del<void>("/api/curricula/" + id),
+};
+
+// ---------------- Coteaching --------------
+
+export const coteaching = {
+  list: () => api.get<CoteachingRule[]>("/api/coteaching"),
+  create: (b: Partial<CoteachingRule>) =>
+    api.post<CoteachingRule>("/api/coteaching", b),
+  update: (id: number, b: Partial<CoteachingRule>) =>
+    api.put<CoteachingRule>("/api/coteaching/" + id, b),
+  remove: (id: number) => api.del<void>("/api/coteaching/" + id),
+};
+
+// ---------------- Dataset / mock ----------
+
+export const dataset = {
+  state: () => api.get<DatasetState>("/api/dataset/state"),
+  availableProfiles: () =>
+    api.get<{ profiles: string[] }>("/api/dataset/available-profiles"),
+  importProfile: (b: Record<string, unknown>) =>
+    api.post<{ run_id: number }>("/api/dataset/import-profile", b),
+  mock: (b: Record<string, unknown>) =>
+    api.post<{ run_id: number }>("/api/dataset/mock", b),
+  clear: (scope = "all") =>
+    api.post<unknown>(
+      "/api/dataset/clear?scope=" + encodeURIComponent(scope),
+    ),
+};
+
+// ---------------- Schedule ----------------
+
+export const schedule = {
+  byClass: () => api.get<unknown>("/api/schedule/by-class"),
+  byTeacher: () => api.get<unknown>("/api/schedule/by-teacher"),
+  byRoom: () => api.get<unknown>("/api/schedule/by-room"),
+  solutions: () => api.get<Solution[]>("/api/schedule/solutions"),
+  activateSolution: (id: number) =>
+    api.post<unknown>("/api/schedule/solutions/" + id + "/activate"),
+  removeSolution: (id: number) =>
+    api.del<void>("/api/schedule/solutions/" + id),
+  moveLesson: (b: Record<string, unknown>) =>
+    api.put<unknown>("/api/schedule/move-lesson", b),
+  movePreview: (b: Record<string, unknown>) =>
+    api.post<unknown>("/api/schedule/move-preview", b),
+  setLessonClassroom: (lessonId: number, classroom: string, opts = "") =>
+    api.put<unknown>(
+      "/api/schedule/lesson/" + lessonId + "/classroom" + opts,
+      { classroom },
+    ),
+  exportUrl: (
+    kind: "xlsx-classes" | "xlsx-teachers" | "pdf-classes" | "pdf-teachers",
+  ) => "/api/schedule/export/" + kind,
+};
+
+// ---------------- Monitor -----------------
+
+export const monitor = {
+  summary: () => api.get<unknown>("/api/monitor/summary"),
+  conflicts: () => api.get<unknown[]>("/api/monitor/conflicts"),
+  eventLessons: (eventId: number) =>
+    api.get<unknown>("/api/monitor/event/" + eventId + "/lessons"),
+  updateLesson: (
+    eventId: number,
+    lid: number,
+    b: Record<string, unknown>,
+  ) =>
+    api.put<unknown>(
+      "/api/monitor/event/" + eventId + "/lesson/" + lid,
+      b,
+    ),
+};
+
+// ---------------- Assignments -------------
+
+export const assignments = {
+  byClass: () => api.get<unknown>("/api/assignments/by-class"),
+  loads: () => api.get<unknown>("/api/assignments/loads"),
+  teachersForSubject: (subject: string) =>
+    api.get<Assignment[]>(
+      "/api/assignments/teachers-for-subject?subject=" +
+        encodeURIComponent(subject),
+    ),
+  manual: (b: Record<string, unknown>) =>
+    api.put<unknown>("/api/assignments/manual", b),
+  setLock: (id: number, locked: boolean) =>
+    api.post<unknown>(
+      "/api/assignments/lock/" +
+        id +
+        "?locked=" +
+        (locked ? "true" : "false"),
+    ),
+};
+
+// ---------------- Coverage / absences -----
+
+export const coverage = {
+  week: (weekStart: string) =>
+    api.get<unknown>(
+      "/api/coverage/week?week_start=" + encodeURIComponent(weekStart),
+    ),
+  createAbsence: (b: Record<string, unknown>) =>
+    api.post<unknown>("/api/absences", b),
+  removeAbsenceById: (id: number) => api.del<void>("/api/absences/by-id/" + id),
+  removeAbsencesOnDate: (date: string) =>
+    api.del<void>("/api/absences?date=" + encodeURIComponent(date)),
+  createSubstitution: (b: Record<string, unknown>) =>
+    api.post<unknown>("/api/substitutions", b),
+  removeSubstitution: (id: number) =>
+    api.del<void>("/api/substitutions/" + id),
+};
+
+// ---------------- Optimize ----------------
+
+export const optimize = {
+  runs: (limit = 15) => api.get<unknown[]>("/api/optimize/runs?limit=" + limit),
+  endpoints: {
+    mock: "/api/dataset/mock",
+    importProfile: "/api/dataset/import-profile",
+    assignment: "/api/optimize/assignment",
+    phaseB: "/api/optimize/phase-b",
+    metaPrefix: "/api/optimize/meta/",
+    rooms: "/api/optimize/rooms",
+    fullPipeline: "/api/optimize/full-pipeline",
+  },
+};
+
+// ---------------- Logic / DSL -------------
+
+export const logic = {
+  validate: (expression: string) =>
+    api.post<{ ok: boolean; error?: string }>("/api/logic/validate", {
+      expression,
+    }),
+};

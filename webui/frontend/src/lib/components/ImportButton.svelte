@@ -7,8 +7,8 @@
   //   label:    button label (default 'Importa Excel/CSV')
   //   onDone:   callback invoked after a successful import (e.g. to refresh the list)
 
-  import { api, downloadUrl } from '../api.js';
-  import { flash } from '../stores.js';
+  import { api, downloadUrl } from '../api';
+  import { flash } from '../stores';
 
   export let entity = 'teachers';
   export let label = 'Importa Excel/CSV';
