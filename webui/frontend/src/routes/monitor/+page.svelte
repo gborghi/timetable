@@ -19,6 +19,14 @@
   let conflictDialog = null;
   // shape: { event_id, lesson_id, day, hour, classroom_name, details:{teacher_busy,...}, original }
 
+  // Slot picker modal state. Shape:
+  //   { event_id, eventRow, lesson, teacherGrid, classGrid, roomGrid }
+  // teacherGrid/classGrid/roomGrid are filtered slices of the active
+  // solution's by-teacher / by-class / by-room grids for THIS lesson's
+  // owner. They drive the cell coloring.
+  let slotPicker = null;
+  let slotPickerLoading = false;
+
   onMount(async () => {
     try { summary = await api.get('/api/monitor/summary'); } catch { /* */ }
     try { allRooms = (await api.get('/api/classrooms')).map((r) => r.name).sort(); }
@@ -56,6 +64,85 @@
       lessonsByEvent[eventId] = d.lessons;
       lessonsByEvent = lessonsByEvent;
     } catch { /* */ }
+  }
+
+  async function openSlotPicker(eventRow, lesson) {
+    slotPickerLoading = true;
+    try {
+      const [td, cd, rd] = await Promise.all([
+        api.get('/api/schedule/by-teacher'),
+        api.get('/api/schedule/by-class'),
+        api.get('/api/schedule/by-room'),
+      ]);
+      slotPicker = {
+        event_id: eventRow.assignment_id,
+        eventRow,
+        lesson,
+        teacherGrid: td.grid?.[eventRow.teacher_name] ?? {},
+        classGrid:   cd.grid?.[eventRow.class_name]   ?? {},
+        roomGrid:    lesson.classroom_name
+                       ? (rd.grid?.[lesson.classroom_name] ?? {})
+                       : {},
+      };
+    } catch (e) {
+      flash('Errore caricando disponibilita: ' + e.message, 'error');
+    } finally {
+      slotPickerLoading = false;
+    }
+  }
+
+  function slotInfo(d, h) {
+    if (!slotPicker) return null;
+    const tCell = slotPicker.teacherGrid?.[d]?.[h] ?? null;
+    const cCell = slotPicker.classGrid?.[d]?.[h]   ?? null;
+    const rList = slotPicker.roomGrid?.[d]?.[h]    ?? [];
+    const lid = slotPicker.lesson.lesson_id;
+    const isCurrent = (d === slotPicker.lesson.day
+                       && h === slotPicker.lesson.hour);
+    // teacher cell is { lesson_id, class_name, subject, classroom }
+    const teacherBusy = !!tCell && tCell.lesson_id !== lid;
+    // class cell is { lesson_id, teachers[], subjects[], classroom }
+    const classBusy = !!cCell && cCell.lesson_id !== lid;
+    // room list is [{lesson_id, class_name, subject, teacher}]
+    const roomBusy = rList.some((r) => r.lesson_id !== lid);
+    let status = 'free';
+    if (isCurrent) status = 'current';
+    else if (teacherBusy || classBusy) status = 'hard';
+    else if (roomBusy) status = 'room';
+    return { tCell, cCell, rList, isCurrent, teacherBusy, classBusy,
+             roomBusy, status };
+  }
+
+  function slotClass(info) {
+    if (!info) return '';
+    if (info.status === 'current') return 'bg-sky-200 border-sky-500 ring-2 ring-sky-400';
+    if (info.status === 'hard')    return 'bg-red-200 border-red-400 cursor-pointer hover:bg-red-300';
+    if (info.status === 'room')    return 'bg-amber-200 border-amber-400 cursor-pointer hover:bg-amber-300';
+    return 'bg-emerald-50 border-emerald-300 hover:bg-emerald-200 cursor-pointer';
+  }
+
+  function slotTitle(info, d, h) {
+    if (!info) return '';
+    if (info.status === 'current') return `${DAY_NAMES_IT[d]} ${h}:00 (slot attuale)`;
+    const bits = [];
+    if (info.teacherBusy) bits.push('docente impegnato');
+    if (info.classBusy)   bits.push('classe impegnata');
+    if (info.roomBusy)    bits.push('aula occupata');
+    if (bits.length === 0) return `${DAY_NAMES_IT[d]} ${h}:00 - libero`;
+    return `${DAY_NAMES_IT[d]} ${h}:00 - ${bits.join(', ')}`;
+  }
+
+  async function pickSlot(d, h) {
+    if (!slotPicker) return;
+    const info = slotInfo(d, h);
+    if (info?.isCurrent) {
+      slotPicker = null;
+      return;
+    }
+    const { event_id, lesson } = slotPicker;
+    slotPicker = null;
+    // Re-use the existing dry-run + conflict-modal flow.
+    await tryMove(event_id, lesson, d, h, lesson.classroom_name);
   }
 
   async function applyMove(eventId, lesson, newDay, newHour, newRoom,
@@ -232,7 +319,7 @@
             <table class="tbl text-xs w-full">
               <thead>
                 <tr>
-                  <th>#</th><th>Giorno</th><th>Ora</th><th>Aula</th><th></th>
+                  <th>#</th><th>Giorno / Ora</th><th>Aula</th><th></th>
                 </tr>
               </thead>
               <tbody>
@@ -240,28 +327,11 @@
                   <tr>
                     <td class="text-ink-400">#{l.lesson_id}</td>
                     <td>
-                      <select class="text-xs px-1 py-0.5 border border-ink-200 rounded"
-                        on:click|stopPropagation
-                        on:change={(e) => tryMove(
-                          row.assignment_id, l, Number(e.target.value),
-                          l.hour, l.classroom_name)}
-                        value={l.day}>
-                        {#each DAYS as d}
-                          <option value={d}>{DAY_NAMES_IT[d]}</option>
-                        {/each}
-                      </select>
-                    </td>
-                    <td>
-                      <select class="text-xs px-1 py-0.5 border border-ink-200 rounded"
-                        on:click|stopPropagation
-                        on:change={(e) => tryMove(
-                          row.assignment_id, l, l.day,
-                          Number(e.target.value), l.classroom_name)}
-                        value={l.hour}>
-                        {#each HOURS as h}
-                          <option value={h}>{h}:00</option>
-                        {/each}
-                      </select>
+                      <button class="btn !text-xs !px-2 !py-1"
+                        on:click|stopPropagation={() => openSlotPicker(row, l)}
+                        disabled={slotPickerLoading}
+                        title="Apri matrice giorni/ore con disponibilita"
+                      >{DAY_NAMES_IT[l.day]} {l.hour}:00</button>
                     </td>
                     <td>
                       <select class="text-xs px-1 py-0.5 border border-ink-200 rounded"
@@ -289,6 +359,74 @@
     {/if}
   </SortableQueryableList>
 </div>
+
+<Modal open={!!slotPicker}
+       title={slotPicker
+         ? `Sposta ${slotPicker.eventRow.subject} (${slotPicker.eventRow.class_name}) - lezione #${slotPicker.lesson.lesson_id}`
+         : ''}
+       onClose={() => (slotPicker = null)}>
+  {#if slotPicker}
+    <div class="space-y-3">
+      <p class="text-xs text-ink-500">
+        Click su uno slot per spostare la lezione la'.
+        Verde = libero per docente e classe;
+        rosso = HARD (docente o classe gia' impegnati);
+        ambra = aula occupata da un'altra lezione (verra' liberata);
+        azzurro = slot attuale.
+      </p>
+      <div class="overflow-x-auto">
+        <table class="tbl text-xs">
+          <thead>
+            <tr>
+              <th></th>
+              {#each DAYS as d}
+                <th class="text-center">{DAY_NAMES_IT[d]}</th>
+              {/each}
+            </tr>
+          </thead>
+          <tbody>
+            {#each HOURS as h}
+              <tr>
+                <td class="text-ink-500 pr-2 font-mono">{h}:00</td>
+                {#each DAYS as d}
+                  {@const info = slotInfo(d, h)}
+                  <td class="p-1 align-middle">
+                    <button
+                      class="w-full h-12 rounded border-2 transition-colors {slotClass(info)}"
+                      title={slotTitle(info, d, h)}
+                      disabled={info?.isCurrent}
+                      on:click={() => pickSlot(d, h)}>
+                      {#if info?.isCurrent}
+                        <span class="text-sky-900 text-[10px] font-semibold">qui</span>
+                      {:else if info?.status === 'hard'}
+                        <span class="text-red-900 text-[10px]">
+                          {info.teacherBusy ? 'D' : ''}{info.classBusy ? 'C' : ''}
+                        </span>
+                      {:else if info?.status === 'room'}
+                        <span class="text-amber-900 text-[10px]">aula</span>
+                      {:else}
+                        <span class="text-emerald-700 text-[10px]">ok</span>
+                      {/if}
+                    </button>
+                  </td>
+                {/each}
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+      <div class="text-[10px] text-ink-400 flex flex-wrap gap-3">
+        <span><span class="pill !text-[10px]" style="background:#a7f3d0;color:#065f46;">ok</span> libero</span>
+        <span><span class="pill !text-[10px]" style="background:#fecaca;color:#991b1b;">D / C</span> docente / classe gia' impegnati (HARD)</span>
+        <span><span class="pill !text-[10px]" style="background:#fde68a;color:#92400e;">aula</span> aula occupata da altra lezione</span>
+        <span><span class="pill !text-[10px]" style="background:#bae6fd;color:#075985;">qui</span> slot attuale</span>
+      </div>
+      <div class="flex justify-end">
+        <button class="btn" on:click={() => (slotPicker = null)}>Annulla</button>
+      </div>
+    </div>
+  {/if}
+</Modal>
 
 <Modal open={!!conflictDialog}
        title="Conflitto sull'orario di destinazione"
