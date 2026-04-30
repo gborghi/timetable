@@ -30,6 +30,8 @@
   let lastMoveOutcome = null;
   let solutions = [];
   let allRooms = [];
+  // [{name, subjects:[]}] for the AddLessonModal subject filter.
+  let teachersWithSubjects = [];
   // 'move mode' state
   let moveSrc = null;          // {lesson_id, teacher, cls, subject, day, hour}
   let movePreview = null;      // map "d-h" -> {status, reason, delta_soft}
@@ -60,6 +62,13 @@
     await loadAll();
     solutions = await api.get('/api/schedule/solutions');
     allRooms = (await api.get('/api/classrooms')).map((r) => r.name).sort();
+    try {
+      const t = await api.get('/api/teachers');
+      teachersWithSubjects = (t || []).map((x) => ({
+        name: x.name,
+        subjects: x.subjects ?? [],
+      })).sort((a, b) => a.name.localeCompare(b.name));
+    } catch { teachersWithSubjects = []; }
   });
 
   async function loadAll() {
@@ -784,7 +793,8 @@
                 day={addLessonDay}
                 hour={addLessonHour}
                 preset={addLessonPreset}
-                teachers={allTeachers}
+                teachers={teachersWithSubjects.length
+                          ? teachersWithSubjects : allTeachers}
                 classes={allClasses}
                 rooms={allRooms}
                 onClose={() => (addLessonOpen = false)}

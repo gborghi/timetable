@@ -45,7 +45,13 @@
     catch { allRooms = []; }
     try {
       const t = await api.get('/api/teachers');
-      allTeachers = (t || []).map((x) => x.name).sort();
+      // Keep the full {name, subjects} objects so AddEventModal can
+      // filter the materia dropdown by the chosen docente's
+      // abilitazioni.
+      allTeachers = (t || []).map((x) => ({
+        name: x.name,
+        subjects: x.subjects ?? [],
+      })).sort((a, b) => a.name.localeCompare(b.name));
     } catch { allTeachers = []; }
     try {
       const c = await api.get('/api/classes');

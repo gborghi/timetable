@@ -4,7 +4,8 @@
    *
    * Four modes (which field is pre-filled and locked):
    *   mode='class'   -> class fixed; user picks teacher (subject auto-
-   *                     resolved from existing Assignments) + classroom.
+   *                     resolved from existing Assignments OR from the
+   *                     teacher's abilitazioni) + classroom.
    *   mode='teacher' -> teacher fixed; user picks class + subject (auto)
    *                     + classroom.
    *   mode='room'    -> classroom fixed; user picks class + teacher +
@@ -17,9 +18,14 @@
    *
    * Submit flow:
    *   1) POST /api/schedule/lesson on_conflict=dry_run.
-   *   2) If conflict -> show ScheduleConflictModal with svincola/elimina.
-   *   3) If user picks svincola/elimina -> POST again with that strategy.
-   *   4) If no conflict (or after resolution) -> success, close, refresh.
+   *   2) If conflict -> show ScheduleConflictModal with svincola/elimina;
+   *      both options resolve the conflict AND create the lesson via a
+   *      second POST.
+   *   3) If no conflict -> success, close, refresh.
+   *
+   * The submit button is enabled as long as the modal is not busy. We
+   * validate on click and flash an error if a required field is empty,
+   * and we show a green ring on filled valid required fields.
    */
   import { api } from '$lib/api';
   import { flash } from '$lib/stores';
@@ -32,7 +38,7 @@
   export let day = 1;
   export let hour = 8;
   export let preset = {};      // { class_name?, teacher_name?, classroom_name? }
-  export let teachers = [];    // string[]
+  export let teachers = [];    // [{name, subjects:[]}] OR [string] (legacy)
   export let classes = [];     // string[]
   export let rooms = [];       // string[]
   export let onClose = () => { open = false; };
@@ -41,7 +47,7 @@
   // Form state
   let className = '';
   let teacherName = '';
-  let subject = '';   // optional; backend resolves if blank
+  let subject = '';
   let classroomName = '';
   let busy = false;
 
@@ -49,14 +55,33 @@
   let conflictOpen = false;
   let conflictDetails = null;
 
+  // Normalise teachers into [{name, subjects}].
+  $: teacherList = (teachers || []).map((t) =>
+    typeof t === 'string' ? { name: t, subjects: [] } : t,
+  );
+  $: teacherNames = teacherList.map((t) => t.name);
+
+  // Subjects for the currently-selected teacher. If we have no
+  // subjects info (legacy callers), the dropdown becomes a free-text
+  // input via the "(altra...)" option.
+  $: currentTeacher = teacherList.find((t) => t.name === teacherName);
+  $: teacherSubjects = currentTeacher?.subjects ?? [];
+
   $: if (open) {
     // Re-initialise the form whenever we open from a fresh empty cell.
-    className   = preset.class_name   ?? (mode === 'slot' ? '' : '');
+    className   = preset.class_name   ?? '';
     teacherName = preset.teacher_name ?? '';
     classroomName = preset.classroom_name ?? '';
     subject = '';
     conflictOpen = false;
     conflictDetails = null;
+  }
+
+  // If the teacher changes and the chosen subject isn't taught by
+  // them, clear it so we don't keep a stale value.
+  $: if (teacherName && teacherSubjects.length
+         && subject && !teacherSubjects.includes(subject)) {
+    subject = '';
   }
 
   $: titleSlot = `${DAY_NAMES_IT[day] || ''} ${hour}:00`;
@@ -72,14 +97,28 @@
     };
   }
 
-  function canSubmit() {
-    if (!className || !teacherName) return false;
-    return true;
+  // Visual ring helpers (green when filled, red when explicitly missing
+  // after the user attempted to submit).
+  let attempted = false;
+  function fieldClass(value, required) {
+    if (!required) return value ? 'ring-2 ring-emerald-300' : '';
+    if (value) return 'ring-2 ring-emerald-400';
+    if (attempted) return 'ring-2 ring-red-400';
+    return '';
+  }
+
+  function validate() {
+    const missing = [];
+    if (!className) missing.push('classe');
+    if (!teacherName) missing.push('docente');
+    return missing;
   }
 
   async function trySubmit(strategy) {
-    if (!canSubmit()) {
-      flash('Compila classe e docente', 'error');
+    attempted = true;
+    const missing = validate();
+    if (missing.length) {
+      flash('Manca: ' + missing.join(', '), 'error');
       return;
     }
     busy = true;
@@ -112,18 +151,20 @@
   <div class="space-y-3">
     <div class="text-xs text-ink-500">
       Modalita': <code>{mode}</code> -- compila i campi mancanti per
-      creare una nuova lezione nello slot scelto. La materia viene
-      risolta automaticamente se la coppia (classe, docente) ha
-      esattamente una cattedra associata; altrimenti specificala.
+      creare una nuova lezione nello slot scelto. La materia dipende
+      dal docente scelto (vengono mostrate solo le sue abilitazioni).
+      Anello verde = campo valido; anello rosso = campo richiesto
+      mancante (dopo un tentativo di invio).
     </div>
 
     <div class="grid grid-cols-2 gap-3">
       <div class="field">
-        <label>Classe {mode === 'class' ? '(fissa)' : ''}</label>
+        <label>Classe {mode === 'class' ? '(fissa)' : ''} *</label>
         {#if mode === 'class'}
-          <input value={className} disabled class="bg-ink-50"/>
+          <input value={className} disabled
+                 class="bg-ink-50 {fieldClass(className, true)}"/>
         {:else}
-          <select bind:value={className}>
+          <select bind:value={className} class={fieldClass(className, true)}>
             <option value="">-- scegli --</option>
             {#each classes as c}<option value={c}>{c}</option>{/each}
           </select>
@@ -131,29 +172,47 @@
       </div>
 
       <div class="field">
-        <label>Docente {mode === 'teacher' ? '(fisso)' : ''}</label>
+        <label>Docente {mode === 'teacher' ? '(fisso)' : ''} *</label>
         {#if mode === 'teacher'}
-          <input value={teacherName} disabled class="bg-ink-50"/>
+          <input value={teacherName} disabled
+                 class="bg-ink-50 {fieldClass(teacherName, true)}"/>
         {:else}
-          <select bind:value={teacherName}>
+          <select bind:value={teacherName}
+                  class={fieldClass(teacherName, true)}>
             <option value="">-- scegli --</option>
-            {#each teachers as t}<option value={t}>{t}</option>{/each}
+            {#each teacherNames as t}<option value={t}>{t}</option>{/each}
           </select>
         {/if}
       </div>
 
       <div class="field">
         <label>Materia (opzionale)</label>
-        <input bind:value={subject}
-               placeholder="auto se la coppia ha una sola cattedra"/>
+        {#if teacherSubjects.length === 0 && teacherName}
+          <input bind:value={subject}
+                 class={fieldClass(subject, false)}
+                 placeholder="docente senza abilitazioni elencate"/>
+        {:else}
+          <select bind:value={subject}
+                  class={fieldClass(subject, false)}
+                  disabled={!teacherName}>
+            <option value="">{teacherName
+              ? 'auto (se la coppia ha una sola cattedra)'
+              : '-- scegli prima il docente --'}</option>
+            {#each teacherSubjects as s}
+              <option value={s}>{s}</option>
+            {/each}
+          </select>
+        {/if}
       </div>
 
       <div class="field">
         <label>Aula {mode === 'room' ? '(fissa)' : ''}</label>
         {#if mode === 'room'}
-          <input value={classroomName} disabled class="bg-ink-50"/>
+          <input value={classroomName} disabled
+                 class="bg-ink-50 {fieldClass(classroomName, false)}"/>
         {:else}
-          <select bind:value={classroomName}>
+          <select bind:value={classroomName}
+                  class={fieldClass(classroomName, false)}>
             <option value="">(nessuna)</option>
             {#each rooms as r}<option value={r}>{r}</option>{/each}
           </select>
@@ -164,7 +223,7 @@
     <div class="flex justify-end gap-2 pt-3 border-t border-ink-100">
       <button class="btn" on:click={onClose} disabled={busy}>Annulla</button>
       <button class="btn-primary" on:click={() => trySubmit('dry_run')}
-              disabled={busy || !canSubmit()}>
+              disabled={busy}>
         Crea evento
       </button>
     </div>

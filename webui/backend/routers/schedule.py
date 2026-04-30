@@ -425,7 +425,17 @@ def add_lesson(payload: schemas.AddLessonIn,
             404, f"docente {payload.teacher_name!r} non trovato"
         )
 
-    # Resolve subject via existing Assignment(s) for (class, teacher).
+    # Resolve subject. We try in this order:
+    #   (1) Use the explicit `subject` field if given.
+    #   (2) Otherwise, look at existing Assignment(s) for (class, teacher)
+    #       and pick the only one if there's a single match (422 if
+    #       ambiguous; FALLTHROUGH to the abilitazioni heuristic if 0).
+    # If, with the resolved subject, no matching Assignment exists yet,
+    # we auto-create one (hours=1, locked=False) PROVIDED the teacher
+    # is qualified for the subject (teacher_subjects). This lets the
+    # user create an event from any empty cell on /schedule without
+    # having to set up the cattedra in Phase A first.
+    teacher_subject_names = {ts.subject for ts in t.subjects}
     candidate_subjects = [
         a.subject for a in db.query(models.Assignment).filter(
             models.Assignment.class_id == cls.id,
@@ -434,18 +444,9 @@ def add_lesson(payload: schemas.AddLessonIn,
     ]
     subject = payload.subject
     if subject is None:
-        if len(candidate_subjects) == 0:
-            raise HTTPException(
-                422,
-                {
-                    "detail":
-                        f"Nessuna cattedra fra {payload.class_name!r} e "
-                        f"{payload.teacher_name!r}: crea prima la cattedra "
-                        f"in Cattedre / Phase A.",
-                    "code": "no_assignment",
-                },
-            )
-        if len(candidate_subjects) > 1:
+        if len(candidate_subjects) == 1:
+            subject = candidate_subjects[0]
+        elif len(candidate_subjects) > 1:
             raise HTTPException(
                 422,
                 {
@@ -457,18 +458,60 @@ def add_lesson(payload: schemas.AddLessonIn,
                     "candidates": candidate_subjects,
                 },
             )
-        subject = candidate_subjects[0]
-    elif subject not in candidate_subjects:
+        else:
+            raise HTTPException(
+                422,
+                {
+                    "detail":
+                        f"Nessuna cattedra fra {payload.class_name!r} e "
+                        f"{payload.teacher_name!r}: specifica la materia.",
+                    "code": "subject_required",
+                    "candidates": sorted(teacher_subject_names),
+                },
+            )
+    # If a subject was given and the teacher has abilitazioni listed,
+    # enforce "subject must be one the teacher teaches".
+    if (teacher_subject_names
+            and subject not in teacher_subject_names):
         raise HTTPException(
             422,
             {
                 "detail":
-                    f"Cattedra inesistente: {payload.class_name!r}, "
-                    f"{payload.teacher_name!r}, {subject!r}. "
-                    f"Disponibili: {candidate_subjects}.",
-                "code": "no_assignment",
+                    f"Il docente {payload.teacher_name!r} non insegna "
+                    f"{subject!r}. Materie disponibili: "
+                    f"{sorted(teacher_subject_names)}.",
+                "code": "subject_not_taught",
+                "candidates": sorted(teacher_subject_names),
             },
         )
+
+    # Auto-create the Assignment if it doesn't exist yet for this
+    # (class, teacher, subject) triple. Note (class_id, subject) is
+    # UNIQUE, so we also check if the (class, subject) is already
+    # owned by ANOTHER teacher and reject in that case.
+    if subject not in candidate_subjects:
+        clash = db.query(models.Assignment).filter(
+            models.Assignment.class_id == cls.id,
+            models.Assignment.subject == subject,
+        ).first()
+        if clash is not None:
+            raise HTTPException(
+                422,
+                {
+                    "detail":
+                        f"La cattedra {cls.name}/{subject} e' gia' "
+                        f"assegnata a un altro docente "
+                        f"(teacher_id={clash.teacher_id}). "
+                        f"Modifica la cattedra invece di creare un evento.",
+                    "code": "assignment_owned_by_other",
+                },
+            )
+        new_a = models.Assignment(
+            class_id=cls.id, teacher_id=t.id,
+            subject=subject, hours=1, locked=False,
+        )
+        db.add(new_a)
+        db.flush()
 
     cinfo = _conflicts_at_slot(
         db, active.id,
