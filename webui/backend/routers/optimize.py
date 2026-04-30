@@ -89,8 +89,44 @@ def launch_assignment(payload: schemas.AssignmentRunIn):
     rid = optimization.run_assignment(
         time_limit_s=payload.time_limit_s,
         workers=payload.workers, log=payload.log,
+        criterion=payload.criterion,
+        custom_expression=payload.custom_expression,
     )
     return {"run_id": rid}
+
+
+# ---- Phase A criterion / DSL helpers ----
+
+
+@router.get("/phase-a/presets",
+            response_model=list[schemas.ObjectivePresetOut])
+def list_phase_a_presets():
+    """Return the catalogue of Phase-A optimisation presets the
+    frontend renders as a radio list. Each preset carries a key, a
+    label, a short user-facing summary and the underlying DSL
+    expression so the user can inspect (or copy-paste it into the
+    custom editor)."""
+    from ..utils import objective_dsl
+    return [
+        {"key": k, "label": l, "summary": s, "expression": e}
+        for (k, l, s, e) in objective_dsl.PRESETS
+    ]
+
+
+@router.post("/phase-a/validate-expression",
+             response_model=schemas.ObjectiveValidateOut)
+def validate_phase_a_expression(payload: schemas.ObjectiveValidateIn):
+    """Live syntax / vocabulary validation of a custom Phase-A
+    objective expression. Used by the frontend editor as the user
+    types -- so they see "Espressione valida" or the specific error
+    before launching a run."""
+    from ..utils import objective_dsl
+    res = objective_dsl.validate(payload.expression)
+    return {
+        "ok": res.ok,
+        "direction": res.direction,
+        "errors": res.errors,
+    }
 
 
 @router.post("/phase-b")

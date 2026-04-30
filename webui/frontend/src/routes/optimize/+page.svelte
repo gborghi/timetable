@@ -4,6 +4,7 @@
   import { flash, refreshDataset } from '$lib/stores';
   import { OPTIMIZE_DEFAULTS } from '$lib/constants';
   import RunLogPanel from '$lib/components/RunLogPanel.svelte';
+  import PhaseACard from '$lib/components/optimize/PhaseACard.svelte';
 
   let runId = null;
   let runs = [];
@@ -107,21 +108,13 @@
       </div>
     </div>
 
-    <!-- Step 2 -->
-    <div class="card p-5">
-      <h2 class="mb-3">2) Assegnazione docenti -&gt; classi</h2>
-      <div class="grid grid-cols-2 gap-3">
-        <div class="field">
-          <label>Time-limit (s)</label>
-          <input type="number" bind:value={step2.time_limit_s}/>
-        </div>
-        <div class="field">
-          <label>Workers</label>
-          <input type="number" bind:value={step2.workers}/>
-        </div>
-      </div>
-      <button class="btn-primary mt-3" on:click={launchAssignment}>Avvia assegnazione</button>
-    </div>
+    <!-- Step 2: Phase A with criterion selector + custom DSL -->
+    <PhaseACard
+      bind:time_limit_s={step2.time_limit_s}
+      bind:workers={step2.workers}
+      bind:log={step2.log}
+      onLaunch={(p) => go('/api/optimize/assignment', p)}
+    />
 
     <!-- Step 3 -->
     <div class="card p-5">

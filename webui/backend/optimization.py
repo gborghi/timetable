@@ -278,29 +278,73 @@ def import_experiments_profile(profile: str, use_optimized: bool,
 # ----------------------------------------------------------------------
 
 
-def run_assignment(time_limit_s: float, workers: int, log: bool) -> int:
-    params = dict(time_limit_s=time_limit_s, workers=workers, log=log)
-    run_id = create_run("assignment", "Assegnazione docenti->classi",
-                        None, params)
+def run_assignment(time_limit_s: float, workers: int, log: bool,
+                   criterion: str = "balance_curricula",
+                   custom_expression: str | None = None) -> int:
+    """Phase A. When `criterion="custom"` and `custom_expression` is
+    set, the DSL-driven solver is used; otherwise we look up the
+    preset by key and run the same DSL pipeline with the preset's
+    expression. The legacy `cpsat_v2_assignment.solve_assignment`
+    code path is kept as a no-criterion fallback (criterion="legacy")
+    for compatibility with old callers."""
+    params = dict(time_limit_s=time_limit_s, workers=workers, log=log,
+                  criterion=criterion,
+                  custom_expression=custom_expression)
+    run_id = create_run(
+        "assignment",
+        f"Assegnazione docenti->classi ({criterion})",
+        None, params,
+    )
 
     def target(rid: int):
-        import cpsat_v2_assignment as ca  # type: ignore
         with SessionLocal() as db:
             data = engine_io.school_dict_from_db(db)
         if not data["classes"] or not data["teachers"]:
             raise RuntimeError("DB vuoto: importa o genera una scuola.")
-        cattedre, solver, status = ca.solve_assignment(
-            data, time_limit_s=time_limit_s,
-            workers=workers, log=log,
-        )
+
+        if criterion == "legacy":
+            import cpsat_v2_assignment as ca  # type: ignore
+            cattedre, _solver, status = ca.solve_assignment(
+                data, time_limit_s=time_limit_s,
+                workers=workers, log=log,
+            )
+            metrics = {"status": str(status)}
+        else:
+            from .utils import objective_dsl
+            if criterion == "custom":
+                expr = (custom_expression or "").strip()
+                if not expr:
+                    raise RuntimeError(
+                        "criterion=custom richiede custom_expression"
+                    )
+            else:
+                preset = objective_dsl.get_preset(criterion)
+                if preset is None:
+                    raise RuntimeError(
+                        f"Preset Phase A sconosciuto: {criterion!r}. "
+                        f"Disponibili: "
+                        f"{[p[0] for p in objective_dsl.PRESETS]}"
+                    )
+                expr = preset[3]
+            print(f"[assign] criterion={criterion}, expression:\n  {expr}")
+
+            import cpsat_assignment_dsl as ca_dsl  # type: ignore
+            cattedre, _solver, status, dsl_metrics = (
+                ca_dsl.solve_assignment_dsl(
+                    data, expr,
+                    time_limit_s=time_limit_s, workers=workers, log=log,
+                )
+            )
+            metrics = {"status": str(status), **dsl_metrics}
+
         ws = _run_workspace(rid)
         with open(os.path.join(ws, "cattedre.pkl"), "wb") as f:
             pickle.dump(cattedre, f)
         with SessionLocal() as db:
             n = engine_io.import_assignments_into_db(db, cattedre)
         print(f"[assign] saved {n} assignments to DB")
-        update_run(rid, progress=1.0,
-                   metrics={"assignments": n, "status": str(status)})
+        metrics["assignments"] = n
+        update_run(rid, progress=1.0, metrics=metrics)
 
     start_thread(run_id, target)
     return run_id

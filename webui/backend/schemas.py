@@ -278,6 +278,28 @@ class AssignmentRunIn(BaseModel):
     time_limit_s: float = 30.0
     workers: int = 8
     log: bool = True
+    # New: criterion / DSL controls. When `criterion="custom"` the
+    # `custom_expression` is used; otherwise it must match a preset
+    # key (see backend.utils.objective_dsl.PRESETS).
+    criterion: str = "balance_curricula"
+    custom_expression: str | None = None
+
+
+class ObjectiveValidateIn(BaseModel):
+    expression: str
+
+
+class ObjectiveValidateOut(BaseModel):
+    ok: bool
+    direction: str | None = None
+    errors: list[str] = Field(default_factory=list)
+
+
+class ObjectivePresetOut(BaseModel):
+    key: str
+    label: str
+    summary: str
+    expression: str
 
 
 class PhaseBRunIn(BaseModel):
