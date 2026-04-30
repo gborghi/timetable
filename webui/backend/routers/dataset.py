@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import pickle
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from .. import models, schemas, optimization, engine_io
@@ -16,14 +17,17 @@ router = APIRouter(prefix="/api/dataset", tags=["dataset"])
 
 @router.get("/state")
 def get_state(db: Session = Depends(get_db)):
-    """Section 2.4 P1: cached for 30s with mutation invalidation. The
-    9-COUNT scan + active_solution lookup are cheap individually but
-    /api/dataset/state is polled aggressively by the layout (header
-    pills) and Dashboard, so the savings are in served-request count
-    not per-call latency."""
-    return ttl_cached(
-        "dataset.state", ttl_s=30.0, mutation_aware=True,
-        compute=lambda: compute_state(db),
+    """Always-fresh: 9 COUNT queries on indexed tables, <5ms even on
+    superhuge. Originally TTL-cached 30s to reduce poll cost (Section
+    2.4 P1) but the cache occasionally served stale snapshots after
+    background-thread imports (run_manager._runner writes outside the
+    request lifecycle, so the MutationBumpMiddleware doesn't see those
+    writes). Polling 1-2x/s adds <20ms/s of backend CPU which is
+    irrelevant for single-user dev. Cache-Control: no-store also
+    forbids browser/proxy caching."""
+    return JSONResponse(
+        content=compute_state(db),
+        headers={"Cache-Control": "no-store, max-age=0"},
     )
 
 

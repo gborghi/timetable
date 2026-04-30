@@ -15,18 +15,6 @@
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any"
-    },
-    {
-      "src": "/branding/icons/favicon.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "/branding/icons/apple-touch-icon.png",
-      "sizes": "180x180",
-      "type": "image/png",
-      "purpose": "any"
     }
   ]
 }

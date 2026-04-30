@@ -4,6 +4,7 @@ Network panel."""
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from ..db import get_db
@@ -26,16 +27,19 @@ def get_graph(
     ),
     db: Session = Depends(get_db),
 ):
-    """Network graph of the school. Cached for 60s and invalidated on
-    every mutation (assignments, teachers, classes change). Section
-    Dashboard / "Network" panel (new feature).
-    """
+    """Network graph. Server-side cache 60s + mutation-aware; plus
+    Cache-Control: no-store on response so the browser never serves a
+    stale frame after an import."""
     try:
-        return ttl_cached(
+        body = ttl_cached(
             f"dashboard.graph.{mode}",
             ttl_s=60.0,
             mutation_aware=True,
             compute=lambda: build_graph(db, mode),
+        )
+        return JSONResponse(
+            content=body,
+            headers={"Cache-Control": "no-store, max-age=0"},
         )
     except ValueError as e:
         raise HTTPException(400, str(e))

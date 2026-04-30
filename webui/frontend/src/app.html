@@ -9,8 +9,14 @@
           content="piTantum (Tempus Tantum) -- Tutto, Lucilio mio, ci appartiene di altri; soltanto il tempo e' nostro. (Seneca, Ep. I,1) -- sistema di gestione e ottimizzazione dell'orario scolastico." />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" type="image/svg+xml" href="/branding/icons/favicon.svg" />
-    <link rel="icon" type="image/png" href="/branding/icons/favicon.png" />
-    <link rel="apple-touch-icon" href="/branding/icons/apple-touch-icon.png" />
+    <!-- PNG fallback + apple-touch-icon are intentionally NOT linked
+         until Giovanni runs the Grok prompt in
+         branding/icons/grok_prompts.md and drops the PNGs into
+         webui/frontend/static/branding/icons/. The SVG favicon is
+         supported by all modern browsers (Safari 14+, Chrome, Firefox,
+         Edge); only old iOS home-screen needs the apple-touch-icon. -->
+    <!-- <link rel="icon" type="image/png" href="/branding/icons/favicon.png" /> -->
+    <!-- <link rel="apple-touch-icon" href="/branding/icons/apple-touch-icon.png" /> -->
     <link rel="preconnect" href="https://rsms.me/" />
     <link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
     %sveltekit.head%

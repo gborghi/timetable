@@ -349,7 +349,10 @@ def reassign_lesson(assignment_id: int, lesson_id: int,
 
 @router.get("/summary")
 def summary(db: Session = Depends(get_db)):
-    """Section 2.4 P1: cached 15s with mutation invalidation."""
+    """Section 2.4 P1: cached 15s with mutation invalidation. Plus
+    Cache-Control: no-store so browser doesn't keep a stale copy after
+    an import."""
+    from fastapi.responses import JSONResponse
     from ..utils.ttl_cache import cached as ttl_cached
 
     def _compute():
@@ -363,9 +366,13 @@ def summary(db: Session = Depends(get_db)):
             "n_missing_room": sum(1 for r in rows if r["missing_room"]),
             "n_missing_group": sum(1 for r in rows if r["missing_group"]),
         }
-    return ttl_cached(
+    body = ttl_cached(
         "monitor.summary", ttl_s=15.0, mutation_aware=True,
         compute=_compute,
+    )
+    return JSONResponse(
+        content=body,
+        headers={"Cache-Control": "no-store, max-age=0"},
     )
 
 
