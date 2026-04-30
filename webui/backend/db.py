@@ -30,9 +30,26 @@ SessionLocal = sessionmaker(
 
 
 def get_db():
+    """Yield a Session and guarantee rollback on uncaught exception.
+
+    Section 2.9 P1: previously a router that raised mid-write left the
+    session in an inconsistent state, and the next operation on the
+    same session got a "transaction has been rolled back" error. With
+    the explicit rollback, exceptions propagate cleanly to the global
+    handlers in main.py without leaking state.
+
+    Routers can still call `db.commit()` explicitly (most do); the
+    rollback only fires if an unhandled exception bubbles up.
+    """
     db = SessionLocal()
     try:
         yield db
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        raise
     finally:
         db.close()
 
