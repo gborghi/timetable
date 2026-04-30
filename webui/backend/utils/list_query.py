@@ -264,6 +264,42 @@ def event_funcs() -> dict[str, Callable[..., bool]]:
     return {}
 
 
+def event_row_fields() -> dict[str, Callable[[Any], Any]]:
+    """Lesson-granular events used by /api/monitor/event-rows. Mirrors
+    the column shape: teacher / class / subject / day / hour / room /
+    group / scheduled / complete."""
+    return {
+        "teacher": lambda r: r.get("teacher_name") or "",
+        "teacher_name": lambda r: r.get("teacher_name") or "",
+        "docente": lambda r: r.get("teacher_display") or r.get("teacher_name") or "",
+        "class": lambda r: r.get("class_name") or "",
+        "class_name": lambda r: r.get("class_name") or "",
+        "classe": lambda r: r.get("class_name") or "",
+        "subject": lambda r: r.get("subject") or "",
+        "materia": lambda r: r.get("subject") or "",
+        "day": lambda r: (r.get("day") if r.get("day") is not None else 0),
+        "giorno": lambda r: r.get("day_name") or "",
+        "day_name": lambda r: r.get("day_name") or "",
+        "hour": lambda r: (r.get("hour") if r.get("hour") is not None else 0),
+        "ora": lambda r: (r.get("hour") if r.get("hour") is not None else 0),
+        "classroom": lambda r: r.get("classroom_name") or "",
+        "classroom_name": lambda r: r.get("classroom_name") or "",
+        "aula": lambda r: r.get("classroom_name") or "",
+        "group": lambda r: r.get("group_name") or "",
+        "gruppo": lambda r: r.get("group_name") or "",
+        "is_scheduled": lambda r: 1 if r.get("is_scheduled") else 0,
+        "schedulato": lambda r: 1 if r.get("is_scheduled") else 0,
+        "is_complete": lambda r: 1 if r.get("is_complete") else 0,
+        "completo": lambda r: 1 if r.get("is_complete") else 0,
+        "status": lambda r: r.get("status") or "",
+        "stato": lambda r: r.get("status") or "",
+    }
+
+
+def event_row_funcs() -> dict[str, Callable[..., bool]]:
+    return {}
+
+
 # ---------- Constraints (monitor view) ----------
 
 
@@ -298,6 +334,7 @@ _FIELDS_FOR = {
     "students":   (student_fields, student_funcs),
     "groups":     (group_fields, group_funcs),
     "events":     (event_fields, event_funcs),
+    "event_rows": (event_row_fields, event_row_funcs),
     "constraints": (constraint_fields, constraint_funcs),
 }
 

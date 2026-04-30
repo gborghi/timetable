@@ -31,11 +31,67 @@
   // Grouped events view: one row per Lesson + placeholder per missing
   // hour. Two grouping dropdowns let the user split by any pair of
   // attributes.
-  let eventRows = null;       // { items[], n_total, n_unscheduled }
+  let eventRows = null;       // { items[], n_total, n_filtered, n_unscheduled }
   let eventRowsBusy = false;
-  let groupBy1 = 'docente';
-  let groupBy2 = 'classe';
-  let rowFilter = '';         // free-text filter applied to each row
+  let groupBy1 = 'teacher_name';
+  let groupBy2 = 'class_name';
+  // Server-side query + sort (DSL, same syntax as docenti / aule /
+  // classi). Updated whenever the user types into the query box or
+  // clicks a column header.
+  let rowQuery = '';
+  let rowSort = 'docente,classe,giorno,ora';   // default sort
+  let queryError = '';
+  // Collapsible groups: a row is shown only if both the level-1 and
+  // level-2 group keys it belongs to are in `expandedG1` / `expandedG2`.
+  // Expansion default = ALL collapsed (the user toggles them open as
+  // needed). "Untoggle all" expands everything; "Toggle all" collapses.
+  let expandedG1 = new Set();
+  let expandedG2 = new Set();
+  // Sort state for the column-header click rotation: { col: 'asc'|'desc' }.
+  let sortCol = 'docente';
+  let sortDir = 'asc';
+  // Column definitions (label + DSL key for sort).
+  const COLS = [
+    { key: 'docente',         label: 'Docente' },
+    { key: 'classe',          label: 'Classe' },
+    { key: 'materia',         label: 'Materia' },
+    { key: 'giorno',          label: 'Giorno' },
+    { key: 'ora',             label: 'Ora' },
+    { key: 'aula',            label: 'Aula' },
+    { key: 'gruppo',          label: 'Gruppo' },
+    { key: 'stato',           label: 'Stato' },
+  ];
+  function clickSort(colKey) {
+    if (sortCol === colKey) {
+      sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+    } else {
+      sortCol = colKey;
+      sortDir = 'asc';
+    }
+    rowSort = (sortDir === 'desc' ? '-' : '') + sortCol;
+    refreshEventRows();
+  }
+  function toggleAll() {
+    expandedG1 = new Set();
+    expandedG2 = new Set();
+  }
+  function untoggleAll() {
+    expandedG1 = new Set(groupedBuckets.map((b) => b.key1));
+    const all2 = new Set();
+    for (const b of groupedBuckets)
+      for (const sb of b.sub) all2.add(b.key1 + '|' + sb.key2);
+    expandedG2 = all2;
+  }
+  function toggleG1(key) {
+    if (expandedG1.has(key)) expandedG1.delete(key);
+    else expandedG1.add(key);
+    expandedG1 = expandedG1;
+  }
+  function toggleG2(key) {
+    if (expandedG2.has(key)) expandedG2.delete(key);
+    else expandedG2.add(key);
+    expandedG2 = expandedG2;
+  }
   // Group key options. The label is shown in the dropdown; the value
   // is the row attribute name.
   const GROUP_OPTIONS = [
@@ -53,10 +109,17 @@
 
   async function refreshEventRows() {
     eventRowsBusy = true;
+    queryError = '';
     try {
-      eventRows = await api.get('/api/monitor/event-rows');
+      const params = new URLSearchParams();
+      if (rowQuery) params.set('q', rowQuery);
+      if (rowSort) params.set('sort', rowSort);
+      const url = '/api/monitor/event-rows'
+        + (params.toString() ? '?' + params.toString() : '');
+      eventRows = await api.get(url);
     } catch (e) {
       eventRows = null;
+      queryError = e?.message || String(e);
     } finally {
       eventRowsBusy = false;
     }
@@ -79,30 +142,17 @@
     return { label: String(raw ?? ''), sort: String(raw ?? '') };
   }
 
-  // Filter rows by a free-text query (matches teacher / class /
-  // subject / room).
-  function filterRows(rows, q) {
-    if (!q) return rows;
-    const lc = q.toLowerCase();
-    return rows.filter((r) =>
-      [r.teacher_name, r.teacher_display, r.class_name, r.class_nickname,
-       r.subject, r.classroom_name, r.group_name, r.day_name]
-        .filter(Boolean)
-        .some((s) => String(s).toLowerCase().includes(lc)));
-  }
-
   // Two-level grouping: returns Array<{ key1, rows1, sub: Array<{key2, rows2}> }>.
-  // When groupBy1 = 'none', returns a single bucket containing everything.
-  // When groupBy2 = 'none', each bucket has a single sub-bucket.
+  // The rows are already filtered + sorted server-side; we preserve
+  // the server's order inside each leaf bucket.
   function groupRows(rows, k1, k2) {
-    const m1 = new Map();   // label1 -> rows
+    const m1 = new Map();   // label1 -> rows (preserves insertion order)
     for (const r of rows) {
       const v1 = groupValue(r, k1).label;
       if (!m1.has(v1)) m1.set(v1, []);
       m1.get(v1).push(r);
     }
     const buckets = Array.from(m1.entries())
-      .sort((a, b) => a[0].localeCompare(b[0]))
       .map(([label1, rows1]) => {
         const m2 = new Map();
         for (const r of rows1) {
@@ -111,23 +161,18 @@
           m2.get(v2).push(r);
         }
         const sub = Array.from(m2.entries())
-          .sort((a, b) => a[0].localeCompare(b[0]))
-          .map(([label2, rows2]) => ({
-            key2: label2,
-            rows2: rows2.slice().sort(_byTime),
-          }));
+          .map(([label2, rows2]) => ({ key2: label2, rows2 }));
         return { key1: label1, rows1, sub };
       });
     return buckets;
   }
-  function _byTime(a, b) {
-    if (a.day !== b.day) return (a.day ?? 99) - (b.day ?? 99);
-    if (a.hour !== b.hour) return (a.hour ?? 99) - (b.hour ?? 99);
-    return String(a.classroom_name).localeCompare(String(b.classroom_name));
-  }
 
-  $: filteredRows = eventRows ? filterRows(eventRows.items, rowFilter) : [];
-  $: groupedBuckets = groupRows(filteredRows, groupBy1, groupBy2);
+  $: groupedBuckets = eventRows
+    ? groupRows(eventRows.items, groupBy1, groupBy2) : [];
+
+  // Re-issue the query whenever the query input changes.
+  let lastQuery = '';
+  $: if (rowQuery !== lastQuery) { lastQuery = rowQuery; refreshEventRows(); }
 
   // Row "id" for keyed each-blocks: lesson_id when scheduled, otherwise
   // a synthetic key based on the assignment + index.
@@ -194,6 +239,34 @@
     await refreshSummary();
     await refreshIncomplete();
     await refreshEventRows();
+  }
+
+  // From inside the slot-picker modal, drop the Lesson's day/hour
+  // binding altogether: the cattedra stays but becomes unscheduled
+  // (gets a placeholder row in the grouped view + the red panel).
+  // Implementation: delete the Lesson; the parent Assignment is
+  // preserved.
+  async function disassociateFromSlot() {
+    if (!slotPicker) return;
+    const lid = slotPicker.lesson?.lesson_id;
+    if (lid == null) {
+      flash('Lezione senza id; impossibile disassociare.', 'error');
+      return;
+    }
+    if (!confirm('Disassociare questa lezione da '
+        + slotPicker.lesson.day + '/' + slotPicker.lesson.hour
+        + '? La cattedra rimane ma l\'evento diventa non schedulato.')) {
+      return;
+    }
+    try {
+      await api.del('/api/monitor/lesson/' + lid);
+      flash('Lezione disassociata: cattedra preservata.', 'success');
+      slotPicker = null;
+      await refreshAll();
+      if (listRef) await listRef.reload();
+    } catch (e) {
+      flash('Errore: ' + e.message, 'error');
+    }
   }
 
   // For each event row we keep: expanded? + lessons array.
@@ -552,8 +625,10 @@
 
   <!-- Grouped events view: lesson-granularity rows + placeholders for
        unscheduled hours. Two dropdowns let the user split the list by
-       any pair of attributes (docente, classe, materia, giorno, ora,
-       aula, gruppo, stato). -->
+       any pair of attributes; nested groups are collapsible (toggle
+       all / untoggle all); the leaf level supports the same DSL
+       query + click-to-sort headers as the docenti / aule / classi
+       tabs. -->
   <div class="card p-3 flex items-center gap-3 flex-wrap">
     <span class="text-sm font-medium">Raggruppa per:</span>
     <select class="text-sm px-2 py-1 border border-ink-200 rounded"
@@ -565,14 +640,27 @@
             bind:value={groupBy2}>
       {#each GROUP_OPTIONS as o}<option value={o.value}>{o.label}</option>{/each}
     </select>
-    <input type="text" placeholder="filtra (docente, classe, materia, aula...)"
-           class="text-sm px-2 py-1 border border-ink-200 rounded ml-3 flex-1 min-w-32"
-           bind:value={rowFilter}/>
+    <button class="btn !text-xs" on:click={toggleAll}
+            title="Chiudi tutti i gruppi">Toggle all</button>
+    <button class="btn !text-xs" on:click={untoggleAll}
+            title="Apri tutti i gruppi">Untoggle all</button>
     <button class="btn !text-xs" on:click={refreshEventRows}
             disabled={eventRowsBusy}>refresh</button>
+  </div>
+
+  <div class="card p-3 flex items-center gap-3 flex-wrap">
+    <input type="text"
+           placeholder="query DSL: es. 'docente contains Rossi', 'completo = 0', 'aula = LabFisica AND giorno = Lunedi'"
+           class="text-sm px-2 py-1 border border-ink-200 rounded flex-1 min-w-64"
+           bind:value={rowQuery}/>
+    {#if queryError}
+      <span class="text-xs text-red-600">{queryError}</span>
+    {/if}
     {#if eventRows}
       <span class="text-xs text-ink-500">
-        {eventRows.n_total} righe ({eventRows.n_unscheduled} non schedulate)
+        {eventRows.n_filtered ?? eventRows.n_total} / {eventRows.n_total}
+        righe ({eventRows.n_unscheduled} non schedulate)
+        - sort: <code>{rowSort}</code>
       </span>
     {/if}
   </div>
@@ -586,22 +674,32 @@
       <table class="tbl text-xs w-full">
         <thead>
           <tr>
-            <th>Docente</th>
-            <th>Classe</th>
-            <th>Materia</th>
-            <th>Giorno</th>
-            <th>Ora</th>
-            <th>Aula</th>
-            <th>Gruppo</th>
-            <th>Stato</th>
+            {#each COLS as c}
+              <th class="cursor-pointer select-none hover:bg-ink-50"
+                  on:click={() => clickSort(c.key)}
+                  title="Click per ordinare per {c.label}">
+                {c.label}
+                {#if sortCol === c.key}
+                  <span class="text-accent-500">
+                    {sortDir === 'asc' ? '▲' : '▼'}
+                  </span>
+                {/if}
+              </th>
+            {/each}
             <th class="text-right">Azioni</th>
           </tr>
         </thead>
         <tbody>
           {#each groupedBuckets as bucket (bucket.key1)}
+            {@const g1Open = (groupBy1 === 'none') || expandedG1.has(bucket.key1)}
             {#if groupBy1 !== 'none'}
-              <tr style="background-color:#e0e7ff;">
+              <tr style="background-color:#e0e7ff;"
+                  class="cursor-pointer"
+                  on:click={() => toggleG1(bucket.key1)}>
                 <td colspan="9" class="font-semibold py-1 px-2">
+                  <span class="inline-block w-4 text-ink-400">
+                    {g1Open ? '▼' : '▶'}
+                  </span>
                   {GROUP_OPTIONS.find((o) => o.value === groupBy1)?.label || ''}:
                   {bucket.key1 || '(vuoto)'}
                   <span class="text-ink-500 font-normal text-[10px] ml-2">
@@ -610,69 +708,80 @@
                 </td>
               </tr>
             {/if}
-            {#each bucket.sub as sb (bucket.key1 + '|' + sb.key2)}
-              {#if groupBy1 !== 'none' && groupBy2 !== 'none'}
-                <tr style="background-color:#eef2ff;">
-                  <td colspan="9" class="text-[11px] pl-6 py-1">
-                    {GROUP_OPTIONS.find((o) => o.value === groupBy2)?.label || ''}:
-                    <strong>{sb.key2 || '(vuoto)'}</strong>
-                    <span class="text-ink-400 ml-2">{sb.rows2.length}</span>
-                  </td>
-                </tr>
-              {/if}
-              {#each sb.rows2 as r, i (rowId(r, i))}
-                <tr style={r.is_scheduled
-                            ? (r.is_complete ? '' : 'background-color:#fef9c3;')
-                            : 'background-color:#fef2f2;'}>
-                  <td>
-                    <strong>{r.teacher_display}</strong>
-                    <span class="text-[10px] text-ink-400">({r.teacher_name})</span>
-                  </td>
-                  <td>{r.class_name}</td>
-                  <td>{r.subject}</td>
-                  <td>{r.day_name || (r.is_scheduled ? '' : '-')}</td>
-                  <td>{r.hour != null ? r.hour + ':00' : '-'}</td>
-                  <td>
-                    {#if r.classroom_name}
-                      {r.classroom_name}
-                    {:else if r.is_scheduled}
-                      <span class="pill-amber !text-[10px]">no aula</span>
-                    {:else}
-                      <span class="text-ink-300">-</span>
-                    {/if}
-                  </td>
-                  <td>
-                    {#if r.group_name}{r.group_name}
-                    {:else}<span class="text-ink-300">-</span>{/if}
-                  </td>
-                  <td>
-                    {#if r.is_scheduled}
-                      <span class="pill-green !text-[10px]">{r.status}</span>
-                    {:else}
-                      <span class="pill-red !text-[10px]">non schedulato</span>
-                    {/if}
-                  </td>
-                  <td class="text-right whitespace-nowrap">
-                    <button class="btn !text-[10px] !px-2 !py-0.5"
-                            on:click={() => modifyEventRow(r)}
-                            title={r.is_scheduled
-                              ? 'Sposta su un altro giorno/ora'
-                              : 'Schedula questo evento'}>
-                      Modifica
-                    </button>
-                    <button class="btn-red !text-[10px] !px-2 !py-0.5 ml-1"
-                            on:click={() => deleteEventRow(r)}
-                            title={r.is_scheduled
-                              ? 'Rimuovi questa lezione (cattedra preservata)'
-                              : 'Elimina la cattedra (e tutte le sue lezioni)'}>
-                      Elimina
-                    </button>
-                  </td>
-                </tr>
+            {#if g1Open}
+              {#each bucket.sub as sb (bucket.key1 + '|' + sb.key2)}
+                {@const g2Key = bucket.key1 + '|' + sb.key2}
+                {@const g2Open = (groupBy2 === 'none') || expandedG2.has(g2Key)}
+                {#if groupBy1 !== 'none' && groupBy2 !== 'none'}
+                  <tr style="background-color:#eef2ff;"
+                      class="cursor-pointer"
+                      on:click={() => toggleG2(g2Key)}>
+                    <td colspan="9" class="text-[11px] pl-6 py-1">
+                      <span class="inline-block w-4 text-ink-400">
+                        {g2Open ? '▼' : '▶'}
+                      </span>
+                      {GROUP_OPTIONS.find((o) => o.value === groupBy2)?.label || ''}:
+                      <strong>{sb.key2 || '(vuoto)'}</strong>
+                      <span class="text-ink-400 ml-2">{sb.rows2.length}</span>
+                    </td>
+                  </tr>
+                {/if}
+                {#if g2Open}
+                  {#each sb.rows2 as r, i (rowId(r, i))}
+                    <tr style={r.is_scheduled
+                                ? (r.is_complete ? '' : 'background-color:#fef9c3;')
+                                : 'background-color:#fef2f2;'}>
+                      <td>
+                        <strong>{r.teacher_display}</strong>
+                        <span class="text-[10px] text-ink-400">({r.teacher_name})</span>
+                      </td>
+                      <td>{r.class_name}</td>
+                      <td>{r.subject}</td>
+                      <td>{r.day_name || (r.is_scheduled ? '' : '-')}</td>
+                      <td>{r.hour != null ? r.hour + ':00' : '-'}</td>
+                      <td>
+                        {#if r.classroom_name}
+                          {r.classroom_name}
+                        {:else if r.is_scheduled}
+                          <span class="pill-amber !text-[10px]">no aula</span>
+                        {:else}
+                          <span class="text-ink-300">-</span>
+                        {/if}
+                      </td>
+                      <td>
+                        {#if r.group_name}{r.group_name}
+                        {:else}<span class="text-ink-300">-</span>{/if}
+                      </td>
+                      <td>
+                        {#if r.is_scheduled}
+                          <span class="pill-green !text-[10px]">{r.status}</span>
+                        {:else}
+                          <span class="pill-red !text-[10px]">non schedulato</span>
+                        {/if}
+                      </td>
+                      <td class="text-right whitespace-nowrap">
+                        <button class="btn !text-[10px] !px-2 !py-0.5"
+                                on:click={() => modifyEventRow(r)}
+                                title={r.is_scheduled
+                                  ? 'Sposta o disassocia da slot'
+                                  : 'Schedula questo evento'}>
+                          Modifica
+                        </button>
+                        <button class="btn-red !text-[10px] !px-2 !py-0.5 ml-1"
+                                on:click={() => deleteEventRow(r)}
+                                title={r.is_scheduled
+                                  ? 'Rimuovi questa lezione (cattedra preservata)'
+                                  : 'Elimina la cattedra (e tutte le sue lezioni)'}>
+                          Elimina
+                        </button>
+                      </td>
+                    </tr>
+                  {/each}
+                {/if}
               {/each}
-            {/each}
+            {/if}
           {/each}
-          {#if filteredRows.length === 0}
+          {#if eventRows.items.length === 0}
             <tr><td colspan="9" class="text-center text-ink-400 italic py-4">
               Nessun evento da mostrare con questi filtri.
             </td></tr>
@@ -744,7 +853,12 @@
         <span><span class="pill !text-[10px]" style="background:#fde68a;color:#92400e;">aula</span> aula occupata da altra lezione</span>
         <span><span class="pill !text-[10px]" style="background:#bae6fd;color:#075985;">qui</span> slot attuale</span>
       </div>
-      <div class="flex justify-end">
+      <div class="flex items-center justify-end gap-2">
+        <button class="btn-amber !text-xs"
+                on:click={disassociateFromSlot}
+                title="Rimuovi il legame giorno/ora di questa lezione: la cattedra rimane ma diventa incompleta (riapparira' nel pannello rosso e fra gli eventi non schedulati)">
+          Disassocia (rendi non schedulato)
+        </button>
         <button class="btn" on:click={() => (slotPicker = null)}>Annulla</button>
       </div>
     </div>

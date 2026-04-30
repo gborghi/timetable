@@ -246,12 +246,27 @@ def _build_event_rows(db: Session) -> list[dict]:
 
 
 @router.get("/event-rows")
-def list_event_rows(db: Session = Depends(get_db)):
-    """Lesson-granular events for the new grouped Monitor view. See
-    `_build_event_rows` for the row shape."""
+def list_event_rows(q: str | None = Query(None,
+                      description="DSL filter, e.g. 'docente contains "
+                                  "Rossi' or 'is_complete = 0 AND aula "
+                                  "= LabFisica'"),
+                    sort: str | None = Query(None,
+                      description="DSL sort, e.g. 'docente' or "
+                                  "'classe,giorno,ora'"),
+                    db: Session = Depends(get_db)):
+    """Lesson-granular events for the grouped Monitor view. See
+    `_build_event_rows` for the row shape; q/sort use the same DSL
+    as the docenti / aule / classi tabs (see list_query.py)."""
     rows = _build_event_rows(db)
-    return {"items": rows, "n_total": len(rows),
-            "n_unscheduled": sum(1 for r in rows if not r["is_scheduled"])}
+    n_total = len(rows)
+    n_unscheduled = sum(1 for r in rows if not r["is_scheduled"])
+    try:
+        rows = filter_and_sort(rows, "event_rows", q, sort)
+    except QueryError as e:
+        raise HTTPException(400, f"Errore query: {e}")
+    return {"items": rows, "n_total": n_total,
+            "n_filtered": len(rows),
+            "n_unscheduled": n_unscheduled}
 
 
 @router.delete("/lesson/{lesson_id}")
