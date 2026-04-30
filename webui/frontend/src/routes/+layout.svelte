@@ -5,6 +5,18 @@
   import { datasetState, refreshDataset } from '$lib/stores.js';
   import Toast from '$lib/components/Toast.svelte';
 
+  // Brand assets: paths into webui/frontend/static/branding/. The
+  // images are not in the repo until Giovanni uploads them; the UI
+  // gracefully degrades to text-only "Carpe Diem" if the file 404s.
+  const LOGO_LIGHT = '/branding/logo/logo_light.png';
+  let logoOk = false;
+  function onLogoOk() { logoOk = true; }
+  function onLogoErr() { logoOk = false; }
+
+  const APP_VERSION = '0.1';
+  const HORACE_LATIN = 'Carpe diem, quam minimum credula postero.';
+  const HORACE_IT = 'Cogli il giorno presente, fidandoti il meno possibile del domani.';
+
   const links = [
     { href: '/',           label: 'Dashboard',   exact: true  },
     { href: '/teachers',   label: 'Docenti'                  },
@@ -31,8 +43,18 @@
 <div class="min-h-screen flex flex-col">
   <header class="bg-white border-b border-ink-200">
     <div class="max-w-[1500px] mx-auto px-6 py-3 flex items-center gap-4">
-      <a href="/" class="font-semibold tracking-tight">
-        <span class="text-accent-500">Timetable</span> WebUI
+      <a href="/" class="flex items-center gap-3 leading-tight"
+         title={HORACE_LATIN}>
+        <img src={LOGO_LIGHT} alt="Carpe Diem"
+             class="h-9 w-auto"
+             class:hidden={!logoOk}
+             on:load={onLogoOk} on:error={onLogoErr}/>
+        <span class="flex flex-col">
+          <span class="text-xl font-semibold tracking-tight text-accent-500">Carpe Diem</span>
+          <span class="text-[10px] italic text-ink-400 -mt-0.5">
+            {HORACE_LATIN}
+          </span>
+        </span>
       </a>
       <nav class="flex flex-wrap gap-1 ml-4">
         {#each links as l}
@@ -60,8 +82,11 @@
   </main>
 
   <footer class="border-t border-ink-200 bg-white">
-    <div class="max-w-[1500px] mx-auto px-6 py-3 text-xs text-ink-500">
-      Backend: localhost:8000 - Frontend: localhost:5173 - Engine: ortools (esperimenti in <code>experiments/</code>)
+    <div class="max-w-[1500px] mx-auto px-6 py-3 text-xs text-ink-500 flex flex-wrap gap-3 items-baseline">
+      <span class="font-semibold text-ink-600">Carpe Diem</span>
+      <span class="italic">Cogli il giorno</span>
+      <span>v{APP_VERSION}</span>
+      <span class="ml-auto">Backend: localhost:8000 &middot; Frontend: localhost:5173 &middot; Engine: ortools</span>
     </div>
   </footer>
 </div>

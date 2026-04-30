@@ -1,7 +1,18 @@
-# timetable
+# Carpe Diem
 
-School timetable solver and management UI for an Italian Liceo.
-Three layers, all in one repo:
+> *Carpe diem, quam minimum credula postero.*
+> &mdash; Orazio, *Odi*, I, 11
+
+> "Cogli il giorno presente, fidandoti il meno possibile del domani."
+
+Carpe Diem e' un sistema di generazione e gestione dell'orario
+scolastico per un Liceo italiano: assegnazioni docenti-classi,
+ottimizzazione dell'orario settimanale, gestione di assenze e
+supplenze, drag-and-drop con preview live. Il nome e' un
+promemoria del programma: organizzare il tempo della scuola
+**adesso**, senza rimandare al domani la copertura dei buchi.
+
+Tre layer, in un unico repo:
 
 1. **Solver** (`experiments/`) — a CP-SAT pipeline (Google OR-tools)
    with spectral decomposition for very large instances, plus a
@@ -37,6 +48,13 @@ performance numbers across school sizes.
 - **[webui/docs/](webui/docs/)** -- short user-facing guides linked
   from the UI itself (Excel import format, query syntax, bulk
   operations, classroom auto-generation, ...).
+
+## Brand assets
+
+Loghi, banner, icone e screenshot vivono in [`branding/`](branding/).
+Le immagini sono generate da Giovanni Borghi con Grok e licenziate per
+uso interno del progetto. La UI degrada elegantemente al wordmark
+testuale "Carpe Diem" finch&eacute; gli asset non vengono caricati.
 
 ## Quickstart (Windows)
 

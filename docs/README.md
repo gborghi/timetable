@@ -1,7 +1,11 @@
-# timetable - documentation index
+# Carpe Diem - documentation index
 
-Manuale tecnico e di riferimento del progetto. La documentazione e'
-organizzata in sette file tematici; per una versione PDF stampabile
+> *Carpe diem, quam minimum credula postero.*
+> &mdash; Orazio, *Odi*, I, 11
+
+Manuale tecnico e di riferimento del progetto **Carpe Diem** (codename
+interno: `timetable`). La documentazione e' organizzata in sette file
+tematici + un'analisi di miglioramento; per una versione PDF stampabile
 con copertina e indice, vedere [manual.pdf](manual.pdf).
 
 | File                                       | Contenuto |

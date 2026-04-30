@@ -1,6 +1,7 @@
 {
-  "name": "timetable-webui-frontend",
-  "version": "1.0.0",
+  "name": "carpe-diem-frontend",
+  "version": "0.1.0",
+  "description": "Carpe Diem - Cogli il giorno presente, fidandoti il meno possibile del domani.",
   "private": true,
   "type": "module",
   "scripts": {

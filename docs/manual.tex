@@ -1,4 +1,4 @@
-% Manuale tecnico del progetto timetable.
+% Manuale tecnico del progetto Carpe Diem (codename: timetable).
 % ASCII puro, accenti via macro \`e \'e \`a, virgolette ``...''.
 \documentclass[a4paper,11pt,oneside]{report}
 
@@ -56,7 +56,7 @@
 
 \pagestyle{fancy}
 \fancyhf{}
-\fancyhead[L]{\textit{timetable -- manuale tecnico}}
+\fancyhead[L]{\textit{Carpe Diem -- manuale tecnico}}
 \fancyhead[R]{\thepage}
 \renewcommand{\headrulewidth}{0.4pt}
 
@@ -70,16 +70,31 @@
 \begin{titlepage}
 \thispagestyle{empty}
 \centering
-\vspace*{2cm}
+\vspace*{1.6cm}
 
-{\Huge\bfseries timetable\par}
-\vspace{0.6cm}
+{\Huge\bfseries Carpe Diem\par}
+\vspace{0.4cm}
 {\Large\itshape sistema di generazione orario scolastico\par}
 
-\vspace{1.5cm}
-\rule{0.7\textwidth}{0.4pt}
+\vspace{1.0cm}
+\rule{0.5\textwidth}{0.4pt}
 
-\vspace{0.6cm}
+\vspace{0.8cm}
+\begin{minipage}{0.85\textwidth}
+\centering
+\itshape
+``Carpe diem, quam minimum credula postero.''\\
+\upshape\small Orazio, \emph{Odi}, I, 11
+
+\medskip
+\itshape\small
+``Cogli il giorno presente, fidandoti il meno possibile del domani.''
+\end{minipage}
+
+\vspace{1.0cm}
+\rule{0.5\textwidth}{0.4pt}
+
+\vspace{0.8cm}
 {\LARGE Manuale tecnico\par}
 
 \vspace{2.5cm}
@@ -117,8 +132,14 @@ Documentazione sorgente: \texttt{docs/}
 % =========== Cap 1: Introduzione ===========
 \chapter{Introduzione}
 
-Il progetto \emph{timetable} \`e un sistema di generazione e gestione
-dell'orario scolastico per un Liceo italiano. \`E composto di tre layer:
+\emph{Carpe Diem} (codename interno: \texttt{timetable}) \`e un
+sistema di generazione e gestione dell'orario scolastico per un
+Liceo italiano. Il nome richiama il celebre verso oraziano
+``Carpe diem, quam minimum credula postero'' (Orazio, \emph{Odi}, I,
+11): l'app organizza il tempo della scuola \emph{adesso}, senza
+fidarsi del domani per coprire i buchi.
+
+\`E composto di tre layer:
 
 \begin{enumerate}
   \item \textbf{Solver} (\texttt{experiments/}): pipeline CP-SAT

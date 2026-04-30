@@ -50,8 +50,13 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Timetable WebUI",
-    version="1.0",
+    title="Carpe Diem - Timetable API",
+    description=(
+        "Carpe Diem - Cogli il giorno presente, fidandoti il meno "
+        "possibile del domani. (Orazio, Odi I,11)\n\n"
+        "API REST per gestione e ottimizzazione dell'orario scolastico."
+    ),
+    version="0.1.0",
     lifespan=lifespan,
 )
 
@@ -89,7 +94,7 @@ def root():
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "name": "timetable-webui"}
+    return {"status": "ok", "name": "carpe-diem", "version": "0.1.0"}
 
 
 @app.exception_handler(RuntimeError)

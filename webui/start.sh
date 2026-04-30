@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # ============================================================
-#  Timetable WebUI - launcher (Linux / macOS)
+#  Carpe Diem - launcher (Linux / macOS)
+#  "Carpe diem, quam minimum credula postero." (Orazio, Odi I,11)
 # ------------------------------------------------------------
 #  Avvia in background:
 #    - Backend  : uvicorn su  http://127.0.0.1:8000
@@ -44,8 +45,21 @@ c_yellow() { printf '\033[33m%s\033[0m\n' "$*"; }
 c_blue()   { printf '\033[34m%s\033[0m\n' "$*"; }
 
 echo
-echo "============================================================"
-echo " Timetable WebUI launcher (Linux/macOS)"
+cat <<'BANNER'
+============================================================
+  _____                          ____  _
+ / ____|                        |  _ \| |
+| |     __ _ _ __ _ __   ___    | |_) | |
+| |    / _` | '__| '_ \ / _ \   |  _ <| |
+| |___| (_| | |  | |_) |  __/   | |_) | |
+ \_____\__,_|_|  | .__/ \___|   |____/|_|
+                 | |
+                 |_|        C A R P E   D I E M
+------------------------------------------------------------
+ "Carpe diem, quam minimum credula postero."
+                                Orazio, Odi I,11
+============================================================
+BANNER
 echo " Cartella:  $HERE"
 echo "============================================================"
 

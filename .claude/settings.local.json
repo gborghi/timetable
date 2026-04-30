@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(/c/texlive/2024/bin/windows/pdflatex -interaction=nonstopmode -halt-on-error manual.tex)"
+    ]
+  }
+}
