@@ -49,9 +49,28 @@
 
   async function del(row) {
     if (!confirm('Eliminare ' + row.last_name + ' ' + row.first_name + '?')) return;
+    const snapshot = cloneRow(row);
+    delete snapshot.id;
+    delete snapshot.class_name;
+    delete snapshot.n_groups;
     try {
       await studentsSvc.remove(row.id);
       await listRef.reload();
+      flash('Studente eliminato', 'success', {
+        ms: 8000,
+        action: {
+          label: 'Annulla',
+          fn: async () => {
+            try {
+              await studentsSvc.create(snapshot);
+              await listRef.reload();
+              flash('Eliminazione annullata', 'success');
+            } catch (e) {
+              flash('Annullamento fallito: ' + e.message, 'error');
+            }
+          }
+        }
+      });
     } catch (e) { flash('Errore: ' + e.message, 'error'); }
   }
 

@@ -84,10 +84,30 @@
 
   async function del(row) {
     if (!confirm('Eliminare ' + row.name + '?')) return;
+    const snapshot = cloneRow(row);
+    delete snapshot.id;
+    delete snapshot.ore_totali;
+    delete snapshot.n_subjects;
     try {
       await classesSvc.remove(row.id);
       await listRef.reload();
       await refreshDataset();
+      flash('Classe eliminata', 'success', {
+        ms: 8000,
+        action: {
+          label: 'Annulla',
+          fn: async () => {
+            try {
+              await classesSvc.create(snapshot);
+              await listRef.reload();
+              await refreshDataset();
+              flash('Eliminazione annullata', 'success');
+            } catch (e) {
+              flash('Annullamento fallito: ' + e.message, 'error');
+            }
+          }
+        }
+      });
     } catch (e) { flash('Errore: ' + e.message, 'error'); }
   }
 

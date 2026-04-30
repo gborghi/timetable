@@ -198,6 +198,29 @@
     return movePreview[d + '-' + h] || null;
   }
 
+  /**
+   * Keyboard alternative to drag-drop. On a filled cell:
+   *   Enter            -> start move
+   *   Escape           -> cancel move
+   * On any cell while in move-mode:
+   *   Enter            -> confirm move into this slot
+   * Used by the class and teacher matrix cells with tabindex=0.
+   */
+  function onCellKey(ev, cell, d, h, ctx) {
+    if (ev.key === 'Escape' && moveSrc) {
+      ev.preventDefault();
+      cancelMove();
+      return;
+    }
+    if (ev.key !== 'Enter') return;
+    ev.preventDefault();
+    if (moveSrc) {
+      confirmMove(d, h);
+    } else if (cell) {
+      startMove(cell, d, h, ctx);
+    }
+  }
+
   async function setRoom(lessonId, roomName) {
     try {
       const url = '/api/schedule/lesson/' + lessonId + '/classroom'
@@ -320,19 +343,25 @@
               {@const cell = selClassGrid[d][h]}
               {@const key = 'cell-' + d + '-' + h}
               {@const pv = movePreview ? movePreview[d + '-' + h] : null}
-              <div class="cell card !shadow-none p-2 text-xs relative"
+              <div class="cell card !shadow-none p-2 text-xs relative focus:ring-2 focus:ring-accent-500 focus:outline-none"
                 class:drop-target={dropTarget === key && dragging}
                 class:!bg-emerald-100={moveSrc && pv && pv.status === 'ok' && pv.delta_soft !== 0}
                 class:!bg-emerald-50={moveSrc && pv && pv.status === 'ok' && pv.delta_soft === 0}
                 class:!bg-amber-100={moveSrc && pv && pv.status === 'soft_worse'}
                 class:!bg-red-200={moveSrc && pv && pv.status === 'hard_violation'}
                 class:cursor-pointer={moveSrc}
+                tabindex={cell || moveSrc ? 0 : -1}
+                role={cell || moveSrc ? 'button' : undefined}
+                aria-label={cell
+                  ? `${cell.subjects.join('+')} con ${cell.teachers.join(' + ')}, ${DAY_NAMES_IT[d]} ${h}:00. Premi Invio per spostare.`
+                  : (moveSrc ? `Slot vuoto ${DAY_NAMES_IT[d]} ${h}:00. Premi Invio per spostare qui.` : undefined)}
                 title={pv && pv.reason ? pv.reason
                   : (pv && pv.delta_soft != null
                      ? (pv.delta_soft > 0 ? '+' + pv.delta_soft : '' + pv.delta_soft)
                        + ' punti SOFT'
                      : '')}
                 on:click={moveSrc ? () => confirmMove(d, h) : undefined}
+                on:keydown={(e) => onCellKey(e, cell, d, h, 'classes')}
                 on:dragover={(e) => overTarget(e, key)}
                 on:dragleave={leaveTarget}
                 on:drop={(e) => dropOn(e, { day: d, hour: h })}>
@@ -350,8 +379,8 @@
                       {cell.subjects.join('+')}
                     </div>
                     {#if !moveSrc}
-                      <button class="text-[10px] text-accent-500 hover:underline"
-                        title="Sposta..."
+                      <button class="text-[10px] text-accent-500 hover:underline focus-ring"
+                        title="Sposta... (oppure Invio sulla cella)"
                         on:click|stopPropagation={() => startMove(cell, d, h, 'classes')}>
                         sposta
                       </button>
@@ -440,19 +469,25 @@
               {@const cell = selTeacherGrid[d][h]}
               {@const key = 'cell-t-' + d + '-' + h}
               {@const pv = movePreview ? movePreview[d + '-' + h] : null}
-              <div class="cell card !shadow-none p-2 text-xs relative"
+              <div class="cell card !shadow-none p-2 text-xs relative focus:ring-2 focus:ring-accent-500 focus:outline-none"
                 class:drop-target={dropTarget === key && dragging}
                 class:!bg-emerald-100={moveSrc && pv && pv.status === 'ok' && pv.delta_soft !== 0}
                 class:!bg-emerald-50={moveSrc && pv && pv.status === 'ok' && pv.delta_soft === 0}
                 class:!bg-amber-100={moveSrc && pv && pv.status === 'soft_worse'}
                 class:!bg-red-200={moveSrc && pv && pv.status === 'hard_violation'}
                 class:cursor-pointer={moveSrc}
+                tabindex={cell || moveSrc ? 0 : -1}
+                role={cell || moveSrc ? 'button' : undefined}
+                aria-label={cell
+                  ? `${cell.class_name} ${cell.subject}, ${DAY_NAMES_IT[d]} ${h}:00. Premi Invio per spostare.`
+                  : (moveSrc ? `Slot vuoto ${DAY_NAMES_IT[d]} ${h}:00. Premi Invio per spostare qui.` : undefined)}
                 title={pv && pv.reason ? pv.reason
                   : (pv && pv.delta_soft != null
                      ? (pv.delta_soft > 0 ? '+' + pv.delta_soft : '' + pv.delta_soft)
                        + ' punti SOFT'
                      : '')}
                 on:click={moveSrc ? () => confirmMove(d, h) : undefined}
+                on:keydown={(e) => onCellKey(e, cell, d, h, 'teachers')}
                 on:dragover={(e) => overTarget(e, key)}
                 on:dragleave={leaveTarget}
                 on:drop={(e) => dropOn(e, { day: d, hour: h })}>
@@ -470,8 +505,8 @@
                       {cell.class_name}
                     </div>
                     {#if !moveSrc}
-                      <button class="text-[10px] text-accent-500 hover:underline"
-                        title="Sposta..."
+                      <button class="text-[10px] text-accent-500 hover:underline focus-ring"
+                        title="Sposta... (oppure Invio sulla cella)"
                         on:click|stopPropagation={() => startMove(cell, d, h, 'teachers')}>
                         sposta
                       </button>

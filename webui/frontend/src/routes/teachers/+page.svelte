@@ -162,10 +162,32 @@
 
   async function del(row) {
     if (!confirm('Eliminare ' + row.name + '?')) return;
+    // Snapshot the row before destroying it so UNDO can rebuild it.
+    const snapshot = cloneRow(row);
+    delete snapshot.id;
+    delete snapshot.scheduled_hours;
+    delete snapshot.n_classes;
+    delete snapshot.soft_penalty_total;
     try {
       await teachers.remove(row.id);
       await listRef.reload();
       await refreshDataset();
+      flash('Docente eliminato', 'success', {
+        ms: 8000,
+        action: {
+          label: 'Annulla',
+          fn: async () => {
+            try {
+              await teachers.create(snapshot);
+              await listRef.reload();
+              await refreshDataset();
+              flash('Eliminazione annullata', 'success');
+            } catch (e) {
+              flash('Annullamento fallito: ' + e.message, 'error');
+            }
+          }
+        }
+      });
     } catch (e) {
       flash('Errore: ' + e.message, 'error');
     }
