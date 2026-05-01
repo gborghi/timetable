@@ -58,11 +58,13 @@
     return sortLevels.map((l) => `${l.column},${l.direction}`).join(':');
   }
 
-  // Collapsible groups: a row is shown only if both the level-1 and
-  // level-2 group keys it belongs to are in `expandedG1` / `expandedG2`.
-  // Expansion default = ALL collapsed; "Untoggle all" expands everything.
-  let expandedG1 = new Set();
-  let expandedG2 = new Set();
+  // Collapsible groups: by DEFAULT every group is EXPANDED (the user
+  // sees all rows). The user collapses individual groups by clicking
+  // the header (or all of them with "Toggle all"). We track the
+  // collapsed set rather than the expanded one so the default state
+  // (empty set) means everything visible.
+  let collapsedG1 = new Set();
+  let collapsedG2 = new Set();
 
   // Column definitions (label + DSL key used by the backend
   // event_row_fields registry).
@@ -117,26 +119,29 @@
     refreshEventRows();
   }
 
+  // "Toggle all" collapses every group (adds every key to the
+  // collapsed set). "Untoggle all" expands every group (clears the
+  // collapsed set).
   function toggleAll() {
-    expandedG1 = new Set();
-    expandedG2 = new Set();
-  }
-  function untoggleAll() {
-    expandedG1 = new Set(groupedBuckets.map((b) => b.key1));
+    collapsedG1 = new Set(groupedBuckets.map((b) => b.key1));
     const all2 = new Set();
     for (const b of groupedBuckets)
       for (const sb of b.sub) all2.add(b.key1 + '|' + sb.key2);
-    expandedG2 = all2;
+    collapsedG2 = all2;
+  }
+  function untoggleAll() {
+    collapsedG1 = new Set();
+    collapsedG2 = new Set();
   }
   function toggleG1(key) {
-    if (expandedG1.has(key)) expandedG1.delete(key);
-    else expandedG1.add(key);
-    expandedG1 = expandedG1;
+    if (collapsedG1.has(key)) collapsedG1.delete(key);
+    else collapsedG1.add(key);
+    collapsedG1 = collapsedG1;
   }
   function toggleG2(key) {
-    if (expandedG2.has(key)) expandedG2.delete(key);
-    else expandedG2.add(key);
-    expandedG2 = expandedG2;
+    if (collapsedG2.has(key)) collapsedG2.delete(key);
+    else collapsedG2.add(key);
+    collapsedG2 = collapsedG2;
   }
   // Group key options. The label is shown in the dropdown; the value
   // is the row attribute name.
@@ -153,16 +158,25 @@
     { value: 'is_complete',    label: 'Completo?' },
   ];
 
+  // Last URL we sent to the backend -- exposed in the UI so the user
+  // can confirm at a glance whether their sort/query is making it
+  // through.
+  let lastQueryUrl = '';
+
   async function refreshEventRows() {
     eventRowsBusy = true;
     queryError = '';
+    const params = new URLSearchParams();
+    if (appliedQuery) params.set('q', appliedQuery);
+    const sortStr = buildSortString();
+    if (sortStr) params.set('sort', sortStr);
+    // Add a cache-buster so the browser CANNOT short-circuit our
+    // request (some browsers ignore Cache-Control: no-store on
+    // f5/back-forward navigations).
+    params.set('_t', String(Date.now()));
+    const url = '/api/monitor/event-rows?' + params.toString();
+    lastQueryUrl = url;
     try {
-      const params = new URLSearchParams();
-      if (appliedQuery) params.set('q', appliedQuery);
-      const sortStr = buildSortString();
-      if (sortStr) params.set('sort', sortStr);
-      const url = '/api/monitor/event-rows'
-        + (params.toString() ? '?' + params.toString() : '');
       eventRows = await api.get(url);
     } catch (e) {
       // Preserve the previous eventRows so the user can still see the
@@ -728,6 +742,13 @@
     </span>
   </div>
 
+  {#if lastQueryUrl}
+    <div class="text-[10px] text-ink-400 font-mono px-3">
+      <span class="text-ink-500">Ultima richiesta:</span>
+      <code>{lastQueryUrl.replace(/&_t=\d+/, '')}</code>
+    </div>
+  {/if}
+
   {#if queryError}
     <div class="card p-2 text-xs text-red-700 bg-red-50 border-red-300">
       Errore query: {queryError}
@@ -827,7 +848,7 @@
         </thead>
         <tbody>
           {#each groupedBuckets as bucket (bucket.key1)}
-            {@const g1Open = (groupBy1 === 'none') || expandedG1.has(bucket.key1)}
+            {@const g1Open = (groupBy1 === 'none') || !collapsedG1.has(bucket.key1)}
             {#if groupBy1 !== 'none'}
               <tr style="background-color:#e0e7ff;"
                   class="cursor-pointer"
@@ -847,7 +868,7 @@
             {#if g1Open}
               {#each bucket.sub as sb (bucket.key1 + '|' + sb.key2)}
                 {@const g2Key = bucket.key1 + '|' + sb.key2}
-                {@const g2Open = (groupBy2 === 'none') || expandedG2.has(g2Key)}
+                {@const g2Open = (groupBy2 === 'none') || !collapsedG2.has(g2Key)}
                 {#if groupBy1 !== 'none' && groupBy2 !== 'none'}
                   <tr style="background-color:#eef2ff;"
                       class="cursor-pointer"
