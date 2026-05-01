@@ -36,41 +36,83 @@
   let groupBy1 = 'teacher_name';
   let groupBy2 = 'class_name';
   // Server-side query + sort (DSL, same syntax as docenti / aule /
-  // classi). Updated whenever the user types into the query box or
-  // clicks a column header.
-  let rowQuery = '';
-  let rowSort = 'docente,classe,giorno,ora';   // default sort
+  // classi). Sort uses the same multi-level pattern as
+  // SortableQueryableList: double-click on a column label to add/remove
+  // a level (max 4); click on the ▲/▼ indicator to flip direction;
+  // "Reset sort" clears every level.
+  let rowQuery = '';                  // current value in the input box
+  let appliedQuery = '';              // last query actually sent
+  let sortLevels = [                  // [{column, direction}, ...]
+    { column: 'docente', direction: 'asc' },
+    { column: 'classe',  direction: 'asc' },
+    { column: 'giorno',  direction: 'asc' },
+    { column: 'ora',     direction: 'asc' },
+  ];
+  const MAX_SORT_LEVELS = 4;
   let queryError = '';
+  let showQueryHelp = false;
+
+  $: rowSortString = sortLevels.map((l) => `${l.column},${l.direction}`).join(':');
+
   // Collapsible groups: a row is shown only if both the level-1 and
   // level-2 group keys it belongs to are in `expandedG1` / `expandedG2`.
-  // Expansion default = ALL collapsed (the user toggles them open as
-  // needed). "Untoggle all" expands everything; "Toggle all" collapses.
+  // Expansion default = ALL collapsed; "Untoggle all" expands everything.
   let expandedG1 = new Set();
   let expandedG2 = new Set();
-  // Sort state for the column-header click rotation: { col: 'asc'|'desc' }.
-  let sortCol = 'docente';
-  let sortDir = 'asc';
-  // Column definitions (label + DSL key for sort).
+
+  // Column definitions (label + DSL key used by the backend
+  // event_row_fields registry).
   const COLS = [
-    { key: 'docente',         label: 'Docente' },
-    { key: 'classe',          label: 'Classe' },
-    { key: 'materia',         label: 'Materia' },
-    { key: 'giorno',          label: 'Giorno' },
-    { key: 'ora',             label: 'Ora' },
-    { key: 'aula',            label: 'Aula' },
-    { key: 'gruppo',          label: 'Gruppo' },
-    { key: 'stato',           label: 'Stato' },
+    { key: 'docente', label: 'Docente' },
+    { key: 'classe',  label: 'Classe' },
+    { key: 'materia', label: 'Materia' },
+    { key: 'giorno',  label: 'Giorno' },
+    { key: 'ora',     label: 'Ora' },
+    { key: 'aula',    label: 'Aula' },
+    { key: 'gruppo',  label: 'Gruppo' },
+    { key: 'stato',   label: 'Stato' },
   ];
-  function clickSort(colKey) {
-    if (sortCol === colKey) {
-      sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+
+  // Multi-level sort: dblclick on label adds (or removes if already
+  // present) the column. Single click on the small ▲/▼ next to it
+  // flips direction. Three-or-more levels behave the same — we cap
+  // at MAX_SORT_LEVELS so the URL stays readable.
+  function onLabelDblClick(colKey) {
+    const idx = sortLevels.findIndex((l) => l.column === colKey);
+    if (idx >= 0) {
+      sortLevels = sortLevels.filter((_, i) => i !== idx);
+    } else if (sortLevels.length < MAX_SORT_LEVELS) {
+      sortLevels = [...sortLevels, { column: colKey, direction: 'asc' }];
     } else {
-      sortCol = colKey;
-      sortDir = 'asc';
+      flash(`Massimo ${MAX_SORT_LEVELS} livelli di sort.`, 'error');
+      return;
     }
-    rowSort = (sortDir === 'desc' ? '-' : '') + sortCol;
     refreshEventRows();
   }
+  function onIndicatorClick(colKey) {
+    const idx = sortLevels.findIndex((l) => l.column === colKey);
+    if (idx < 0) return;
+    sortLevels = sortLevels.map((l, i) => i === idx
+      ? { ...l, direction: l.direction === 'asc' ? 'desc' : 'asc' }
+      : l);
+    refreshEventRows();
+  }
+  function resetSort() {
+    if (sortLevels.length === 0) return;
+    sortLevels = [];
+    refreshEventRows();
+  }
+  function resetQuery() {
+    if (!rowQuery && !appliedQuery) return;
+    rowQuery = '';
+    appliedQuery = '';
+    refreshEventRows();
+  }
+  function applyQuery() {
+    appliedQuery = rowQuery;
+    refreshEventRows();
+  }
+
   function toggleAll() {
     expandedG1 = new Set();
     expandedG2 = new Set();
@@ -112,8 +154,8 @@
     queryError = '';
     try {
       const params = new URLSearchParams();
-      if (rowQuery) params.set('q', rowQuery);
-      if (rowSort) params.set('sort', rowSort);
+      if (appliedQuery) params.set('q', appliedQuery);
+      if (rowSortString) params.set('sort', rowSortString);
       const url = '/api/monitor/event-rows'
         + (params.toString() ? '?' + params.toString() : '');
       eventRows = await api.get(url);
@@ -143,16 +185,19 @@
   }
 
   // Two-level grouping: returns Array<{ key1, rows1, sub: Array<{key2, rows2}> }>.
-  // The rows are already filtered + sorted server-side; we preserve
-  // the server's order inside each leaf bucket.
+  // GROUPS themselves are sorted alphabetically by their label so the
+  // nest order is predictable. Leaf rows INSIDE each bucket preserve
+  // the server's multi-level sort (the backend sorts the flat list
+  // before we group; Map preserves insertion order).
   function groupRows(rows, k1, k2) {
-    const m1 = new Map();   // label1 -> rows (preserves insertion order)
+    const m1 = new Map();
     for (const r of rows) {
       const v1 = groupValue(r, k1).label;
       if (!m1.has(v1)) m1.set(v1, []);
       m1.get(v1).push(r);
     }
     const buckets = Array.from(m1.entries())
+      .sort((a, b) => a[0].localeCompare(b[0], 'it'))
       .map(([label1, rows1]) => {
         const m2 = new Map();
         for (const r of rows1) {
@@ -161,6 +206,7 @@
           m2.get(v2).push(r);
         }
         const sub = Array.from(m2.entries())
+          .sort((a, b) => a[0].localeCompare(b[0], 'it'))
           .map(([label2, rows2]) => ({ key2: label2, rows2 }));
         return { key1: label1, rows1, sub };
       });
@@ -169,10 +215,6 @@
 
   $: groupedBuckets = eventRows
     ? groupRows(eventRows.items, groupBy1, groupBy2) : [];
-
-  // Re-issue the query whenever the query input changes.
-  let lastQuery = '';
-  $: if (rowQuery !== lastQuery) { lastQuery = rowQuery; refreshEventRows(); }
 
   // Row "id" for keyed each-blocks: lesson_id when scheduled, otherwise
   // a synthetic key based on the assignment + index.
@@ -629,6 +671,7 @@
        all / untoggle all); the leaf level supports the same DSL
        query + click-to-sort headers as the docenti / aule / classi
        tabs. -->
+  <!-- Grouping + collapse controls -->
   <div class="card p-3 flex items-center gap-3 flex-wrap">
     <span class="text-sm font-medium">Raggruppa per:</span>
     <select class="text-sm px-2 py-1 border border-ink-200 rounded"
@@ -644,26 +687,95 @@
             title="Chiudi tutti i gruppi">Toggle all</button>
     <button class="btn !text-xs" on:click={untoggleAll}
             title="Apri tutti i gruppi">Untoggle all</button>
-    <button class="btn !text-xs" on:click={refreshEventRows}
-            disabled={eventRowsBusy}>refresh</button>
   </div>
 
-  <div class="card p-3 flex items-center gap-3 flex-wrap">
-    <input type="text"
-           placeholder="query DSL: es. 'docente contains Rossi', 'completo = 0', 'aula = LabFisica AND giorno = Lunedi'"
-           class="text-sm px-2 py-1 border border-ink-200 rounded flex-1 min-w-64"
-           bind:value={rowQuery}/>
-    {#if queryError}
-      <span class="text-xs text-red-600">{queryError}</span>
-    {/if}
-    {#if eventRows}
-      <span class="text-xs text-ink-500">
+  <!-- Query bar with Cerca / Reset query / Reset sort, like the
+       docenti / aule / classi tabs. -->
+  <div class="card p-3 flex flex-wrap gap-2 items-end">
+    <div class="flex-1 min-w-64">
+      <label class="text-xs text-ink-500">Query</label>
+      <input class="w-full px-2 py-1.5 rounded-md border border-ink-200 font-mono text-sm"
+             placeholder="es. docente contains Rossi, completo = 0, aula = LabFisica AND giorno = Lunedi"
+             bind:value={rowQuery}
+             on:keydown={(e) => { if (e.key === 'Enter') applyQuery(); }}/>
+    </div>
+    <button class="btn" on:click={applyQuery} disabled={eventRowsBusy}>
+      {eventRowsBusy ? '...' : 'Cerca'}
+    </button>
+    <button class="btn !text-xs"
+            on:click={() => (showQueryHelp = !showQueryHelp)}>?  guida</button>
+    <span class="border-l border-ink-200 h-6 mx-1"></span>
+    <button class="btn !text-xs" on:click={resetQuery}
+            disabled={!rowQuery && !appliedQuery}
+            title="Svuota la barra di ricerca">Reset query</button>
+    <button class="btn !text-xs" on:click={resetSort}
+            disabled={sortLevels.length === 0}
+            title="Torna all'ordine originale">Reset sort</button>
+    <span class="text-xs text-ink-500 ml-auto">
+      {#if eventRowsBusy}
+        aggiorno...
+      {:else if eventRows}
         {eventRows.n_filtered ?? eventRows.n_total} / {eventRows.n_total}
         righe ({eventRows.n_unscheduled} non schedulate)
-        - sort: <code>{rowSort}</code>
-      </span>
-    {/if}
+      {/if}
+    </span>
   </div>
+
+  {#if queryError}
+    <div class="card p-2 text-xs text-red-700 bg-red-50 border-red-300">
+      Errore query: {queryError}
+    </div>
+  {/if}
+
+  {#if sortLevels.length > 0}
+    <div class="card p-2 text-xs flex flex-wrap items-center gap-2 bg-accent-500/5 border-accent-500/30">
+      <span class="text-ink-500">Sort attivo:</span>
+      {#each sortLevels as l, i}
+        <span class="pill pill-blue">
+          {i + 1}. {l.column} {l.direction === 'asc' ? '▲' : '▼'}
+        </span>
+      {/each}
+      <span class="text-ink-400 italic ml-2">
+        doppio click sul nome colonna per aggiungere/rimuovere; click su ▲/▼ per invertire.
+        Quando le righe sono raggruppate, il sort si applica all'interno di ogni nest.
+      </span>
+    </div>
+  {/if}
+
+  {#if showQueryHelp}
+    <div class="card p-3 text-xs space-y-2 bg-ink-50">
+      <div>
+        <strong>Operatori:</strong>
+        <code>= != &lt; &lt;= &gt; &gt;= contains startswith endswith in [...]</code>
+      </div>
+      <div>
+        <strong>Logica:</strong> <code>AND</code> / <code>OR</code> /
+        parentesi <code>(...)</code>.
+      </div>
+      <div>
+        <strong>Campi disponibili:</strong>
+        <code>docente, classe, materia, giorno, ora, aula, gruppo,
+              schedulato, completo, stato</code>
+      </div>
+      <div>
+        <strong>Esempi:</strong>
+        <ul class="list-disc list-inside">
+          <li><code>completo = 0</code></li>
+          <li><code>schedulato = 0</code></li>
+          <li><code>aula = LabFisica AND giorno = Lunedi</code></li>
+          <li><code>docente contains Rossi</code></li>
+          <li><code>materia in [Matematica, Fisica]</code></li>
+        </ul>
+      </div>
+      <div class="text-ink-500">
+        <strong>Sort multi-livello:</strong>
+        doppio click sul nome di una colonna per aggiungere/rimuovere
+        un livello (max {MAX_SORT_LEVELS}); click sulla freccia ▲/▼ per
+        invertire. Il sort viene applicato anche dentro ogni nest del
+        raggruppamento.
+      </div>
+    </div>
+  {/if}
 
   {#if !eventRows}
     <div class="card p-4 text-sm text-ink-500">
@@ -675,15 +787,30 @@
         <thead>
           <tr>
             {#each COLS as c}
-              <th class="cursor-pointer select-none hover:bg-ink-50"
-                  on:click={() => clickSort(c.key)}
-                  title="Click per ordinare per {c.label}">
-                {c.label}
-                {#if sortCol === c.key}
-                  <span class="text-accent-500">
-                    {sortDir === 'asc' ? '▲' : '▼'}
-                  </span>
-                {/if}
+              {@const idx = sortLevels.findIndex((l) => l.column === c.key)}
+              {@const dir = idx >= 0 ? sortLevels[idx].direction : null}
+              <th class="select-none">
+                <span class="inline-flex items-center gap-1">
+                  <button class="hover:text-accent-500"
+                          title="Doppio click per aggiungere/rimuovere dal sort"
+                          on:dblclick={() => onLabelDblClick(c.key)}>
+                    {c.label}
+                  </button>
+                  {#if dir}
+                    <button class="text-[10px] text-accent-500"
+                            title="Click per invertire direzione"
+                            on:click|stopPropagation={() => onIndicatorClick(c.key)}>
+                      {dir === 'asc' ? '▲' : '▼'}
+                    </button>
+                    {#if sortLevels.length > 1}
+                      <span class="text-[9px] bg-accent-500 text-white rounded-full
+                                   w-4 h-4 inline-flex items-center justify-center"
+                            title="Livello {idx + 1}">
+                        {idx + 1}
+                      </span>
+                    {/if}
+                  {/if}
+                </span>
               </th>
             {/each}
             <th class="text-right">Azioni</th>
