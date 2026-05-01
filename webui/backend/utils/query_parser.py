@@ -41,9 +41,14 @@ _TOKEN_RE = re.compile(
     (?P<op>(<=|>=|!=|=|<|>))                  |
     (?P<dq>"(?:[^"\\]|\\.)*")                 |
     (?P<sq>'(?:[^'\\]|\\.)*')                 |
-    (?P<num>-?\d+(?:\.\d+)?)                  |
-    (?P<word>[A-Za-zA-Z_À-ſ]
-             [A-Za-z0-9_À-ſ]*)
+    # Word: any run of letters / digits / underscore / accented letters
+    # that contains AT LEAST ONE non-digit character. This lets us
+    # tokenize bare values that start with a digit (e.g. "3B",
+    # "3B_scientifico", "1A") as a single word so queries like
+    # `classe = 3B_scientifico` work without quoting. Pure-digit
+    # tokens fall through to `num` below.
+    (?P<word>[A-Za-z0-9_À-ſ]*[A-Za-z_À-ſ][A-Za-z0-9_À-ſ]*) |
+    (?P<num>-?\d+(?:\.\d+)?)
     """,
     re.VERBOSE,
 )
