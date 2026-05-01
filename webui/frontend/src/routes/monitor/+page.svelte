@@ -42,17 +42,21 @@
   // "Reset sort" clears every level.
   let rowQuery = '';                  // current value in the input box
   let appliedQuery = '';              // last query actually sent
-  let sortLevels = [                  // [{column, direction}, ...]
-    { column: 'docente', direction: 'asc' },
-    { column: 'classe',  direction: 'asc' },
-    { column: 'giorno',  direction: 'asc' },
-    { column: 'ora',     direction: 'asc' },
-  ];
-  const MAX_SORT_LEVELS = 4;
+  // Start with NO sort levels (Cattedra-default order from the
+  // backend). Double-clicking a column header adds the first level.
+  let sortLevels = [];                // [{column, direction}, ...]
+  const MAX_SORT_LEVELS = 3;          // per Giovanni's spec: max 3 levels
   let queryError = '';
   let showQueryHelp = false;
 
-  $: rowSortString = sortLevels.map((l) => `${l.column},${l.direction}`).join(':');
+  // Build the sort string SYNCHRONOUSLY from the current sortLevels;
+  // we deliberately DO NOT use a `$:` reactive variable here because
+  // Svelte schedules reactive recomputations after the current tick,
+  // which would race with `refreshEventRows()` called immediately
+  // after a sortLevels reassignment.
+  function buildSortString() {
+    return sortLevels.map((l) => `${l.column},${l.direction}`).join(':');
+  }
 
   // Collapsible groups: a row is shown only if both the level-1 and
   // level-2 group keys it belongs to are in `expandedG1` / `expandedG2`.
@@ -155,12 +159,15 @@
     try {
       const params = new URLSearchParams();
       if (appliedQuery) params.set('q', appliedQuery);
-      if (rowSortString) params.set('sort', rowSortString);
+      const sortStr = buildSortString();
+      if (sortStr) params.set('sort', sortStr);
       const url = '/api/monitor/event-rows'
         + (params.toString() ? '?' + params.toString() : '');
       eventRows = await api.get(url);
     } catch (e) {
-      eventRows = null;
+      // Preserve the previous eventRows so the user can still see the
+      // existing data alongside the error -- otherwise the table
+      // disappears and they think nothing happened.
       queryError = e?.message || String(e);
     } finally {
       eventRowsBusy = false;
@@ -791,8 +798,10 @@
               {@const dir = idx >= 0 ? sortLevels[idx].direction : null}
               <th class="select-none">
                 <span class="inline-flex items-center gap-1">
-                  <button class="hover:text-accent-500"
-                          title="Doppio click per aggiungere/rimuovere dal sort"
+                  <button class="hover:text-accent-500 cursor-pointer
+                                 underline decoration-dotted decoration-ink-300
+                                 hover:decoration-accent-500"
+                          title="Doppio click per aggiungere/rimuovere dal sort (max 3 livelli)"
                           on:dblclick={() => onLabelDblClick(c.key)}>
                     {c.label}
                   </button>

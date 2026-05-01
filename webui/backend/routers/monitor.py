@@ -256,7 +256,11 @@ def list_event_rows(q: str | None = Query(None,
                     db: Session = Depends(get_db)):
     """Lesson-granular events for the grouped Monitor view. See
     `_build_event_rows` for the row shape; q/sort use the same DSL
-    as the docenti / aule / classi tabs (see list_query.py)."""
+    as the docenti / aule / classi tabs (see list_query.py).
+
+    Cache-Control: no-store so the browser doesn't return a stale
+    response when the URL changes only via q/sort parameters."""
+    from fastapi.responses import JSONResponse
     rows = _build_event_rows(db)
     n_total = len(rows)
     n_unscheduled = sum(1 for r in rows if not r["is_scheduled"])
@@ -264,9 +268,12 @@ def list_event_rows(q: str | None = Query(None,
         rows = filter_and_sort(rows, "event_rows", q, sort)
     except QueryError as e:
         raise HTTPException(400, f"Errore query: {e}")
-    return {"items": rows, "n_total": n_total,
-            "n_filtered": len(rows),
-            "n_unscheduled": n_unscheduled}
+    return JSONResponse(
+        content={"items": rows, "n_total": n_total,
+                 "n_filtered": len(rows),
+                 "n_unscheduled": n_unscheduled},
+        headers={"Cache-Control": "no-store, max-age=0"},
+    )
 
 
 @router.delete("/lesson/{lesson_id}")
