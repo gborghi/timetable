@@ -915,12 +915,13 @@ def _build_constraints(db: Session) -> list[dict]:
             "scope": "classe",
             "owner_id": c.id,
             "owner_name": c.name,
+            "subject": ct.subject,
             "level": "hard" if ct.required else "soft",
             "weight": int(ct.weight or 0),
             "detail": (f"{ct.subject}: {ct.n_teachers} docenti"
                        + (f" ({ct.teacher_csv})" if ct.teacher_csv else "")),
             "extra": ct.subject,
-            "editable": False,
+            "editable": True,
         })
 
     # Subject <-> Classroom prefs (only non-default)
@@ -936,11 +937,12 @@ def _build_constraints(db: Session) -> list[dict]:
             "scope": "materia/aula",
             "owner_id": sp.classroom_id,
             "owner_name": f"{sp.subject} <-> {room.name}",
+            "subject": sp.subject,
             "level": sp.state,
             "weight": int(sp.weight or 0),
             "detail": room.name,
             "extra": sp.subject,
-            "editable": False,
+            "editable": True,
         })
 
     # Teacher <-> Classroom prefs
@@ -957,11 +959,12 @@ def _build_constraints(db: Session) -> list[dict]:
             "scope": "docente/aula",
             "owner_id": tp.teacher_id,
             "owner_name": f"{_teacher_display(t)} <-> {room.name}",
+            "secondary_owner_id": tp.classroom_id,
             "level": tp.state,
             "weight": int(tp.weight or 0),
             "detail": room.name,
             "extra": "",
-            "editable": False,
+            "editable": True,
         })
 
     return out
@@ -1132,11 +1135,26 @@ from pydantic import BaseModel, Field
 
 class ConstraintPatchIn(BaseModel):
     """Subset of writable fields. Only the fields relevant to the
-    constraint kind are honoured."""
+    constraint kind are honoured.
+
+    `owner_id` re-points the vincolo at a different entity:
+        teacher_cell / logical_teacher  -> teachers.id
+        class_cell   / logical_class    -> school_classes.id
+        room_cell    / logical_classroom -> classrooms.id
+        logical_curriculum               -> curricula.id
+        coteach                          -> school_classes.id
+        subject_room_pref / teacher_room_pref -> classrooms.id
+            (for teacher_room_pref the secondary teacher_id is read
+             from the optional `secondary_owner_id` field)
+    `subject` is honoured by subject_room_pref / coteach.
+    """
     level: str | None = None        # hard|soft|preferred|enforced|allowed|forbidden
     weight: int | None = None
     expression: str | None = None
     reason: str | None = None
+    owner_id: int | None = None
+    secondary_owner_id: int | None = None
+    subject: str | None = None
 
 
 @router.put("/constraints/{kind}/{cid}")
@@ -1147,6 +1165,9 @@ def update_constraint(kind: str, cid: int,
         Model = {"teacher_cell": models.TeacherUnavailability,
                  "class_cell":   models.ClassUnavailability,
                  "room_cell":    models.ClassroomUnavailability}[kind]
+        owner_field = {"teacher_cell": "teacher_id",
+                       "class_cell":   "class_id",
+                       "room_cell":    "classroom_id"}[kind]
         row = db.get(Model, cid)
         if row is None:
             raise HTTPException(404, "vincolo non trovato")
@@ -1158,6 +1179,8 @@ def update_constraint(kind: str, cid: int,
             row.soft_penalty = int(payload.weight)
         if payload.reason is not None:
             row.reason = payload.reason
+        if payload.owner_id is not None:
+            setattr(row, owner_field, int(payload.owner_id))
         db.commit()
         return {"ok": True}
 
@@ -1189,6 +1212,8 @@ def update_constraint(kind: str, cid: int,
             if (row.kind or "soft") == "soft" and pen < 0:
                 pen = abs(pen)
             row.soft_penalty = pen
+        if payload.owner_id is not None:
+            row.entity_id = int(payload.owner_id)
         db.commit()
         return {"ok": True}
 
@@ -1217,6 +1242,8 @@ def update_constraint(kind: str, cid: int,
             if (row.kind or "soft") == "soft" and pen < 0:
                 pen = abs(pen)
             row.soft_penalty = pen
+        if payload.owner_id is not None:
+            row.curriculum_id = int(payload.owner_id)
         db.commit()
         return {"ok": True}
 
@@ -1231,6 +1258,10 @@ def update_constraint(kind: str, cid: int,
             row.required = (payload.level == "enforced")
         if payload.weight is not None:
             row.weight = float(payload.weight)
+        if payload.owner_id is not None:
+            row.classroom_id = int(payload.owner_id)
+        if payload.subject is not None and payload.subject.strip():
+            row.subject = payload.subject.strip()
         db.commit()
         return {"ok": True}
 
@@ -1244,6 +1275,10 @@ def update_constraint(kind: str, cid: int,
             row.state = payload.level
         if payload.weight is not None:
             row.weight = float(payload.weight)
+        if payload.owner_id is not None:
+            row.teacher_id = int(payload.owner_id)
+        if payload.secondary_owner_id is not None:
+            row.classroom_id = int(payload.secondary_owner_id)
         db.commit()
         return {"ok": True}
 
@@ -1255,6 +1290,10 @@ def update_constraint(kind: str, cid: int,
             row.required = (payload.level == "hard")
         if payload.weight is not None:
             row.weight = float(payload.weight)
+        if payload.owner_id is not None:
+            row.class_id = int(payload.owner_id)
+        if payload.subject is not None and payload.subject.strip():
+            row.subject = payload.subject.strip()
         db.commit()
         return {"ok": True}
 

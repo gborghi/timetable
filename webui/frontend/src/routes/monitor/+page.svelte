@@ -83,6 +83,40 @@
     if (redTable) await redTable.refresh();
   }
 
+  // Bulk delete handler shared by both tables. The parent owns the
+  // confirm dialog so the user gets ONE confirmation for the whole
+  // batch, not one per row.
+  async function bulkDelete(rows) {
+    if (rows.length === 0) return;
+    const nLessons = rows.filter((r) => r.is_scheduled
+                                       && r.lesson_id != null).length;
+    const nPlaceholders = rows.length - nLessons;
+    const parts = [];
+    if (nLessons) parts.push(`${nLessons} lezioni`);
+    if (nPlaceholders) parts.push(`${nPlaceholders} cattedre`
+                                   + ` (con TUTTE le loro lezioni)`);
+    const msg = `Eliminare ${parts.join(' + ')}? L'azione non e' reversibile.`;
+    if (!confirm(msg)) return;
+    let okCount = 0;
+    for (const r of rows) {
+      try {
+        if (r.is_scheduled && r.lesson_id != null) {
+          await api.del('/api/monitor/lesson/' + r.lesson_id);
+        } else {
+          await api.del('/api/monitor/event/' + r.assignment_id);
+        }
+        okCount++;
+      } catch (e) {
+        console.warn('bulk delete failed for row', r, e);
+      }
+    }
+    flash(`${okCount}/${rows.length} righe eliminate.`, 'success');
+    await refreshAll();
+  }
+  // Selected rows per table (independent state).
+  let mainSelected = [];
+  let redSelected = [];
+
   async function disassociateFromSlot() {
     if (!slotPicker) return;
     const lid = slotPicker.lesson?.lesson_id;
@@ -318,8 +352,11 @@
                         redTheme={true}
                         title="Eventi senza assegnazione temporale"
                         subtitle="Cattedre per cui non tutte le ore attese sono state schedulate nella soluzione attiva. Per ognuna assegna le ore mancanti cliccando 'Modifica' qui sotto, o creane di nuove con '+ Nuovo evento'."
+                        selectable={true}
+                        bind:selectedIds={redSelected}
                         onModify={modifyEventRow}
                         onDelete={deleteEventRow}
+                        onBulkDelete={bulkDelete}
                         onChanged={refreshAll}/>
   {/if}
 
@@ -327,8 +364,11 @@
                       endpoint="/api/monitor/event-rows"
                       auxQuery=""
                       title="Tutti gli eventi"
+                      selectable={true}
+                      bind:selectedIds={mainSelected}
                       onModify={modifyEventRow}
                       onDelete={deleteEventRow}
+                      onBulkDelete={bulkDelete}
                       onChanged={refreshAll}/>
 </div>
 

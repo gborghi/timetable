@@ -11,7 +11,88 @@
   let showConflicts = false;
   let conflictsBusy = false;
 
-  let editing = null;   // {kind, id, owner_name, level, weight, expression}
+  // Lookup data for the owner dropdowns in the edit modal.
+  let allTeachers = [];     // [{id, name, display}]
+  let allClasses = [];      // [{id, name}]
+  let allRooms = [];        // [{id, name}]
+  let allCurricula = [];    // [{id, code, name}]
+  let allSubjects = [];     // [{name}]
+
+  onMount(async () => {
+    try {
+      const t = await api.get('/api/teachers');
+      allTeachers = (t || []).map((x) => ({
+        id: x.id, name: x.name,
+        display: x.nickname
+                 || (x.last_name && x.first_name
+                       ? `${x.last_name} ${x.first_name}`
+                       : x.name),
+      })).sort((a, b) => a.display.localeCompare(b.display, 'it'));
+    } catch { allTeachers = []; }
+    try {
+      const c = await api.get('/api/classes');
+      allClasses = (c || []).map((x) => ({ id: x.id, name: x.name }))
+        .sort((a, b) => a.name.localeCompare(b.name, 'it'));
+    } catch { allClasses = []; }
+    try {
+      const r = await api.get('/api/classrooms');
+      allRooms = (r || []).map((x) => ({ id: x.id, name: x.name }))
+        .sort((a, b) => a.name.localeCompare(b.name, 'it'));
+    } catch { allRooms = []; }
+    try {
+      const cu = await api.get('/api/curricula');
+      allCurricula = (cu || []).map((x) => ({
+        id: x.id, code: x.code, name: x.name,
+      })).sort((a, b) => a.code.localeCompare(b.code, 'it'));
+    } catch { allCurricula = []; }
+    try {
+      const s = await api.get('/api/subjects');
+      allSubjects = (s || []).map((x) => ({ name: x.name }))
+        .sort((a, b) => a.name.localeCompare(b.name, 'it'));
+    } catch { allSubjects = []; }
+  });
+
+  // Maps a constraint `kind` to (label, list) pairs telling the modal
+  // which owner dropdowns to render. Keys missing here = no owner edit.
+  $: ownerSpec = (kind) => {
+    if (kind === 'teacher_cell' || kind === 'logical_teacher') {
+      return [{ key: 'owner_id', label: 'Docente',
+                options: allTeachers.map((t) => ({ value: t.id, text: t.display })) }];
+    }
+    if (kind === 'class_cell' || kind === 'logical_class'
+        || kind === 'coteach') {
+      return [{ key: 'owner_id', label: 'Classe',
+                options: allClasses.map((c) => ({ value: c.id, text: c.name })) }];
+    }
+    if (kind === 'room_cell' || kind === 'logical_classroom') {
+      return [{ key: 'owner_id', label: 'Aula',
+                options: allRooms.map((r) => ({ value: r.id, text: r.name })) }];
+    }
+    if (kind === 'logical_curriculum') {
+      return [{ key: 'owner_id', label: 'Indirizzo',
+                options: allCurricula.map((c) => ({
+                  value: c.id, text: `${c.code} - ${c.name}` })) }];
+    }
+    if (kind === 'subject_room_pref') {
+      return [
+        { key: 'owner_id', label: 'Aula',
+          options: allRooms.map((r) => ({ value: r.id, text: r.name })) },
+        { key: 'subject', label: 'Materia',
+          options: allSubjects.map((s) => ({ value: s.name, text: s.name })) },
+      ];
+    }
+    if (kind === 'teacher_room_pref') {
+      return [
+        { key: 'owner_id', label: 'Docente',
+          options: allTeachers.map((t) => ({ value: t.id, text: t.display })) },
+        { key: 'secondary_owner_id', label: 'Aula',
+          options: allRooms.map((r) => ({ value: r.id, text: r.name })) },
+      ];
+    }
+    return [];
+  };
+
+  let editing = null;   // {kind, id, owner_id, level, weight, expression, ...}
 
   async function loadConflicts() {
     conflictsBusy = true;
@@ -35,7 +116,11 @@
     editing = {
       kind: row.kind,
       id: row.id,
+      scope: row.scope,
       owner_name: row.owner_name,
+      owner_id: row.owner_id ?? null,
+      secondary_owner_id: row.secondary_owner_id ?? null,
+      subject: row.subject ?? '',
       detail: row.detail,
       level: row.level,
       weight: row.weight,
@@ -49,6 +134,9 @@
         level: editing.level,
         weight: Number(editing.weight),
         expression: editing.expression || null,
+        owner_id: editing.owner_id ?? null,
+        secondary_owner_id: editing.secondary_owner_id ?? null,
+        subject: editing.subject || null,
       };
       await api.put(`/api/monitor/constraints/${editing.kind}/${editing.id}`,
                     payload);
@@ -147,8 +235,15 @@
     let:row let:columns>
     <tr>
       <td class="text-xs"><code>{row.kind}</code></td>
-      <td class="text-xs">{row.scope}</td>
-      <td class="text-xs"><strong>{row.owner_name}</strong></td>
+      <td class="text-xs">
+        <span class="pill !text-[10px]">{row.scope}</span>
+      </td>
+      <td class="text-xs">
+        <strong class="text-accent-700">{row.owner_name}</strong>
+        {#if row.subject}
+          <span class="text-ink-500"> - {row.subject}</span>
+        {/if}
+      </td>
       <td>
         <span class="{levelPill(row.level)} !text-[10px]">
           {levelLabel(row.level)}
@@ -170,8 +265,26 @@
        onClose={() => (editing = null)}>
   {#if editing}
     <div class="space-y-3">
-      <div class="text-sm text-ink-500">{editing.owner_name}</div>
-      <div class="text-xs text-ink-400">{editing.detail}</div>
+      <div class="text-xs text-ink-500 italic">
+        Vincolo applicato a <strong>{editing.scope}</strong>:
+        <strong class="text-accent-700">{editing.owner_name}</strong>
+        - <code>{editing.detail}</code>.
+        I dropdown qui sotto permettono di ri-applicare il vincolo
+        a un'altra entita' senza ricrearlo.
+      </div>
+
+      <!-- Owner dropdowns: docente / classe / aula / indirizzo /
+           materia, in base al kind del vincolo. -->
+      {#each ownerSpec(editing.kind) as spec}
+        <div class="field">
+          <label>{spec.label}</label>
+          <select bind:value={editing[spec.key]}>
+            {#each spec.options as o}
+              <option value={o.value}>{o.text}</option>
+            {/each}
+          </select>
+        </div>
+      {/each}
 
       <div class="field">
         <label>Livello</label>

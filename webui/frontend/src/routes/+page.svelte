@@ -98,15 +98,41 @@
   }
 
   // SSE end-of-run hook: the worker thread wrote to the DB outside
-  // the HTTP request lifecycle, so neither the server-side TTL cache
-  // nor the client-side TanStack Query cache know to refresh. Bump the
-  // mutationCounter -> the subscription in $lib/queries/client.ts
-  // calls queryClient.invalidateQueries() which expires ALL cached
-  // queries (dataset.state, dashboard.graph.*, every list). The next
-  // read fetches fresh data.
+  // the HTTP request lifecycle. Bump the mutationCounter to invalidate
+  // every cached query; refreshDataset to repopulate the header pills
+  // and Stato corrente cards.
+  //
+  // Belt-and-suspenders: re-poll a few times after the SSE end, in
+  // case the underlying SQLite commit hasn't fully landed yet (the
+  // worker thread + the main event loop see the same DB but the
+  // ENGINE pool can briefly serve a connection with stale views).
   function onEnd() {
     bumpMutation();
     refreshDataset();
+    // Re-poll at 250ms / 750ms / 1500ms / 3000ms after the end event.
+    [250, 750, 1500, 3000].forEach((ms) => {
+      setTimeout(() => { bumpMutation(); refreshDataset(); }, ms);
+    });
+  }
+
+  // While a run is in progress, poll dataset/state every ~1.5s so the
+  // header pills and Stato corrente cards reflect partial progress
+  // (e.g. the assignment step writes Assignments before phase B even
+  // starts).
+  let runPollTimer = null;
+  $: if (runId) startRunPolling();
+  function startRunPolling() {
+    if (runPollTimer) clearInterval(runPollTimer);
+    runPollTimer = setInterval(() => refreshDataset(), 1500);
+  }
+  function stopRunPolling() {
+    if (runPollTimer) { clearInterval(runPollTimer); runPollTimer = null; }
+  }
+  // Stop polling shortly after onEnd runs (the post-end retries above
+  // cover the trailing window).
+  function onEndAndStop() {
+    onEnd();
+    setTimeout(stopRunPolling, 4000);
   }
 </script>
 
@@ -211,7 +237,7 @@
   </section>
 
   {#if runId}
-    <RunLogPanel {runId} title="Output run #{runId}" onEnd={onEnd} />
+    <RunLogPanel {runId} title="Output run #{runId}" onEnd={onEndAndStop} />
   {/if}
 
   <section class="card p-5">

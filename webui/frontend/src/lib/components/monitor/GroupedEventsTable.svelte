@@ -37,7 +37,13 @@
   export let subtitle = '';
   export let onModify = (_row) => {};
   export let onDelete = (_row) => {};
+  export let onBulkDelete = null;     // optional async (rows[]) => void
   export let onChanged = () => {};
+  // Multi-select like SortableQueryableList. When true, a checkbox
+  // column is shown; the parent can read `selectedIds` via
+  // bind:selectedIds.
+  export let selectable = false;
+  export let selectedIds = [];
 
   // ----- State (per instance) -----------------------------------------
   let data = null;            // { items[], n_total, n_filtered, n_unscheduled }
@@ -219,6 +225,48 @@
       ? `lesson:${r.lesson_id}`
       : `placeholder:${r.assignment_id}:${idx}`;
   }
+
+  // ----- Selection helpers (mirrors SortableQueryableList) ------------
+  let lastClickedKey = null;
+  function isSelected(r, idx) {
+    return selectedIds.includes(rowId(r, idx));
+  }
+  function toggleOne(r, idx) {
+    const k = rowId(r, idx);
+    if (selectedIds.includes(k)) {
+      selectedIds = selectedIds.filter((x) => x !== k);
+    } else {
+      selectedIds = [...selectedIds, k];
+    }
+    lastClickedKey = k;
+  }
+  function selectAllVisible() {
+    const all = [];
+    let i = 0;
+    for (const r of (data?.items ?? [])) {
+      all.push(rowId(r, i++));
+    }
+    selectedIds = all;
+  }
+  function clearSelection() {
+    selectedIds = [];
+    lastClickedKey = null;
+  }
+  async function bulkDelete() {
+    if (!onBulkDelete) return;
+    const idSet = new Set(selectedIds);
+    const rows = [];
+    let i = 0;
+    for (const r of (data?.items ?? [])) {
+      if (idSet.has(rowId(r, i))) rows.push(r);
+      i++;
+    }
+    if (rows.length === 0) return;
+    await onBulkDelete(rows);
+    clearSelection();
+    await refresh();
+    onChanged();
+  }
 </script>
 
 <div class="space-y-2 {redTheme ? 'p-3 border-2 border-red-300 bg-red-50 rounded' : ''}">
@@ -276,6 +324,27 @@
             disabled={sortLevels.length === 0}
             title="Torna all'ordine originale">Reset sort</button>
     <button class="btn !text-xs" on:click={refresh} disabled={busy}>refresh</button>
+    {#if selectable}
+      <span class="border-l border-ink-200 h-6 mx-1"></span>
+      <button class="btn !text-xs" on:click={selectAllVisible}
+              title="Seleziona tutte le righe attualmente visibili">
+        Seleziona tutto
+      </button>
+      <button class="btn !text-xs" on:click={clearSelection}
+              disabled={selectedIds.length === 0}>
+        Deseleziona
+      </button>
+      {#if onBulkDelete}
+        <button class="btn-red !text-xs" on:click={bulkDelete}
+                disabled={selectedIds.length === 0}
+                title="Elimina tutte le righe selezionate">
+          Elimina selezionati
+        </button>
+      {/if}
+      {#if selectedIds.length > 0}
+        <span class="pill pill-blue">{selectedIds.length} selezionati</span>
+      {/if}
+    {/if}
   </div>
 
   {#if lastUrl}
@@ -337,6 +406,18 @@
       <table class="tbl text-xs w-full">
         <thead>
           <tr>
+            {#if selectable}
+              <th class="w-6 text-center"
+                  title="Tieni Ctrl o Shift per selezione multipla.">
+                <input type="checkbox"
+                       checked={selectedIds.length > 0
+                                && selectedIds.length === (data.items?.length ?? 0)}
+                       indeterminate={selectedIds.length > 0
+                                && selectedIds.length < (data.items?.length ?? 0)}
+                       on:change={(e) => e.target.checked
+                                ? selectAllVisible() : clearSelection()}/>
+              </th>
+            {/if}
             {#each COLS as c}
               {@const idx = sortLevels.findIndex((l) => l.column === c.key)}
               {@const dir = idx >= 0 ? sortLevels[idx].direction : null}
@@ -375,7 +456,7 @@
               <tr style="background-color:#e0e7ff;"
                   class="cursor-pointer"
                   on:click={() => toggleG1(bucket.key1)}>
-                <td colspan="9" class="font-semibold py-1 px-2">
+                <td colspan={selectable ? 10 : 9} class="font-semibold py-1 px-2">
                   <span class="inline-block w-4 text-ink-400">
                     {g1Open ? '▼' : '▶'}
                   </span>
@@ -395,7 +476,7 @@
                   <tr style="background-color:#eef2ff;"
                       class="cursor-pointer"
                       on:click={() => toggleG2(g2Key)}>
-                    <td colspan="9" class="text-[11px] pl-6 py-1">
+                    <td colspan={selectable ? 10 : 9} class="text-[11px] pl-6 py-1">
                       <span class="inline-block w-4 text-ink-400">
                         {g2Open ? '▼' : '▶'}
                       </span>
@@ -407,9 +488,18 @@
                 {/if}
                 {#if g2Open}
                   {#each sb.rows2 as r, i (rowId(r, i))}
-                    <tr style={r.is_scheduled
-                                ? (r.is_complete ? '' : 'background-color:#fef9c3;')
-                                : 'background-color:#fef2f2;'}>
+                    <tr style={selectable && isSelected(r, i)
+                                ? 'background-color: rgba(59,130,246,0.18);'
+                                : (r.is_scheduled
+                                    ? (r.is_complete ? '' : 'background-color:#fef9c3;')
+                                    : 'background-color:#fef2f2;')}>
+                      {#if selectable}
+                        <td class="w-6 text-center">
+                          <input type="checkbox"
+                                 checked={isSelected(r, i)}
+                                 on:click|stopPropagation={() => toggleOne(r, i)}/>
+                        </td>
+                      {/if}
                       <td>
                         <strong>{r.teacher_display}</strong>
                         <span class="text-[10px] text-ink-400">({r.teacher_name})</span>
@@ -455,7 +545,7 @@
             {/if}
           {/each}
           {#if data.items.length === 0}
-            <tr><td colspan="9" class="text-center text-ink-400 italic py-4">
+            <tr><td colspan={selectable ? 10 : 9} class="text-center text-ink-400 italic py-4">
               {auxQuery
                 ? 'Nessun evento corrisponde ai filtri.'
                 : 'Nessun evento da mostrare con questi filtri.'}
