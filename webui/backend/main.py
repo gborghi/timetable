@@ -45,6 +45,7 @@ from backend.routers import (  # noqa: E402
     logical,
     monitor,
     optimize,
+    saved_views,
     schedule,
     students,
     subjects,
@@ -131,6 +132,7 @@ app.include_router(coverage.router)
 app.include_router(monitor.router)
 app.include_router(dashboard.router)
 app.include_router(constraints.router)
+app.include_router(saved_views.router)
 
 
 @app.get("/")

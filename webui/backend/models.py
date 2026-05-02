@@ -1023,6 +1023,31 @@ class StudentTagAssignment(Base):
     )
 
 
+class SavedView(TimestampMixin, Base):
+    """A named filter+sort combination saved by the user for an
+    entity list (teachers, classes, classrooms, ...).
+
+    The frontend stores `dsl_query` (string, fed back into `?q=`)
+    and `sort_levels_json` (JSON-encoded list of {column, direction}
+    objects, fed back into `?sort=`). The (entity, name) pair is
+    UNIQUE.
+    """
+    __tablename__ = "saved_views"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    entity: Mapped[str] = mapped_column(String(40), index=True,
+                                         comment="teachers|classes|...")
+    name: Mapped[str] = mapped_column(String(120))
+    dsl_query: Mapped[str | None] = mapped_column(Text, nullable=True)
+    sort_levels_json: Mapped[str | None] = mapped_column(
+        Text, nullable=True,
+        comment="JSON list of {column, direction:'asc'|'desc'}",
+    )
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    __table_args__ = (
+        UniqueConstraint("entity", "name", name="uq_saved_view"),
+    )
+
+
 # ---------- Study groups (gruppi articolati / classi frazionate) ----------
 
 

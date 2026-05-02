@@ -970,3 +970,28 @@ class MockClassroomsIn(BaseModel):
     n_palestra: int | None = None
     n_biblioteca: int | None = None
     n_aula_speciale: int | None = None
+
+
+# ---------- Saved views ----------
+
+
+class SortLevel(BaseModel):
+    column: str
+    direction: str = "asc"
+
+
+class SavedViewBase(BaseModel):
+    entity: str
+    name: str
+    dsl_query: str | None = None
+    sort_levels: list[SortLevel] = Field(default_factory=list)
+    description: str | None = None
+
+
+class SavedViewIn(SavedViewBase):
+    pass
+
+
+class SavedViewOut(SavedViewBase):
+    id: int
+    model_config = ConfigDict(from_attributes=True)
