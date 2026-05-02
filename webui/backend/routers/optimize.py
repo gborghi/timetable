@@ -87,6 +87,25 @@ class RunDeleteBatchIn(_BM):
     run_ids: list[int]
 
 
+@router.post("/runs/{run_id}/cancel")
+def cancel_run(run_id: int, db: Session = Depends(get_db)):
+    """Request cancellation of a running/pending run. The run row
+    is flipped to status='cancelled' immediately. Cooperatively
+    cancellable solvers stop ASAP; non-cooperative ones (raw
+    CP-SAT) keep going until their time budget but no longer
+    appear as active in the UI."""
+    from .. import run_manager
+    ok = run_manager.request_cancel(run_id)
+    if not ok:
+        # Either not found or already terminal
+        r = db.get(models.Run, run_id)
+        if r is None:
+            raise HTTPException(404, "run non trovato")
+        return {"ok": False,
+                 "msg": f"run gia' in stato '{r.status}', no-op"}
+    return {"ok": True}
+
+
 @router.delete("/runs/{run_id}")
 def delete_run(run_id: int, db: Session = Depends(get_db)):
     """Delete a single run row + all its log lines. The run thread (if

@@ -863,6 +863,99 @@ def run_hall_check(*, n_samples: int = 256,
         )
 
 
+def run_diagnostic_async(kind: str, label: str,
+                          producer: "callable[[], dict]") -> int:
+    """Generic helper: spawn a /runs entry whose target() invokes
+    `producer()` (a 0-arg function returning a JSON-serializable
+    diagnostic result) and stores the result in `metrics`. The
+    front-end polls /api/optimize/runs/{id} and, on done, reads
+    `metrics` (which `serialize_run` already exposes).
+
+    Used by Monte Carlo / bipartite / correlations / distributions:
+    these can take seconds-to-tens-of-seconds, so they are no
+    longer surfaced as sync endpoints.
+    """
+    params = {"kind": kind, "label": label}
+    rid = create_run(kind, label, None, params)
+
+    def target(rid_inner: int):
+        update_run(rid_inner, progress=0.05)
+        result = producer()
+        update_run(rid_inner, progress=0.95,
+                    metrics=result if isinstance(result, dict)
+                            else {"result": result})
+
+    start_thread(rid, target)
+    return rid
+
+
+def run_diag_montecarlo(*, n_samples: int = 100,
+                         seed: int = 0) -> int:
+    sys.path.insert(0, os.path.join(
+        os.path.dirname(__file__), "..", "..", "experiments",
+    ))
+
+    def _go() -> dict:
+        from diagnostics import montecarlo_sensitivity as mc  # type: ignore
+        with SessionLocal() as db:
+            return mc.run_montecarlo_from_db(
+                db, n_samples=n_samples, seed=seed,
+            )
+    return run_diagnostic_async(
+        "diag_montecarlo",
+        f"Sensitivity Monte Carlo (N={n_samples})",
+        _go,
+    )
+
+
+def run_diag_bipartite(*, mode: str = "classes") -> int:
+    sys.path.insert(0, os.path.join(
+        os.path.dirname(__file__), "..", "..", "experiments",
+    ))
+
+    def _go() -> dict:
+        from diagnostics import bipartite_analysis as ba  # type: ignore
+        with SessionLocal() as db:
+            return ba.analyze_from_db(db, mode=mode)
+    return run_diagnostic_async(
+        "diag_bipartite",
+        f"Analisi bipartito ({mode})",
+        _go,
+    )
+
+
+def run_diag_correlations() -> int:
+    sys.path.insert(0, os.path.join(
+        os.path.dirname(__file__), "..", "..", "experiments",
+    ))
+
+    def _go() -> dict:
+        from diagnostics import correlations as co  # type: ignore
+        with SessionLocal() as db:
+            return co.run_from_db(db)
+    return run_diagnostic_async(
+        "diag_correlations",
+        "Correlazioni e regressioni",
+        _go,
+    )
+
+
+def run_diag_distributions() -> int:
+    sys.path.insert(0, os.path.join(
+        os.path.dirname(__file__), "..", "..", "experiments",
+    ))
+
+    def _go() -> dict:
+        from diagnostics import distributions as ds  # type: ignore
+        with SessionLocal() as db:
+            return ds.run_from_db(db)
+    return run_diagnostic_async(
+        "diag_distributions",
+        "Distribuzioni e goodness-of-fit",
+        _go,
+    )
+
+
 def run_column_generation(*, time_budget_s: float = 60.0,
                           patterns_per_teacher: int = 3,
                           log: bool = True) -> int:

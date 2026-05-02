@@ -63,6 +63,45 @@ _BUFFERS: dict[int, _RunBuffer] = {}
 _BUFFERS_LOCK = threading.Lock()
 _THREADS: dict[int, threading.Thread] = {}
 
+# Cooperative cancellation: the user clicks the "kill" button in the
+# /runs list, which calls request_cancel(run_id). Long-running solver
+# code can check `is_cancel_requested(run_id)` periodically and bail
+# out cleanly. The DB row is also flipped to status='cancelled' so the
+# UI stops showing it as active even if the thread takes its time.
+_CANCELLED_RUNS: set[int] = set()
+_CANCELLED_LOCK = threading.Lock()
+
+
+def request_cancel(run_id: int) -> bool:
+    """Mark a run as cancel-requested. Idempotent. Returns True iff
+    the run was running/pending (i.e., the cancel had any effect)."""
+    with SessionLocal() as db:
+        r = db.get(models.Run, run_id)
+        if r is None:
+            return False
+        if r.status not in ("running", "pending"):
+            return False
+        r.status = "cancelled"
+        r.error = (r.error or "") + "\n[cancel] richiesto dall'utente"
+        r.finished_at = dt.datetime.utcnow()
+        db.commit()
+    with _CANCELLED_LOCK:
+        _CANCELLED_RUNS.add(run_id)
+    # Mark the SSE buffer as finished so the log stream closes.
+    try:
+        buf = get_buffer(run_id)
+        _emit_line(run_id, "[cancel] richiesto dall'utente")
+        buf.mark_finished()
+    except Exception:
+        pass
+    return True
+
+
+def is_cancel_requested(run_id: int) -> bool:
+    """Check inside a long-running target() to bail early."""
+    with _CANCELLED_LOCK:
+        return run_id in _CANCELLED_RUNS
+
 
 def get_buffer(run_id: int) -> _RunBuffer:
     with _BUFFERS_LOCK:
