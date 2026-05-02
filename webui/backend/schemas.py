@@ -462,7 +462,7 @@ class PhaseBRunIn(BaseModel):
 
 
 class MetaRunIn(BaseModel):
-    """LNS / SA / TS / ILS step."""
+    """LNS / SA / TS / ILS / ALNS / VNS step."""
     budget_s: float = 60.0
     workers: int = 4
     log: bool = True
@@ -474,6 +474,13 @@ class MetaRunIn(BaseModel):
     sa_alpha: float = 0.995
     # TS-only:
     tabu_size: int = 80
+    # ALNS-only:
+    alns_T0: float = 5.0
+    alns_alpha: float = 0.995
+    alns_destroy: list[str] | None = None
+    alns_repair: list[str] | None = None
+    # VNS-only:
+    vns_neighbourhoods: list[str] | None = None
     # Per-step rooms toggle (same semantics as PhaseBRunIn): if True
     # the rooms step runs on the new active solution at the end.
     optimize_rooms: bool = False
@@ -483,9 +490,24 @@ class MetaRunIn(BaseModel):
 
 # Default ordering of the pipeline. The frontend lets the user reorder
 # and untick items; only the enabled keys (in user-defined order) are
-# sent back. "phase_a" = step 2 (Assegnazione), "phase_b" = step 3.
-DEFAULT_PIPELINE_STEPS = ["phase_a", "phase_b", "lns", "sa", "ts", "ils"]
-PIPELINE_STEP_KEYS = {"phase_a", "phase_b", "lns", "sa", "ts", "ils", "rooms"}
+# sent back.
+DEFAULT_PIPELINE_STEPS = ["phase_a", "phase_b", "lns", "alns", "sa",
+                          "ts", "vns", "ils"]
+PIPELINE_STEP_KEYS = {"phase_a", "phase_b", "lns", "alns", "sa", "ts",
+                       "vns", "ils", "rooms", "hall_check", "cg"}
+
+
+class HallCheckIn(BaseModel):
+    """Inputs for the synchronous Hall's theorem pre-check."""
+    n_samples: int = 256
+    teacher_max_hours: int = 18
+
+
+class ColumnGenerationIn(BaseModel):
+    """Inputs for the async Column Generation skeleton."""
+    time_budget_s: float = 60.0
+    patterns_per_teacher: int = 3
+    log: bool = True
 
 
 class PlaceEventIn(BaseModel):

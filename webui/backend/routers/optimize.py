@@ -262,11 +262,33 @@ def launch_rooms(payload: schemas.ClassroomAssignRunIn):
     return {"run_id": rid}
 
 
+# ----- Diagnostics + specialised stages -----
+
+@router.post("/hall-check")
+def launch_hall_check(payload: schemas.HallCheckIn):
+    """Synchronous: returns the Hall's theorem pre-check report."""
+    return optimization.run_hall_check(
+        n_samples=payload.n_samples,
+        teacher_max_hours=payload.teacher_max_hours,
+    )
+
+
+@router.post("/column-generation")
+def launch_column_generation(payload: schemas.ColumnGenerationIn):
+    """Async: starts a Column Generation alternative-Phase-B run."""
+    rid = optimization.run_column_generation(
+        time_budget_s=payload.time_budget_s,
+        patterns_per_teacher=payload.patterns_per_teacher,
+        log=payload.log,
+    )
+    return {"run_id": rid}
+
+
 # Catch-all meta stage route LAST so that explicit routes above match
 # first (otherwise /rooms would be parsed as stage="rooms").
 @router.post("/meta/{stage}")
 def launch_meta(stage: str, payload: schemas.MetaRunIn):
-    if stage not in ("lns", "sa", "ts", "ils"):
+    if stage not in ("lns", "sa", "ts", "ils", "alns", "vns"):
         raise HTTPException(400, f"unknown stage {stage}")
     rid = optimization.run_meta(
         stage,
@@ -279,5 +301,10 @@ def launch_meta(stage: str, payload: schemas.MetaRunIn):
         optimize_rooms=payload.optimize_rooms,
         rooms_time_limit_s=payload.rooms_time_limit_s,
         rooms_prefer_home=payload.rooms_prefer_home,
+        alns_T0=payload.alns_T0,
+        alns_alpha=payload.alns_alpha,
+        alns_destroy=payload.alns_destroy,
+        alns_repair=payload.alns_repair,
+        vns_neighbourhoods=payload.vns_neighbourhoods,
     )
     return {"run_id": rid}

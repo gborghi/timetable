@@ -11,6 +11,7 @@ import json
 import os
 import pickle
 import random
+import sys
 import threading
 import time
 from collections import defaultdict
@@ -668,7 +669,12 @@ def run_meta(stage: str, budget_s: float, workers: int, log: bool,
              tabu_size: int = 80,
              optimize_rooms: bool = False,
              rooms_time_limit_s: float = 30.0,
-             rooms_prefer_home: bool = True) -> int:
+             rooms_prefer_home: bool = True,
+             alns_T0: float = 5.0,
+             alns_alpha: float = 0.995,
+             alns_destroy: list[str] | None = None,
+             alns_repair: list[str] | None = None,
+             vns_neighbourhoods: list[str] | None = None) -> int:
     params = dict(stage=stage, budget_s=budget_s, workers=workers, log=log,
                   n_cycles=n_cycles,
                   ts_budget_per_cycle=ts_budget_per_cycle,
@@ -676,7 +682,11 @@ def run_meta(stage: str, budget_s: float, workers: int, log: bool,
                   tabu_size=tabu_size,
                   optimize_rooms=optimize_rooms,
                   rooms_time_limit_s=rooms_time_limit_s,
-                  rooms_prefer_home=rooms_prefer_home)
+                  rooms_prefer_home=rooms_prefer_home,
+                  alns_T0=alns_T0, alns_alpha=alns_alpha,
+                  alns_destroy=alns_destroy,
+                  alns_repair=alns_repair,
+                  vns_neighbourhoods=vns_neighbourhoods)
     run_id = create_run(stage, f"{stage.upper()} on active solution",
                         None, params)
 
@@ -738,6 +748,23 @@ def run_meta(stage: str, budget_s: float, workers: int, log: bool,
                     ts_budget_per_cycle=ts_budget_per_cycle,
                     n_cycles=n_cycles, log=log,
                 )
+            elif stage == "alns":
+                import alns as alns_mod  # type: ignore
+                new_sol, _hist = alns_mod.run_alns(
+                    sol, profs, dc_value, budget_s,
+                    classes_clusters=classes_clusters,
+                    log=log, workers=workers,
+                    T0=alns_T0, alpha=alns_alpha,
+                    enabled_destroy=alns_destroy,
+                    enabled_repair=alns_repair,
+                )
+            elif stage == "vns":
+                import vns as vns_mod  # type: ignore
+                new_sol, _hist = vns_mod.run_vns(
+                    sol, profs, dc_value, budget_s,
+                    log=log,
+                    enabled_neighbourhoods=vns_neighbourhoods,
+                )
             else:
                 raise RuntimeError(f"Unknown stage {stage}")
 
@@ -775,6 +802,87 @@ def run_meta(stage: str, budget_s: float, workers: int, log: bool,
 
     start_thread(run_id, target)
     return run_id
+
+
+# ----------------------------------------------------------------------
+# Diagnostics / specialised stages (Hall, Column Generation)
+# ----------------------------------------------------------------------
+
+
+def run_hall_check(*, n_samples: int = 256,
+                   teacher_max_hours: int = 18) -> dict[str, Any]:
+    """Synchronous Hall's theorem pre-check. Returns the diagnostic
+    dict directly (no run_id thread): the operation is < 100 ms even
+    on superhuge schools so a sync API is fine.
+    """
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..",
+                                     "experiments"))
+    from diagnostics import hall_check as hc  # type: ignore
+    with SessionLocal() as db:
+        return hc.hall_check_from_db(
+            db, n_samples=n_samples,
+            teacher_max_hours=teacher_max_hours,
+        )
+
+
+def run_column_generation(*, time_budget_s: float = 60.0,
+                          patterns_per_teacher: int = 3,
+                          log: bool = True) -> int:
+    """Async Column Generation pass. Behaves like an alternative
+    Phase-B: starts from the active assignment (Phase A), produces
+    a HARD-feasible weekly schedule via the master LP + per-teacher
+    pattern catalog, and saves it as a new Solution with kind='cg'.
+    """
+    params = dict(time_budget_s=time_budget_s,
+                  patterns_per_teacher=patterns_per_teacher, log=log)
+    rid = create_run("cg", "Column Generation alternative Phase B",
+                      None, params)
+
+    def target(rid_inner: int):
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__),
+                                          "..", "..", "experiments"))
+        import metaheuristics as meta  # type: ignore
+        import column_generation as cg  # type: ignore
+        with SessionLocal() as db:
+            profs = engine_io.profs_dict_from_db(db)
+            active = engine_io.get_active_solution(db)
+            if active is None:
+                raise RuntimeError("Phase B alternativa via Column "
+                                    "Generation richiede una soluzione "
+                                    "attiva (Phase A) come baseline.")
+            sol = engine_io.lessons_to_solution_dict(db, active.id)
+        dc_value = _restore_dc_from_solution(sol)
+        update_run(rid_inner, progress=0.1)
+        with _progress_ticker(rid_inner, time_budget_s,
+                               start=0.1, end=0.95):
+            new_sol, info = cg.run_column_generation(
+                profs, dc_value,
+                time_budget_s=time_budget_s,
+                patterns_per_teacher=patterns_per_teacher, log=log,
+            )
+        if new_sol is None or not info.get("feasible_after_assembly"):
+            update_run(rid_inner, progress=1.0,
+                        metrics={**info, "feasible": False},
+                        error="CG skeleton non ha trovato una "
+                              "soluzione feasible (vedi warnings)")
+            return
+        v, m = meta.compute_soft(new_sol, profs)
+        with SessionLocal() as db:
+            sid = engine_io.import_solution_into_db(
+                db, new_sol,
+                name=f"CG run {rid_inner}",
+                kind="cg",
+                obj_value=float(v),
+                metrics={**m, **info, "feasible": True},
+                make_active=True,
+            )
+        update_run(rid_inner, solution_id=sid, obj_value=float(v),
+                    metrics={**m, **info, "feasible": True},
+                    progress=1.0)
+        print(f"[cg] solution id={sid} obj={v}")
+
+    start_thread(rid, target)
+    return rid
 
 
 # ----------------------------------------------------------------------
@@ -819,7 +927,8 @@ def run_full_pipeline(profile: str,
 
         # Sanitize the steps list. Unknown keys are silently dropped;
         # an empty list is a no-op (still creates a 'done' run).
-        valid = {"phase_a", "phase_b", "lns", "sa", "ts", "ils", "rooms"}
+        valid = {"hall_check", "phase_a", "phase_b", "cg",
+                  "lns", "alns", "sa", "ts", "vns", "ils", "rooms"}
         seq = [s for s in (steps or []) if s in valid]
         n_steps = max(1, len(seq))
         with SessionLocal() as db:
@@ -994,7 +1103,81 @@ def run_full_pipeline(profile: str,
                 )
                 continue
 
-            if step in ("lns", "sa", "ts", "ils"):
+            if step == "hall_check":
+                print("[full] === STEP hall_check (diagnostic) ===")
+                try:
+                    sys.path.insert(0, os.path.join(
+                        os.path.dirname(__file__), "..", "..", "experiments",
+                    ))
+                    from diagnostics import hall_check as hc  # type: ignore
+                    with SessionLocal() as db:
+                        report = hc.hall_check_from_db(db)
+                except Exception as e:  # noqa: BLE001
+                    print(f"[full] hall_check error: {e}")
+                    report = {"ok": True, "warnings": [str(e)]}
+                if not report.get("ok"):
+                    msg = (f"Hall pre-check ha rilevato "
+                           f"{len(report.get('violations', []))} "
+                           f"violazioni; pipeline interrotta.")
+                    update_run(rid, error=msg, progress=1.0,
+                                metrics={"hall_violations": report.get(
+                                    "violations", []
+                                )[:5]})
+                    print(f"[full] aborting: {msg}")
+                    return
+                continue
+
+            if step == "cg":
+                print("[full] === STEP cg (Column Generation) ===")
+                try:
+                    sys.path.insert(0, os.path.join(
+                        os.path.dirname(__file__), "..", "..", "experiments",
+                    ))
+                    import column_generation as cgmod  # type: ignore
+                    if state["profs"] is None:
+                        with SessionLocal() as db:
+                            state["profs"] = engine_io.profs_dict_from_db(db)
+                    if state["dc_value"] is None and state["full_solution"]:
+                        state["dc_value"] = _restore_dc_from_solution(
+                            state["full_solution"]
+                        )
+                    if state["dc_value"] is None:
+                        # Fallback: try to read it from a recent solution
+                        with SessionLocal() as db:
+                            active = engine_io.get_active_solution(db)
+                            if active is not None:
+                                sol2 = engine_io.lessons_to_solution_dict(
+                                    db, active.id
+                                )
+                                state["full_solution"] = sol2
+                                state["dc_value"] = _restore_dc_from_solution(sol2)
+                    if state["dc_value"] is None:
+                        print("[full] cg: nessuna baseline; skip")
+                        continue
+                    new_sol, info = cgmod.run_column_generation(
+                        state["profs"], state["dc_value"],
+                        time_budget_s=60.0, log=True,
+                    )
+                except Exception as e:  # noqa: BLE001
+                    print(f"[full] cg error: {e}")
+                    continue
+                if new_sol is not None and info.get("feasible_after_assembly"):
+                    v, m = meta.compute_soft(new_sol, state["profs"])
+                    with SessionLocal() as db:
+                        sid = engine_io.import_solution_into_db(
+                            db, new_sol,
+                            name=f"Full pipeline run {rid} (cg)",
+                            kind="cg",
+                            obj_value=float(v),
+                            metrics={**m, **info, "feasible": True},
+                            make_active=True,
+                        )
+                    state.update(full_solution=new_sol, sid=sid,
+                                  obj=float(v),
+                                  metrics={**m, "feasible": True})
+                continue
+
+            if step in ("lns", "alns", "sa", "ts", "vns", "ils"):
                 print(f"[full] === STEP {step} ===")
                 if state["full_solution"] is None or state["profs"] is None:
                     # Try to load from active DB solution
@@ -1034,12 +1217,30 @@ def run_full_pipeline(profile: str,
                         classes_clusters=classes_clusters,
                         log=True, workers=workers,
                     )
+                elif step == "alns":
+                    sys.path.insert(0, os.path.join(
+                        os.path.dirname(__file__), "..", "..", "experiments",
+                    ))
+                    import alns as alns_mod  # type: ignore
+                    new_sol, _hist = alns_mod.run_alns(
+                        sol, profs, dc_value, budget_lns,
+                        classes_clusters=classes_clusters,
+                        log=True, workers=workers,
+                    )
                 elif step == "sa":
                     new_sol = meta.run_sa(
                         sol, profs, dc_value, budget_sa, log=True,
                     )
                 elif step == "ts":
                     new_sol = meta.run_tabu(
+                        sol, profs, dc_value, budget_ts, log=True,
+                    )
+                elif step == "vns":
+                    sys.path.insert(0, os.path.join(
+                        os.path.dirname(__file__), "..", "..", "experiments",
+                    ))
+                    import vns as vns_mod  # type: ignore
+                    new_sol, _hist = vns_mod.run_vns(
                         sol, profs, dc_value, budget_ts, log=True,
                     )
                 else:  # "ils"
