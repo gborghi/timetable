@@ -141,9 +141,38 @@ def correlations_variables():
     return co.available_variables()
 
 
-# ---------- Distributions (async run) ----------
+# ---------- Distributions (async run, parametrizable) ----------
+
+class DistributionsIn(BaseModel):
+    include: list[str] | None = None
+    params: dict[str, dict] | None = None
+
 
 @router.post("/distributions")
-def distributions():
-    rid = optimization.run_diag_distributions()
+def distributions(payload: DistributionsIn | None = None):
+    """Spawns a kind='diag_distributions' run.
+
+    The optional `payload` lets the user pick which distributions
+    to compute and tweak per-distribution params:
+
+      {include: ["teacher_loads", ...],
+       params: {teacher_loads: {bins: 24}, ...}}
+
+    See GET /api/diagnostics/distributions/menu for the catalog.
+    """
+    spec = None
+    if payload and (payload.include or payload.params):
+        spec = {
+            "include": payload.include or [],
+            "params": payload.params or {},
+        }
+    rid = optimization.run_diag_distributions(spec=spec)
     return {"run_id": rid}
+
+
+@router.get("/distributions/menu")
+def distributions_menu():
+    """List of available distribution kinds + per-kind parameter
+    metadata, for the UI form."""
+    from diagnostics import distributions as ds  # type: ignore
+    return ds.available_distributions()

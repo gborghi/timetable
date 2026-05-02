@@ -972,7 +972,7 @@ def run_diag_correlations(*, models_spec: list[dict] | None = None
     )
 
 
-def run_diag_distributions() -> int:
+def run_diag_distributions(*, spec: dict | None = None) -> int:
     sys.path.insert(0, os.path.join(
         os.path.dirname(__file__), "..", "..", "experiments",
     ))
@@ -980,10 +980,13 @@ def run_diag_distributions() -> int:
     def _go() -> dict:
         from diagnostics import distributions as ds  # type: ignore
         with SessionLocal() as db:
-            return ds.run_from_db(db)
+            return ds.run_from_db(db, spec=spec)
+    label = "Distribuzioni e goodness-of-fit"
+    if spec and spec.get("include"):
+        label += f" ({len(spec['include'])} sel)"
     return run_diagnostic_async(
         "diag_distributions",
-        "Distribuzioni e goodness-of-fit",
+        label,
         _go,
     )
 
