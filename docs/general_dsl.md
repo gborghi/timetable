@@ -126,6 +126,39 @@ forall l in lessons where l.class.curriculum == Linguistico
                        and l.day == 6: false
 ```
 
+### Vincolo lab fisica (firma di Giovanni)
+
+Esempio canonico richiesto da Giovanni: ogni docente di Fisica
+deve avere ESATTAMENTE un'ora alla settimana in un'aula di tipo
+`lab_fisica`.
+
+```
+forall t in teachers where t.subject == "Fisica":
+    count l in lessons where l.teacher == t
+                          and l.classroom.type == "lab_fisica": l == 1
+```
+
+Note operative:
+
+- `t.subject` ritorna la **lista** delle materie del docente; il
+  confronto `==` con uno scalare e' un'abbreviazione per "la
+  stringa appartiene alla lista". Equivalente: `"Fisica" in
+  t.subjects`.
+- `l.teacher == t` confronta il docente della lezione con il
+  docente del `forall`. Quando un lato e' una entity dict con
+  `name`, il confronto cade sul `.name`. Si puo' anche scrivere
+  `l.teacher == t.name` (esplicito).
+- `l.classroom.type` viene risolto via il name -> kind index
+  pre-calcolato in `build_world`. Forme equivalenti:
+  `l.classroom_type` o `l.classroom_kind` (alias diretti).
+- Versione SOFT: aggiungere `level=soft` con `weight=N` nel
+  payload; le violazioni contribuiscono al SOFT score globale
+  per ogni docente che NON soddisfa il count==1.
+- Versione `exists` (zucchero per `count >= 1`):
+    `forall t in teachers where t.subject == "Fisica":
+        exists l in lessons where l.teacher == t
+            and l.classroom.type == "lab_fisica": true`
+
 ### Vincoli su un'aula
 
 ```

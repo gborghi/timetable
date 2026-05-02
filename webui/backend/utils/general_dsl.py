@@ -617,12 +617,24 @@ def build_world(db) -> dict[str, list]:
     curricula_by_id = {c.id: c for c in db.query(models.Curriculum).all()}
     rooms_by_id = {r.id: r for r in db.query(models.Classroom).all()}
 
+    # Pre-collect each teacher's subjects so the DSL can write
+    #   t.subject == "Fisica"
+    # which we treat as "Fisica is in t.subjects" (see _apply_op).
+    from .. import models as _m
+    teacher_subjects: dict[int, list[str]] = {}
+    for ts in db.query(_m.TeacherSubject).all():
+        teacher_subjects.setdefault(ts.teacher_id, []).append(ts.subject)
     out["teachers"] = [
         {"name": t.name, "group": t.group, "max_hours": t.max_hours,
          "free_day": t.free_day,
          "graduatoria_score": t.graduatoria_score,
          "completion_hours": t.completion_hours,
-         "exemption_hours": t.exemption_hours}
+         "exemption_hours": t.exemption_hours,
+         # Both `subject` (singular, list-typed for the
+         # `==`-as-contains shorthand) and `subjects` (plural, the
+         # canonical list) resolve to the same data.
+         "subject": teacher_subjects.get(t.id, []),
+         "subjects": teacher_subjects.get(t.id, [])}
         for t in teachers_by_id.values()
     ]
     out["classes"] = [
@@ -679,9 +691,16 @@ def build_world(db) -> dict[str, list]:
                 if c.curriculum_id and curricula_by_id.get(c.curriculum_id)
                 else (c.curriculum or "")
             )
+        # Pre-resolve classroom name -> kind/type so
+        # `l.classroom.type == "lab_fisica"` works without nested obj.
+        room_type_by_name: dict[str, str] = {
+            r.name: (r.kind or "") for r in rooms_by_id.values()
+        }
         for l in db.query(models.Lesson).filter(
             models.Lesson.solution_id == active.id
         ).all():
+            cr_name = l.classroom_name or ""
+            cr_type = room_type_by_name.get(cr_name, "")
             out["lessons"].append({
                 "teacher": l.teacher_name,
                 "class": l.class_name,
@@ -689,7 +708,9 @@ def build_world(db) -> dict[str, list]:
                 "subject": l.subject,
                 "day": l.day,
                 "hour": l.hour,
-                "classroom": l.classroom_name or "",
+                "classroom": cr_name,
+                "classroom_type": cr_type,    # alias for l.classroom.type
+                "classroom_kind": cr_type,    # alias for l.classroom.kind
                 "slot": (l.day, l.hour),
             })
     return out
@@ -709,6 +730,7 @@ def _resolve_path(env: dict, path: list[str]) -> Any:
                    ['l', 'class', 'curriculum'] -> chained -- we
                    pre-resolved this as 'class_curriculum' on the
                    lesson dict so we just return that.
+                   ['l', 'classroom', 'type'] -> 'classroom_type'.
     """
     if not path:
         return None
@@ -717,15 +739,24 @@ def _resolve_path(env: dict, path: list[str]) -> Any:
         # Bare identifier: treat as string literal (e.g. "Borghi")
         return head if len(path) == 1 else "::missing::"
     cur = env[head]
-    for attr in path[1:]:
+    i = 1
+    while i < len(path):
+        attr = path[i]
         if isinstance(cur, dict):
-            # Special cases for chained attribute access
-            if attr == "curriculum" and "class_curriculum" in cur:
-                cur = cur["class_curriculum"]
-            elif attr in cur:
+            # Two-step chain shortcuts (pre-resolved into the dict):
+            #   .class.curriculum -> class_curriculum
+            #   .classroom.type   -> classroom_type
+            #   .classroom.kind   -> classroom_kind
+            if (i + 1 < len(path)
+                    and (f"{attr}_{path[i+1]}" in cur)):
+                cur = cur[f"{attr}_{path[i+1]}"]
+                i += 2
+                continue
+            if attr in cur:
                 cur = cur[attr]
-            else:
-                return None
+                i += 1
+                continue
+            return None
         else:
             return None
     return cur
@@ -797,10 +828,31 @@ def _eval_cmp(node: Cmp, env, world):
 
 
 def _apply_op(a, op, b):
+    # When one side is an entity dict (with a `name` key) and the
+    # other side is a scalar, compare by name. This lets the user
+    # write `l.teacher == t` where t is bound by `forall t in
+    # teachers` (a teacher dict) and l.teacher is the canonical
+    # teacher name string.
+    def _name_of(x):
+        if isinstance(x, dict) and "name" in x:
+            return x["name"]
+        return x
+    a = _name_of(a)
+    b = _name_of(b)
     # Coerce types softly so "1A" == 1A works (both treated as strings).
     if op in ("==", "!="):
         if a is None and b is None:
             return op == "=="
+        # Multi-valued shorthand: when one side is a list/tuple/set,
+        # `list == scalar` means "scalar in list". Useful for
+        # `t.subject == "Fisica"` where t.subject is the list of
+        # subjects the teacher teaches. Mirror semantics for !=.
+        if isinstance(a, (list, tuple, set)) and not isinstance(b, (list, tuple, set)):
+            ok = b in a
+            return ok if op == "==" else (not ok)
+        if isinstance(b, (list, tuple, set)) and not isinstance(a, (list, tuple, set)):
+            ok = a in b
+            return ok if op == "==" else (not ok)
         try:
             if isinstance(a, (int, float)) and isinstance(b, str):
                 b = type(a)(b)
