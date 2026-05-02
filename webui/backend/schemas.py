@@ -185,6 +185,10 @@ class ClassBase(BaseModel):
     hard_motorie_pairs: bool = True
     hard_max_6_per_day: bool = True
     soft_minimize_sixth_weight: float = 50.0
+    # Free-day fields (analoghi a Teacher).
+    preferred_free_days: list[FreeDayPref] = Field(default_factory=list)
+    required_free_days_count: int = 0
+    max_hours_per_day: int = 5
 
 
 class ClassIn(ClassBase):

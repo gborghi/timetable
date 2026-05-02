@@ -257,6 +257,27 @@ def _apply_lightweight_migrations() -> None:
                 "ALTER TABLE teachers ADD COLUMN "
                 "required_free_days_count INTEGER NOT NULL DEFAULT 1"
             ))
+        # Same fields on SchoolClass + max_hours_per_day. Default 0
+        # for the count (classes work all 6 days normally) and 5 for
+        # the per-day cap (was previously hardcoded in the engine).
+        if insp.has_table("school_classes") and not has_column(
+                "school_classes", "preferred_free_days_json"):
+            conn.execute(text(
+                "ALTER TABLE school_classes ADD COLUMN "
+                "preferred_free_days_json TEXT"
+            ))
+        if insp.has_table("school_classes") and not has_column(
+                "school_classes", "required_free_days_count"):
+            conn.execute(text(
+                "ALTER TABLE school_classes ADD COLUMN "
+                "required_free_days_count INTEGER NOT NULL DEFAULT 0"
+            ))
+        if insp.has_table("school_classes") and not has_column(
+                "school_classes", "max_hours_per_day"):
+            conn.execute(text(
+                "ALTER TABLE school_classes ADD COLUMN "
+                "max_hours_per_day INTEGER NOT NULL DEFAULT 5"
+            ))
 
         # tenant_id on user-facing entities (Section 2.5 P3).
         # Defaults everything to tenant 1 -- the existing single school.

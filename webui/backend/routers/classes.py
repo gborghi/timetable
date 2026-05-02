@@ -25,6 +25,25 @@ def _class_unavailability(db, class_id: int) -> list[schemas.UnavailabilitySlot]
 
 def _to_out(c: models.SchoolClass, db=None) -> schemas.ClassOut:
     unav = _class_unavailability(db, c.id) if db is not None else []
+    # Decode preferred_free_days_json (best-effort).
+    import json as _json
+    pfd_list: list[schemas.FreeDayPref] = []
+    raw = getattr(c, "preferred_free_days_json", None) or ""
+    if raw:
+        try:
+            arr = _json.loads(raw)
+            if isinstance(arr, list):
+                for it in arr[:3]:
+                    if isinstance(it, dict) and "day" in it:
+                        pfd_list.append(schemas.FreeDayPref(
+                            day=int(it["day"]),
+                            is_hard=bool(it.get("is_hard", True)),
+                            soft_penalty=(int(it["soft_penalty"])
+                                          if it.get("soft_penalty") is not None
+                                          else None),
+                        ))
+        except Exception:
+            pass
     return schemas.ClassOut(
         id=c.id,
         name=c.name,
@@ -43,6 +62,13 @@ def _to_out(c: models.SchoolClass, db=None) -> schemas.ClassOut:
         hard_motorie_pairs=c.hard_motorie_pairs,
         hard_max_6_per_day=c.hard_max_6_per_day,
         soft_minimize_sixth_weight=c.soft_minimize_sixth_weight,
+        preferred_free_days=pfd_list,
+        required_free_days_count=int(
+            getattr(c, "required_free_days_count", 0) or 0
+        ),
+        max_hours_per_day=int(
+            getattr(c, "max_hours_per_day", 5) or 5
+        ),
         subjects=[
             schemas.ClassSubjectIn(subject=s.subject,
                                    hours_per_week=s.hours_per_week)
@@ -99,6 +125,26 @@ def _apply(c: models.SchoolClass, p: schemas.ClassIn, db: Session) -> None:
     c.hard_motorie_pairs = p.hard_motorie_pairs
     c.hard_max_6_per_day = p.hard_max_6_per_day
     c.soft_minimize_sixth_weight = p.soft_minimize_sixth_weight
+    # Free-day fields
+    import json as _json
+    pfd: list[dict] = []
+    seen_days: set[int] = set()
+    for it in (getattr(p, "preferred_free_days", None) or [])[:3]:
+        d = int(it.day)
+        if d in seen_days or d < 1 or d > 6:
+            continue
+        seen_days.add(d)
+        pfd.append({
+            "day": d,
+            "is_hard": bool(it.is_hard),
+            "soft_penalty": (int(it.soft_penalty)
+                              if it.soft_penalty is not None else None),
+        })
+    c.preferred_free_days_json = _json.dumps(pfd) if pfd else None
+    rc = int(getattr(p, "required_free_days_count", 0) or 0)
+    c.required_free_days_count = max(0, min(6, rc))
+    mh = int(getattr(p, "max_hours_per_day", 5) or 5)
+    c.max_hours_per_day = max(1, min(7, mh))
     if c.id is not None:
         db.query(models.ClassSubject).filter(
             models.ClassSubject.class_id == c.id

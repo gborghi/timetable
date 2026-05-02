@@ -323,6 +323,27 @@ class SchoolClass(TenantMixin, TimestampMixin, Base):
     hard_max_6_per_day: Mapped[bool] = mapped_column(Boolean, default=True)
     # SOFT
     soft_minimize_sixth_weight: Mapped[float] = mapped_column(Float, default=50.0)
+    # Free-day fields (analoghi a Teacher). Up to 3 ordered preferences
+    # stored as JSON; HARD count enforced exactly. The default is 0 ->
+    # the class works all 6 days (Italian norm).
+    preferred_free_days_json: Mapped[str | None] = mapped_column(
+        Text, nullable=True,
+        comment="JSON list of up to 3 free-day preferences "
+                "[{day:1..6, is_hard:bool, soft_penalty:int|None}]."
+    )
+    required_free_days_count: Mapped[int] = mapped_column(
+        Integer, default=0,
+        comment="HARD: numero esatto di giorni liberi a settimana "
+                "per la classe. Default 0 (lavora tutti i giorni)."
+    )
+    # Max ore/giorno: rilassa il default hardcoded di 5 nel modello.
+    # range tipico 4-7. Aumentare oltre 5 quando la classe ha giorni
+    # liberi da compensare con piu' ore negli altri giorni.
+    max_hours_per_day: Mapped[int] = mapped_column(
+        Integer, default=5,
+        comment="HARD: massimo numero di ore al giorno (sostituisce "
+                "il vecchio default fisso di 5)."
+    )
     subjects: Mapped[list["ClassSubject"]] = relationship(
         back_populates="school_class", cascade="all, delete-orphan"
     )

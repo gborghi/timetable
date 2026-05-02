@@ -31,6 +31,9 @@
       hard_no_holes: true, hard_dual_math: true,
       hard_dual_italian: true, hard_motorie_pairs: true,
       hard_max_6_per_day: true, soft_minimize_sixth_weight: 50,
+      preferred_free_days: [],
+      required_free_days_count: 0,
+      max_hours_per_day: 5,
       subjects: [], unavailability: []
     };
   }
@@ -253,6 +256,130 @@
         title="Disponibilita oraria della classe"
         value={editing.unavailability || []}
         onChange={onMatrixChange}/>
+    </div>
+
+    <!-- Giorni liberi (analogo alla scheda docente) -->
+    <div class="mt-4 card !shadow-none p-3 bg-ink-50/40 space-y-3">
+      <div class="text-sm font-semibold">Giorni liberi della classe (avanzato)</div>
+      <p class="text-xs text-ink-500">
+        Per le classi italiane il default e' lavorare lun-sab (zero
+        giorni liberi). Se si imposta un giorno libero HARD, le 6 ore
+        del giorno vengono bloccate nella matrice di disponibilita'.
+        Tre preferenze ordinate (la 1a viene rispettata per prima),
+        e un numero esatto di giorni liberi a settimana.
+      </p>
+      {#each [0, 1, 2] as i}
+        {@const cur = (editing.preferred_free_days ?? [])[i]
+                        ?? { day: 0, is_hard: true, soft_penalty: 100 }}
+        <div class="grid grid-cols-12 gap-2 items-end">
+          <div class="field col-span-3">
+            <label>{['Prima', 'Seconda', 'Terza'][i]} preferenza</label>
+            <select value={cur.day || 0} on:change={(e) => {
+              const list = [...(editing.preferred_free_days ?? [])];
+              while (list.length <= i) list.push({ day: 0, is_hard: true, soft_penalty: 100 });
+              list[i] = { ...list[i], day: Number(e.target.value) };
+              editing = { ...editing, preferred_free_days: list.filter((x) => x.day) };
+            }}>
+              <option value={0}>(nessuno)</option>
+              <option value={1}>Lunedi</option>
+              <option value={2}>Martedi</option>
+              <option value={3}>Mercoledi</option>
+              <option value={4}>Giovedi</option>
+              <option value={5}>Venerdi</option>
+              <option value={6}>Sabato</option>
+            </select>
+          </div>
+          {#if cur.day}
+            <div class="col-span-3 flex items-center gap-3 self-center">
+              <label class="flex items-center gap-1 text-xs">
+                <input type="radio" checked={cur.is_hard}
+                       on:change={() => {
+                         const list = [...(editing.preferred_free_days ?? [])];
+                         list[i] = { ...list[i], is_hard: true };
+                         editing = { ...editing, preferred_free_days: list };
+                       }}/>
+                🟥 HARD
+              </label>
+              <label class="flex items-center gap-1 text-xs">
+                <input type="radio" checked={!cur.is_hard}
+                       on:change={() => {
+                         const list = [...(editing.preferred_free_days ?? [])];
+                         list[i] = { ...list[i], is_hard: false };
+                         editing = { ...editing, preferred_free_days: list };
+                       }}/>
+                🟨 SOFT
+              </label>
+            </div>
+            {#if !cur.is_hard}
+              <div class="field col-span-2">
+                <label>Penalty</label>
+                <input type="number" value={cur.soft_penalty ?? 100}
+                       on:input={(e) => {
+                         const list = [...(editing.preferred_free_days ?? [])];
+                         list[i] = { ...list[i], soft_penalty: Number(e.target.value) };
+                         editing = { ...editing, preferred_free_days: list };
+                       }}/>
+              </div>
+            {/if}
+          {/if}
+        </div>
+      {/each}
+      {#if (editing.preferred_free_days ?? []).map((p) => p.day).filter((d, i, a) => d && a.indexOf(d) !== i).length > 0}
+        <div class="text-xs text-red-600">
+          ⚠️ I tre giorni preferiti devono essere distinti.
+        </div>
+      {/if}
+      <div class="grid grid-cols-2 gap-3">
+        <div class="field">
+          <label>Giorni liberi totali nella settimana (HARD)
+            <span title="Numero esatto di giornate libere per la classe. Default 0 (lavora tutti i giorni). 1 = un giorno libero (es. lunedi'). Aumentare oltre 1 e' raro per le classi italiane.">ℹ️</span>
+          </label>
+          <input type="number" min="0" max="6"
+                 value={editing.required_free_days_count ?? 0}
+                 on:input={(e) => editing = { ...editing,
+                   required_free_days_count: Math.max(0, Math.min(6, Number(e.target.value) || 0)) }}/>
+        </div>
+        <div class="field">
+          <label>Massimo ore al giorno (HARD)
+            <span title="Cap superiore al numero di ore in un singolo giorno. Default 5. Aumentare a 6/7 se la classe ha giorni liberi e deve compensare con piu' ore al giorno.">ℹ️</span>
+          </label>
+          <input type="number" min="1" max="7"
+                 value={editing.max_hours_per_day ?? 5}
+                 on:input={(e) => editing = { ...editing,
+                   max_hours_per_day: Math.max(1, Math.min(7, Number(e.target.value) || 5)) }}/>
+        </div>
+      </div>
+      <!-- Live feasibility check: ore_settimanali / giorni_lavorativi <= max_per_day -->
+      {#if (editing.subjects?.length ?? 0) > 0}
+        {@const totalHours = (editing.subjects ?? [])
+              .reduce((s, x) => s + (Number(x.hours_per_week) || 0), 0)}
+        {@const workDays = 6 - (editing.required_free_days_count ?? 0)}
+        {@const minPerDay = workDays > 0
+                              ? Math.ceil(totalHours / workDays)
+                              : Infinity}
+        {@const maxPerDay = editing.max_hours_per_day ?? 5}
+        {#if workDays === 0}
+          <div class="text-xs text-red-700 bg-red-50 border border-red-300 p-2 rounded">
+            ⚠️ Configurazione infeasible: 6 giorni liberi -&gt; nessun
+            giorno lavorativo!
+          </div>
+        {:else if minPerDay > maxPerDay}
+          <div class="text-xs text-red-700 bg-red-50 border border-red-300 p-2 rounded">
+            ⚠️ Configurazione infeasible: con
+            {editing.required_free_days_count ?? 0} giorni liberi e
+            {totalHours} ore settimanali servono almeno {minPerDay}
+            ore al giorno, ma il massimo e' {maxPerDay}. Aumenta
+            "Massimo ore al giorno" a {minPerDay} oppure riduci i
+            giorni liberi.
+          </div>
+        {:else}
+          <div class="text-xs text-emerald-700 bg-emerald-50 border border-emerald-300 p-2 rounded">
+            ✓ Configurazione feasible: {totalHours} ore settimanali
+            su {workDays} giorni lavorativi -&gt; minimo {minPerDay} /
+            massimo {maxPerDay} ore al giorno.
+          </div>
+        {/if}
+      {/if}
     </div>
 
     <div class="mt-4">

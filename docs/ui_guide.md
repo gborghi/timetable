@@ -225,6 +225,25 @@ CRUD classi. Modal di edit:
 - Peso minimizzazione 6a ora (SOFT)
 - Tabella materie+ore con autocomplete sulle materie note
 - AvailabilityMatrix 5-stati
+- **Giorni liberi della classe (avanzato)**: sezione dedicata
+  analoga a quella docente:
+  - 3 preferenze ordinate (Prima/Seconda/Terza) con dropdown
+    giorno + radio HARD/SOFT + Penalty per i SOFT. HARD blocca le
+    6 ore del giorno nella matrice (sincronizzazione automatica).
+  - **Giorni liberi totali (HARD)**: range 0-6, default 0 (le
+    classi italiane lavorano lun-sab). 1 = un giorno libero fisso
+    (es. lunedi'). Tooltip ℹ️ spiega il contesto.
+  - **Massimo ore al giorno (HARD)**: range 1-7, default 5.
+    Sostituisce il vecchio default fisso di 5 hardcoded
+    nell'engine. Aumentare a 6/7 quando la classe ha giorni liberi
+    e deve compensare con ore aggiuntive negli altri giorni.
+  - **Live feasibility check**: man mano che l'utente cambia i
+    valori, una banda colorata mostra OK verde o un warning rosso
+    se la combinazione e' infeasible. Esempio:
+    "Configurazione infeasible: con 1 giorno libero e 32 ore
+    settimanali servono almeno 7 ore al giorno, ma il massimo e'
+    5". Il calcolo: `ore_settimanali / (6 - giorni_liberi) <=
+    max_ore_al_giorno`.
 - LogicalUnavailabilitiesPanel
 
 ### Indirizzi (`/curricula`)

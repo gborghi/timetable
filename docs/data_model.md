@@ -27,6 +27,20 @@ in `webui/backend/db.py::_apply_lightweight_migrations`.
   `teacher_subjects`, `teacher_unavailability`,
   `teacher_mandatory_free_days`, `teacher_compatible_classes`,
   `teacher_class_preferences`, `teacher_curriculum_preferences`.
+- **school_classes** (free-day fields, oltre ai base):
+  - `preferred_free_days_json` -- TEXT JSON con lista di max 3
+    preferenze ordinate `[{day:1..6, is_hard:bool, soft_penalty:int|null}]`.
+    HARD blocca le 6 ore del giorno via auto-fill della matrice
+    `class_unavailability`; SOFT applica `soft_penalty` per ora
+    occupata.
+  - `required_free_days_count` -- INTEGER, default 0, range 0-6.
+    HARD: numero esatto di giorni liberi a settimana per la
+    classe. Default 0 (le classi italiane lavorano lun-sab).
+  - `max_hours_per_day` -- INTEGER, default 5, range 1-7.
+    HARD: massimo numero di ore in un singolo giorno. Sostituisce
+    il vecchio default fisso. Aumentare a 6 o 7 quando la classe
+    ha giorni liberi da compensare.
+
 - **school_classes** -- classi. `name` (e.g. "1A_Scientifico"),
   `nickname` (display), `year`, `section`, `curriculum` (string legacy),
   `curriculum_id` (FK opzionale a curricula -- normalizzazione),
