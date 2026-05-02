@@ -22,6 +22,7 @@ import type {
   SchoolClass,
   Solution,
   Student,
+  StudentTag,
   StudyGroup,
   Subject,
   SubjectGroupWeight,
@@ -103,6 +104,27 @@ export const students = {
   update: (id: number, b: Partial<Student>) =>
     api.put<Student>("/api/students/" + id, b),
   remove: (id: number) => api.del<void>("/api/students/" + id),
+  byTags: (q: { any_of?: string[]; all_of?: string[] } = {}) => {
+    const params = new URLSearchParams();
+    if (q.any_of?.length) params.set("any_of", q.any_of.join(","));
+    if (q.all_of?.length) params.set("all_of", q.all_of.join(","));
+    return api.get<Array<Record<string, unknown>>>(
+      "/api/students/by-tags" + (params.toString() ? "?" + params : ""),
+    );
+  },
+};
+
+// ---------------- Student tags ------------
+
+export const studentTags = {
+  list: () => api.get<StudentTag[]>("/api/student-tags"),
+  create: (b: { name: string; description?: string | null }) =>
+    api.post<StudentTag>("/api/student-tags", b),
+  update: (
+    id: number,
+    b: { name?: string; description?: string | null },
+  ) => api.put<StudentTag>("/api/student-tags/" + id, b),
+  remove: (id: number) => api.del<void>("/api/student-tags/" + id),
 };
 
 // ---------------- Groups ------------------

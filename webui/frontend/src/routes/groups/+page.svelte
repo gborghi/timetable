@@ -6,20 +6,64 @@
   import SortableQueryableList from '$lib/components/SortableQueryableList.svelte';
   import ImportButton from '$lib/components/ImportButton.svelte';
   import { cloneRow } from '$lib/utils';
-  import { groups as groupsSvc, students as studentsSvc, subjects as subjectsSvc } from '$lib/services';
+  import {
+    groups as groupsSvc,
+    students as studentsSvc,
+    studentTags as studentTagsSvc,
+    subjects as subjectsSvc,
+  } from '$lib/services';
 
   let editing = null;
   let listRef = null;
   let allStudents = [];
   let allSubjects = [];
+  let allTagNames = [];
   let memberFilter = '';
+  let tagFilter = '';
+  let tagFilterMode = 'any_of';   // 'any_of' | 'all_of'
+  let tagPreviewBusy = false;
 
   onMount(async () => {
     try {
       allStudents = await studentsSvc.list();
       allSubjects = (await subjectsSvc.list()).map((s) => s.name).sort();
+      allTagNames = (await studentTagsSvc.list()).map((t) => t.name).sort();
     } catch { /* */ }
   });
+
+  async function precompileFromTags() {
+    const list = (tagFilter || '')
+      .split(',')
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean);
+    if (list.length === 0) {
+      flash('Indica almeno un tag (separa con virgola)', 'error');
+      return;
+    }
+    tagPreviewBusy = true;
+    try {
+      const q = tagFilterMode === 'all_of'
+        ? { all_of: list }
+        : { any_of: list };
+      const matches = await studentsSvc.byTags(q);
+      const ids = matches.map((m) => m.id);
+      const merged = Array.from(new Set([...editing.student_ids, ...ids]));
+      editing = { ...editing, student_ids: merged };
+      flash(
+        'Aggiunti ' + ids.length + ' studenti (totale: '
+        + merged.length + ')',
+        'success',
+      );
+    } catch (e) { flash('Errore: ' + e.message, 'error'); }
+    finally { tagPreviewBusy = false; }
+  }
+
+  function clearMembers() {
+    if (editing.student_ids.length === 0) return;
+    if (!confirm('Rimuovere tutti i ' + editing.student_ids.length
+                 + ' membri attualmente selezionati?')) return;
+    editing = { ...editing, student_ids: [] };
+  }
 
   async function reloadStudents() {
     allStudents = await studentsSvc.list();
@@ -165,9 +209,54 @@
         <h3 class="!text-base">Studenti del gruppo
           <span class="text-xs text-ink-500">({editing.student_ids.length} selezionati)</span>
         </h3>
-        <input class="w-full px-2 py-1 border border-ink-200 rounded text-sm"
-               placeholder="Filtra per cognome/classe/matricola"
-               bind:value={memberFilter}/>
+
+        <details class="text-xs border border-ink-200 rounded p-2 bg-ink-50/40">
+          <summary class="cursor-pointer font-medium">Precompila da tag studenti</summary>
+          <div class="mt-2 grid grid-cols-[1fr_auto_auto] gap-1.5 items-end">
+            <div>
+              <label class="block mb-0.5 text-[11px] text-ink-500">
+                Tag (separa con virgola)
+              </label>
+              <input class="w-full px-2 py-1 border border-ink-200 rounded"
+                     list="all-student-tags"
+                     placeholder="es. debito_matematica_4, BES"
+                     bind:value={tagFilter}/>
+              <datalist id="all-student-tags">
+                {#each allTagNames as t}<option value={t}/>{/each}
+              </datalist>
+            </div>
+            <div>
+              <label class="block mb-0.5 text-[11px] text-ink-500">Logica</label>
+              <select class="px-2 py-1 border border-ink-200 rounded"
+                      bind:value={tagFilterMode}>
+                <option value="any_of">qualunque (OR)</option>
+                <option value="all_of">tutti (AND)</option>
+              </select>
+            </div>
+            <button type="button" class="btn !text-xs"
+                    disabled={tagPreviewBusy}
+                    on:click={precompileFromTags}>
+              {tagPreviewBusy ? '...' : 'Aggiungi'}
+            </button>
+          </div>
+          <p class="text-[10px] text-ink-500 mt-1">
+            Aggiunge gli studenti che hanno (almeno uno / tutti) i tag
+            indicati, mantenendo quelli gia' selezionati. I tag NON
+            sostituiscono il gruppo: il gruppo resta l'unita'
+            operativa di scheduling.
+          </p>
+        </details>
+
+        <div class="flex gap-2 items-center">
+          <input class="flex-1 px-2 py-1 border border-ink-200 rounded text-sm"
+                 placeholder="Filtra per cognome/classe/matricola"
+                 bind:value={memberFilter}/>
+          <button type="button" class="btn !text-xs"
+                  on:click={clearMembers}
+                  disabled={editing.student_ids.length === 0}>
+            Svuota
+          </button>
+        </div>
         <div class="card !shadow-none p-2 max-h-72 overflow-auto text-xs">
           {#each filteredStudents as s (s.id)}
             <label class="flex items-center gap-2 py-0.5 hover:bg-ink-50">

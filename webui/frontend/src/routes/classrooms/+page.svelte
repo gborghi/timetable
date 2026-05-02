@@ -9,7 +9,8 @@
   import LogicalUnavailabilitiesPanel from '$lib/components/LogicalUnavailabilitiesPanel.svelte';
   import ImportButton from '$lib/components/ImportButton.svelte';
   import BulkApplyModal from '$lib/components/BulkApplyModal.svelte';
-  import ClassroomTagPicker from '$lib/components/ClassroomTagPicker.svelte';
+  import TagPicker from '$lib/components/TagPicker.svelte';
+  // (TagPicker is the renamed ClassroomTagPicker, generic)
   import ManageTagsModal from '$lib/components/ManageTagsModal.svelte';
   import { cloneRow } from '$lib/utils';
   import {
@@ -272,6 +273,13 @@
                 onDone={() => { selectedIds = []; listRef?.reload(); }}/>
 
 <ManageTagsModal bind:open={showTagsModal}
+                 service={tagSvc}
+                 title="Gestisci tag aule"
+                 countField="n_classrooms"
+                 countLabelSingular="aula"
+                 countLabelPlural="aule"
+                 namePlaceholder="es. proiettore"
+                 descPlaceholder="Aule con videoproiettore"
                  onClose={() => (showTagsModal = false)}
                  onChanged={async () => { await reloadTags(); listRef?.reload(); }}/>
 
@@ -303,7 +311,7 @@
         <button type="button" class="btn !text-xs !px-2 !py-0.5 ml-auto"
                 on:click={() => (showTagsModal = true)}>Gestisci tag...</button>
       </div>
-      <ClassroomTagPicker
+      <TagPicker
         value={editing.tags || []}
         suggestions={allTagNames}
         onChange={onTagsChange}/>

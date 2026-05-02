@@ -236,6 +236,7 @@ export interface StudentBase {
   student_code?: string | null;
   class_id?: number | null;
   notes?: string | null;
+  tags?: string[];
 }
 
 export interface Student extends StudentBase {
@@ -243,6 +244,13 @@ export interface Student extends StudentBase {
   // Derived
   class_name?: string | null;
   n_groups?: number;
+}
+
+export interface StudentTag {
+  id: number;
+  name: string;
+  description?: string | null;
+  n_students?: number;
 }
 
 export interface GroupSubjectHours {
