@@ -664,6 +664,51 @@ conflitti trovati (matrix HARD+ENFORCED, ENFORCED in giorno libero,
 logical HARD/ENFORCED unsatisfiable). Ogni conflitto mostra il
 `reason` umano e i vincoli coinvolti (con le loro pill colorate).
 
+### Statistiche e diagnostica (`/diagnostics`)
+
+Tab dedicato con cinque sezioni che lanciano sincrono ciascuno
+endpoint `/api/diagnostics/...`. Vedere `docs/diagnostics.md`
+per i dettagli delle metriche e degli output.
+
+Le visualizzazioni usano `<EChart>` (Apache ECharts ^6) con tema
+`pitantum` (palette indaco / oro / avorio / terra-di-siena).
+
+Le sezioni:
+
+1. **Pre-check fattibilita'** (Hall) -- replica del bottone
+   inline in PhaseACard, qui con report piu' ricco.
+2. **Sensitivity Monte Carlo** -- istogramma SOFT + statistiche
+   (media, std, percentili 25/50/75, CV, interpretazione).
+3. **Analisi bipartito** -- modularita', densita',
+   top-K betweenness centrality. Riusa Cytoscape per la
+   visualizzazione del grafo (sezione "Grafo della scuola"
+   sulla Dashboard).
+4. **Correlazioni e regressioni** -- 3 modelli statsmodels (OLS
+   load-vs-gaps, OLS subjects-vs-soft, Logit saturation-vs-sixth)
+   con tabella coefficienti / p-values / R^2 + scatter plot.
+5. **Distribuzioni** -- istogramma carichi docenti + heatmap
+   materia x slot + KS-test e chi-quadro.
+
+### Run detail (`/runs/[id]`)
+
+Il bottone "detail" in ogni riga del tab Runs apre il dettaglio
+del run: header con riepilogo (kind, profilo, stato, obj
+finale, % lezioni piazzate, vincoli HARD violati), grafico
+objective vs tempo (multi-linea per phase, ECharts), tabella
+statistiche per stage, bottone "Esporta telemetria (JSON)" e
+RunLogPanel in fondo.
+
+Live mode: se il run e' `running` o `pending`, la pagina poll-a
+ogni 2s `/api/optimize/runs/{id}` + `/summary` e merge solo i
+sample nuovi nel grafico (no flicker).
+
+Il backend Runs list usa una **smart-merge** per evitare
+ri-render dell'intera lista a ogni 2s: i run terminati
+mantengono la stessa identita' di oggetto JS, quindi i loro
+bottoni / dropdown / pannelli espansi non vengono mai
+ricreati. Polling adattivo: 2s quando c'e' almeno un run
+attivo, 30s altrimenti.
+
 ### Workflow (`/optimize`)
 
 Lancia le 4 fasi di ottimizzazione (vedere [workflow.md](workflow.md)):

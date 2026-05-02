@@ -35,6 +35,37 @@ LogicalUnavailability filtrato per `entity_type=teacher`).
 `/api/classes`. Embed: `subjects[]`, `unavailability[]`. Sub:
 `/api/classes/{id}/logical-unavailabilities`.
 
+### Tecniche di ottimizzazione avanzate
+Vedere `docs/optimization_strategies.md`.
+
+- `POST /api/optimize/meta/{stage}` -- stage in
+  `{lns, sa, ts, ils, alns, vns, lagrangian}`. Body: `MetaRunIn`
+  esteso con campi specifici per ALNS (`alns_T0`, `alns_alpha`,
+  `alns_destroy[]`, `alns_repair[]`), VNS (`vns_neighbourhoods[]`),
+  Lagrangian (`lagrangian_max_iter`, `lagrangian_tolerance`,
+  `lagrangian_alpha_0`).
+- `POST /api/optimize/column-generation` -- async, body
+  `{time_budget_s, patterns_per_teacher, log}`.
+- `POST /api/optimize/hall-check` -- back-compat alias di
+  `/api/diagnostics/hall-check`.
+
+### Diagnostica
+- `POST /api/diagnostics/hall-check` -- pre-check Hall (sync).
+- `POST /api/diagnostics/montecarlo` -- sensitivity MC.
+- `POST /api/diagnostics/bipartite` -- modularita / betweenness /
+  densita.
+- `POST /api/diagnostics/correlations` -- 3 regressioni
+  (statsmodels).
+- `POST /api/diagnostics/distributions` -- 5 distribuzioni +
+  KS / chi-quadro.
+
+### Run telemetry
+- `GET /api/optimize/runs/{id}/telemetry?limit=&offset=&phase=`
+  -- serie temporale dei sample registrati dai moduli solver.
+  Ogni entry: `{step, timestamp_s, phase, payload}`.
+- `GET /api/optimize/runs/{id}/summary` -- aggregato per phase +
+  serie objective pronta per ECharts.
+
 ### Bulk import (xlsx / csv)
 - `POST /api/import/{entity}` -- multipart upload. Form:
   `file` (xlsx/csv), `mode` in `upsert|append|replace`,

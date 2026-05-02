@@ -1185,3 +1185,56 @@ python experiments/test_engine_diagnostics.py
 
 In appendice del repo i pickle `history_<profile>.pkl` contengono la
 storia stage-by-stage di ogni run.
+
+## 15. Tecniche avanzate (post 1ef6a78)
+
+Sezione aggiunta per le 5 tecniche di ottimizzazione introdotte:
+**ALNS**, **VNS**, **Hall pre-check**, **Column Generation**,
+**Lagrangian Relaxation**.
+
+### 15.1 Setup
+
+I moduli sono in `experiments/`:
+- `experiments/alns.py` (ALNS)
+- `experiments/vns.py` (VNS)
+- `experiments/diagnostics/hall_check.py` (Hall pre-check, sync)
+- `experiments/column_generation.py` (Column Generation skeleton)
+- `experiments/lagrangian.py` (Lagrangian Relaxation skeleton)
+
+Ognuno espone una funzione `run_*` callabile dai test. Il
+benchmark integrato e' tracciato via `run_telemetry` (alembic
+migration `a848420325b3`): apri il run detail page
+(`/runs/[id]`) per vedere il grafico objective vs tempo
+multi-linea per phase.
+
+### 15.2 Risultati attesi (qualitativi)
+
+| Tecnica         | Profilo dove e' efficace            | Default |
+|-----------------|-------------------------------------|---------|
+| ALNS            | medium / big                        | ON      |
+| VNS             | tutti (rifinitura post-TS)          | OFF     |
+| Hall pre-check  | tutti (e' diagnostico, non solver)  | ON      |
+| Column Gen      | superhuge (>200 classi)             | OFF     |
+| Lagrangian      | medium / big con cluster ben separati | OFF   |
+
+### 15.3 Diagnostica statistica (Sezione 16 prossima)
+
+Le analisi del tab `/diagnostics` (Sensitivity Monte Carlo,
+bipartite analysis, correlazioni, distribuzioni) sono
+documentate in `docs/diagnostics.md`. Il manuale LaTeX (cap.
+"Diagnostica statistica") riassume metodi e endpoint.
+
+### 15.4 Riproduzione
+
+```bash
+# Backend smoke test su tutti i moduli:
+cd webui/backend
+.venv/Scripts/pytest.exe tests/test_advanced_techniques.py -q
+.venv/Scripts/pytest.exe tests/test_telemetry.py -q
+
+# Lanciare un benchmark integrato (richiede una scuola attiva):
+curl -X POST http://127.0.0.1:8000/api/optimize/meta/alns \
+     -H "Content-Type: application/json" \
+     -d '{"budget_s": 60}'
+# Poi visita /runs/<id> per il grafico objective vs tempo.
+```
