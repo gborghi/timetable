@@ -35,6 +35,27 @@ LogicalUnavailability filtrato per `entity_type=teacher`).
 `/api/classes`. Embed: `subjects[]`, `unavailability[]`. Sub:
 `/api/classes/{id}/logical-unavailabilities`.
 
+### Dashboard: Import/Export DB
+- `GET /api/dashboard/export-db?schema_only=<bool>` -- restituisce
+  un .zip con `database.db` (raw SQLite, quando applicabile),
+  `tables/<t>.csv` per ogni tabella e `metadata.json` (contiene
+  `schema_version`, `exported_at`, `tables`, `row_counts`,
+  `csv_sha256`). Se `schema_only=true`, omette i CSV (utile come
+  template per un'altra scuola).
+- `POST /api/dashboard/import-db` -- multipart upload del .zip;
+  sostituisce il DB live (SQLite-only). Salva una copia
+  `timetable.db.pre_import_backup` accanto al DB. Verifica che
+  metadata.json abbia `kind == "pitantum-db-export"`.
+- `POST /api/dashboard/snapshot/create` -- salva uno snapshot
+  timestampato in `webui/data/snapshots/` (stesso formato del
+  GET export-db).
+- `GET /api/dashboard/snapshot/list` -- lista snapshot:
+  `[{filename, size_bytes, modified_at}]`.
+- `POST /api/dashboard/snapshot/restore/{filename}` -- ripristina
+  lo snapshot indicato.
+- `DELETE /api/dashboard/snapshot/{filename}` -- elimina uno
+  snapshot.
+
 ### Saved views
 - `GET /api/saved-views?entity=<entity>` -- lista viste salvate
   (filtrabile per entita').

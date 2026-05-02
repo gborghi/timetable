@@ -4,6 +4,7 @@
   import { datasetState, flash, refreshDataset, bumpMutation } from '$lib/stores';
   import RunLogPanel from '$lib/components/RunLogPanel.svelte';
   import EntityGraph from '$lib/components/dashboard/EntityGraph.svelte';
+  import DbImportExportCard from '$lib/components/dashboard/DbImportExportCard.svelte';
 
   // Graph panel: hidden by default; user clicks "Visualizza grafo" to
   // render. Mode toggle: classes-as-nodes vs teachers-as-nodes.
@@ -148,6 +149,8 @@
       lanciare l'ottimizzazione, e visualizzare l'orario.
     </p>
   </section>
+
+  <DbImportExportCard />
 
   <section class="grid md:grid-cols-2 gap-6">
     <div class="card p-5">

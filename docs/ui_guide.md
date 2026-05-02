@@ -121,6 +121,26 @@ completa.
 
 ## Tab per tab
 
+### Import / Export DB (Dashboard)
+
+Card prominente nella prima riga della Dashboard. Funzioni:
+
+- **Esporta DB completo** -- scarica un `.zip` contenente
+  `database.db` (raw SQLite) + `tables/<t>.csv` per ogni tabella
+  + `metadata.json` (schema_version + sha256). Pensato come
+  formato di backup portabile.
+- **Solo schema** -- esporta lo zip ma omette i dati di
+  scheduling: utile come template per inizializzare un'altra
+  scuola con la stessa struttura.
+- **Import** -- selettore file .zip + conferma esplicita
+  ("Questa operazione cancella i dati correnti del DB..."). Una
+  copia `timetable.db.pre_import_backup` viene salvata accanto
+  al DB prima dello swap.
+- **Crea snapshot** -- salva uno snapshot timestampato
+  (`snapshot_YYYYMMDD_HHMMSS.zip`) in
+  `webui/data/snapshots/`. La lista snapshot mostra filename,
+  data, dimensione e bottoni "Ripristina" / "Elimina".
+
 ### Dashboard (`/`)
 
 Punto di partenza. Tre card:
