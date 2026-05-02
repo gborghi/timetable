@@ -2,18 +2,23 @@
   /**
    * Runs tab — global view of every optimization run launched in this
    * dataset. Per Giovanni's spec each row shows:
-   *   - kind / name / profile pill
-   *   - traffic-light pill: green=done, red=failed, blue=running, ink=pending
-   *   - progress bar
+   *   - kind / nome / profilo
+   *   - traffic-light pill: green=done, red=failed, blue=running
+   *   - progress bar (animates while running)
    *   - started/finished timestamps
-   *   - obj_value + metrics
-   * Click expands a row to show:
-   *   - params (JSON)
-   *   - error trace if failed
-   *   - toggleable log via RunLogPanel
+   *   - obj_value + first metrics inline
+   * Click expands a row to show: full params, full metrics, error
+   * trace if failed. "Mostra log" toggles a live RunLogPanel.
    *
-   * Auto-poll every 2s while at least one run is in 'running' or
-   * 'pending'; stop polling otherwise to save CPU.
+   * Plus, per the latest spec:
+   *   - Multi-level sort headers (dblclick label adds level)
+   *   - DSL query bar with Cerca / Reset
+   *   - Checkbox column + select-all
+   *   - Delete button per row (dialog: "stai cancellandone N
+   *     selezionati o solo questo?")
+   *   - Bulk delete -> POST /api/optimize/runs/delete-batch
+   *
+   * Auto-poll every 2s (always; the endpoint is just a SELECT).
    */
   import { onMount, onDestroy } from 'svelte';
   import { api } from '$lib/api';
@@ -23,31 +28,59 @@
   let runs = [];
   let busy = false;
   let expanded = new Set();
-  let logFor = null;          // run id whose log is currently shown
+  let logFor = null;
   let pollTimer = null;
   let elapsedTimer = null;
-  let now = Date.now();       // ticked once/sec so elapsed updates live
-  let limit = 100;
+  let now = Date.now();
+  let limit = 200;
+
+  // Sort + query state (DSL same shape as docenti / aule / classi).
+  let rowQuery = '';
+  let appliedQuery = '';
+  let sortLevels = [];     // [{column, direction}]
+  let queryError = '';
+  let showHelp = false;
+  const MAX_SORT_LEVELS = 3;
+
+  const COLS = [
+    { key: 'id',          label: '#' },
+    { key: 'kind',        label: 'Tipo' },
+    { key: 'name',        label: 'Nome' },
+    { key: 'status',      label: 'Stato' },
+    { key: 'progress',    label: 'Avanzamento' },
+    { key: 'started_at',  label: 'Avviato' },
+    { key: 'obj_value',   label: 'Obj' },
+    { key: 'solution_id', label: 'Sol.' },
+  ];
+
+  // Selection
+  let selected = new Set();   // run ids
+
+  function buildSortString() {
+    return sortLevels.map((l) => `${l.column},${l.direction}`).join(':');
+  }
+
+  async function refresh() {
+    busy = true;
+    queryError = '';
+    try {
+      const params = new URLSearchParams();
+      params.set('limit', String(limit));
+      if (appliedQuery) params.set('q', appliedQuery);
+      const sortStr = buildSortString();
+      if (sortStr) params.set('sort', sortStr);
+      params.set('_t', String(Date.now()));
+      runs = await api.get('/api/optimize/runs?' + params.toString());
+    } catch (e) {
+      queryError = e?.message || String(e);
+    } finally {
+      busy = false;
+    }
+  }
 
   onMount(async () => {
     await refresh();
-    // Poll the runs list. Strategy:
-    //   - 2s while at least one run is running/pending
-    //   - 6s otherwise (catches new runs the user kicks off elsewhere)
-    pollTimer = setInterval(() => {
-      const anyActive = runs.some((r) =>
-        r.status === 'running' || r.status === 'pending'
-      );
-      // Always refresh; tighter cadence if active so the bar updates.
-      // The endpoint is just a SELECT, < 5ms; cheap.
-      refresh();
-      // dynamic interval is hard with setInterval; we just always poll.
-      // For "no active" we'd ideally use 6s, but a constant 2s costs
-      // <100ms/min of backend work, irrelevant.
-    }, 2000);
-    // Ticker that re-renders the elapsed-time column once per second
-    // even between polls. Without it, "Durata" only updates on each
-    // refresh tick which feels stale during long runs.
+    pollTimer = setInterval(refresh, 2000);
     elapsedTimer = setInterval(() => { now = Date.now(); }, 1000);
   });
   onDestroy(() => {
@@ -55,34 +88,107 @@
     if (elapsedTimer) clearInterval(elapsedTimer);
   });
 
-  async function refresh() {
-    busy = true;
+  // Sort interaction
+  function onLabelDblClick(colKey) {
+    const idx = sortLevels.findIndex((l) => l.column === colKey);
+    if (idx >= 0) {
+      sortLevels = sortLevels.filter((_, i) => i !== idx);
+    } else if (sortLevels.length < MAX_SORT_LEVELS) {
+      sortLevels = [...sortLevels, { column: colKey, direction: 'asc' }];
+    } else {
+      flash(`Massimo ${MAX_SORT_LEVELS} livelli di sort.`, 'error');
+      return;
+    }
+    refresh();
+  }
+  function onIndicatorClick(colKey) {
+    const idx = sortLevels.findIndex((l) => l.column === colKey);
+    if (idx < 0) return;
+    sortLevels = sortLevels.map((l, i) => i === idx
+      ? { ...l, direction: l.direction === 'asc' ? 'desc' : 'asc' } : l);
+    refresh();
+  }
+  function resetSort() {
+    if (sortLevels.length === 0) return;
+    sortLevels = [];
+    refresh();
+  }
+  function applyQuery() {
+    appliedQuery = rowQuery;
+    refresh();
+  }
+  function resetQuery() {
+    if (!rowQuery && !appliedQuery) return;
+    rowQuery = '';
+    appliedQuery = '';
+    refresh();
+  }
+
+  // Selection helpers
+  function toggleSel(id) {
+    if (selected.has(id)) selected.delete(id);
+    else selected.add(id);
+    selected = selected;
+  }
+  function selectAllVisible() {
+    selected = new Set(runs.map((r) => r.id));
+  }
+  function clearSelection() { selected = new Set(); }
+
+  // Per-row + bulk delete. If the user clicks "Elimina" on a row
+  // that's part of a multi-selection, we ask whether they meant the
+  // whole batch or just that one row.
+  async function deleteRun(r) {
+    const isPartOfBatch = selected.size > 1 && selected.has(r.id);
+    if (isPartOfBatch) {
+      const ans = confirm(
+        `Eliminare TUTTI i ${selected.size} run selezionati?\n\n`
+        + `(annulla -> elimina solo run #${r.id})`
+      );
+      if (ans) return bulkDelete([...selected]);
+      // user said "no" -> just this one
+    }
+    if (r.status === 'running' || r.status === 'pending') {
+      flash('Run ancora attivo: non si puo\' eliminare.', 'error');
+      return;
+    }
+    if (!confirm(`Eliminare run #${r.id} (${r.kind})?`)) return;
     try {
-      runs = await api.get(`/api/optimize/runs?limit=${limit}`);
+      await api.del('/api/optimize/runs/' + r.id);
+      flash('Run eliminato.', 'success');
+      selected.delete(r.id); selected = selected;
+      await refresh();
     } catch (e) {
-      flash('Errore: ' + e.message, 'error');
-    } finally {
-      busy = false;
+      flash('Errore: ' + (e.message || e), 'error');
     }
   }
 
-  function toggle(id) {
-    if (expanded.has(id)) expanded.delete(id);
-    else expanded.add(id);
-    expanded = expanded;
+  async function bulkDelete(ids) {
+    if (!ids || ids.length === 0) return;
+    if (!confirm(`Eliminare ${ids.length} run selezionati?`)) return;
+    try {
+      const r = await api.post('/api/optimize/runs/delete-batch',
+                                { run_ids: ids });
+      let msg = `${r.deleted} run eliminati.`;
+      if (r.skipped_active && r.skipped_active.length) {
+        msg += ` ${r.skipped_active.length} ancora attivi non sono `
+              + 'stati toccati.';
+      }
+      flash(msg, 'success');
+      clearSelection();
+      await refresh();
+    } catch (e) {
+      flash('Errore: ' + (e.message || e), 'error');
+    }
   }
 
+  // Display helpers
   function semaforo(status) {
     if (status === 'done') return { cls: 'pill-green', label: '✓ success' };
     if (status === 'failed') return { cls: 'pill-red',   label: '✗ error' };
     if (status === 'running') return { cls: 'pill-blue', label: '● running' };
     return { cls: 'pill', label: status };
   }
-
-  // Pure function (depends on `now` for reactivity in the markup).
-  // The backend now serializes started_at / finished_at as UTC-aware
-  // ISO strings, so Date.parse is well-defined; before the fix we
-  // were getting elapsed values inflated by the user's UTC offset.
   function elapsed(r, _now) {
     const a = r.started_at, b = r.finished_at;
     if (!a) return '';
@@ -93,11 +199,15 @@
     const m = Math.floor(s / 60);
     return `${m}m ${s % 60}s`;
   }
-
   function fmtTime(s) {
     if (!s) return '';
     const t = s.split('T')[1]?.split('.')[0];
     return t || s;
+  }
+  function toggle(id) {
+    if (expanded.has(id)) expanded.delete(id);
+    else expanded.add(id);
+    expanded = expanded;
   }
 </script>
 
@@ -118,45 +228,144 @@
   </div>
 
   <p class="text-xs text-ink-500">
-    Storia di ogni esecuzione (mock-import, Phase A, Phase B, metaeuristiche,
-    classroom-assignment, place-event). Il semaforo a destra mostra
-    <span class="pill-green !text-[10px]">✓ success</span>,
-    <span class="pill-red !text-[10px]">✗ error</span>,
-    <span class="pill-blue !text-[10px]">● running</span>;
-    click su una riga per espanderla e vedere parametri / metriche / log
-    streaming. Mentre c'e' almeno una run in corso la pagina poll-a
-    automaticamente ogni 2s.
+    Storia di ogni esecuzione (mock-import, Phase A, Phase B,
+    metaeuristiche, classroom-assignment, place-event). Doppio click su
+    un'intestazione di colonna per aggiungerla al sort (max 3 livelli);
+    click sulla freccia per invertire la direzione. Query DSL come nelle
+    altre tab. Selezionando piu' righe ed eliminando, il delete si
+    applica a tutto il batch.
   </p>
+
+  <!-- Query bar -->
+  <div class="card p-3 flex flex-wrap gap-2 items-end">
+    <div class="flex-1 min-w-64">
+      <label class="text-xs text-ink-500">Query</label>
+      <input class="w-full px-2 py-1.5 rounded-md border border-ink-200 font-mono text-sm"
+             placeholder="es. tipo = phase_b AND stato = done, errore contains Timeout"
+             bind:value={rowQuery}
+             on:keydown={(e) => { if (e.key === 'Enter') applyQuery(); }}/>
+    </div>
+    <button class="btn" on:click={applyQuery} disabled={busy}>
+      {busy ? '...' : 'Cerca'}
+    </button>
+    <button class="btn !text-xs"
+            on:click={() => (showHelp = !showHelp)}>?  guida</button>
+    <span class="border-l border-ink-200 h-6 mx-1"></span>
+    <button class="btn !text-xs" on:click={resetQuery}
+            disabled={!rowQuery && !appliedQuery}>Reset query</button>
+    <button class="btn !text-xs" on:click={resetSort}
+            disabled={sortLevels.length === 0}>Reset sort</button>
+  </div>
+
+  {#if queryError}
+    <div class="card p-2 text-xs text-red-700 bg-red-50 border-red-300">
+      Errore query: {queryError}
+    </div>
+  {/if}
+
+  {#if sortLevels.length > 0}
+    <div class="card p-2 text-xs flex flex-wrap items-center gap-2 bg-accent-500/5 border-accent-500/30">
+      <span class="text-ink-500">Sort attivo:</span>
+      {#each sortLevels as l, i}
+        <span class="pill pill-blue">{i + 1}. {l.column}
+          {l.direction === 'asc' ? '▲' : '▼'}</span>
+      {/each}
+    </div>
+  {/if}
+
+  {#if showHelp}
+    <div class="card p-3 text-xs space-y-1 bg-ink-50">
+      <div><strong>Operatori:</strong>
+        <code>= != &lt; &lt;= &gt; &gt;= contains startswith endswith in [...]</code></div>
+      <div><strong>Logica:</strong> <code>AND</code> / <code>OR</code> / parentesi.</div>
+      <div><strong>Campi:</strong>
+        <code>id, kind/tipo, name/nome, profile/profilo, status/stato,
+              progress, obj_value/obj, solution_id, started_at,
+              finished_at, error/errore</code></div>
+      <div><strong>Esempi:</strong>
+        <ul class="list-disc list-inside">
+          <li><code>stato = done</code></li>
+          <li><code>tipo = phase_b AND obj &lt; 1000</code></li>
+          <li><code>errore contains Timeout</code></li>
+          <li><code>kind in [lns, sa, ts, ils]</code></li>
+        </ul></div>
+    </div>
+  {/if}
+
+  <!-- Bulk toolbar -->
+  {#if selected.size > 0}
+    <div class="card p-2 bg-accent-500/5 border-accent-500/30 flex items-center gap-2 flex-wrap">
+      <span class="pill pill-blue">{selected.size} selezionati</span>
+      <button class="btn !text-xs" on:click={clearSelection}>
+        Deseleziona
+      </button>
+      <button class="btn-red !text-xs"
+              on:click={() => bulkDelete([...selected])}>
+        Elimina selezionati
+      </button>
+    </div>
+  {/if}
 
   <div class="card p-2 overflow-x-auto">
     <table class="tbl text-xs w-full">
       <thead>
         <tr>
-          <th>#</th>
-          <th>Tipo</th>
-          <th>Nome</th>
-          <th>Stato</th>
-          <th class="w-40">Avanzamento</th>
-          <th>Avviato</th>
+          <th class="w-6 text-center">
+            <input type="checkbox"
+                   checked={runs.length > 0 && selected.size === runs.length}
+                   on:click={(e) => e.target.checked
+                                      ? selectAllVisible()
+                                      : clearSelection()}/>
+          </th>
+          {#each COLS as c}
+            {@const idx = sortLevels.findIndex((l) => l.column === c.key)}
+            {@const dir = idx >= 0 ? sortLevels[idx].direction : null}
+            <th class="select-none">
+              <span class="inline-flex items-center gap-1">
+                <button class="hover:text-accent-500 cursor-pointer
+                               underline decoration-dotted decoration-ink-300"
+                        title="Doppio click per aggiungere/rimuovere dal sort"
+                        on:dblclick={() => onLabelDblClick(c.key)}>
+                  {c.label}
+                </button>
+                {#if dir}
+                  <button class="text-[10px] text-accent-500"
+                          title="Inverti direzione"
+                          on:click|stopPropagation={() => onIndicatorClick(c.key)}>
+                    {dir === 'asc' ? '▲' : '▼'}
+                  </button>
+                  {#if sortLevels.length > 1}
+                    <span class="text-[9px] bg-accent-500 text-white rounded-full
+                                 w-4 h-4 inline-flex items-center justify-center">
+                      {idx + 1}
+                    </span>
+                  {/if}
+                {/if}
+              </span>
+            </th>
+          {/each}
           <th>Durata</th>
-          <th class="text-right">Obj</th>
           <th>Metriche</th>
-          <th>Sol.</th>
-          <th></th>
+          <th class="text-right">Azioni</th>
         </tr>
       </thead>
       <tbody>
         {#if runs.length === 0}
-          <tr><td colspan="11" class="text-center text-ink-400 italic py-6">
-            Nessun run ancora. Lancia un'ottimizzazione dal Workflow o
-            dal Monitor (Piazza).
+          <tr><td colspan="12" class="text-center text-ink-400 italic py-6">
+            Nessun run. Lancia un'ottimizzazione dal Workflow o dal
+            Monitor (Piazza).
           </td></tr>
         {/if}
         {#each runs as r (r.id)}
           {@const sem = semaforo(r.status)}
-          <tr class="cursor-pointer hover:bg-ink-50"
-              on:click={() => toggle(r.id)}>
-            <td class="text-ink-400">
+          <tr class="hover:bg-ink-50"
+              class:bg-blue-50={selected.has(r.id)}>
+            <td class="w-6 text-center">
+              <input type="checkbox" checked={selected.has(r.id)}
+                     on:click|stopPropagation={() => toggleSel(r.id)}/>
+            </td>
+            <td class="text-ink-400 cursor-pointer"
+                on:click={() => toggle(r.id)}>
               <span class="text-xs mr-1">
                 {expanded.has(r.id) ? '▼' : '▶'}
               </span>#{r.id}
@@ -168,7 +377,7 @@
             </td>
             <td>
               {#if r.progress != null}
-                <div class="w-full h-2 rounded bg-ink-100 overflow-hidden">
+                <div class="w-32 h-2 rounded bg-ink-100 overflow-hidden">
                   <div class="h-full transition-all"
                        class:bg-emerald-500={r.status === 'done'}
                        class:bg-red-500={r.status === 'failed'}
@@ -183,25 +392,33 @@
               {/if}
             </td>
             <td class="text-[10px]">{fmtTime(r.started_at)}</td>
-            <td class="text-[10px]">{elapsed(r, now)}</td>
             <td class="text-right">{r.obj_value ?? ''}</td>
+            <td class="text-[10px]">{r.solution_id ?? ''}</td>
+            <td class="text-[10px]">{elapsed(r, now)}</td>
             <td class="text-[10px] text-ink-500">
               {r.metrics
                 ? Object.entries(r.metrics).slice(0, 4)
                     .map(([k, v]) => `${k}=${v}`).join(' · ')
                 : ''}
             </td>
-            <td class="text-[10px]">{r.solution_id ?? ''}</td>
-            <td class="whitespace-nowrap">
+            <td class="whitespace-nowrap text-right">
               <button class="btn !text-[10px] !px-2 !py-0.5"
                       on:click|stopPropagation={() => (logFor = logFor === r.id ? null : r.id)}>
-                {logFor === r.id ? 'nascondi log' : 'mostra log'}
+                {logFor === r.id ? 'nascondi log' : 'log'}
+              </button>
+              <button class="btn-red !text-[10px] !px-2 !py-0.5 ml-1"
+                      on:click|stopPropagation={() => deleteRun(r)}
+                      disabled={r.status === 'running' || r.status === 'pending'}
+                      title={r.status === 'running' || r.status === 'pending'
+                                ? 'Run ancora attivo'
+                                : 'Elimina questo run (o tutti i selezionati)'}>
+                Elimina
               </button>
             </td>
           </tr>
           {#if expanded.has(r.id)}
             <tr style="background-color:#f9fafb;">
-              <td colspan="11" class="p-3">
+              <td colspan="12" class="p-3">
                 <div class="grid md:grid-cols-2 gap-3 text-xs">
                   <div>
                     <h4 class="font-semibold mb-1">Parametri</h4>
@@ -233,7 +450,7 @@
           {/if}
           {#if logFor === r.id}
             <tr>
-              <td colspan="11" class="p-3">
+              <td colspan="12" class="p-3">
                 <RunLogPanel runId={r.id}
                              title={`Log run #${r.id} (${r.kind})`}/>
               </td>

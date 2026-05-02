@@ -317,6 +317,35 @@ def event_row_funcs() -> dict[str, Callable[..., bool]]:
     return {}
 
 
+def run_fields() -> dict[str, Callable[[Any], Any]]:
+    """Optimization runs (rows from /api/optimize/runs)."""
+    return {
+        "id": lambda r: int(r.get("id") or 0),
+        "kind": lambda r: r.get("kind") or "",
+        "tipo": lambda r: r.get("kind") or "",
+        "name": lambda r: r.get("name") or "",
+        "nome": lambda r: r.get("name") or "",
+        "profile": lambda r: r.get("profile") or "",
+        "profilo": lambda r: r.get("profile") or "",
+        "status": lambda r: r.get("status") or "",
+        "stato": lambda r: r.get("status") or "",
+        "progress": lambda r: float(r.get("progress") or 0),
+        "obj_value": lambda r: (float(r.get("obj_value"))
+                                 if r.get("obj_value") is not None else 0),
+        "obj": lambda r: (float(r.get("obj_value"))
+                          if r.get("obj_value") is not None else 0),
+        "solution_id": lambda r: int(r.get("solution_id") or 0),
+        "started_at": lambda r: r.get("started_at") or "",
+        "finished_at": lambda r: r.get("finished_at") or "",
+        "error": lambda r: r.get("error") or "",
+        "errore": lambda r: r.get("error") or "",
+    }
+
+
+def run_funcs() -> dict[str, Callable[..., bool]]:
+    return {}
+
+
 # ---------- Constraints (monitor view) ----------
 
 
@@ -352,6 +381,7 @@ _FIELDS_FOR = {
     "groups":     (group_fields, group_funcs),
     "events":     (event_fields, event_funcs),
     "event_rows": (event_row_fields, event_row_funcs),
+    "runs":       (run_fields, run_funcs),
     "constraints": (constraint_fields, constraint_funcs),
 }
 

@@ -50,11 +50,26 @@ def _serialize_run(r):
 
 
 @router.get("/runs")
-def list_runs(limit: int = 50, db: Session = Depends(get_db)):
+def list_runs(limit: int = 200,
+              q: str | None = None,
+              sort: str | None = None,
+              db: Session = Depends(get_db)):
+    """List runs. Supports the same DSL as the other tabs:
+    - q='kind = phase_b AND status = done'
+    - sort='-id' or 'kind:status,desc:-id'
+    Default order is most-recent first (id desc) when no sort given.
+    """
     rows = db.query(models.Run).order_by(
         models.Run.id.desc()
     ).limit(limit).all()
-    return [_serialize_run(r) for r in rows]
+    out = [_serialize_run(r) for r in rows]
+    if q or sort:
+        from ..utils.list_query import filter_and_sort, QueryError
+        try:
+            out = filter_and_sort(out, "runs", q, sort)
+        except QueryError as e:
+            raise HTTPException(400, f"Errore query: {e}")
+    return out
 
 
 @router.get("/runs/{run_id}")
@@ -63,6 +78,60 @@ def get_run(run_id: int, db: Session = Depends(get_db)):
     if r is None:
         raise HTTPException(404, "run not found")
     return _serialize_run(r)
+
+
+from pydantic import BaseModel as _BM
+
+
+class RunDeleteBatchIn(_BM):
+    run_ids: list[int]
+
+
+@router.delete("/runs/{run_id}")
+def delete_run(run_id: int, db: Session = Depends(get_db)):
+    """Delete a single run row + all its log lines. The run thread (if
+    still alive) is left to finish its work; we just remove the
+    bookkeeping. Won't delete the produced Solution -- that lives in
+    /api/schedule/solutions/{sid}."""
+    r = db.get(models.Run, run_id)
+    if r is None:
+        raise HTTPException(404, "run not found")
+    if r.status in ("running", "pending"):
+        raise HTTPException(
+            409,
+            "Run ancora attivo: aspetta che finisca o falliscalo "
+            "dal solver prima di cancellarlo."
+        )
+    # Cascade: delete log lines first (no FK CASCADE in the schema).
+    db.query(models.RunLog).filter(
+        models.RunLog.run_id == run_id
+    ).delete(synchronize_session=False)
+    db.delete(r)
+    db.commit()
+    return {"ok": True, "run_id": run_id}
+
+
+@router.post("/runs/delete-batch")
+def delete_runs_batch(payload: RunDeleteBatchIn,
+                      db: Session = Depends(get_db)):
+    """Bulk delete. Active runs are skipped (returned in `skipped_active`)
+    so the caller can surface a partial-success message."""
+    ids = [int(x) for x in payload.run_ids]
+    if not ids:
+        return {"ok": True, "deleted": 0, "skipped_active": []}
+    rows = db.query(models.Run).filter(models.Run.id.in_(ids)).all()
+    deletable = [r.id for r in rows if r.status not in ("running", "pending")]
+    skipped = [r.id for r in rows if r.status in ("running", "pending")]
+    if deletable:
+        db.query(models.RunLog).filter(
+            models.RunLog.run_id.in_(deletable)
+        ).delete(synchronize_session=False)
+        db.query(models.Run).filter(
+            models.Run.id.in_(deletable)
+        ).delete(synchronize_session=False)
+        db.commit()
+    return {"ok": True, "deleted": len(deletable),
+            "skipped_active": skipped}
 
 
 @router.get("/runs/{run_id}/log-text")
