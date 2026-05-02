@@ -1542,12 +1542,19 @@ def auto_generate_classrooms(overrides: dict[str, int | None] | None = None
         recipe = mock_classrooms.build_recipe_for_classes(
             class_names, n_classes=n_classes, overrides=counts_used
         )
-        # Wipe existing classrooms
+        # Wipe existing classrooms (cascades remove tag assignments
+        # via the ClassroomTagAssignment FK).
         db.query(models.ClassroomSubjectPreference).delete()
         db.query(models.ClassroomClassPreference).delete()
         db.query(models.ClassroomUnavailability).delete()
+        db.query(models.ClassroomTagAssignment).delete()
         db.query(models.Classroom).delete()
         db.commit()
+        # Cache to avoid re-querying for repeated tag names.
+        tag_id_by_name: dict[str, int] = {
+            t.name: t.id
+            for t in db.query(models.ClassroomTag).all()
+        }
         for r in recipe:
             cr = models.Classroom(
                 name=r["name"], kind=r["kind"],
@@ -1568,6 +1575,23 @@ def auto_generate_classrooms(overrides: dict[str, int | None] | None = None
                 db.add(models.ClassroomClassPreference(
                     classroom_id=cr.id, class_name=home,
                     weight=20.0, is_home=True,
+                ))
+            # Auto-tag based on the recipe (kind + curriculum hints +
+            # common Italian subjects). The mock-school workflow ends
+            # up with a fully-tagged set out of the box.
+            for tname in r.get("tags", []) or []:
+                tname_l = (tname or "").strip().lower()
+                if not tname_l:
+                    continue
+                tid = tag_id_by_name.get(tname_l)
+                if tid is None:
+                    new_tag = models.ClassroomTag(name=tname_l)
+                    db.add(new_tag)
+                    db.flush()
+                    tid = new_tag.id
+                    tag_id_by_name[tname_l] = tid
+                db.add(models.ClassroomTagAssignment(
+                    classroom_id=cr.id, tag_id=tid,
                 ))
             out["created"] += 1
         db.commit()
