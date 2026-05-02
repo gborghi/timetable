@@ -441,21 +441,27 @@
                       {cell.subjects.join('+')}
                     </div>
                     {#if !moveSrc}
-                      <div class="flex gap-1 text-[10px] leading-none">
-                        <button class="text-accent-500 hover:underline focus-ring"
-                          title="Sposta... (oppure Invio sulla cella)"
+                      <!-- Vertical icon stack with native tooltips.
+                           Compact (~14px wide) so 3 actions fit
+                           without widening the cell. -->
+                      <div class="flex flex-col items-center gap-0.5 ml-1 leading-none">
+                        <button class="text-accent-500 hover:bg-accent-500/10 rounded p-0.5 focus-ring"
+                          title="Sposta (oppure Invio sulla cella)"
+                          aria-label="Sposta"
                           on:click|stopPropagation={() => startMove(cell, d, h, 'classes')}>
-                          sposta
+                          <span class="text-[12px] leading-none">↔</span>
                         </button>
-                        <button class="text-amber-600 hover:underline focus-ring"
-                          title="Svincola: rimuove dal slot, la cattedra resta"
+                        <button class="text-amber-600 hover:bg-amber-500/10 rounded p-0.5 focus-ring"
+                          title="Svincola dallo slot (la cattedra resta)"
+                          aria-label="Svincola"
                           on:click|stopPropagation={() => unscheduleLesson(cell)}>
-                          svincola
+                          <span class="text-[12px] leading-none">⛓</span>
                         </button>
-                        <button class="text-rose-600 hover:underline focus-ring"
-                          title="Elimina: anche la cattedra viene ridotta di 1 ora"
+                        <button class="text-rose-600 hover:bg-rose-500/10 rounded p-0.5 focus-ring"
+                          title="Elimina (riduce la cattedra di 1 ora)"
+                          aria-label="Elimina"
                           on:click|stopPropagation={() => deleteLesson(cell)}>
-                          elimina
+                          <span class="text-[12px] leading-none">×</span>
                         </button>
                       </div>
                     {/if}
@@ -587,21 +593,24 @@
                       {cell.class_name}
                     </div>
                     {#if !moveSrc}
-                      <div class="flex gap-1 text-[10px] leading-none">
-                        <button class="text-accent-500 hover:underline focus-ring"
-                          title="Sposta... (oppure Invio sulla cella)"
+                      <div class="flex flex-col items-center gap-0.5 ml-1 leading-none">
+                        <button class="text-accent-500 hover:bg-accent-500/10 rounded p-0.5 focus-ring"
+                          title="Sposta (oppure Invio sulla cella)"
+                          aria-label="Sposta"
                           on:click|stopPropagation={() => startMove(cell, d, h, 'teachers')}>
-                          sposta
+                          <span class="text-[12px] leading-none">↔</span>
                         </button>
-                        <button class="text-amber-600 hover:underline focus-ring"
-                          title="Svincola dallo slot (cattedra invariata)"
+                        <button class="text-amber-600 hover:bg-amber-500/10 rounded p-0.5 focus-ring"
+                          title="Svincola dallo slot (la cattedra resta)"
+                          aria-label="Svincola"
                           on:click|stopPropagation={() => unscheduleLesson(cell)}>
-                          svincola
+                          <span class="text-[12px] leading-none">⛓</span>
                         </button>
-                        <button class="text-rose-600 hover:underline focus-ring"
-                          title="Elimina + riduci la cattedra di 1 ora"
+                        <button class="text-rose-600 hover:bg-rose-500/10 rounded p-0.5 focus-ring"
+                          title="Elimina (riduce la cattedra di 1 ora)"
+                          aria-label="Elimina"
                           on:click|stopPropagation={() => deleteLesson(cell)}>
-                          elimina
+                          <span class="text-[12px] leading-none">×</span>
                         </button>
                       </div>
                     {/if}
@@ -737,21 +746,24 @@
                                            subject: l.subject,
                                            teachers: [l.teacher],
                                            subjects: [l.subject] }}
-                        <div class="flex gap-1 text-[10px] leading-none">
-                          <button class="text-accent-500 hover:underline"
-                            title="Sposta..."
+                        <div class="flex flex-col items-start gap-0.5 mt-1 leading-none">
+                          <button class="text-accent-500 hover:bg-accent-500/10 rounded p-0.5"
+                            title="Sposta"
+                            aria-label="Sposta"
                             on:click|stopPropagation={() => startMove(_cell, d, h, 'teachers')}>
-                            sposta
+                            <span class="text-[12px] leading-none">↔</span>
                           </button>
-                          <button class="text-amber-600 hover:underline"
+                          <button class="text-amber-600 hover:bg-amber-500/10 rounded p-0.5"
                             title="Svincola dallo slot"
+                            aria-label="Svincola"
                             on:click|stopPropagation={() => unscheduleLesson(_cell)}>
-                            svincola
+                            <span class="text-[12px] leading-none">⛓</span>
                           </button>
-                          <button class="text-rose-600 hover:underline"
+                          <button class="text-rose-600 hover:bg-rose-500/10 rounded p-0.5"
                             title="Elimina (riduce cattedra)"
+                            aria-label="Elimina"
                             on:click|stopPropagation={() => deleteLesson(_cell)}>
-                            elimina
+                            <span class="text-[12px] leading-none">×</span>
                           </button>
                         </div>
                       {/if}

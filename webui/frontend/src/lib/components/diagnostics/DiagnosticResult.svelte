@@ -153,7 +153,7 @@
       <span><strong>p75:</strong> {result.p75.toFixed(1)}</span>
     </div>
     <p class="text-xs text-ink-500 italic mb-2">{result.interpretation}</p>
-    <EChart option={mcOption} height={300}/>
+    <EChart option={mcOption} height={300} exportName="montecarlo"/>
   {:else}
     <p class="text-xs text-rose-700">{result.msg ?? 'errore'}</p>
   {/if}
@@ -233,7 +233,8 @@
     </table>
     <div class="grid md:grid-cols-2 gap-3 mt-2">
       {#each (result.models || []).filter((m) => m.scatter) as m}
-        <EChart option={_scatterOption(m)} height={240}/>
+        <EChart option={_scatterOption(m)} height={240}
+                exportName={'corr_' + (m.name || m.x + '_vs_' + m.y)}/>
       {/each}
     </div>
   {:else}
@@ -244,10 +245,12 @@
   {#if result.ok}
     <div class="grid md:grid-cols-2 gap-4">
       {#if dsTeacherOption}
-        <EChart option={dsTeacherOption} height={280}/>
+        <EChart option={dsTeacherOption} height={280}
+                exportName="distrib_teacher_loads"/>
       {/if}
       {#if dsHeatmapOption}
-        <EChart option={dsHeatmapOption} height={280}/>
+        <EChart option={dsHeatmapOption} height={280}
+                exportName="distrib_subject_slot_heatmap"/>
       {/if}
     </div>
     {#if result.tests}

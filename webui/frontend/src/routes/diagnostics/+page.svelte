@@ -59,6 +59,37 @@
       coVariables = await api.get('/api/diagnostics/correlations/variables');
     } catch (e) { flash('Errore: ' + e.message, 'error'); }
   }
+
+  // Distributions: catalog from /api/diagnostics/distributions/menu.
+  // dsSelected: array of distribution keys to include (empty = all).
+  // dsParams:   per-key param values (typed: number for int, string CSV).
+  let dsCatalog = null;          // {distributions: [{key, label, params: [...]}]}
+  let dsSelected = [];           // [] = all
+  let dsParams = {};             // {dist_key: {param_key: value}}
+
+  async function loadDsCatalog() {
+    if (dsCatalog) return;
+    try {
+      dsCatalog = await api.get('/api/diagnostics/distributions/menu');
+      // Initialize params with defaults for each (so the user can
+      // tweak without first ticking the box)
+      const defaults = {};
+      for (const d of dsCatalog.distributions || []) {
+        defaults[d.key] = {};
+        for (const p of d.params || []) {
+          defaults[d.key][p.key] = p.default ?? '';
+        }
+      }
+      dsParams = defaults;
+    } catch (e) { flash('Errore: ' + e.message, 'error'); }
+  }
+  function toggleDsKind(key) {
+    if (dsSelected.includes(key)) {
+      dsSelected = dsSelected.filter((k) => k !== key);
+    } else {
+      dsSelected = [...dsSelected, key];
+    }
+  }
   function addCoModel() {
     coModels = [...coModels, _newModel()];
   }
@@ -84,9 +115,9 @@
     pollTimers.clear();
   });
 
-  // Eagerly load the variable menu so the user can compose a
-  // model the moment they click on the correlations section.
-  onMount(() => { loadCoVariables(); });
+  // Eagerly load the variable + distribution menus so the user can
+  // compose a model the moment they click on the section.
+  onMount(() => { loadCoVariables(); loadDsCatalog(); });
 
   async function _pollRun(runId, onUpdate) {
     try {
@@ -169,11 +200,22 @@
     coModels.length ? { models: coModels } : {},
     co,
   );
-  const runDs = () => spawnRun(
-    '/api/diagnostics/distributions',
-    {},
-    ds,
-  );
+  const runDs = () => {
+    // Only send a body if the user actually picked something or
+    // changed any param; an empty payload triggers the full
+    // default behaviour (back-compat).
+    const body = {};
+    if (dsSelected.length) body.include = dsSelected;
+    if (dsParams && Object.keys(dsParams).length) {
+      // Filter out empty CSV params
+      const cleaned = {};
+      for (const [k, v] of Object.entries(dsParams)) {
+        if (v && Object.keys(v).length) cleaned[k] = v;
+      }
+      if (Object.keys(cleaned).length) body.params = cleaned;
+    }
+    return spawnRun('/api/diagnostics/distributions', body, ds);
+  };
 
   // ---- ECharts options ----
   $: mcHistogramOption = mc.result && mc.result.ok ? {
@@ -201,7 +243,8 @@
     ],
   } : {};
 
-  $: dsTeacherOption = ds.result && ds.result.ok ? {
+  $: dsTeacherOption = (ds.result && ds.result.ok
+                         && ds.result.teacher_loads) ? {
     title: { text: 'Carico orario docenti' },
     tooltip: { trigger: 'axis' },
     xAxis: {
@@ -215,7 +258,8 @@
     series: [{ type: 'bar', data: ds.result.teacher_loads.bin_counts }],
   } : {};
 
-  $: dsHeatmapOption = ds.result && ds.result.ok ? {
+  $: dsHeatmapOption = (ds.result && ds.result.ok
+                        && ds.result.subject_slot_heatmap) ? {
     title: { text: 'Materia x slot' },
     tooltip: { position: 'top' },
     grid: { left: '12%', right: '5%', bottom: '14%', top: '12%' },
@@ -560,7 +604,7 @@
     {/if}
   </section>
 
-  <!-- 5) Distributions (async run) -->
+  <!-- 5) Distributions (async run, parametrizable) -->
   <section class="card p-4 space-y-2">
     <div class="flex items-baseline gap-2 flex-wrap">
       <h2 class="!text-base">5) Distribuzioni</h2>
@@ -575,16 +619,91 @@
       {/if}
       <button class="btn-primary !text-xs ml-auto" on:click={runDs}
               disabled={ds.busy}>
-        {ds.busy ? '...' : 'Calcola distribuzioni'}
+        {ds.busy ? '...' : (dsSelected.length === 0
+                              ? 'Calcola tutte (default)'
+                              : `Calcola (${dsSelected.length} selezionat${dsSelected.length === 1 ? 'a' : 'e'})`)}
       </button>
     </div>
+
+    <!-- Distribution picker / param editor -->
+    <details class="border border-ink-200 rounded p-2 bg-ink-50/40">
+      <summary class="cursor-pointer text-xs font-medium">
+        Personalizza distribuzioni
+        ({dsSelected.length === 0 ? 'tutte di default' :
+          `${dsSelected.length} ticked`})
+      </summary>
+      <p class="text-[11px] text-ink-500 mt-1 mb-2">
+        Tickera le distribuzioni da calcolare (vuoto = tutte). I
+        parametri sotto ciascuna sono usati solo se la
+        distribuzione e' inclusa.
+      </p>
+      {#if !dsCatalog}
+        <p class="text-[11px] text-ink-500 italic">
+          Caricamento menu...
+        </p>
+      {:else}
+        <div class="space-y-2">
+          {#each dsCatalog.distributions as d (d.key)}
+            <div class="border border-ink-200 rounded p-2 bg-white">
+              <label class="flex items-center gap-2 text-xs font-medium cursor-pointer">
+                <input type="checkbox"
+                       checked={dsSelected.includes(d.key)}
+                       on:change={() => toggleDsKind(d.key)}/>
+                {d.label}
+                <code class="text-ink-400 text-[10px]">{d.key}</code>
+              </label>
+              {#if d.params && d.params.length}
+                <div class="grid grid-cols-2 md:grid-cols-3 gap-2 mt-1 text-xs">
+                  {#each d.params as p (p.key)}
+                    <div>
+                      <label class="block text-[10px] text-ink-500">
+                        {p.label}
+                        <span class="text-ink-400">({p.type})</span>
+                      </label>
+                      {#if p.type === 'int'}
+                        <input type="number"
+                               class="w-full px-1 py-0.5 border border-ink-200 rounded"
+                               min={p.min} max={p.max}
+                               bind:value={dsParams[d.key][p.key]}/>
+                      {:else}
+                        <input type="text"
+                               class="w-full px-1 py-0.5 border border-ink-200 rounded"
+                               placeholder={p.default || ''}
+                               bind:value={dsParams[d.key][p.key]}/>
+                      {/if}
+                    </div>
+                  {/each}
+                </div>
+              {/if}
+            </div>
+          {/each}
+        </div>
+        <div class="mt-2 flex gap-2">
+          <button class="btn !text-xs"
+                  on:click={() => (dsSelected = (dsCatalog.distributions || []).map((d) => d.key))}>
+            Tutto
+          </button>
+          <button class="btn !text-xs"
+                  on:click={() => (dsSelected = [])}>
+            Nessuna (-> default)
+          </button>
+        </div>
+      {/if}
+    </details>
+
     {#if ds.error}
       <p class="text-xs text-rose-700">{ds.error}</p>
     {/if}
     {#if ds.result && ds.result.ok}
       <div class="grid md:grid-cols-2 gap-4">
-        <EChart option={dsTeacherOption} height={280}/>
-        <EChart option={dsHeatmapOption} height={280}/>
+        {#if ds.result.teacher_loads}
+          <EChart option={dsTeacherOption} height={280}
+                  exportName="distrib_teacher_loads"/>
+        {/if}
+        {#if ds.result.subject_slot_heatmap}
+          <EChart option={dsHeatmapOption} height={280}
+                  exportName="distrib_subject_slot_heatmap"/>
+        {/if}
       </div>
       {#if ds.result.tests}
         <div class="text-xs text-ink-600 space-y-1 mt-2">
