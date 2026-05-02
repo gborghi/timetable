@@ -38,10 +38,28 @@ LogicalUnavailability filtrato per `entity_type=teacher`).
 ### Classrooms
 `/api/classrooms`. Embed: `subject_prefs[]` (ClassroomSubjectPreference),
 `class_prefs[]` (ClassroomClassPreference, con `is_home`),
-`unavailability[]`. Sub:
+`unavailability[]`, `tags[]` (lista di nomi tag in minuscolo). Sub:
 `/api/classrooms/{id}/logical-unavailabilities`,
 `/api/classrooms/suggested-counts` (counts proporzionali per la
 mock recipe), `/api/classrooms/auto-generate` (run recipe).
+
+Sul POST/PUT, `tags: list[str]` viene riconciliato con la tabella
+`classroom_tags`: i nomi sconosciuti vengono creati al volo
+(`name` viene normalizzato a lowercase), quelli rimossi dal payload
+hanno l'assignment cancellato. La cardinalita' e' M-N: un tag puo'
+appartenere a tante aule e una aula puo' avere tanti tag.
+
+### Classroom tags
+- `GET /api/classroom-tags` -- lista globale; ogni voce include
+  `n_classrooms` (aule che usano il tag), utile per warning prima
+  della cancellazione.
+- `POST /api/classroom-tags` -- body `{name: string, description?:
+  string}`. 409 se gia' esistente.
+- `PUT /api/classroom-tags/{id}` -- rinomina o aggiorna descrizione;
+  cambia il nome anche per tutte le aule che lo referenziano (i join
+  vanno per id, non per stringa).
+- `DELETE /api/classroom-tags/{id}` -- cascata: rimuove gli
+  `ClassroomTagAssignment` collegati.
 
 ### Subjects
 `/api/subjects`. Embed: `classroom_prefs[]`. Sub:

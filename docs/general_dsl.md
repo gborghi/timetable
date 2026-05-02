@@ -72,7 +72,7 @@ l'esecuzione (saranno trattati come `None`).
 | assignment | teacher, class, subject, hours, locked                 |
 | teacher    | name, group, max_hours, free_day, graduatoria_score, completion_hours, exemption_hours |
 | class      | name, year, section, curriculum, n_students            |
-| classroom  | name, kind, type, capacity                             |
+| classroom  | name, kind, type, capacity, tags                       |
 | subject    | name                                                   |
 | curriculum | name, code, score                                      |
 | group      | name, kind                                             |
@@ -168,6 +168,31 @@ forall s in slots:
                           and l.day == s.day
                           and l.hour == s.hour: l <= 1
 ```
+
+### Tag delle aule
+
+Le aule possono avere etichette libere (many-to-many con
+`classroom_tags`). Ogni tag e' una stringa minuscola condivisa fra
+tutte le aule che lo dichiarano. Si interrogano con il path
+`l.classroom.tags` (lista) oppure tramite l'operatore `in`:
+
+```
+# 6.bis) Tutte le ore di Matematica devono stare in un'aula taggata
+#        come "matematica" (gli ambienti standard generati dal mock
+#        ricevono questo tag automaticamente).
+forall l in lessons where l.subject == Matematica:
+    "matematica" in l.classroom.tags
+
+# 6.ter) Le aule taggate "proiettore" sono richieste per Storia delle
+#        terze e quarte
+forall l in lessons where l.subject == Storia and l.class.year >= 3:
+    "proiettore" in l.classroom.tags
+```
+
+Per le query sulla **lista aule** (tab Aule, NOT general DSL) si
+usa il predicato compatto `has_tag(<name>)`, ad esempio
+`has_tag(scientifico) AND tipo = standard`. Vedi
+`docs/query_examples.md`.
 
 ### Implicazioni e relazioni fra cattedre
 

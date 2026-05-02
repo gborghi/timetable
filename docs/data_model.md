@@ -53,7 +53,17 @@ in `webui/backend/db.py::_apply_lightweight_migrations`.
   aula_speciale), `capacity`, flag `multi_class` con
   `multi_class_max` e `multi_class_pref` (per palestre/biblioteche).
   Relazioni: `classroom_subject_preferences`,
-  `classroom_class_preferences`, `classroom_unavailability`.
+  `classroom_class_preferences`, `classroom_unavailability`,
+  `classroom_tag_assignments`.
+- **classroom_tags** -- etichette globali (many-to-many con `classrooms`
+  via `classroom_tag_assignments`). `name` UNIQUE in minuscolo,
+  `description` opzionale. Esempi: `lab`, `fisica`, `matematica`,
+  `scientifico`, `proiettore`. Esposti dalla DSL come
+  `l.classroom.tags` (lista) e tramite il predicato
+  `has_tag(<name>)` nelle liste; vedi `general_dsl.md`.
+- **classroom_tag_assignments** -- riga di join `(classroom_id, tag_id)`,
+  UNIQUE su `(classroom_id, tag_id)`, ON DELETE CASCADE da entrambi i
+  lati.
 - **curricula** -- indirizzi di studio (Scientifico, Linguistico, ITIS, ...).
   `code` (machine name), `name` (display), `description`, `score`
   (peso ingegnerizzato dal motore mock). Relazioni:

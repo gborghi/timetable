@@ -93,6 +93,9 @@ l'altro solo l'ordinamento.
 | `tipo in [lab_fisica, lab_chimica]` | lab fisica + chimica |
 | `capienza >= 25 AND tipo contains lab` | lab con >=25 posti |
 | `multi_classe = 1` | aule a piu\` classi (palestre/biblioteche) |
+| `has_tag(matematica)` | aule con il tag `matematica` |
+| `tag(scientifico) AND tipo = standard` | home rooms del scientifico |
+| `tags contains lab` | aule con almeno un tag che contiene "lab" |
 
 ### Materie (`/subjects`)
 

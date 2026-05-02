@@ -297,10 +297,23 @@ Modal:
 - Nome / codice, Tipo (8 kinds), Capienza, Note
 - Multi-class flag + multi_class_max + multi_class_pref +
   multi_class_pref_weight
+- **Tag** (multi-select): etichette libere che la DSL puo' interrogare
+  con `"matematica" in l.classroom.tags` o con il predicato
+  `has_tag(<name>)` nella lista aule. I tag vengono creati al volo al
+  salvataggio se non esistono. Bottone "Gestisci tag" apre un modal
+  CRUD globale (rinomina, descrizione, eliminazione con cascata).
+  Il generatore mock tagga automaticamente le aule per kind:
+  `lab_fisica -> [lab, fisica, scienze]`, palestra -> `[palestra,
+  motorie]`, ecc., e propaga il curriculum dalla home class
+  (`3B_scientifico` -> tag `scientifico` sull'aula standard 3B).
 - AvailabilityMatrix 5-stati
 - Subject preferences (peso per materia, required toggle)
 - Class preferences (home flag)
 - LogicalUnavailabilitiesPanel
+
+Lista: la colonna "Tag" mostra delle pill colorate (un colore stabile
+per nome di tag). La query DSL accetta `has_tag(<nome>)` o il piu'
+verboso `tag(<nome>)` -- entrambi case-insensitive.
 
 ### Compresenze (`/coteaching`)
 
