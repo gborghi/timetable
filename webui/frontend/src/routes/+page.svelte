@@ -1,5 +1,5 @@
 <script>
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import { api } from '$lib/api';
   import { datasetState, flash, refreshDataset, bumpMutation } from '$lib/stores';
   import RunLogPanel from '$lib/components/RunLogPanel.svelte';
@@ -129,6 +129,12 @@
   function stopRunPolling() {
     if (runPollTimer) { clearInterval(runPollTimer); runPollTimer = null; }
   }
+  // Critical: clean up the polling timer when the user navigates
+  // away from the dashboard. Without this, every visit to / with
+  // runId set spawns another 1.5s polling timer that survives the
+  // unmount, eventually accumulating into a "stuck" feel after
+  // 3-4 tab switches.
+  onDestroy(stopRunPolling);
   // Stop polling shortly after onEnd runs (the post-end retries above
   // cover the trailing window).
   function onEndAndStop() {

@@ -26,10 +26,17 @@
   //
   // Slots: default takes (row, columns) and renders a <tr>.
 
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import { api } from '../api';
   import { flash } from '../stores';
   import { savedViews as savedViewsSvc } from '../services';
+
+  // Tracks whether this component is still mounted. We use it to
+  // ignore async responses that resolve AFTER the component has
+  // been destroyed (e.g. when the user rapidly switches tabs):
+  // setting state on an unmounted component is wasted work and
+  // can hide bugs behind silent state-mutation warnings.
+  let _alive = true;
 
   export let endpoint;
   export let columns = [];
@@ -71,14 +78,19 @@
     const url = endpoint + (params.toString() ? '?' + params.toString() : '');
     lastUrl = url;
     try {
-      rows = await api.get(url);
+      const result = await api.get(url);
+      if (!_alive) return;          // user navigated away mid-fetch
+      rows = result;
       onRowsChange(rows);
     } catch (e) {
+      if (!_alive) return;
       error = e.message;
       flash('Query error: ' + error, 'error');
     } finally {
-      busy = false;
-      firstLoad = false;
+      if (_alive) {
+        busy = false;
+        firstLoad = false;
+      }
     }
   }
 
@@ -193,7 +205,9 @@
   async function reloadSavedViews() {
     if (!entity) return;
     try {
-      savedViewsList = await savedViewsSvc.list(entity);
+      const result = await savedViewsSvc.list(entity);
+      if (!_alive) return;
+      savedViewsList = result;
     } catch { /* */ }
   }
 
@@ -244,6 +258,7 @@
   }
 
   onMount(() => { reloadSavedViews(); });
+  onDestroy(() => { _alive = false; });
 
   // ----- Export ---------------------------------------------------------
 

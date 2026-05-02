@@ -119,25 +119,30 @@
     return runs.some((r) => r.status === 'running' || r.status === 'pending');
   }
 
+  let _polling_fast = true;
+
+  function _scheduleNextPoll() {
+    if (pollTimer) clearInterval(pollTimer);
+    const fast = _hasActive();
+    _polling_fast = fast;
+    pollTimer = setInterval(_pollTick, fast ? 2000 : 30000);
+  }
+
+  async function _pollTick() {
+    await refresh({ silent: true });
+    // If the active-state changed since last tick, reschedule with
+    // the right cadence. This is what gives us "fast while a run
+    // is alive, idle 30s otherwise" without spawning extra timers.
+    if (_hasActive() !== _polling_fast) {
+      _scheduleNextPoll();
+    }
+  }
+
   onMount(async () => {
     await refresh();
-    // Smart polling: 2s when there's an active run, otherwise idle
-    // 30s. The smart-merge above means terminal-status rows are
-    // never replaced, so their buttons / dropdowns stay stable.
-    pollTimer = setInterval(() => {
-      const fast = _hasActive();
-      refresh({ silent: true });
-      // adapt the next interval (cancel + reset) when transitioning
-      if (pollTimer && fast !== _polling_fast) {
-        _polling_fast = fast;
-        clearInterval(pollTimer);
-        pollTimer = setInterval(() => refresh({ silent: true }),
-                                 fast ? 2000 : 30000);
-      }
-    }, 2000);
+    _scheduleNextPoll();
     elapsedTimer = setInterval(() => { now = Date.now(); }, 1000);
   });
-  let _polling_fast = true;
   onDestroy(() => {
     if (pollTimer) clearInterval(pollTimer);
     if (elapsedTimer) clearInterval(elapsedTimer);
