@@ -90,10 +90,42 @@ def bipartite(payload: BipartiteIn):
 
 # ---------- Correlations + regressions (async run) ----------
 
+class CorrelationModel(BaseModel):
+    kind: str = "ols"     # 'ols' | 'logit'
+    scope: str = "teachers"
+    x: str
+    y: str
+    label: str | None = None
+
+
+class CorrelationsIn(BaseModel):
+    models: list[CorrelationModel] | None = None
+
+
 @router.post("/correlations")
-def correlations():
-    rid = optimization.run_diag_correlations()
+def correlations(payload: CorrelationsIn | None = None):
+    """Spawns a kind='diag_correlations' run.
+
+    If `payload.models` is None or empty, uses the canonical
+    3-model panel (back-compat). Otherwise the user chooses which
+    regressions to run; see GET /api/diagnostics/correlations/variables
+    for the menu of available x / y / scope combinations.
+    """
+    spec = None
+    if payload and payload.models:
+        spec = [m.model_dump() for m in payload.models]
+    rid = optimization.run_diag_correlations(models_spec=spec)
     return {"run_id": rid}
+
+
+@router.get("/correlations/variables")
+def correlations_variables():
+    """Variable picker metadata for the UI: which scopes exist,
+    which variables can be picked as x or y for each scope, and
+    what type each variable is (continuous / integer / binary
+    drives whether OLS or Logit makes sense)."""
+    from diagnostics import correlations as co  # type: ignore
+    return co.available_variables()
 
 
 # ---------- Distributions (async run) ----------

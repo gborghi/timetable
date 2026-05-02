@@ -924,7 +924,8 @@ def run_diag_bipartite(*, mode: str = "classes") -> int:
     )
 
 
-def run_diag_correlations() -> int:
+def run_diag_correlations(*, models_spec: list[dict] | None = None
+                           ) -> int:
     sys.path.insert(0, os.path.join(
         os.path.dirname(__file__), "..", "..", "experiments",
     ))
@@ -932,10 +933,13 @@ def run_diag_correlations() -> int:
     def _go() -> dict:
         from diagnostics import correlations as co  # type: ignore
         with SessionLocal() as db:
-            return co.run_from_db(db)
+            return co.run_from_db(db, models_spec=models_spec)
+    label = "Correlazioni e regressioni"
+    if models_spec:
+        label += f" ({len(models_spec)} modell{'i' if len(models_spec) != 1 else 'o'} custom)"
     return run_diagnostic_async(
         "diag_correlations",
-        "Correlazioni e regressioni",
+        label,
         _go,
     )
 
