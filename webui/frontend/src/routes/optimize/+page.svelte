@@ -40,6 +40,7 @@
     phase_a: '2) Assegnazione (Phase A)',
     phase_b: '3) Schedulazione orario (Phase B)',
     cg:      'Column Generation (alternativo a Phase B)',
+    lagrangian: 'Lagrangian Relaxation (subgradient)',
     lns:     '4) LNS',
     alns:    '4-bis) ALNS (Adaptive LNS)',
     sa:      '5) SA',
@@ -66,6 +67,7 @@
     { key: 'sa',         enabled: true  },
     { key: 'ts',         enabled: true  },
     { key: 'vns',        enabled: false },
+    { key: 'lagrangian', enabled: false },
     { key: 'ils',        enabled: true  },
     { key: 'rooms',      enabled: false },
   ];

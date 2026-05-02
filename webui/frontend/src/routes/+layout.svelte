@@ -37,9 +37,10 @@
     { href: '/assenze-supplenze', label: 'Assenze e supplenze' },
     { href: '/monitor',    label: 'Monitor'                  },
     { href: '/constraints',label: 'Vincoli'                  },
-    { href: '/optimize',   label: 'Workflow'                 },
-    { href: '/runs',       label: 'Runs'                     },
-    { href: '/import',     label: 'Import bulk'              },
+    { href: '/optimize',     label: 'Workflow'                 },
+    { href: '/runs',         label: 'Runs'                     },
+    { href: '/diagnostics',  label: 'Statistiche'              },
+    { href: '/import',       label: 'Import bulk'              },
   ];
 
   onMount(() => {

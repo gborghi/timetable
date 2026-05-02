@@ -17,7 +17,44 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { api } from "$lib/api";
+  import { flash } from "$lib/stores";
   import { debounce } from "$lib/utils";
+
+  type HallReport = {
+    ok: boolean;
+    n_classes: number;
+    n_teachers: number;
+    violations: Array<{ kind: string; msg?: string }>;
+    stats: {
+      total_demand_hours: number;
+      total_supply_hours: number;
+      n_subjects: number;
+      n_samples: number;
+    };
+  };
+
+  let busyHall = false;
+  let hallReport: HallReport | null = null;
+
+  async function runHallPrecheck() {
+    busyHall = true;
+    try {
+      hallReport = await api.post(
+        "/api/diagnostics/hall-check",
+        { n_samples: 256 },
+      );
+      flash(
+        hallReport!.ok
+          ? `Hall OK: nessuna violazione strutturale (${hallReport!.n_classes} classi, ${hallReport!.n_teachers} docenti)`
+          : `Hall: ${hallReport!.violations.length} violazioni rilevate`,
+        hallReport!.ok ? "success" : "warning",
+      );
+    } catch (e: any) {
+      flash("Errore Hall pre-check: " + e.message, "error");
+    } finally {
+      busyHall = false;
+    }
+  }
 
   type Preset = {
     key: string;
@@ -276,6 +313,41 @@
     {#if showActive}
       <pre class="mt-1 text-xs bg-ink-50 border border-ink-200 rounded p-2 overflow-x-auto whitespace-pre-wrap"
           >{activeExpression || '(seleziona un criterio)'}</pre>
+    {/if}
+  </div>
+
+  <div class="border-t border-ink-200 pt-3 mt-1">
+    <div class="flex items-baseline gap-2 mb-1">
+      <h3 class="!text-sm">Pre-check fattibilita' strutturale</h3>
+      <span class="pill pill-amber !text-[10px]">Hall (diagnostico)</span>
+    </div>
+    <p class="text-[11px] text-ink-500 mb-2">
+      Verifica via teorema di Hall che la capacita' dei docenti
+      qualificati copra la domanda di ore per materia. Esegui prima
+      di Phase A per evitare assegnazioni inutilmente lunghe su
+      istanze gia' infeasible al livello strutturale.
+    </p>
+    <button class="btn !text-xs" type="button"
+            on:click={runHallPrecheck}
+            disabled={busyHall}>
+      {busyHall ? "Pre-check in corso..." : "Pre-check fattibilita' strutturale"}
+    </button>
+    {#if hallReport}
+      <div class="mt-2 text-xs">
+        <div class={hallReport.ok ? "text-emerald-700" : "text-rose-700"}>
+          <strong>{hallReport.ok ? "Feasible (Hall OK)" : "INFEASIBILE"}</strong>
+          - {hallReport.n_classes} classi, {hallReport.n_teachers} docenti
+          - domanda {hallReport.stats.total_demand_hours}h / supply
+          {hallReport.stats.total_supply_hours}h
+        </div>
+        {#if hallReport.violations.length}
+          <ul class="list-disc ml-5 mt-1 text-rose-700">
+            {#each hallReport.violations.slice(0, 5) as v}
+              <li>{v.msg ?? v.kind}</li>
+            {/each}
+          </ul>
+        {/if}
+      </div>
     {/if}
   </div>
 

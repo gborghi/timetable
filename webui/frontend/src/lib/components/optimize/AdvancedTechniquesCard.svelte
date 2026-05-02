@@ -30,10 +30,16 @@
   let cgBudget = 60;
   let cgPatternsPerTeacher = 3;
 
+  let busyLag = false;
+  let lagBudget = 60;
+  let lagMaxIter = 8;
+  let lagTolerance = 0.01;
+  let lagAlpha0 = 1.0;
+
   async function runHall() {
     busyHall = true;
     try {
-      hallReport = await api.post('/api/optimize/hall-check',
+      hallReport = await api.post('/api/diagnostics/hall-check',
                                    { n_samples: hallSamples });
       const status = hallReport.ok ? 'success' : 'warning';
       const msg = hallReport.ok
@@ -82,6 +88,21 @@
       onRunStarted(r.run_id);
     } catch (e) { flash('Errore: ' + e.message, 'error'); }
     finally { busyCg = false; }
+  }
+
+  async function runLagrangian() {
+    busyLag = true;
+    try {
+      const r = await api.post('/api/optimize/meta/lagrangian', {
+        budget_s: lagBudget,
+        lagrangian_max_iter: lagMaxIter,
+        lagrangian_tolerance: lagTolerance,
+        lagrangian_alpha_0: lagAlpha0,
+      });
+      flash('Lagrangian run #' + r.run_id + ' avviato', 'success');
+      onRunStarted(r.run_id);
+    } catch (e) { flash('Errore: ' + e.message, 'error'); }
+    finally { busyLag = false; }
   }
 </script>
 
@@ -189,6 +210,45 @@
       <button class="btn-primary !text-xs" on:click={runVns}
               disabled={busyVns}>
         {busyVns ? '...' : 'Avvia VNS'}
+      </button>
+    </div>
+  </div>
+
+  <!-- Lagrangian Relaxation -->
+  <div class="border border-ink-200 rounded p-3 bg-ink-50/40">
+    <div class="flex items-baseline gap-2 mb-2">
+      <h3 class="!text-sm">Lagrangian Relaxation</h3>
+      <span class="pill !text-[10px]">subgradient ascent</span>
+    </div>
+    <p class="text-[11px] text-ink-500 mb-2">
+      Rilassa i ponti inter-cluster e dualizza con multipliers
+      lambda; aggiornamento via subgradient ascent
+      (lambda_{`{k+1}`} = lambda_k + alpha_k * g_k, alpha_k =
+      alpha_0 / (1 + k)). Skeleton + refinement via SA per
+      iterazione.
+    </p>
+    <div class="flex gap-2 items-end flex-wrap">
+      <div class="field !mb-0">
+        <label class="!text-[11px]">Budget (s)</label>
+        <input type="number" bind:value={lagBudget} class="w-24"/>
+      </div>
+      <div class="field !mb-0">
+        <label class="!text-[11px]">Max iter</label>
+        <input type="number" bind:value={lagMaxIter} class="w-16"/>
+      </div>
+      <div class="field !mb-0">
+        <label class="!text-[11px]">Tolleranza</label>
+        <input type="number" step="0.001"
+               bind:value={lagTolerance} class="w-24"/>
+      </div>
+      <div class="field !mb-0">
+        <label class="!text-[11px]">alpha0</label>
+        <input type="number" step="0.1"
+               bind:value={lagAlpha0} class="w-20"/>
+      </div>
+      <button class="btn-primary !text-xs" on:click={runLagrangian}
+              disabled={busyLag}>
+        {busyLag ? '...' : 'Avvia Lagrangian'}
       </button>
     </div>
   </div>
