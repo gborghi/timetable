@@ -60,8 +60,42 @@
     return sortLevels.map((l) => `${l.column},${l.direction}`).join(':');
   }
 
-  async function refresh() {
-    busy = true;
+  // Stable equality for the fields that actually change while a run
+  // is alive. We keep the OLD object reference when nothing
+  // interesting changed -- this prevents Svelte from re-rendering
+  // sub-trees (and avoids the "buttons glitch" Giovanni saw on long
+  // pipelines, see RunDetail spec).
+  function _runShallowEqual(a, b) {
+    if (!a || !b) return false;
+    return (
+      a.status === b.status
+      && a.progress === b.progress
+      && a.obj_value === b.obj_value
+      && a.solution_id === b.solution_id
+      && a.error === b.error
+      && a.finished_at === b.finished_at
+      && JSON.stringify(a.metrics || null)
+         === JSON.stringify(b.metrics || null)
+    );
+  }
+
+  function _mergeRuns(prev, incoming) {
+    // Build by-id map of previous rows
+    const prevById = new Map(prev.map((r) => [r.id, r]));
+    const out = new Array(incoming.length);
+    for (let i = 0; i < incoming.length; i++) {
+      const fresh = incoming[i];
+      const old = prevById.get(fresh.id);
+      // Reuse old reference if nothing relevant changed -- this is
+      // what prevents the Svelte each-block from invalidating the
+      // sub-tree (and the buttons inside it).
+      out[i] = old && _runShallowEqual(old, fresh) ? old : fresh;
+    }
+    return out;
+  }
+
+  async function refresh({ silent = false } = {}) {
+    if (!silent) busy = true;
     queryError = '';
     try {
       const params = new URLSearchParams();
@@ -70,7 +104,10 @@
       const sortStr = buildSortString();
       if (sortStr) params.set('sort', sortStr);
       params.set('_t', String(Date.now()));
-      runs = await api.get('/api/optimize/runs?' + params.toString());
+      const incoming = await api.get(
+        '/api/optimize/runs?' + params.toString(),
+      );
+      runs = _mergeRuns(runs, incoming);
     } catch (e) {
       queryError = e?.message || String(e);
     } finally {
@@ -78,11 +115,29 @@
     }
   }
 
+  function _hasActive() {
+    return runs.some((r) => r.status === 'running' || r.status === 'pending');
+  }
+
   onMount(async () => {
     await refresh();
-    pollTimer = setInterval(refresh, 2000);
+    // Smart polling: 2s when there's an active run, otherwise idle
+    // 30s. The smart-merge above means terminal-status rows are
+    // never replaced, so their buttons / dropdowns stay stable.
+    pollTimer = setInterval(() => {
+      const fast = _hasActive();
+      refresh({ silent: true });
+      // adapt the next interval (cancel + reset) when transitioning
+      if (pollTimer && fast !== _polling_fast) {
+        _polling_fast = fast;
+        clearInterval(pollTimer);
+        pollTimer = setInterval(() => refresh({ silent: true }),
+                                 fast ? 2000 : 30000);
+      }
+    }, 2000);
     elapsedTimer = setInterval(() => { now = Date.now(); }, 1000);
   });
+  let _polling_fast = true;
   onDestroy(() => {
     if (pollTimer) clearInterval(pollTimer);
     if (elapsedTimer) clearInterval(elapsedTimer);
@@ -378,7 +433,7 @@
             <td>
               {#if r.progress != null}
                 <div class="w-32 h-2 rounded bg-ink-100 overflow-hidden">
-                  <div class="h-full transition-all"
+                  <div class="h-full transition-[width] duration-300 ease-out"
                        class:bg-emerald-500={r.status === 'done'}
                        class:bg-red-500={r.status === 'failed'}
                        class:bg-accent-500={r.status === 'running'
@@ -386,7 +441,7 @@
                        style="width: {Math.round((r.progress || 0) * 100)}%">
                   </div>
                 </div>
-                <span class="text-[10px] text-ink-500">
+                <span class="text-[10px] text-ink-500 tabular-nums">
                   {Math.round((r.progress || 0) * 100)}%
                 </span>
               {/if}
@@ -402,6 +457,12 @@
                 : ''}
             </td>
             <td class="whitespace-nowrap text-right">
+              <a class="btn !text-[10px] !px-2 !py-0.5 mr-1"
+                 href={'/runs/' + r.id}
+                 on:click|stopPropagation
+                 title="Apri il dettaglio con grafico objective e telemetria">
+                detail
+              </a>
               <button class="btn !text-[10px] !px-2 !py-0.5"
                       on:click|stopPropagation={() => (logFor = logFor === r.id ? null : r.id)}>
                 {logFor === r.id ? 'nascondi log' : 'log'}
