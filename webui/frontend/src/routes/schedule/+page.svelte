@@ -441,10 +441,8 @@
                       {cell.subjects.join('+')}
                     </div>
                     {#if !moveSrc}
-                      <!-- Vertical icon stack with native tooltips.
-                           Compact (~14px wide) so 3 actions fit
-                           without widening the cell. -->
-                      <div class="flex flex-col items-center gap-0.5 ml-1 leading-none">
+                      <!-- Horizontal icon row with native tooltips. -->
+                      <div class="flex items-center gap-0.5 leading-none">
                         <button class="text-accent-500 hover:bg-accent-500/10 rounded p-0.5 focus-ring"
                           title="Sposta (oppure Invio sulla cella)"
                           aria-label="Sposta"
@@ -593,7 +591,7 @@
                       {cell.class_name}
                     </div>
                     {#if !moveSrc}
-                      <div class="flex flex-col items-center gap-0.5 ml-1 leading-none">
+                      <div class="flex items-center gap-0.5 leading-none">
                         <button class="text-accent-500 hover:bg-accent-500/10 rounded p-0.5 focus-ring"
                           title="Sposta (oppure Invio sulla cella)"
                           aria-label="Sposta"
@@ -746,7 +744,7 @@
                                            subject: l.subject,
                                            teachers: [l.teacher],
                                            subjects: [l.subject] }}
-                        <div class="flex flex-col items-start gap-0.5 mt-1 leading-none">
+                        <div class="flex items-center gap-0.5 mt-1 leading-none">
                           <button class="text-accent-500 hover:bg-accent-500/10 rounded p-0.5"
                             title="Sposta"
                             aria-label="Sposta"
