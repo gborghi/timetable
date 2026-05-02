@@ -13,6 +13,7 @@ router = APIRouter(prefix="/api/classrooms", tags=["classrooms"])
 
 
 def _to_out(c: models.Classroom) -> schemas.ClassroomOut:
+    tags = sorted({a.tag.name for a in c.tag_assignments if a.tag})
     return schemas.ClassroomOut(
         id=c.id, name=c.name, kind=c.kind,
         capacity=c.capacity,
@@ -21,6 +22,7 @@ def _to_out(c: models.Classroom) -> schemas.ClassroomOut:
         multi_class_pref=c.multi_class_pref,
         multi_class_pref_weight=c.multi_class_pref_weight,
         notes=c.notes,
+        tags=tags,
         subject_prefs=[
             schemas.ClassroomSubjectPrefIn(
                 subject=p.subject, weight=p.weight, required=p.required,
@@ -43,6 +45,39 @@ def _to_out(c: models.Classroom) -> schemas.ClassroomOut:
             for u in c.unavailability
         ],
     )
+
+
+def _sync_tags(r: models.Classroom, tag_names: list[str], db: Session):
+    """Resync the room's tag assignments. Creates Tag rows on the fly
+    for unknown names."""
+    target = {(t or "").strip().lower() for t in (tag_names or [])
+              if t and t.strip()}
+    # Delete dropped assignments
+    keep_ids: set[int] = set()
+    if target:
+        for tname in target:
+            tag = db.query(models.ClassroomTag).filter(
+                models.ClassroomTag.name == tname
+            ).first()
+            if tag is None:
+                tag = models.ClassroomTag(name=tname)
+                db.add(tag)
+                db.flush()
+            keep_ids.add(tag.id)
+    db.query(models.ClassroomTagAssignment).filter(
+        models.ClassroomTagAssignment.classroom_id == r.id,
+        ~models.ClassroomTagAssignment.tag_id.in_(keep_ids or [-1]),
+    ).delete(synchronize_session=False)
+    # Add missing assignments
+    existing = {a.tag_id for a in db.query(
+        models.ClassroomTagAssignment
+    ).filter(
+        models.ClassroomTagAssignment.classroom_id == r.id
+    ).all()}
+    for tid in keep_ids - existing:
+        db.add(models.ClassroomTagAssignment(
+            classroom_id=r.id, tag_id=tid,
+        ))
 
 
 @router.get("")
@@ -148,6 +183,8 @@ def _apply(r: models.Classroom, p: schemas.ClassroomIn, db: Session):
             soft_penalty=int(u.soft_penalty or 100),
             reason=u.reason,
         ))
+    # Sync tags (many-to-many)
+    _sync_tags(r, getattr(p, "tags", None) or [], db)
 
 
 @router.post("", response_model=schemas.ClassroomOut)
@@ -184,5 +221,96 @@ def delete_room(room_id: int, db: Session = Depends(get_db)):
     if r is None:
         raise HTTPException(404, "classroom not found")
     db.delete(r)
+    db.commit()
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------
+# Classroom tags (CRUD)
+# ---------------------------------------------------------------------
+
+# Mounted on a separate prefix so the URL is friendly. The router
+# itself is /api/classrooms; we also expose /api/classroom-tags for
+# the tag dictionary, registered in main.py.
+tags_router = APIRouter(prefix="/api/classroom-tags",
+                         tags=["classrooms"])
+
+
+@tags_router.get("", response_model=list[schemas.ClassroomTagOut])
+def list_tags(db: Session = Depends(get_db)):
+    """List every tag with the count of classrooms using it."""
+    rows = db.query(models.ClassroomTag).order_by(
+        models.ClassroomTag.name
+    ).all()
+    # Count assignments per tag in one query
+    from sqlalchemy import func
+    counts = dict(
+        db.query(
+            models.ClassroomTagAssignment.tag_id,
+            func.count(models.ClassroomTagAssignment.id),
+        ).group_by(models.ClassroomTagAssignment.tag_id).all()
+    )
+    return [
+        schemas.ClassroomTagOut(
+            id=t.id, name=t.name, description=t.description,
+            n_classrooms=int(counts.get(t.id, 0)),
+        )
+        for t in rows
+    ]
+
+
+@tags_router.post("", response_model=schemas.ClassroomTagOut)
+def create_tag(payload: schemas.ClassroomTagIn,
+               db: Session = Depends(get_db)):
+    name = (payload.name or "").strip().lower()
+    if not name:
+        raise HTTPException(400, "name vuoto")
+    if db.query(models.ClassroomTag).filter(
+        models.ClassroomTag.name == name
+    ).first():
+        raise HTTPException(409, f"tag '{name}' esiste gia'")
+    t = models.ClassroomTag(name=name, description=payload.description)
+    db.add(t)
+    db.commit()
+    db.refresh(t)
+    return schemas.ClassroomTagOut(
+        id=t.id, name=t.name, description=t.description, n_classrooms=0,
+    )
+
+
+@tags_router.put("/{tag_id}", response_model=schemas.ClassroomTagOut)
+def update_tag(tag_id: int, payload: schemas.ClassroomTagIn,
+               db: Session = Depends(get_db)):
+    t = db.get(models.ClassroomTag, tag_id)
+    if t is None:
+        raise HTTPException(404, "tag non trovato")
+    new_name = (payload.name or "").strip().lower()
+    if not new_name:
+        raise HTTPException(400, "name vuoto")
+    if new_name != t.name:
+        clash = db.query(models.ClassroomTag).filter(
+            models.ClassroomTag.name == new_name
+        ).first()
+        if clash is not None and clash.id != t.id:
+            raise HTTPException(409, f"tag '{new_name}' esiste gia'")
+    t.name = new_name
+    t.description = payload.description
+    db.commit()
+    db.refresh(t)
+    from sqlalchemy import func
+    n = int(db.query(func.count(models.ClassroomTagAssignment.id)).filter(
+        models.ClassroomTagAssignment.tag_id == t.id
+    ).scalar() or 0)
+    return schemas.ClassroomTagOut(
+        id=t.id, name=t.name, description=t.description, n_classrooms=n,
+    )
+
+
+@tags_router.delete("/{tag_id}")
+def delete_tag(tag_id: int, db: Session = Depends(get_db)):
+    t = db.get(models.ClassroomTag, tag_id)
+    if t is None:
+        raise HTTPException(404, "tag non trovato")
+    db.delete(t)   # cascade removes assignments
     db.commit()
     return {"ok": True}

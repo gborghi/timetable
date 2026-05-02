@@ -279,6 +279,12 @@ def _apply_lightweight_migrations() -> None:
                 "max_hours_per_day INTEGER NOT NULL DEFAULT 5"
             ))
 
+        # Classroom tags (many-to-many). Tables are created via
+        # Base.metadata.create_all on the same init_db() call, so
+        # nothing to do here -- the create_all path is sufficient
+        # for fresh tables. We only have to handle ALTER COLUMN
+        # additions in this lightweight migration helper.
+
         # tenant_id on user-facing entities (Section 2.5 P3).
         # Defaults everything to tenant 1 -- the existing single school.
         for tbl in timestamped:

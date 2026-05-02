@@ -122,6 +122,9 @@ def class_funcs() -> dict[str, Callable[..., bool]]:
 
 
 def classroom_fields() -> dict[str, Callable[[Any], Any]]:
+    def _tags_csv(r):
+        ts = r.get("tags") or []
+        return " ".join(t.lower() for t in ts)
     return {
         "name": lambda r: r.get("name") or "",
         "kind": lambda r: r.get("kind") or "",
@@ -130,11 +133,24 @@ def classroom_fields() -> dict[str, Callable[[Any], Any]]:
         "capienza": lambda r: r.get("capacity", 0),
         "multi_class": lambda r: 1 if r.get("multi_class") else 0,
         "multi_classe": lambda r: 1 if r.get("multi_class") else 0,
+        # CSV of tag names; works with `contains` operator out of the
+        # box. The has_tag(name) func below is the cleaner predicate.
+        "tags": _tags_csv,
+        "tag": _tags_csv,
     }
 
 
 def classroom_funcs() -> dict[str, Callable[..., bool]]:
-    return teacher_funcs()
+    base = teacher_funcs()
+    def has_tag(record, tag_name):
+        ts = record.get("tags") or []
+        if not isinstance(tag_name, str):
+            return False
+        n = tag_name.lower()
+        return any((t or "").lower() == n for t in ts)
+    base["has_tag"] = has_tag
+    base["tag"] = has_tag
+    return base
 
 
 # ---------- Subjects ----------

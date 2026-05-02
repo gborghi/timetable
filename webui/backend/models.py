@@ -605,6 +605,59 @@ class Classroom(TenantMixin, TimestampMixin, Base):
     unavailability: Mapped[list["ClassroomUnavailability"]] = relationship(
         back_populates="classroom", cascade="all, delete-orphan"
     )
+    tag_assignments: Mapped[list["ClassroomTagAssignment"]] = relationship(
+        back_populates="classroom", cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class ClassroomTag(Base):
+    """Lightweight label that can be attached to classrooms (many-to-many).
+
+    Examples in mock-generated data:
+      - 'lab', 'fisica', 'chimica', 'informatica', 'linguistico'
+      - 'palestra', 'biblioteca', 'studio'
+      - 'matematica', 'italiano', 'storia', 'inglese'  (compatibility tags)
+      - curriculum tags: 'scientifico', 'classico', 'linguistico', 'itis'
+
+    Used by:
+      - the constraint DSL: `"matematica" in l.classroom.tags`
+      - the classroom list filter (DSL predicate `has_tag(<name>)`)
+      - the room-assignment heuristic (prefer rooms whose tags overlap
+        the lesson's subject)
+    """
+    __tablename__ = "classroom_tags"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    assignments: Mapped[list["ClassroomTagAssignment"]] = relationship(
+        back_populates="tag", cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class ClassroomTagAssignment(Base):
+    """Join row: classroom <-> tag. Pure association without extra
+    payload. Use a UNIQUE on (classroom_id, tag_id) so the same tag
+    can't be applied twice to the same room."""
+    __tablename__ = "classroom_tag_assignments"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    classroom_id: Mapped[int] = mapped_column(
+        ForeignKey("classrooms.id", ondelete="CASCADE"), index=True
+    )
+    tag_id: Mapped[int] = mapped_column(
+        ForeignKey("classroom_tags.id", ondelete="CASCADE"), index=True
+    )
+    classroom: Mapped["Classroom"] = relationship(
+        back_populates="tag_assignments"
+    )
+    tag: Mapped["ClassroomTag"] = relationship(
+        back_populates="assignments"
+    )
+    __table_args__ = (
+        UniqueConstraint("classroom_id", "tag_id",
+                          name="uq_classroom_tag"),
+    )
 
 
 class ClassroomSubjectPreference(Base):

@@ -408,14 +408,23 @@ class Parser:
             return Cmp(op=tok[1], left=left, right=right)
         if tok[0] == "IN" or tok[0] == "NOT_IN":
             self._eat()
-            self._eat("LB")
-            vals = [self._parse_value()]
-            while self._peek()[0] == "COMMA":
-                self._eat()
-                vals.append(self._parse_value())
-            self._eat("RB")
-            return Cmp(op=("in" if tok[0] == "IN" else "not_in"),
-                       left=left, right=vals)
+            op_name = "in" if tok[0] == "IN" else "not_in"
+            # Two forms supported:
+            #   value in [a, b, c]     -- explicit list literal
+            #   value in <path>        -- iterate a collection
+            #                             (e.g. "matematica" in l.classroom.tags)
+            if self._peek()[0] == "LB":
+                self._eat("LB")
+                vals = [self._parse_value()]
+                while self._peek()[0] == "COMMA":
+                    self._eat()
+                    vals.append(self._parse_value())
+                self._eat("RB")
+                return Cmp(op=op_name, left=left, right=vals)
+            # Single-value form: the right side is a path that must
+            # evaluate to a list at runtime.
+            right = self._parse_value()
+            return Cmp(op=op_name + "_path", left=left, right=right)
         return left   # bare value (e.g. a function call returning bool)
 
     def _parse_value(self):
@@ -691,16 +700,24 @@ def build_world(db) -> dict[str, list]:
                 if c.curriculum_id and curricula_by_id.get(c.curriculum_id)
                 else (c.curriculum or "")
             )
-        # Pre-resolve classroom name -> kind/type so
-        # `l.classroom.type == "lab_fisica"` works without nested obj.
+        # Pre-resolve classroom name -> kind/type/tags so
+        # `l.classroom.type == "lab_fisica"` and
+        # `"matematica" in l.classroom.tags` work without nested obj.
         room_type_by_name: dict[str, str] = {
             r.name: (r.kind or "") for r in rooms_by_id.values()
         }
+        room_tags_by_name: dict[str, list[str]] = {}
+        for r in rooms_by_id.values():
+            room_tags_by_name[r.name] = sorted({
+                a.tag.name for a in (r.tag_assignments or [])
+                if a.tag is not None
+            })
         for l in db.query(models.Lesson).filter(
             models.Lesson.solution_id == active.id
         ).all():
             cr_name = l.classroom_name or ""
             cr_type = room_type_by_name.get(cr_name, "")
+            cr_tags = room_tags_by_name.get(cr_name, [])
             out["lessons"].append({
                 "teacher": l.teacher_name,
                 "class": l.class_name,
@@ -711,8 +728,19 @@ def build_world(db) -> dict[str, list]:
                 "classroom": cr_name,
                 "classroom_type": cr_type,    # alias for l.classroom.type
                 "classroom_kind": cr_type,    # alias for l.classroom.kind
+                "classroom_tags": cr_tags,    # alias for l.classroom.tags
                 "slot": (l.day, l.hour),
             })
+    # Also populate the classrooms world dict with tags so DSLs that
+    # iterate `forall r in classrooms: ...` can read r.tags.
+    cr_to_tags: dict[str, list[str]] = {}
+    for r in rooms_by_id.values():
+        cr_to_tags[r.name] = sorted({
+            a.tag.name for a in (r.tag_assignments or [])
+            if a.tag is not None
+        })
+    for r in out["classrooms"]:
+        r["tags"] = cr_to_tags.get(r["name"], [])
     return out
 
 
@@ -823,6 +851,15 @@ def _eval_cmp(node: Cmp, env, world):
         rhs = [_eval(r, env, world) for r in node.right]
         ok = L in rhs
         return ok if node.op == "in" else (not ok)
+    if node.op in ("in_path", "not_in_path"):
+        # Right side is a path that should resolve to a collection
+        # at runtime. Membership check on whatever it evaluates to.
+        coll = _eval(node.right, env, world)
+        if not isinstance(coll, (list, tuple, set)):
+            # Treat scalar / None as a singleton or empty set
+            coll = [coll] if coll is not None else []
+        ok = L in coll
+        return ok if node.op == "in_path" else (not ok)
     R = _eval(node.right, env, world)
     return _apply_op(L, node.op, R)
 

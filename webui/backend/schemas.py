@@ -714,6 +714,10 @@ class ClassroomBase(BaseModel):
     multi_class_pref: int = 1
     multi_class_pref_weight: float = 10.0
     notes: str | None = None
+    # Free-form tags ("lab", "fisica", "matematica", "scientifico", ...).
+    # Stored as a many-to-many on the backend; surfaced as a list of
+    # tag-name strings in the API for simplicity.
+    tags: list[str] = Field(default_factory=list)
 
 
 class ClassroomIn(ClassroomBase):
@@ -727,6 +731,19 @@ class ClassroomOut(ClassroomBase):
     subject_prefs: list[ClassroomSubjectPrefIn] = Field(default_factory=list)
     class_prefs: list[ClassroomClassPrefIn] = Field(default_factory=list)
     unavailability: list[UnavailabilitySlot] = Field(default_factory=list)
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ClassroomTagIn(BaseModel):
+    name: str
+    description: str | None = None
+
+
+class ClassroomTagOut(BaseModel):
+    id: int
+    name: str
+    description: str | None = None
+    n_classrooms: int = 0
     model_config = ConfigDict(from_attributes=True)
 
 
