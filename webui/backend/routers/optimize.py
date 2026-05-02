@@ -165,6 +165,27 @@ def launch_full(payload: schemas.FullPipelineIn):
     return {"run_id": rid}
 
 
+@router.post("/place-event", response_model=schemas.PlaceEventOut)
+def launch_place_event(payload: schemas.PlaceEventIn):
+    """Place the lessons of the listed cattedre via the greedy
+    HARD-feasible placer. See `optimization.run_place_event` for
+    the lock_mode semantics."""
+    if payload.lock_mode not in (
+        "all_others_locked", "same_class_or_teacher_movable",
+        "all_others_movable",
+    ):
+        raise HTTPException(400,
+            f"lock_mode sconosciuto: {payload.lock_mode!r}")
+    if not payload.event_ids:
+        raise HTTPException(400, "event_ids non puo' essere vuoto")
+    rid = optimization.run_place_event(
+        event_ids=payload.event_ids,
+        lock_mode=payload.lock_mode,
+        prefer_pref=payload.prefer_pref,
+    )
+    return {"run_id": rid}
+
+
 @router.post("/rooms")
 def launch_rooms(payload: schemas.ClassroomAssignRunIn):
     rid = optimization.run_classroom_assignment(

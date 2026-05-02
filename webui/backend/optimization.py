@@ -436,8 +436,15 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
     run_id = create_run("phase_b", "Schedulazione orario", None, params)
 
     def target(rid: int):
+        # Snapshot locked lessons BEFORE running anything: the
+        # optimizer doesn't natively know about Assignment.locked, so
+        # we re-impose those lessons after the run.
         with SessionLocal() as db:
+            locked_snap = _snapshot_locked_lessons(db)
             profs = engine_io.profs_dict_from_db(db)
+        if locked_snap:
+            print(f"[phaseB] {len(locked_snap)} locked lessons will be "
+                  f"restored after the run.")
         if not profs:
             raise RuntimeError(
                 "Nessun assegnamento prof->classe; esegui prima "
@@ -564,6 +571,10 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                 metrics={**m, "feasible": feasible},
                 make_active=True,
             )
+            n_restored = _restore_locked_lessons(db, sid, locked_snap)
+            if n_restored:
+                db.commit()
+                print(f"[phaseB] restored {n_restored} locked lessons")
         rooms_metrics: dict[str, Any] = {}
         if optimize_rooms:
             update_run(rid, progress=0.95)
@@ -635,12 +646,16 @@ def run_meta(stage: str, budget_s: float, workers: int, log: bool,
         import metaheuristics as meta  # type: ignore
         import decomposition_spectral_v2 as dec  # type: ignore
         with SessionLocal() as db:
+            locked_snap = _snapshot_locked_lessons(db)
             profs = engine_io.profs_dict_from_db(db)
             active = engine_io.get_active_solution(db)
             if active is None:
                 raise RuntimeError("Nessuna soluzione attiva; esegui prima "
                                    "Phase B o importa un pickle.")
             sol = engine_io.lessons_to_solution_dict(db, active.id)
+        if locked_snap:
+            print(f"[{stage}] {len(locked_snap)} locked lessons will be "
+                  f"restored after the run.")
         if not meta.is_hard_feasible(sol, profs, verbose=False):
             print("[meta] WARNING: la soluzione iniziale viola gli HARD")
         dc_value = _restore_dc_from_solution(sol)
@@ -691,6 +706,10 @@ def run_meta(stage: str, budget_s: float, workers: int, log: bool,
                 metrics={**m, "feasible": feasible},
                 make_active=True,
             )
+            n_restored = _restore_locked_lessons(db, sid, locked_snap)
+            if n_restored:
+                db.commit()
+                print(f"[{stage}] restored {n_restored} locked lessons")
         rooms_metrics: dict[str, Any] = {}
         if optimize_rooms:
             update_run(rid, progress=0.95)
@@ -1038,6 +1057,291 @@ def run_full_pipeline(profile: str,
 # ----------------------------------------------------------------------
 # Drag & drop validation: HARD-only check
 # ----------------------------------------------------------------------
+
+
+# ----------------------------------------------------------------------
+# Lock honoring and event placement
+# ----------------------------------------------------------------------
+
+
+def _snapshot_locked_lessons(db: Session) -> list[dict]:
+    """Capture every Lesson belonging to a LOCKED Assignment in the
+    active solution, so we can restore them after a Phase B / meta run
+    that doesn't natively know about Assignment.locked. Returns a list
+    of dicts ready to be re-inserted into the new solution.
+    """
+    active = engine_io.get_active_solution(db)
+    if active is None:
+        return []
+    locked_keys: set[tuple[str, str, str]] = set()
+    teachers = {t.id: t for t in db.query(models.Teacher).all()}
+    classes = {c.id: c for c in db.query(models.SchoolClass).all()}
+    for a in db.query(models.Assignment).filter(
+        models.Assignment.locked == True  # noqa: E712
+    ).all():
+        t = teachers.get(a.teacher_id)
+        c = classes.get(a.class_id)
+        if t is None or c is None:
+            continue
+        locked_keys.add((t.name, c.name, a.subject))
+    if not locked_keys:
+        return []
+    out: list[dict] = []
+    for l in db.query(models.Lesson).filter(
+        models.Lesson.solution_id == active.id
+    ).all():
+        if (l.teacher_name, l.class_name, l.subject) in locked_keys:
+            out.append({
+                "teacher_name": l.teacher_name,
+                "class_name": l.class_name,
+                "subject": l.subject,
+                "day": l.day, "hour": l.hour,
+                "classroom_name": l.classroom_name,
+                "cotaught_with": l.cotaught_with,
+            })
+    return out
+
+
+def _restore_locked_lessons(db: Session, solution_id: int,
+                             snapshot: list[dict]) -> int:
+    """After a run produces a new solution, re-insert every locked
+    lesson at its original (day, hour) and DELETE any conflicting
+    lesson that the optimizer placed there. Returns how many lessons
+    were re-inserted."""
+    if not snapshot:
+        return 0
+    # Current lessons in the new solution
+    current = db.query(models.Lesson).filter(
+        models.Lesson.solution_id == solution_id
+    ).all()
+    by_owner_slot: dict[tuple[str, int, int], models.Lesson] = {}
+    by_class_slot: dict[tuple[str, int, int], models.Lesson] = {}
+    by_room_slot: dict[tuple[str, int, int], models.Lesson] = {}
+    for l in current:
+        by_owner_slot[(l.teacher_name, l.day, l.hour)] = l
+        by_class_slot[(l.class_name, l.day, l.hour)] = l
+        if l.classroom_name:
+            by_room_slot[(l.classroom_name, l.day, l.hour)] = l
+    n_restored = 0
+    for snap in snapshot:
+        # Wipe anything occupying the locked slot for the same teacher/class
+        for k_map, key_for in (
+            (by_owner_slot, (snap["teacher_name"], snap["day"], snap["hour"])),
+            (by_class_slot, (snap["class_name"],   snap["day"], snap["hour"])),
+        ):
+            existing = k_map.get(key_for)
+            if existing is None:
+                continue
+            same = (existing.teacher_name == snap["teacher_name"]
+                    and existing.class_name == snap["class_name"]
+                    and existing.subject == snap["subject"])
+            if same:
+                continue
+            db.delete(existing)
+        # Free the room if a different lesson uses it on this slot
+        if snap.get("classroom_name"):
+            rk = (snap["classroom_name"], snap["day"], snap["hour"])
+            existing = by_room_slot.get(rk)
+            if existing is not None and not (
+                existing.teacher_name == snap["teacher_name"]
+                and existing.class_name == snap["class_name"]
+                and existing.subject == snap["subject"]
+            ):
+                existing.classroom_name = None
+        # Re-insert if not already present
+        already = db.query(models.Lesson).filter(
+            models.Lesson.solution_id == solution_id,
+            models.Lesson.teacher_name == snap["teacher_name"],
+            models.Lesson.class_name == snap["class_name"],
+            models.Lesson.subject == snap["subject"],
+            models.Lesson.day == snap["day"],
+            models.Lesson.hour == snap["hour"],
+        ).first()
+        if already is None:
+            db.add(models.Lesson(
+                solution_id=solution_id,
+                teacher_name=snap["teacher_name"],
+                class_name=snap["class_name"],
+                subject=snap["subject"],
+                day=int(snap["day"]),
+                hour=int(snap["hour"]),
+                classroom_name=snap.get("classroom_name"),
+                cotaught_with=snap.get("cotaught_with"),
+            ))
+            n_restored += 1
+        else:
+            # Make sure the classroom matches the locked snapshot
+            if snap.get("classroom_name") is not None:
+                already.classroom_name = snap["classroom_name"]
+    db.flush()
+    return n_restored
+
+
+def run_place_event(event_ids: list[int], lock_mode: str = "all_others_locked",
+                    *, prefer_pref: bool = False,
+                    label: str | None = None) -> int:
+    """Place the lessons of a set of cattedre into the active solution
+    using a HARD-feasible greedy placer. Used by the per-row "Piazza"
+    button in /monitor.
+
+    `lock_mode`:
+        all_others_locked            every other lesson is treated as
+                                     fixed; we just fit the missing
+                                     hours into free slots.
+        same_class_or_teacher_movable  lessons of the target events'
+                                     classes or teachers can be evicted;
+                                     everything else is fixed.
+        all_others_movable           no fixed lessons; the placer can
+                                     evict anything (used as a fallback
+                                     for tightly-packed schedules).
+
+    Implementation is greedy + HARD-only: for each missing hour we
+    pick the first slot that doesn't violate teacher/class/classroom
+    HARD-availability AND doesn't collide with a "frozen" lesson
+    according to lock_mode. Conflicts with movable lessons cause those
+    lessons to be deleted (the user can "Piazza" them again later).
+
+    Caveats: this is NOT a SOFT-optimal placer; for that the user
+    should run the full Phase B + meta pipeline. The greedy approach
+    is fast (sub-second on small/medium schools) and surfaces
+    placement failures clearly when no HARD-feasible slot exists.
+    """
+    params = dict(event_ids=list(event_ids), lock_mode=lock_mode,
+                  prefer_pref=prefer_pref)
+    run_id = create_run(
+        "place_event",
+        label or f"Piazza eventi ({len(event_ids)})",
+        None, params,
+    )
+
+    def target(rid: int):
+        with SessionLocal() as db:
+            active = engine_io.get_active_solution(db)
+            if active is None:
+                raise RuntimeError(
+                    "Nessuna soluzione attiva: lancia prima Phase B."
+                )
+            # Resolve target Assignments
+            targets = []
+            for aid in event_ids:
+                a = db.get(models.Assignment, int(aid))
+                if a is None:
+                    continue
+                t = db.get(models.Teacher, a.teacher_id)
+                c = db.get(models.SchoolClass, a.class_id)
+                if t is None or c is None:
+                    continue
+                targets.append((a, t, c))
+            if not targets:
+                raise RuntimeError("Nessun evento target valido.")
+            print(f"[piazza] {len(targets)} eventi target, lock_mode={lock_mode}")
+
+            # HARD-availability sets (teacher / class / room cells)
+            av = _availability_constraints(db)
+
+            # Existing lessons in the active solution. Categorize:
+            # frozen (cannot be evicted) vs movable (can be evicted).
+            target_keys = {(t.name, c.name, a.subject) for (a, t, c) in targets}
+            target_teachers = {t.name for (_, t, _) in targets}
+            target_classes  = {c.name for (_, _, c) in targets}
+            frozen_owner: set[tuple[str, int, int]] = set()
+            frozen_class: set[tuple[str, int, int]] = set()
+            frozen_room:  set[tuple[str, int, int]] = set()
+            movable: list[models.Lesson] = []
+            for l in db.query(models.Lesson).filter(
+                models.Lesson.solution_id == active.id
+            ).all():
+                if (l.teacher_name, l.class_name, l.subject) in target_keys:
+                    # The target's own lessons are always re-placed
+                    movable.append(l)
+                    continue
+                touches_target = (
+                    l.teacher_name in target_teachers
+                    or l.class_name in target_classes
+                )
+                if lock_mode == "all_others_movable":
+                    movable.append(l)
+                    continue
+                if (lock_mode == "same_class_or_teacher_movable"
+                        and touches_target):
+                    movable.append(l)
+                    continue
+                # frozen
+                frozen_owner.add((l.teacher_name, l.day, l.hour))
+                frozen_class.add((l.class_name, l.day, l.hour))
+                if l.classroom_name:
+                    frozen_room.add((l.classroom_name, l.day, l.hour))
+            print(f"[piazza] frozen: {len(frozen_owner)} owner, "
+                  f"{len(frozen_class)} class, {len(frozen_room)} room")
+            print(f"[piazza] movable: {len(movable)} lessons "
+                  f"(will be evicted on conflict)")
+
+            # Wipe target events' existing lessons (we re-place them all)
+            n_wiped = 0
+            for l in list(movable):
+                if (l.teacher_name, l.class_name, l.subject) in target_keys:
+                    db.delete(l); n_wiped += 1
+            db.flush()
+            print(f"[piazza] wiped {n_wiped} existing lessons of target events")
+
+            # Track temporary occupancy (frozen + already placed in this run)
+            placed_owner = set(frozen_owner)
+            placed_class = set(frozen_class)
+            placed_room  = set(frozen_room)
+
+            n_placed = 0
+            n_unplaced = 0
+            # Sequence target hours (one entry per missing hour)
+            for (a, t, c) in targets:
+                hours_to_place = int(a.hours)
+                placements = []
+                for d in DAYS:
+                    if len(placements) >= hours_to_place:
+                        break
+                    for h in HOURS:
+                        if len(placements) >= hours_to_place:
+                            break
+                        # HARD-availability checks
+                        if (t.name, d, h) in av["teacher_hard"]:
+                            continue
+                        if (c.name, d, h) in av["class_hard"]:
+                            continue
+                        # Frozen + already-placed-in-this-run conflicts
+                        if (t.name, d, h) in placed_owner:
+                            continue
+                        if (c.name, d, h) in placed_class:
+                            continue
+                        # OK: take this slot
+                        placements.append((d, h))
+                        placed_owner.add((t.name, d, h))
+                        placed_class.add((c.name, d, h))
+                # Insert lessons
+                for (d, h) in placements:
+                    db.add(models.Lesson(
+                        solution_id=active.id,
+                        teacher_name=t.name, class_name=c.name,
+                        subject=a.subject,
+                        day=int(d), hour=int(h),
+                        classroom_name=None,
+                    ))
+                    n_placed += 1
+                missing = hours_to_place - len(placements)
+                if missing > 0:
+                    n_unplaced += missing
+                    print(f"[piazza] WARN {t.name}/{c.name}/{a.subject}: "
+                          f"piazzate {len(placements)}/{hours_to_place} ore, "
+                          f"{missing} non collocabili (HARD-infeasible).")
+            db.commit()
+            update_run(rid, progress=1.0, metrics={
+                "n_targets": len(targets),
+                "n_placed": n_placed,
+                "n_unplaced": n_unplaced,
+                "lock_mode": lock_mode,
+            })
+            print(f"[piazza] DONE: {n_placed} piazzate, {n_unplaced} non piazzate")
+
+    start_thread(run_id, target)
+    return run_id
 
 
 def _apply_rooms_to_solution(sid: int, *, time_limit_s: float,

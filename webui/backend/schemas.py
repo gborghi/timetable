@@ -470,6 +470,29 @@ DEFAULT_PIPELINE_STEPS = ["phase_a", "phase_b", "lns", "sa", "ts", "ils"]
 PIPELINE_STEP_KEYS = {"phase_a", "phase_b", "lns", "sa", "ts", "ils", "rooms"}
 
 
+class PlaceEventIn(BaseModel):
+    """Run the greedy event-placer on a list of cattedre. Used by
+    the per-row "Piazza" button (and bulk-piazza) in /monitor.
+
+    `lock_mode`:
+      all_others_locked              every other lesson is treated as
+                                     fixed; only the targets get
+                                     re-placed in free slots.
+      same_class_or_teacher_movable  lessons of the targets' classes
+                                     or teachers can be evicted; the
+                                     rest is fixed.
+      all_others_movable             nothing fixed -- the placer can
+                                     evict anything.
+    """
+    event_ids: list[int]
+    lock_mode: str = "all_others_locked"
+    prefer_pref: bool = False
+
+
+class PlaceEventOut(BaseModel):
+    run_id: int
+
+
 class FullPipelineIn(BaseModel):
     profile: str = "small"
     workers: int = 8
