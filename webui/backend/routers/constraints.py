@@ -398,6 +398,178 @@ _DELETE_MODEL_FOR = {
 }
 
 
+# ---------------------------------------------------------------------
+# General-purpose DSL constraints
+# ---------------------------------------------------------------------
+
+
+@router.post("/general/validate",
+             response_model=schemas.GeneralConstraintValidateOut)
+def validate_general(payload: schemas.GeneralConstraintIn):
+    """Parse + statically validate the DSL expression. Used by the
+    frontend editor (debounced) to surface errors as the user types."""
+    from ..utils.general_dsl import parse, validate, DSLError
+    try:
+        tree = parse(payload.expression)
+    except DSLError as e:
+        return {"ok": False, "errors": [str(e)], "warnings": [], "n_atoms": 0}
+    res = validate(tree)
+    return {"ok": res.ok, "errors": res.errors,
+            "warnings": res.warnings, "n_atoms": res.n_atoms}
+
+
+@router.get("/general", response_model=list[schemas.GeneralConstraintOut])
+def list_general(scope: str | None = None,
+                  owner_id: int | None = None,
+                  db: Session = Depends(get_db)):
+    q = db.query(models.GeneralConstraint)
+    if scope:
+        q = q.filter(models.GeneralConstraint.scope == scope)
+    if owner_id is not None:
+        q = q.filter(models.GeneralConstraint.owner_id == owner_id)
+    return q.order_by(models.GeneralConstraint.id.desc()).all()
+
+
+@router.post("/general", response_model=schemas.GeneralConstraintOut)
+def create_general(payload: schemas.GeneralConstraintIn,
+                    db: Session = Depends(get_db)):
+    from ..utils.general_dsl import parse, validate, DSLError
+    import json as _json
+    try:
+        tree = parse(payload.expression)
+    except DSLError as e:
+        raise HTTPException(400, f"sintassi non valida: {e}")
+    res = validate(tree)
+    if not res.ok:
+        raise HTTPException(400, "validazione: " + "; ".join(res.errors))
+    # Normalise weight per level (same convention as elsewhere).
+    weight = int(payload.weight or 100)
+    if payload.level == "preferred" and weight > 0:
+        weight = -weight
+    if payload.level == "soft" and weight < 0:
+        weight = -weight
+    if payload.level in ("hard", "enforced"):
+        weight = 0
+    row = models.GeneralConstraint(
+        expression=payload.expression,
+        label=payload.label,
+        level=payload.level,
+        weight=weight,
+        scope=payload.scope,
+        owner_id=payload.owner_id,
+        # We don't actually serialise the AST to JSON (it's recursive
+        # with dataclasses); we re-parse on evaluation. Faster and
+        # avoids a JSON round-trip headache.
+        parsed_ast_json=None,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+@router.put("/general/{cid}", response_model=schemas.GeneralConstraintOut)
+def update_general(cid: int, payload: schemas.GeneralConstraintIn,
+                    db: Session = Depends(get_db)):
+    from ..utils.general_dsl import parse, validate, DSLError
+    row = db.get(models.GeneralConstraint, cid)
+    if row is None:
+        raise HTTPException(404, "constraint non trovato")
+    try:
+        parse(payload.expression)
+    except DSLError as e:
+        raise HTTPException(400, f"sintassi non valida: {e}")
+    weight = int(payload.weight or 100)
+    if payload.level == "preferred" and weight > 0:
+        weight = -weight
+    if payload.level == "soft" and weight < 0:
+        weight = -weight
+    if payload.level in ("hard", "enforced"):
+        weight = 0
+    row.expression = payload.expression
+    row.label = payload.label
+    row.level = payload.level
+    row.weight = weight
+    row.scope = payload.scope
+    row.owner_id = payload.owner_id
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+@router.delete("/general/{cid}")
+def delete_general(cid: int, db: Session = Depends(get_db)):
+    row = db.get(models.GeneralConstraint, cid)
+    if row is None:
+        raise HTTPException(404, "constraint non trovato")
+    db.delete(row)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/general/check-all")
+def check_all_general(db: Session = Depends(get_db)):
+    """Evaluate every General DSL constraint against the current
+    active solution snapshot. Returns a list of HARD violations and
+    the cumulative SOFT penalty contribution."""
+    from ..utils.general_dsl import (
+        parse, evaluate_safe, build_world, DSLError,
+    )
+    world = build_world(db)
+    rows = db.query(models.GeneralConstraint).all()
+    hard_violations: list[dict] = []
+    soft_penalty = 0
+    soft_violations: list[dict] = []
+    for row in rows:
+        try:
+            tree = parse(row.expression)
+        except DSLError as e:
+            hard_violations.append({
+                "id": row.id,
+                "label": row.label,
+                "expression": row.expression,
+                "level": row.level,
+                "scope": row.scope,
+                "owner_id": row.owner_id,
+                "error": f"parse error: {e}",
+            })
+            continue
+        ok, err = evaluate_safe(tree, world)
+        if err:
+            hard_violations.append({
+                "id": row.id, "label": row.label,
+                "expression": row.expression,
+                "level": row.level, "scope": row.scope,
+                "owner_id": row.owner_id,
+                "error": f"eval error: {err}",
+            })
+            continue
+        if not ok:
+            entry = {
+                "id": row.id, "label": row.label,
+                "expression": row.expression,
+                "level": row.level, "scope": row.scope,
+                "owner_id": row.owner_id,
+            }
+            if row.level in ("hard", "enforced"):
+                hard_violations.append(entry)
+            elif row.level == "soft":
+                soft_penalty += int(row.weight)
+                soft_violations.append(entry)
+            elif row.level == "preferred":
+                # PREFERRED violated -> no penalty (just no bonus)
+                pass
+        else:
+            if row.level == "preferred" and row.weight < 0:
+                soft_penalty += int(row.weight)   # bonus
+    return {
+        "n_constraints": len(rows),
+        "hard_violations": hard_violations,
+        "soft_violations": soft_violations,
+        "soft_penalty": soft_penalty,
+    }
+
+
 @router.post("/delete-batch")
 def delete_constraints_batch(payload: ConstraintDeleteBatchIn,
                               db: Session = Depends(get_db)):

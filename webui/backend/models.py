@@ -511,6 +511,35 @@ class RunLog(Base):
 # ---------- Settings (singleton row of misc app state) ----------
 
 
+class GeneralConstraint(Base):
+    """User-defined HARD/SOFT constraint expressed in the general DSL.
+
+    The expression is parsed and evaluated post-hoc on the active
+    solution snapshot (see utils.general_dsl). HARD violations cause
+    the solution to be flagged infeasible; SOFT violations add `weight`
+    to the global soft-penalty score.
+    """
+    __tablename__ = "general_constraints"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    expression: Mapped[str] = mapped_column(Text)
+    label: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    level: Mapped[str] = mapped_column(String(16), default="hard",
+                                       comment="hard|soft|preferred|enforced")
+    weight: Mapped[int] = mapped_column(Integer, default=100,
+                                         comment="SOFT penalty (sign-flipped "
+                                         "negative for PREFERRED).")
+    scope: Mapped[str] = mapped_column(String(24), default="global",
+                                        comment="global|teacher|class|"
+                                        "classroom|group|subject|curriculum")
+    owner_id: Mapped[int | None] = mapped_column(Integer, nullable=True,
+                                                  comment="FK-like reference "
+                                                  "into the right entity table; "
+                                                  "NULL for scope=global.")
+    parsed_ast_json: Mapped[str | None] = mapped_column(Text, nullable=True,
+                                                         comment="JSON cache of "
+                                                         "the parsed AST.")
+
+
 class AppState(Base):
     __tablename__ = "app_state"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)

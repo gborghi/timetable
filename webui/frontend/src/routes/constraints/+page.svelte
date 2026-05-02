@@ -6,6 +6,7 @@
   import SortableQueryableList from '$lib/components/SortableQueryableList.svelte';
   import { levelPill, levelLabel } from '$lib/constraint_levels';
   import NewConstraintModal from '$lib/components/constraints/NewConstraintModal.svelte';
+  import NewGeneralConstraintModal from '$lib/components/constraints/NewGeneralConstraintModal.svelte';
   import FeasibilityPanel from '$lib/components/constraints/FeasibilityPanel.svelte';
 
   let listRef = null;
@@ -15,8 +16,13 @@
 
   // "Nuovo vincolo" wizard
   let newConstraintOpen = false;
+  // "Nuovo vincolo DSL" — general DSL editor
+  let newDSLConstraintOpen = false;
   // Feasibility Check panel
   let feasibilityOpen = false;
+  // List of DSL constraints (loaded on mount + after each create)
+  let dslConstraints = [];
+  let dslLoading = false;
 
   // Lookup data for the owner dropdowns in the edit modal.
   let allTeachers = [];     // [{id, name, display}]
@@ -57,7 +63,24 @@
       allSubjects = (s || []).map((x) => ({ name: x.name }))
         .sort((a, b) => a.name.localeCompare(b.name, 'it'));
     } catch { allSubjects = []; }
+    await reloadDSL();
   });
+
+  async function reloadDSL() {
+    dslLoading = true;
+    try {
+      dslConstraints = await api.get('/api/constraints/general');
+    } catch { dslConstraints = []; }
+    dslLoading = false;
+  }
+  async function deleteDSL(id) {
+    if (!confirm(`Eliminare il vincolo DSL #${id}?`)) return;
+    try {
+      await api.del('/api/constraints/general/' + id);
+      flash('Vincolo eliminato.', 'success');
+      await reloadDSL();
+    } catch (e) { flash('Errore: ' + e.message, 'error'); }
+  }
 
   // Maps a constraint `kind` to (label, list) pairs telling the modal
   // which owner dropdowns to render. Keys missing here = no owner edit.
@@ -191,6 +214,11 @@
       + Nuovo vincolo
     </button>
     <button class="btn-primary"
+            on:click={() => (newDSLConstraintOpen = true)}
+            title="Vincolo espresso in DSL generico (forall/exists/count su lessons/teachers/...)">
+      + Nuovo vincolo DSL
+    </button>
+    <button class="btn-primary"
             on:click={() => (feasibilityOpen = !feasibilityOpen)}
             title="Analisi MUS dei vincoli HARD/ENFORCED">
       {feasibilityOpen ? 'Nascondi' : ''} Feasibility Check
@@ -213,6 +241,47 @@
         if (listRef) await listRef.reload();
       }}/>
     </div>
+  {/if}
+
+  {#if dslConstraints.length > 0}
+    <details class="card p-3 bg-ink-50/40" open>
+      <summary class="cursor-pointer text-sm font-medium">
+        Vincoli DSL generici ({dslConstraints.length})
+      </summary>
+      <table class="tbl text-xs w-full mt-2">
+        <thead>
+          <tr>
+            <th>#</th><th>Etichetta</th><th>Livello</th>
+            <th>Peso</th><th>Scope</th><th>Espressione</th><th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {#each dslConstraints as c (c.id)}
+            <tr>
+              <td class="text-ink-400">#{c.id}</td>
+              <td>{c.label || ''}</td>
+              <td>
+                <span class="pill !text-[10px]
+                            {c.level === 'hard' ? 'pill-red'
+                             : c.level === 'soft' ? 'pill-amber'
+                             : c.level === 'preferred' ? 'pill-blue'
+                             : 'pill-green'}">{c.level}</span>
+              </td>
+              <td class="text-center">{c.weight}</td>
+              <td>
+                <span class="pill !text-[10px]">{c.scope}</span>
+                {#if c.owner_id != null}<span class="text-ink-400 ml-1">#{c.owner_id}</span>{/if}
+              </td>
+              <td><code class="text-[10px]">{c.expression}</code></td>
+              <td class="text-right">
+                <button class="btn-red !text-[10px] !px-1.5 !py-0.5"
+                        on:click={() => deleteDSL(c.id)}>✕</button>
+              </td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+    </details>
   {/if}
 
   {#if showConflicts && conflicts}
@@ -374,3 +443,8 @@
                     onCreated={async () => {
                       if (listRef) await listRef.reload();
                     }}/>
+
+<NewGeneralConstraintModal bind:open={newDSLConstraintOpen}
+                           scope="global"
+                           onClose={() => (newDSLConstraintOpen = false)}
+                           onCreated={reloadDSL}/>

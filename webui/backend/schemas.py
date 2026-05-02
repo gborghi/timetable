@@ -507,6 +507,34 @@ class PlaceEventOut(BaseModel):
     run_id: int
 
 
+class GeneralConstraintIn(BaseModel):
+    expression: str
+    label: str | None = None
+    level: str = "hard"
+    weight: int = 100
+    scope: str = "global"
+    owner_id: int | None = None
+
+
+class GeneralConstraintOut(BaseModel):
+    id: int
+    expression: str
+    label: str | None = None
+    level: str
+    weight: int
+    scope: str
+    owner_id: int | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class GeneralConstraintValidateOut(BaseModel):
+    ok: bool
+    errors: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    n_atoms: int = 0
+
+
 class ConstraintCreateIn(BaseModel):
     """Polymorphic creation payload for the unified
     POST /api/constraints endpoint. The (scope, kind) pair drives the
