@@ -190,6 +190,8 @@ def list_teachers(q: str | None = Query(None,
                   format: str | None = Query(None,
                     description="If set to 'xlsx' or 'csv', returns the "
                                 "filtered+sorted list as a binary file."),
+                  limit: int | None = Query(None, ge=0, le=10000),
+                  offset: int | None = Query(None, ge=0),
                   db: Session = Depends(get_db)):
     rows = db.query(models.Teacher).order_by(models.Teacher.name).all()
     # Compute extra denormalized fields for the DSL
@@ -220,7 +222,7 @@ def list_teachers(q: str | None = Query(None,
         filtered = filter_and_sort(out, "teachers", q, sort)
     except QueryError as e:
         raise HTTPException(400, f"Errore query: {e}")
-    return paginated_or_list(filtered, None, None,
+    return paginated_or_list(filtered, limit, offset,
                               fmt=format, entity="teachers")
 
 

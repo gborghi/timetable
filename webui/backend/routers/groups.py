@@ -50,6 +50,8 @@ def _to_out(g: models.StudyGroup, db: Session) -> schemas.StudyGroupOut:
 def list_groups(q: str | None = Query(None),
                 sort: str | None = Query(None),
                 format: str | None = Query(None),
+                limit: int | None = Query(None, ge=0, le=10000),
+                offset: int | None = Query(None, ge=0),
                 db: Session = Depends(get_db)):
     rows = db.query(models.StudyGroup).order_by(models.StudyGroup.name).all()
     out = [_to_out(g, db).model_dump() for g in rows]
@@ -57,7 +59,7 @@ def list_groups(q: str | None = Query(None),
         filtered = filter_and_sort(out, "groups", q, sort)
     except QueryError as e:
         raise HTTPException(400, f"Errore query: {e}")
-    return paginated_or_list(filtered, None, None,
+    return paginated_or_list(filtered, limit, offset,
                               fmt=format, entity="groups")
 
 

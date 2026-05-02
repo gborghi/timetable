@@ -59,6 +59,8 @@ def _to_out(c: models.Curriculum, db: Session) -> schemas.CurriculumOut:
 def list_curricula(q: str | None = Query(None),
                    sort: str | None = Query(None),
                    format: str | None = Query(None),
+                   limit: int | None = Query(None, ge=0, le=10000),
+                   offset: int | None = Query(None, ge=0),
                    db: Session = Depends(get_db)):
     rows = db.query(models.Curriculum).order_by(models.Curriculum.code).all()
     out = [_to_out(c, db).model_dump() for c in rows]
@@ -66,7 +68,7 @@ def list_curricula(q: str | None = Query(None),
         filtered = filter_and_sort(out, "curricula", q, sort)
     except QueryError as e:
         raise HTTPException(400, f"Errore query: {e}")
-    return paginated_or_list(filtered, None, None,
+    return paginated_or_list(filtered, limit, offset,
                               fmt=format, entity="curricula")
 
 

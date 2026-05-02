@@ -85,6 +85,8 @@ def _sync_tags(r: models.Classroom, tag_names: list[str], db: Session):
 def list_rooms(q: str | None = Query(None),
                sort: str | None = Query(None),
                format: str | None = Query(None),
+               limit: int | None = Query(None, ge=0, le=10000),
+               offset: int | None = Query(None, ge=0),
                db: Session = Depends(get_db)):
     rows = db.query(models.Classroom).order_by(models.Classroom.name).all()
     out = [_to_out(c).model_dump() for c in rows]
@@ -92,7 +94,7 @@ def list_rooms(q: str | None = Query(None),
         filtered = filter_and_sort(out, "classrooms", q, sort)
     except QueryError as e:
         raise HTTPException(400, f"Errore query: {e}")
-    return paginated_or_list(filtered, None, None,
+    return paginated_or_list(filtered, limit, offset,
                               fmt=format, entity="classrooms")
 
 

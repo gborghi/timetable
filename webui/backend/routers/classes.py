@@ -83,6 +83,8 @@ def _to_out(c: models.SchoolClass, db=None) -> schemas.ClassOut:
 def list_classes(q: str | None = Query(None),
                  sort: str | None = Query(None),
                  format: str | None = Query(None),
+                 limit: int | None = Query(None, ge=0, le=10000),
+                 offset: int | None = Query(None, ge=0),
                  db: Session = Depends(get_db)):
     rows = db.query(models.SchoolClass).order_by(
         models.SchoolClass.name
@@ -92,7 +94,7 @@ def list_classes(q: str | None = Query(None),
         filtered = filter_and_sort(out, "classes", q, sort)
     except QueryError as e:
         raise HTTPException(400, f"Errore query: {e}")
-    return paginated_or_list(filtered, None, None,
+    return paginated_or_list(filtered, limit, offset,
                               fmt=format, entity="classes")
 
 
