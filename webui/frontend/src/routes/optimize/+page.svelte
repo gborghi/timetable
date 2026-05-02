@@ -40,7 +40,12 @@
     sa:      '5) SA',
     ts:      '6) TS',
     ils:     '7) ILS',
+    rooms:   '8) Assegna aule (indipendente)',
   };
+  // Default pipeline includes rooms as the last step but UNTICKED. The
+  // user can drag it to any position. Unticked it just doesn't run --
+  // tip: leave it unticked and tick "Ottimizza aule insieme" on cards
+  // 3/4-7 if you want rooms folded into the timetable solver.
   let pipelineList = [
     { key: 'phase_a', enabled: true },
     { key: 'phase_b', enabled: true },
@@ -48,11 +53,16 @@
     { key: 'sa',      enabled: true },
     { key: 'ts',      enabled: true },
     { key: 'ils',     enabled: true },
+    { key: 'rooms',   enabled: false },
   ];
   let stepFull = {
-    profile: 'small', workers: 8, time_assign: 30,
+    profile: '', workers: 8, time_assign: 30,
     budget_lns: 60, budget_sa: 30, budget_ts: 30, budget_ils: 60,
   };
+
+  // Active dataset profile -- read on mount + after each operation
+  // so the pipeline label/profile reflects the actual school in DB.
+  let activeProfile = '';
 
   // Drag-and-drop state for the pipeline list (HTML5 native).
   let dragSrcIdx = null;
@@ -74,10 +84,25 @@
   }
   function onDragEnd() { dragSrcIdx = null; }
 
-  onMount(reloadRuns);
+  onMount(async () => {
+    await Promise.all([reloadRuns(), reloadActiveProfile()]);
+  });
   async function reloadRuns() {
     try { runs = (await api.get('/api/optimize/runs?limit=15')); }
     catch (e) { flash('Backend non raggiungibile: ' + e.message, 'error'); }
+  }
+  async function reloadActiveProfile() {
+    try {
+      const s = await api.get('/api/dataset/state');
+      activeProfile = s.last_profile || '';
+      // Default the pipeline label to the active profile name when
+      // the user hasn't picked one explicitly. This makes the run
+      // entry in /runs show the right school name (e.g. "huge")
+      // instead of stale 'small' default.
+      if (activeProfile && !stepFull.profile) {
+        stepFull.profile = activeProfile;
+      }
+    } catch (_) { /* swallow */ }
   }
 
   async function go(path, payload) {
@@ -94,6 +119,7 @@
   function onEnd() {
     refreshDataset();
     reloadRuns();
+    reloadActiveProfile();
   }
 
   // Step shortcuts
@@ -111,6 +137,10 @@
     }
     const payload = {
       ...stepFull,
+      // Use the ACTUAL active profile from /api/dataset/state for
+      // the run label, falling back to whatever the user typed in
+      // the field (or the active profile if both are empty).
+      profile: stepFull.profile || activeProfile || 'unknown',
       steps,
       // Phase B inside the pipeline reuses step3 (so its rooms toggle
       // and parameters come from card 3).
@@ -278,14 +308,26 @@
       <p class="text-xs text-ink-500 mb-3">
         Trascina le righe per riordinare gli step e usa la spunta per
         includere o escludere uno step dalla pipeline. La pipeline esegue
-        gli step abilitati nell'ordine indicato. L'assegnazione aule
-        (step 8) NON e' un toggle qui: si attiva sulle card 3 (Phase B)
-        e 4-7 (Metaeuristiche) tramite "Ottimizza aule insieme a questo
-        step", quindi ogni step nella lista decide autonomamente se
-        eseguire le aule dopo se' stesso.
+        gli step abilitati nell'ordine indicato.
+        <strong>Assegna aule (step 8)</strong> e' presente nella lista
+        come step opzionale: se ticked viene eseguito come elemento
+        indipendente nel punto in cui appare nell'ordine. In
+        alternativa, per piegare l'assegnazione aule INSIEME al CP-SAT
+        o alle metaeuristiche, ticka "Ottimizza aule insieme a questo
+        step" sulle card 3 (Phase B) e 4-7 (Metaeuristiche).
       </p>
       <div class="grid grid-cols-3 gap-3">
-        <div class="field"><label>Profilo (etichetta)</label><input bind:value={stepFull.profile}/></div>
+        <div class="field">
+          <label>Profilo (etichetta)
+            {#if activeProfile}
+              <span class="text-[10px] text-ink-500">
+                — attivo: <code>{activeProfile}</code>
+              </span>
+            {/if}
+          </label>
+          <input bind:value={stepFull.profile}
+                 placeholder={activeProfile || '(scuola attiva)'}/>
+        </div>
         <div class="field"><label>Workers</label><input type="number" bind:value={stepFull.workers}/></div>
         <div class="field"><label>Time assignment</label><input type="number" bind:value={stepFull.time_assign}/></div>
         <div class="field"><label>Budget LNS</label><input type="number" bind:value={stepFull.budget_lns}/></div>

@@ -24,6 +24,12 @@ def compute_state(db: Session) -> dict:
     n_students = db.query(models.Student).count()
     n_groups = db.query(models.StudyGroup).count()
     active = engine_io.get_active_solution(db)
+    # last imported profile (mock or pickle), used by the Workflow tab
+    # to default its run labels to the right name.
+    last_profile_row = db.query(models.AppState).filter(
+        models.AppState.key == "last_profile"
+    ).first()
+    last_profile = last_profile_row.value if last_profile_row else None
     return {
         "classes": n_classes,
         "teachers": n_teachers,
@@ -34,6 +40,7 @@ def compute_state(db: Session) -> dict:
         "curricula": n_curricula,
         "students": n_students,
         "groups": n_groups,
+        "last_profile": last_profile,
         "active_solution": (
             None if active is None else {
                 "id": active.id,

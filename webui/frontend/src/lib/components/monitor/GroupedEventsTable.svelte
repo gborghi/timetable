@@ -63,6 +63,10 @@
   let appliedQuery = '';
   let sortLevels = [];        // [{ column, direction }]
   let showHelp = false;
+  // Pagination state. limit=null means "all rows" (legacy default).
+  // For big schools we recommend 100 rows/page so the DOM stays small.
+  let pageSize = 100;
+  let pageIndex = 0;
 
   const MAX_SORT_LEVELS = 3;
 
@@ -134,6 +138,7 @@
   }
   function applyQuery() {
     appliedQuery = rowQuery;
+    pageIndex = 0;
     refresh();
   }
 
@@ -169,6 +174,10 @@
     if (q) params.set('q', q);
     const sortStr = buildSortString();
     if (sortStr) params.set('sort', sortStr);
+    if (pageSize && pageSize > 0) {
+      params.set('limit', String(pageSize));
+      params.set('offset', String(pageIndex * pageSize));
+    }
     params.set('_t', String(Date.now()));   // cache-buster
     const url = endpoint + '?' + params.toString();
     lastUrl = url;
@@ -180,6 +189,22 @@
       busy = false;
     }
   }
+
+  // Total pages (clamped to 1 even if no rows).
+  $: nPages = (data && pageSize)
+    ? Math.max(1, Math.ceil((data.n_filtered ?? data.n_total ?? 0) / pageSize))
+    : 1;
+  function gotoPage(i) {
+    pageIndex = Math.max(0, Math.min(nPages - 1, i));
+    refresh();
+  }
+  function changePageSize(n) {
+    pageSize = Number(n) || 100;
+    pageIndex = 0;
+    refresh();
+  }
+  // Re-fetch when filter/sort/groupBy changes -> reset page.
+  function _onFilterReset() { pageIndex = 0; refresh(); }
 
   // Initial load on mount
   refresh();
@@ -338,6 +363,16 @@
             title="Chiudi tutti i gruppi">Toggle all</button>
     <button class="btn !text-xs" on:click={untoggleAll}
             title="Apri tutti i gruppi">Untoggle all</button>
+    <span class="text-xs text-ink-500 ml-2">Righe/pagina:</span>
+    <select class="text-xs px-2 py-1 border border-ink-200 rounded"
+            value={pageSize}
+            on:change={(e) => changePageSize(e.target.value)}>
+      <option value={50}>50</option>
+      <option value={100}>100</option>
+      <option value={200}>200</option>
+      <option value={500}>500</option>
+      <option value={0}>tutte</option>
+    </select>
   </div>
 
   <div class="card p-3 flex flex-wrap gap-2 items-end">
@@ -627,12 +662,13 @@
                                  on:click|stopPropagation={() => toggleOne(r, i)}/>
                         </td>
                       {/if}
-                      <td>
+                      <td class="text-[11px]"
+                          title={r.teacher_name !== r.teacher_display
+                                  ? r.teacher_name : ''}>
                         {#if r.is_locked || r.locked}
-                          <span class="text-amber-600" title="Evento bloccato (non si muove durante l'ottimizzazione)">🔒</span>
+                          <span class="text-amber-600" title="Evento bloccato">🔒</span>
                         {/if}
-                        <strong>{r.teacher_display}</strong>
-                        <span class="text-[10px] text-ink-400">({r.teacher_name})</span>
+                        {r.teacher_display || r.teacher_name}
                       </td>
                       <td>{r.class_name}</td>
                       <td>{r.subject}</td>
@@ -659,38 +695,40 @@
                         {/if}
                       </td>
                       <td class="text-right whitespace-nowrap">
-                        <button class="btn !text-[10px] !px-2 !py-0.5"
+                        <!-- Compact icon-only action buttons with tooltips,
+                             so the cell fits even in a narrow viewport. -->
+                        <button class="btn !text-[11px] !px-1.5 !py-0.5"
                                 on:click={() => onModify(r)}
                                 title="Modifica (sposta o disassocia da slot)">
-                          Modifica
+                          ✎
                         </button>
                         {#if onDissociate}
-                          <button class="btn-amber !text-[10px] !px-2 !py-0.5 ml-1"
+                          <button class="btn-amber !text-[11px] !px-1.5 !py-0.5 ml-0.5"
                                   on:click={async () => { await onDissociate(r); refresh(); onChanged(); }}
-                                  title="Toglie l'assegnazione temporale (cattedra resta, ore tornano da assegnare)">
-                            Dissocia
+                                  title="Dissocia: rimuove SOLO questa lezione (cattedra resta)">
+                            ⏏
                           </button>
                         {/if}
                         {#if onLockToggle}
-                          <button class="btn !text-[10px] !px-2 !py-0.5 ml-1"
+                          <button class="btn !text-[11px] !px-1.5 !py-0.5 ml-0.5"
                                   class:!bg-amber-100={r.is_locked || r.locked}
                                   on:click={async () => { await onLockToggle(r); refresh(); onChanged(); }}
                                   title={(r.is_locked || r.locked)
-                                    ? 'Sblocca questo evento (sara\' nuovamente movibile)'
-                                    : 'Blocca questo evento (non si muovera\' durante Phase B / metaeuristiche)'}>
-                            {(r.is_locked || r.locked) ? '🔓 Sblocca' : '🔒 Blocca'}
+                                    ? 'Sblocca' : 'Blocca'}>
+                            {(r.is_locked || r.locked) ? '🔓' : '🔒'}
                           </button>
                         {/if}
                         {#if onPlace}
-                          <button class="btn-primary !text-[10px] !px-2 !py-0.5 ml-1"
+                          <button class="btn-primary !text-[11px] !px-1.5 !py-0.5 ml-0.5"
                                   on:click={() => onPlace(r)}
-                                  title="Apri il modal di piazzamento per questo evento">
-                            Piazza
+                                  title="Piazza: apri modal di piazzamento">
+                            ▶
                           </button>
                         {/if}
-                        <button class="btn-red !text-[10px] !px-2 !py-0.5 ml-1"
-                                on:click={async () => { await onDelete(r); refresh(); onChanged(); }}>
-                          Elimina
+                        <button class="btn-red !text-[11px] !px-1.5 !py-0.5 ml-0.5"
+                                on:click={async () => { await onDelete(r); refresh(); onChanged(); }}
+                                title="Elimina">
+                          ✕
                         </button>
                       </td>
                     </tr>
@@ -708,6 +746,34 @@
           {/if}
         </tbody>
       </table>
+
+      <!-- Pagination controls. Hidden when pageSize covers everything. -->
+      {#if pageSize && data && (data.n_filtered ?? data.n_total) > pageSize}
+        <div class="flex items-center gap-2 px-3 py-2 text-xs">
+          <span class="text-ink-500">
+            Pagina {pageIndex + 1} / {nPages}
+            ({(data.n_filtered ?? data.n_total)} righe filtrate)
+          </span>
+          <div class="ml-auto flex items-center gap-1">
+            <button class="btn !text-[11px] !px-2 !py-0.5"
+                    disabled={pageIndex === 0}
+                    on:click={() => gotoPage(0)}>«</button>
+            <button class="btn !text-[11px] !px-2 !py-0.5"
+                    disabled={pageIndex === 0}
+                    on:click={() => gotoPage(pageIndex - 1)}>‹ Prec</button>
+            <input type="number" class="w-14 text-xs px-1 py-0.5 border border-ink-200 rounded"
+                   min="1" max={nPages}
+                   value={pageIndex + 1}
+                   on:change={(e) => gotoPage(Number(e.target.value) - 1)}/>
+            <button class="btn !text-[11px] !px-2 !py-0.5"
+                    disabled={pageIndex >= nPages - 1}
+                    on:click={() => gotoPage(pageIndex + 1)}>Succ ›</button>
+            <button class="btn !text-[11px] !px-2 !py-0.5"
+                    disabled={pageIndex >= nPages - 1}
+                    on:click={() => gotoPage(nPages - 1)}>»</button>
+          </div>
+        </div>
+      {/if}
     </div>
   {/if}
 </div>

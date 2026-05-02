@@ -53,6 +53,27 @@ def _run_workspace(run_id: int) -> str:
 # ----------------------------------------------------------------------
 
 
+def _set_app_state(db, key: str, value: str) -> None:
+    """Upsert a key/value pair in the AppState singleton table. Used to
+    track e.g. the last imported school profile so the UI can default
+    its labels to the right name."""
+    row = db.query(models.AppState).filter(
+        models.AppState.key == key
+    ).first()
+    if row is None:
+        db.add(models.AppState(key=key, value=str(value)))
+    else:
+        row.value = str(value)
+    db.commit()
+
+
+def get_app_state(db, key: str, default: str = "") -> str:
+    row = db.query(models.AppState).filter(
+        models.AppState.key == key
+    ).first()
+    return row.value if row else default
+
+
 def run_mock_generation(profile: str, mode: str, margin: float,
                         custom_curricula: dict[str, int] | None,
                         base_max_hours: int) -> int:
@@ -131,6 +152,9 @@ def run_mock_generation(profile: str, mode: str, margin: float,
             engine_io.import_school_into_db(db, data, replace=True)
             n_classes = db.query(models.SchoolClass).count()
             n_teachers = db.query(models.Teacher).count()
+            # Track which profile is currently in DB so the Workflow
+            # tab + Runs tab can show the right name.
+            _set_app_state(db, "last_profile", profile)
         update_run(rid, progress=1.0, metrics={
             "classes": n_classes, "teachers": n_teachers,
         })
@@ -185,6 +209,7 @@ def import_experiments_profile(profile: str, use_optimized: bool,
               f"{len(school.get('teachers', []))} teachers")
         with SessionLocal() as db:
             engine_io.import_school_into_db(db, school, replace=True)
+            _set_app_state(db, "last_profile", profile)
 
         # ---------- Pool data: curricula / classrooms / students ----------
         if import_curricula:

@@ -256,10 +256,16 @@ def list_event_rows(q: str | None = Query(None,
                     sort: str | None = Query(None,
                       description="DSL sort, e.g. 'docente' or "
                                   "'classe,giorno,ora'"),
+                    limit: int | None = Query(None, ge=1, le=10000),
+                    offset: int | None = Query(None, ge=0),
                     db: Session = Depends(get_db)):
     """Lesson-granular events for the grouped Monitor view. See
     `_build_event_rows` for the row shape; q/sort use the same DSL
     as the docenti / aule / classi tabs (see list_query.py).
+
+    Pagination via `limit` + `offset` (default: no slicing -- returns
+    all rows). For big schools the frontend should paginate at
+    50/100/200 rows per page so the table stays responsive.
 
     Cache-Control: no-store so the browser doesn't return a stale
     response when the URL changes only via q/sort parameters."""
@@ -271,10 +277,15 @@ def list_event_rows(q: str | None = Query(None,
         rows = filter_and_sort(rows, "event_rows", q, sort)
     except QueryError as e:
         raise HTTPException(400, f"Errore query: {e}")
+    n_filtered = len(rows)
+    if limit is not None:
+        off = int(offset or 0)
+        rows = rows[off:off + int(limit)]
     return JSONResponse(
         content={"items": rows, "n_total": n_total,
-                 "n_filtered": len(rows),
-                 "n_unscheduled": n_unscheduled},
+                 "n_filtered": n_filtered,
+                 "n_unscheduled": n_unscheduled,
+                 "limit": limit, "offset": int(offset or 0)},
         headers={"Cache-Control": "no-store, max-age=0"},
     )
 
