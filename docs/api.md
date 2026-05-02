@@ -225,6 +225,42 @@ i log via `/api/optimize/runs/{run_id}/stream` (SSE).
   `level?`, `weight?`, `expression?`, `reason?`,
   `owner_id?`, `secondary_owner_id?`, `subject?`).
 
+### Unified constraint creation
+
+- `POST /api/constraints` (`ConstraintCreateIn`) -- dispatcher unico
+  per creare vincoli da zero. Usato dal wizard "Nuovo vincolo" in
+  `/constraints`. Payload polimorfo:
+  ```
+  {
+    scope:    "teacher"|"class"|"classroom"|"curriculum"|
+              "subject_room"|"teacher_room",
+    kind:     "matrix_slot"|"logical"|"room_pref"|"coteach",
+    level:    "hard"|"soft"|"preferred"|"enforced"|"allowed"|"forbidden",
+    weight?:  int,
+    owner_id?: int,                  # entita' principale (id)
+    owner_id_2?: int,                # solo per teacher_room
+    # matrix_slot
+    day?: int, hour?: int, reason?: str,
+    # logical
+    expression?: str, label?: str, year_filter?: int,
+    # subject_room / coteach
+    subject?: str,
+    # coteach
+    n_teachers?: int, teacher_csv?: str,
+  }
+  ```
+  Dispatch:
+  - `(teacher|class|classroom, matrix_slot)` -> `*Unavailability`
+  - `(teacher|class|classroom, logical)` -> `LogicalUnavailability`
+  - `(curriculum, logical)` -> `CurriculumLogicalConstraint`
+  - `(subject_room, room_pref)` -> `ClassroomSubjectPreference`
+  - `(teacher_room, room_pref)` -> `TeacherClassroomPreference`
+  - `(class, coteach)` -> `CoTeachingRule`
+
+  Risposta: `{ok, kind, id, scope, detail}`. Se la combinazione
+  esiste gia' (e.g. una cella matrix_slot per lo stesso slot), il
+  dispatcher fa upsert (modifica i campi mantenendo l'id).
+
 ## Esempi curl
 
 ```bash

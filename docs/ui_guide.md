@@ -423,6 +423,48 @@ Lista piatta di tutti i vincoli editabili: matrici di disponibilita',
 vincoli logici (teacher/class/room/curriculum), preferenze
 materia-aula e docente-aula non default, regole di compresenza.
 
+#### Creazione di un nuovo vincolo (wizard)
+
+In cima alla pagina, il bottone **`+ Nuovo vincolo`** apre un modal a
+4 step che guida la creazione di qualunque tipo di vincolo
+supportato dal modello dati, senza dover saltare fra le pagine
+master di docente/classe/aula:
+
+1. **Categoria + entita'**. Dropdown con scope `Docente`, `Classe`,
+   `Aula`, `Indirizzo / Curriculum`, `Materia + Aula (preferenza)`,
+   `Docente + Aula (preferenza)`. Per ognuno appare il select
+   dell'entita' corrispondente (con search-friendly autosort).
+2. **Livello**: radio fra HARD / SOFT (DISLIKED) / PREFERITO /
+   ENFORCED / ALLOWED / FORBIDDEN, con codice colore standard. Il
+   campo `peso` appare solo per SOFT e PREFERITO; per PREFERITO
+   il valore viene negato automaticamente lato backend.
+3. **Tipo di vincolo (kind)**, dipendente dallo scope:
+   - `matrix_slot`: cella (giorno, ora) singola nella matrice di
+     disponibilita'.
+   - `logical`: espressione DNF in stile `(lun8 AND lun9) OR
+     (mar8 AND mar9)`. Disponibile per docente / classe / aula /
+     indirizzo (con `year_filter` opzionale).
+   - `room_pref`: preferenza materia-aula o docente-aula (livello
+     allowed / soft / preferred / forbidden / enforced).
+   - `coteach`: compresenza per (classe, materia) con N >= 2 docenti
+     (solo per scope `class`).
+4. **Anteprima e conferma**: riepilogo in linguaggio naturale (es.
+   "Docente Borghi: cella Mar 8:00 marcata 🟥 HARD"), payload tecnico
+   esposto in un `<details>` per ispezione, e bottone "Crea vincolo"
+   che POSTa al dispatcher unico `/api/constraints`. Dopo successo
+   compare un banner di conferma + link "Crea un altro" per
+   inserire vincoli a raffica senza chiudere/riaprire il modal.
+
+Il modal usa **una sola route backend** (`POST /api/constraints`)
+che dispatcha al modello giusto in base a `(scope, kind)` -- la
+tabella `Vincoli` viene refresh-ata automaticamente al successo.
+
+**Validazione progressiva**: il bottone "Avanti" e' disabilitato
+finche' lo step non e' valido (es. `subject_room` richiede sia
+l'aula sia la materia; `coteach` richiede n_teachers >= 2). I
+livelli mostrati allo step 2 sono filtrati in base al kind dello
+step 3 (le `room_pref` non accettano HARD ma `forbidden`/`allowed`).
+
 Pill colorate per livello (HARD rosso / SOFT giallo / PREFERITO blu /
 ENFORCED verde scuro / ALLOWED verde chiaro / FORBIDDEN rosso). Per
 ogni riga: bottoni Modifica (modal con livello + peso + espressione

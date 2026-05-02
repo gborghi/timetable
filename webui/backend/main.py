@@ -34,6 +34,7 @@ from backend.routers import (  # noqa: E402
     bulk,
     classes,
     classrooms,
+    constraints,
     coteaching,
     coverage,
     curricula,
@@ -127,6 +128,7 @@ app.include_router(bulk.router)
 app.include_router(coverage.router)
 app.include_router(monitor.router)
 app.include_router(dashboard.router)
+app.include_router(constraints.router)
 
 
 @app.get("/")

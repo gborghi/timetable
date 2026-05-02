@@ -493,6 +493,62 @@ class PlaceEventOut(BaseModel):
     run_id: int
 
 
+class ConstraintCreateIn(BaseModel):
+    """Polymorphic creation payload for the unified
+    POST /api/constraints endpoint. The (scope, kind) pair drives the
+    dispatch:
+
+      (teacher | class | classroom, matrix_slot)  -> *Unavailability
+      (teacher | class | classroom, logical)      -> LogicalUnavailability
+      (curriculum, logical)                       -> CurriculumLogicalConstraint
+      (subject_room, room_pref)                   -> ClassroomSubjectPreference
+      (teacher_room, room_pref)                   -> TeacherClassroomPreference
+      (class, coteach)                            -> CoTeachingRule
+
+    `level` carries the 5-state taxonomy: hard / soft / preferred /
+    enforced / allowed / forbidden (the last two only valid on
+    classroom/teacher room preferences). `weight` is the SOFT penalty
+    (positive = SOFT cost; negative = PREFERRED bonus); ignored for
+    HARD/ENFORCED/ALLOWED.
+
+    Optional fields are only consumed for specific (scope, kind)
+    combinations; the endpoint returns 400 on missing required fields.
+    """
+    scope: str
+    kind: str
+    level: str = "hard"
+    weight: int | None = None
+
+    # Owner identity (one or two depending on kind)
+    owner_id: int | None = None
+    owner_id_2: int | None = None
+
+    # matrix_slot
+    day: int | None = None
+    hour: int | None = None
+    reason: str | None = None
+
+    # logical
+    expression: str | None = None
+    label: str | None = None
+    year_filter: int | None = None
+
+    # subject-tagged constraints (room_pref by subject, coteach...)
+    subject: str | None = None
+
+    # coteach
+    n_teachers: int | None = None
+    teacher_csv: str | None = None
+
+
+class ConstraintCreateOut(BaseModel):
+    ok: bool
+    kind: str
+    id: int
+    scope: str
+    detail: str | None = None
+
+
 class FullPipelineIn(BaseModel):
     profile: str = "small"
     workers: int = 8

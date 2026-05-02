@@ -5,11 +5,15 @@
   import Modal from '$lib/components/Modal.svelte';
   import SortableQueryableList from '$lib/components/SortableQueryableList.svelte';
   import { levelPill, levelLabel } from '$lib/constraint_levels';
+  import NewConstraintModal from '$lib/components/constraints/NewConstraintModal.svelte';
 
   let listRef = null;
   let conflicts = null;
   let showConflicts = false;
   let conflictsBusy = false;
+
+  // "Nuovo vincolo" wizard
+  let newConstraintOpen = false;
 
   // Lookup data for the owner dropdowns in the edit modal.
   let allTeachers = [];     // [{id, name, display}]
@@ -179,7 +183,11 @@
 <div class="space-y-4">
   <div class="flex items-baseline gap-3 flex-wrap">
     <h1>Vincoli</h1>
-    <button class="btn ml-auto" on:click={loadConflicts} disabled={conflictsBusy}>
+    <button class="btn-primary ml-auto"
+            on:click={() => (newConstraintOpen = true)}>
+      + Nuovo vincolo
+    </button>
+    <button class="btn" on:click={loadConflicts} disabled={conflictsBusy}>
       {conflictsBusy ? 'cerco...' : 'Cerca conflitti'}
     </button>
     {#if conflicts !== null}
@@ -343,3 +351,9 @@
     </div>
   {/if}
 </Modal>
+
+<NewConstraintModal bind:open={newConstraintOpen}
+                    onClose={() => (newConstraintOpen = false)}
+                    onCreated={async () => {
+                      if (listRef) await listRef.reload();
+                    }}/>
