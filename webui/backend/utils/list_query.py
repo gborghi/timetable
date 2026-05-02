@@ -264,6 +264,19 @@ def event_funcs() -> dict[str, Callable[..., bool]]:
     return {}
 
 
+_BARE_TRUE = {"true", "1", "yes", "y", "si", "sì"}
+
+
+def _coerce_bool_int(v):
+    """Bare-string truthy values map to 1, falsy to 0. Used so DSL
+    queries like `is_locked = true` work without quoting."""
+    if isinstance(v, bool):
+        return 1 if v else 0
+    if isinstance(v, str):
+        return 1 if v.lower() in _BARE_TRUE else 0
+    return int(bool(v))
+
+
 def event_row_fields() -> dict[str, Callable[[Any], Any]]:
     """Lesson-granular events used by /api/monitor/event-rows. Mirrors
     the column shape: teacher / class / subject / day / hour / room /
@@ -291,6 +304,10 @@ def event_row_fields() -> dict[str, Callable[[Any], Any]]:
         "schedulato": lambda r: 1 if r.get("is_scheduled") else 0,
         "is_complete": lambda r: 1 if r.get("is_complete") else 0,
         "completo": lambda r: 1 if r.get("is_complete") else 0,
+        "is_locked": lambda r: 1 if r.get("locked") else 0,
+        "locked": lambda r: 1 if r.get("locked") else 0,
+        "lockato": lambda r: 1 if r.get("locked") else 0,
+        "bloccato": lambda r: 1 if r.get("locked") else 0,
         "status": lambda r: r.get("status") or "",
         "stato": lambda r: r.get("status") or "",
     }

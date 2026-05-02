@@ -39,6 +39,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
+from pydantic import BaseModel as _BM
 
 from .. import models, engine_io, schemas
 from ..db import get_db
@@ -216,6 +217,7 @@ def _build_event_rows(db: Session) -> list[dict]:
                 "group_name": group_name or "",
                 "is_scheduled": True,
                 "is_complete": is_complete,
+                "is_locked": bool(a.locked),
                 "status": ("ok" if l.classroom_name
                            else "no aula"),
                 "locked": bool(a.locked),
@@ -239,6 +241,7 @@ def _build_event_rows(db: Session) -> list[dict]:
                 "group_name": group_name or "",
                 "is_scheduled": False,
                 "is_complete": False,
+                "is_locked": bool(a.locked),
                 "status": "non schedulato",
                 "locked": bool(a.locked),
             })
@@ -292,6 +295,112 @@ def delete_lesson(lesson_id: int, db: Session = Depends(get_db)):
     db.delete(l)
     db.commit()
     return {"ok": True}
+
+
+def _delete_lessons_of_assignment(db: Session, a: models.Assignment) -> int:
+    """Helper: delete every Lesson in the active solution that realises
+    this Assignment (matches teacher_name + class_name + subject). The
+    Assignment itself is preserved -- this is the "Dissocia" semantic:
+    cattedra stays, all hours go back to missing."""
+    t = db.get(models.Teacher, a.teacher_id)
+    c = db.get(models.SchoolClass, a.class_id)
+    if t is None or c is None:
+        return 0
+    active = engine_io.get_active_solution(db)
+    if active is None:
+        return 0
+    n = db.query(models.Lesson).filter(
+        models.Lesson.solution_id == active.id,
+        models.Lesson.teacher_name == t.name,
+        models.Lesson.class_name == c.name,
+        models.Lesson.subject == a.subject,
+    ).delete(synchronize_session=False)
+    return int(n)
+
+
+class EventLockIn(_BM):
+    locked: bool = True
+
+
+class EventBatchIn(_BM):
+    """Body for batch operations. Identifies events by Assignment ids."""
+    event_ids: list[int]
+
+
+class EventBatchLockIn(_BM):
+    event_ids: list[int]
+    # If None, the endpoint computes a TOGGLE per Giovanni's spec:
+    # if any selected event is unlocked -> lock all; else unlock all.
+    locked: bool | None = None
+
+
+@router.post("/event/{assignment_id}/dissociate")
+def dissociate_event(assignment_id: int, db: Session = Depends(get_db)):
+    """Dissocia: keep the cattedra, delete all its Lessons in the active
+    solution. The cattedra surfaces as `incomplete` with all hours
+    needing re-assignment. Use this from the per-row Dissocia button
+    in /monitor."""
+    a = db.get(models.Assignment, assignment_id)
+    if a is None:
+        raise HTTPException(404, "cattedra non trovata")
+    n = _delete_lessons_of_assignment(db, a)
+    db.commit()
+    return {"ok": True, "deleted_lessons": n,
+            "assignment_id": assignment_id}
+
+
+@router.post("/events/dissociate-batch")
+def dissociate_events_batch(payload: EventBatchIn,
+                             db: Session = Depends(get_db)):
+    """Bulk dissociate. Same semantic as /event/{aid}/dissociate but
+    over a list of Assignment ids."""
+    n_total = 0
+    n_assignments = 0
+    for aid in payload.event_ids:
+        a = db.get(models.Assignment, int(aid))
+        if a is None:
+            continue
+        n_total += _delete_lessons_of_assignment(db, a)
+        n_assignments += 1
+    db.commit()
+    return {"ok": True, "n_assignments": n_assignments,
+            "deleted_lessons": n_total}
+
+
+@router.post("/event/{assignment_id}/lock")
+def lock_event(assignment_id: int, payload: EventLockIn,
+               db: Session = Depends(get_db)):
+    """Toggle (or explicitly set) the lock flag on an Assignment.
+    Locked events are preserved by the optimizer (Phase B / meta) when
+    the appropriate honoring is enabled (see optimization.py
+    `_restore_locked_lessons`)."""
+    a = db.get(models.Assignment, assignment_id)
+    if a is None:
+        raise HTTPException(404, "cattedra non trovata")
+    a.locked = bool(payload.locked)
+    db.commit()
+    return {"ok": True, "assignment_id": assignment_id,
+            "locked": bool(a.locked)}
+
+
+@router.post("/events/lock-batch")
+def lock_events_batch(payload: EventBatchLockIn,
+                       db: Session = Depends(get_db)):
+    """Batch lock/unlock with the toggle semantic from the spec: if
+    `locked` is None, we COMPUTE the new state -- if at least one
+    selected event is unlocked, we lock all; otherwise we unlock all."""
+    rows = [db.get(models.Assignment, int(aid)) for aid in payload.event_ids]
+    rows = [r for r in rows if r is not None]
+    if not rows:
+        return {"ok": True, "n_assignments": 0, "locked": False}
+    if payload.locked is None:
+        new_state = any(not bool(r.locked) for r in rows)
+    else:
+        new_state = bool(payload.locked)
+    for r in rows:
+        r.locked = new_state
+    db.commit()
+    return {"ok": True, "n_assignments": len(rows), "locked": new_state}
 
 
 @router.delete("/event/{assignment_id}")
@@ -756,12 +865,22 @@ def summary(db: Session = Depends(get_db)):
         rows = _build_events(db)
         n = len(rows)
         n_incomplete = sum(1 for r in rows if not r["is_complete"])
+        # Also expose lesson-granularity counts for the segmented
+        # control in /monitor (Tutti / Incompleti / Lockati).
+        event_rows = _build_event_rows(db)
+        n_rows = len(event_rows)
+        n_rows_locked = sum(1 for r in event_rows if r.get("is_locked"))
+        n_rows_unscheduled = sum(1 for r in event_rows
+                                 if not r.get("is_scheduled"))
         return {
             "n_events": n,
             "n_incomplete": n_incomplete,
             "n_missing_hours": sum(1 for r in rows if r["missing_hours"]),
             "n_missing_room": sum(1 for r in rows if r["missing_room"]),
             "n_missing_group": sum(1 for r in rows if r["missing_group"]),
+            "n_rows": n_rows,
+            "n_rows_locked": n_rows_locked,
+            "n_rows_unscheduled": n_rows_unscheduled,
         }
     body = ttl_cached(
         "monitor.summary", ttl_s=15.0, mutation_aware=True,
