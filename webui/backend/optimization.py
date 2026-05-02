@@ -5,11 +5,13 @@ Each public function returns the run_id; the actual work runs in a thread
 managed by run_manager."""
 from __future__ import annotations
 
+import contextlib
 import datetime as dt
 import json
 import os
 import pickle
 import random
+import threading
 import time
 from collections import defaultdict
 from typing import Any
@@ -459,6 +461,7 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
         classes, triples, class_profs = cv2.build_indices(profs)
         print(f"[phaseB] {len(profs)} profs, {len(classes)} classes, "
               f"{len(triples)} triples")
+        update_run(rid, progress=0.05)
         # Phase A inside the timetable: day_count
         dc_value = cv2.solve_phase_a(
             profs, classes, triples, class_profs,
@@ -466,6 +469,7 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
         )
         with open(os.path.join(ws, "phase_a_dc.pkl"), "wb") as f:
             pickle.dump(dc_value, f)
+        update_run(rid, progress=0.20)
 
         full_solution: dict = {}
         if use_decomposition and len(classes) >= 8:
@@ -482,7 +486,7 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
             bridges_set = set(bridges.keys())
             bridge_solutions: dict[int, dict] = {}
             a_failed = []
-            for d in DAYS:
+            for di, d in enumerate(DAYS):
                 out, status = dec.stage_a_bridges(
                     d, profs, bridges_set, triples, dc_value,
                     time_bridges, workers,
@@ -491,9 +495,12 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                     a_failed.append(d)
                 else:
                     bridge_solutions[d] = out
+                # Stage A spans 0.20 -> 0.40 of the run.
+                update_run(rid,
+                           progress=0.20 + 0.20 * (di + 1) / max(len(DAYS), 1))
             cluster_solutions: dict[tuple[int, int], dict] = {}
             b_failed: dict[int, set] = defaultdict(set)
-            for d in DAYS:
+            for di, d in enumerate(DAYS):
                 if d not in bridge_solutions:
                     continue
                 for k_id in sorted(classes_per_cluster,
@@ -509,6 +516,9 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                         b_failed[d].add(k_id)
                     else:
                         cluster_solutions[(k_id, d)] = out
+                # Stage B spans 0.40 -> 0.80 of the run.
+                update_run(rid,
+                           progress=0.40 + 0.40 * (di + 1) / max(len(DAYS), 1))
             for d in DAYS:
                 if d in bridge_solutions:
                     full_solution.update(bridge_solutions[d])
@@ -517,7 +527,8 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                         full_solution.update(cluster_solutions[(k_id, d)])
             days_C = sorted(set(b_failed.keys()) | set(a_failed))
             c_failed = []
-            for d in days_C:
+            n_C = max(len(days_C), 1)
+            for ci, d in enumerate(days_C):
                 succ = {}
                 for k_id in classes_per_cluster:
                     if k_id in b_failed.get(d, set()):
@@ -536,6 +547,8 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                         if kk[3] != d
                     }
                     full_solution.update(out)
+                # Stage C ricucitura spans 0.80 -> 0.90 of the run.
+                update_run(rid, progress=0.80 + 0.10 * (ci + 1) / n_C)
             for d in c_failed:
                 out, status = dec.solve_monolithic_day(
                     d, profs, triples, dc_value,
@@ -669,31 +682,39 @@ def run_meta(stage: str, budget_s: float, workers: int, log: bool,
             classes_clusters = dict(cc)
         except Exception:
             classes_clusters = None
-        if stage == "lns":
-            new_sol, _hist = meta.run_lns(
-                sol, profs, dc_value, budget_s,
-                classes_clusters=classes_clusters,
-                log=log, workers=workers,
-            )
-        elif stage == "sa":
-            new_sol = meta.run_sa(
-                sol, profs, dc_value, budget_s,
-                T0=sa_T0, alpha=sa_alpha, log=log,
-            )
-        elif stage == "ts":
-            new_sol = meta.run_tabu(
-                sol, profs, dc_value, budget_s,
-                tabu_size=tabu_size, log=log,
-            )
-        elif stage == "ils":
-            new_sol = meta.run_ils(
-                sol, profs, dc_value, budget_s,
-                classes_clusters=classes_clusters,
-                ts_budget_per_cycle=ts_budget_per_cycle,
-                n_cycles=n_cycles, log=log,
-            )
+        # Estimate the wallclock budget for the progress ticker. ILS
+        # runs n_cycles internally, each consuming ts_budget_per_cycle.
+        if stage == "ils":
+            budget_estimate = max(budget_s, n_cycles * ts_budget_per_cycle)
         else:
-            raise RuntimeError(f"Unknown stage {stage}")
+            budget_estimate = budget_s
+        update_run(rid, progress=0.05)
+        with _progress_ticker(rid, budget_estimate, start=0.05, end=0.95):
+            if stage == "lns":
+                new_sol, _hist = meta.run_lns(
+                    sol, profs, dc_value, budget_s,
+                    classes_clusters=classes_clusters,
+                    log=log, workers=workers,
+                )
+            elif stage == "sa":
+                new_sol = meta.run_sa(
+                    sol, profs, dc_value, budget_s,
+                    T0=sa_T0, alpha=sa_alpha, log=log,
+                )
+            elif stage == "ts":
+                new_sol = meta.run_tabu(
+                    sol, profs, dc_value, budget_s,
+                    tabu_size=tabu_size, log=log,
+                )
+            elif stage == "ils":
+                new_sol = meta.run_ils(
+                    sol, profs, dc_value, budget_s,
+                    classes_clusters=classes_clusters,
+                    ts_budget_per_cycle=ts_budget_per_cycle,
+                    n_cycles=n_cycles, log=log,
+                )
+            else:
+                raise RuntimeError(f"Unknown stage {stage}")
 
         v, m = meta.compute_soft(new_sol, profs)
         feasible = meta.is_hard_feasible(new_sol, profs, verbose=False)
@@ -1062,6 +1083,41 @@ def run_full_pipeline(profile: str,
 # ----------------------------------------------------------------------
 # Lock honoring and event placement
 # ----------------------------------------------------------------------
+
+
+@contextlib.contextmanager
+def _progress_ticker(rid: int, budget_s: float, *,
+                      start: float = 0.05, end: float = 0.95,
+                      tick_every: float = 1.5):
+    """Context manager that runs a daemon thread bumping the run's
+    `progress` field every `tick_every` seconds based on wallclock
+    time vs `budget_s`. Used by run_meta etc. where the underlying
+    solver is a single blocking call with no internal progress hook.
+
+    Usage:
+        with _progress_ticker(rid, budget_s):
+            new_sol = meta.run_lns(...)
+    """
+    stop_evt = threading.Event()
+    t0 = time.time()
+    def _bump():
+        while not stop_evt.is_set():
+            try:
+                elapsed = time.time() - t0
+                pct = min(end, start + (elapsed / max(budget_s, 1.0))
+                                          * (end - start))
+                update_run(rid, progress=pct)
+            except Exception:
+                pass
+            if stop_evt.wait(tick_every):
+                break
+    bump_thread = threading.Thread(target=_bump, daemon=True)
+    bump_thread.start()
+    try:
+        yield
+    finally:
+        stop_evt.set()
+        bump_thread.join(timeout=2.0)
 
 
 def _snapshot_locked_lessons(db: Session) -> list[dict]:

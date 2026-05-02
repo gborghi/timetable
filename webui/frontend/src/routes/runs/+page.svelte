@@ -25,18 +25,35 @@
   let expanded = new Set();
   let logFor = null;          // run id whose log is currently shown
   let pollTimer = null;
+  let elapsedTimer = null;
+  let now = Date.now();       // ticked once/sec so elapsed updates live
   let limit = 100;
 
   onMount(async () => {
     await refresh();
+    // Poll the runs list. Strategy:
+    //   - 2s while at least one run is running/pending
+    //   - 6s otherwise (catches new runs the user kicks off elsewhere)
     pollTimer = setInterval(() => {
       const anyActive = runs.some((r) =>
         r.status === 'running' || r.status === 'pending'
       );
-      if (anyActive) refresh();
+      // Always refresh; tighter cadence if active so the bar updates.
+      // The endpoint is just a SELECT, < 5ms; cheap.
+      refresh();
+      // dynamic interval is hard with setInterval; we just always poll.
+      // For "no active" we'd ideally use 6s, but a constant 2s costs
+      // <100ms/min of backend work, irrelevant.
     }, 2000);
+    // Ticker that re-renders the elapsed-time column once per second
+    // even between polls. Without it, "Durata" only updates on each
+    // refresh tick which feels stale during long runs.
+    elapsedTimer = setInterval(() => { now = Date.now(); }, 1000);
   });
-  onDestroy(() => { if (pollTimer) clearInterval(pollTimer); });
+  onDestroy(() => {
+    if (pollTimer) clearInterval(pollTimer);
+    if (elapsedTimer) clearInterval(elapsedTimer);
+  });
 
   async function refresh() {
     busy = true;
@@ -62,11 +79,15 @@
     return { cls: 'pill', label: status };
   }
 
-  function elapsed(r) {
+  // Pure function (depends on `now` for reactivity in the markup).
+  // The backend now serializes started_at / finished_at as UTC-aware
+  // ISO strings, so Date.parse is well-defined; before the fix we
+  // were getting elapsed values inflated by the user's UTC offset.
+  function elapsed(r, _now) {
     const a = r.started_at, b = r.finished_at;
     if (!a) return '';
     const ta = Date.parse(a);
-    const tb = b ? Date.parse(b) : Date.now();
+    const tb = b ? Date.parse(b) : _now;
     const s = Math.max(0, Math.round((tb - ta) / 1000));
     if (s < 60) return `${s}s`;
     const m = Math.floor(s / 60);
@@ -162,7 +183,7 @@
               {/if}
             </td>
             <td class="text-[10px]">{fmtTime(r.started_at)}</td>
-            <td class="text-[10px]">{elapsed(r)}</td>
+            <td class="text-[10px]">{elapsed(r, now)}</td>
             <td class="text-right">{r.obj_value ?? ''}</td>
             <td class="text-[10px] text-ink-500">
               {r.metrics

@@ -13,40 +13,21 @@ from ..db import get_db
 router = APIRouter(prefix="/api/optimize", tags=["optimize"])
 
 
-@router.get("/runs")
-def list_runs(limit: int = 50, db: Session = Depends(get_db)):
-    rows = db.query(models.Run).order_by(
-        models.Run.id.desc()
-    ).limit(limit).all()
-    out = []
-    for r in rows:
-        try:
-            params = json.loads(r.params_json or "{}")
-        except Exception:
-            params = {}
-        try:
-            metrics = json.loads(r.metrics_json or "{}")
-        except Exception:
-            metrics = {}
-        out.append({
-            "id": r.id, "kind": r.kind, "name": r.name,
-            "profile": r.profile, "params": params,
-            "status": r.status, "progress": r.progress,
-            "obj_value": r.obj_value, "metrics": metrics,
-            "error": r.error,
-            "started_at": r.started_at.isoformat() if r.started_at else None,
-            "finished_at": r.finished_at.isoformat() if r.finished_at else None,
-            "created_at": r.created_at.isoformat() if r.created_at else None,
-            "solution_id": r.solution_id,
-        })
-    return out
+def _iso_utc(d):
+    """Serialize a (potentially naive) datetime to an ISO 8601 string
+    with explicit UTC timezone. The Run table stores naive datetimes
+    coming from `datetime.utcnow()`; without this converter the
+    frontend's `Date.parse` would interpret them as LOCAL time and
+    skew elapsed-time computations by the user's UTC offset."""
+    if d is None:
+        return None
+    import datetime as _dt
+    if d.tzinfo is None:
+        d = d.replace(tzinfo=_dt.timezone.utc)
+    return d.isoformat()
 
 
-@router.get("/runs/{run_id}")
-def get_run(run_id: int, db: Session = Depends(get_db)):
-    r = db.get(models.Run, run_id)
-    if r is None:
-        raise HTTPException(404, "run not found")
+def _serialize_run(r):
     try:
         params = json.loads(r.params_json or "{}")
     except Exception:
@@ -61,11 +42,27 @@ def get_run(run_id: int, db: Session = Depends(get_db)):
         "status": r.status, "progress": r.progress,
         "obj_value": r.obj_value, "metrics": metrics,
         "error": r.error,
-        "started_at": r.started_at.isoformat() if r.started_at else None,
-        "finished_at": r.finished_at.isoformat() if r.finished_at else None,
-        "created_at": r.created_at.isoformat() if r.created_at else None,
+        "started_at": _iso_utc(r.started_at),
+        "finished_at": _iso_utc(r.finished_at),
+        "created_at": _iso_utc(r.created_at),
         "solution_id": r.solution_id,
     }
+
+
+@router.get("/runs")
+def list_runs(limit: int = 50, db: Session = Depends(get_db)):
+    rows = db.query(models.Run).order_by(
+        models.Run.id.desc()
+    ).limit(limit).all()
+    return [_serialize_run(r) for r in rows]
+
+
+@router.get("/runs/{run_id}")
+def get_run(run_id: int, db: Session = Depends(get_db)):
+    r = db.get(models.Run, run_id)
+    if r is None:
+        raise HTTPException(404, "run not found")
+    return _serialize_run(r)
 
 
 @router.get("/runs/{run_id}/log-text")
