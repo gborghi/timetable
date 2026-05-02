@@ -204,6 +204,80 @@ Il check-all viene chiamato dal panel Feasibility Check come parte
 della verifica HARD; il soft_penalty contributo viene aggiunto allo
 score globale di Phase B nel computo SOFT post-soluzione.
 
+## Ricerca dei vincoli (cross-source)
+
+Un vincolo che cita Rossi puo' vivere in tante posti: la sua scheda
+docente, una scheda aula ("Lab Fisica non puo' avere Rossi al
+pomeriggio"), un vincolo logico DNF, un vincolo DSL generico
+salvato globalmente. Il pannello **🔍 Ricerca** nel tab Vincoli
+trova tutti i vincoli che <em>menzionano</em> un'entita' specifica,
+a prescindere da dove sono stati creati.
+
+Endpoint backend: `GET /api/constraints/search`. Parametri:
+
+| Param         | Tipo                            | Descrizione                                                              |
+|---------------|---------------------------------|--------------------------------------------------------------------------|
+| entity_type   | str                             | teacher / class / classroom / subject / curriculum / group              |
+| entity_id     | int                             | id dell'entita' (oppure stringa per subject)                             |
+| text          | str                             | substring case-insensitive su detail / expression / owner_name           |
+| levels        | str CSV                         | hard,soft,preferred,enforced,allowed,forbidden                           |
+| kinds         | str CSV                         | teacher_cell,class_cell,room_cell,logical_*,subject_room_pref,coteach,general_dsl,... |
+
+Ritorna una lista di constraint dict, ognuno con:
+
+- `kind`         tipo del vincolo (teacher_cell / logical_class / general_dsl / ...)
+- `origin`       scheda di creazione tipica (`teacher` / `class` / ...)
+- `scope`        ambito (italianizzato: docente / classe / aula ...)
+- `owner_id`, `owner_name`, `level`, `weight`, `detail`, `expression`
+- `mentions`     lista di `{entity_type, entity_id}` che il vincolo
+                 menziona (rilevati da owner_id strutturati + da
+                 token-matching nel testo dell'espressione)
+
+### Come funziona la rilevazione "menzioni"
+
+Per ogni constraint, il backend calcola un set `mentions` di
+coppie `(entity_type, entity_id)`:
+
+1. **Strutturate** dall'`owner_id`/FK del row stesso. Sempre
+   accurate.
+2. **Testuali** dalla scansione regex dell'espressione DSL salvata:
+   ogni token alfanumerico viene cercato in un name index globale
+   `lower(name) -> [(entity_type, id, display)]` che include nomi,
+   cognomi, nickname dei docenti, codici e nomi di indirizzi e
+   classi/aule. Best-effort: token ambigui (es. "1A" se sia classe
+   sia, ipoteticamente, materia) matchano tutti i candidati.
+
+Per i vincoli DSL generici i token vengono estratti dall'intero
+testo dell'espressione, non solo dalla pillola di scope. Cosi'
+`forall l in lessons where l.teacher == Rossi: l.day != 6`
+viene marcato come "menziona Rossi" anche se salvato globalmente.
+
+### Esempi di query
+
+```
+# Tutti i vincoli che coinvolgono il docente Rossi (id 12)
+GET /api/constraints/search?entity_type=teacher&entity_id=12
+
+# Vincoli HARD che coinvolgono Lab Fisica (id 5) -- niente
+# preferenze SOFT/PREFERRED ma anche logical_* hard
+GET /api/constraints/search?entity_type=classroom&entity_id=5
+   &levels=hard,enforced
+
+# Cerca testualmente "Mate" nei dettagli/espressioni
+GET /api/constraints/search?text=Mate
+
+# Solo vincoli DSL generici che coinvolgono il curriculum Scientifico (id 1)
+GET /api/constraints/search?entity_type=curriculum&entity_id=1
+   &kinds=general_dsl
+```
+
+Il pannello UI fa lo stesso ma con dropdown per il tipo + il select
+delle entita' precaricate. Per ogni risultato compare la pill
+"tab: <origine>" che indica dove il vincolo era stato creato
+originariamente, e un bottone ✕ Rimuovi (DELETE
+`/api/constraints/general/{id}` per i DSL, /api/monitor/constraints/{kind}/{id}
+per gli altri).
+
 ## Esempi nel modal "Nuovo vincolo DSL"
 
 Il modal include un dropdown "Esempi" che pre-riempie l'editor

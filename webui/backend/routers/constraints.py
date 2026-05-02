@@ -507,6 +507,42 @@ def delete_general(cid: int, db: Session = Depends(get_db)):
     return {"ok": True}
 
 
+@router.get("/search")
+def search_constraints_endpoint(
+    entity_type: str | None = None,
+    entity_id: int | None = None,
+    text: str | None = None,
+    levels: str | None = None,   # CSV: hard,soft,...
+    kinds: str | None = None,    # CSV: teacher_cell,logical_teacher,general_dsl,...
+    db: Session = Depends(get_db),
+):
+    """Cross-source constraint search. Finds every saved constraint
+    that *mentions* the given entity, regardless of where it was
+    created. Used by the "Ricerca avanzata" panel in /constraints.
+
+    Filters (all optional, ANDed):
+      - entity_type / entity_id : exact (type, id) mention check
+      - text                    : free-text substring (detail /
+                                  expression / owner_name)
+      - levels                  : CSV of levels to keep
+      - kinds                   : CSV of kinds to keep
+
+    `entity_type` valid values:
+      teacher | class | classroom | subject | curriculum | group
+    """
+    from ..utils.constraint_search import search_constraints
+    lvs = [s.strip() for s in (levels or "").split(",") if s.strip()]
+    ks = [s.strip() for s in (kinds or "").split(",") if s.strip()]
+    return search_constraints(
+        db,
+        entity_type=entity_type,
+        entity_id=int(entity_id) if entity_id is not None else None,
+        text=text,
+        levels=lvs or None,
+        kinds=ks or None,
+    )
+
+
 @router.post("/general/check-all")
 def check_all_general(db: Session = Depends(get_db)):
     """Evaluate every General DSL constraint against the current

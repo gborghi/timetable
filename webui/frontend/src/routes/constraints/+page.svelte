@@ -24,6 +24,14 @@
   let dslConstraints = [];
   let dslLoading = false;
 
+  // Constraint search ("Ricerca avanzata") state
+  let searchEntityType = '';     // teacher|class|classroom|subject|curriculum|group
+  let searchEntityId = null;
+  let searchText = '';
+  let searchLevels = [];         // multi-select: hard|soft|preferred|enforced
+  let searchResults = null;      // null = panel closed; [] = "no match"
+  let searchBusy = false;
+
   // Lookup data for the owner dropdowns in the edit modal.
   let allTeachers = [];     // [{id, name, display}]
   let allClasses = [];      // [{id, name}]
@@ -81,6 +89,43 @@
       await reloadDSL();
     } catch (e) { flash('Errore: ' + e.message, 'error'); }
   }
+
+  async function runSearch() {
+    searchBusy = true;
+    try {
+      const params = new URLSearchParams();
+      if (searchEntityType && searchEntityId != null) {
+        params.set('entity_type', searchEntityType);
+        params.set('entity_id', String(searchEntityId));
+      }
+      if (searchText) params.set('text', searchText);
+      if (searchLevels.length) params.set('levels', searchLevels.join(','));
+      const url = '/api/constraints/search'
+        + (params.toString() ? '?' + params.toString() : '');
+      searchResults = await api.get(url);
+    } catch (e) {
+      flash('Errore: ' + e.message, 'error');
+      searchResults = [];
+    } finally {
+      searchBusy = false;
+    }
+  }
+  function resetSearch() {
+    searchEntityType = '';
+    searchEntityId = null;
+    searchText = '';
+    searchLevels = [];
+    searchResults = null;
+  }
+  // Master list for the entity dropdown -- depends on the chosen type.
+  $: searchEntityOptions = (() => {
+    if (searchEntityType === 'teacher')   return allTeachers.map((t) => ({ id: t.id, label: t.display }));
+    if (searchEntityType === 'class')     return allClasses.map((c) => ({ id: c.id, label: c.name }));
+    if (searchEntityType === 'classroom') return allRooms.map((r) => ({ id: r.id, label: r.name }));
+    if (searchEntityType === 'subject')   return allSubjects.map((s, i) => ({ id: s.name, label: s.name }));
+    if (searchEntityType === 'curriculum')return allCurricula.map((c) => ({ id: c.id, label: c.name }));
+    return [];
+  })();
 
   // Maps a constraint `kind` to (label, list) pairs telling the modal
   // which owner dropdowns to render. Keys missing here = no owner edit.
@@ -223,6 +268,11 @@
             title="Analisi MUS dei vincoli HARD/ENFORCED">
       {feasibilityOpen ? 'Nascondi' : ''} Feasibility Check
     </button>
+    <button class="btn"
+            on:click={() => searchResults === null ? (searchResults = []) : (searchResults = null)}
+            title="Ricerca avanzata: trova tutti i vincoli che coinvolgono un'entita' specifica">
+      🔍 Ricerca
+    </button>
     <button class="btn" on:click={loadConflicts} disabled={conflictsBusy}>
       {conflictsBusy ? 'cerco...' : 'Cerca conflitti'}
     </button>
@@ -240,6 +290,125 @@
       <FeasibilityPanel onChanged={async () => {
         if (listRef) await listRef.reload();
       }}/>
+    </div>
+  {/if}
+
+  {#if searchResults !== null}
+    <div class="card p-4 border-2 border-blue-300 bg-blue-50/40">
+      <h2 class="mb-2">🔍 Ricerca vincoli che coinvolgono un'entita'</h2>
+      <p class="text-xs text-ink-500 mb-3">
+        Cerca trasversalmente fra TUTTE le sorgenti di vincoli (matrici,
+        logici, preferenze aule, coteach, DSL generici), trovando ogni
+        vincolo che <strong>menziona</strong> l'entita' scelta -- a
+        prescindere da dove e' stato creato. La menzione e' rilevata
+        sia da `owner_id`/FK strutturati sia dal testo dell'espressione
+        DSL salvata.
+      </p>
+
+      <div class="grid grid-cols-12 gap-2 items-end mb-3">
+        <div class="field col-span-3">
+          <label>Tipo entita'</label>
+          <select bind:value={searchEntityType}
+                  on:change={() => (searchEntityId = null)}>
+            <option value="">(qualunque)</option>
+            <option value="teacher">Docente</option>
+            <option value="class">Classe</option>
+            <option value="classroom">Aula</option>
+            <option value="subject">Materia</option>
+            <option value="curriculum">Indirizzo</option>
+            <option value="group">Gruppo</option>
+          </select>
+        </div>
+        <div class="field col-span-4">
+          <label>Entita'</label>
+          <select bind:value={searchEntityId}
+                  disabled={!searchEntityType}>
+            <option value={null}>(scegli)</option>
+            {#each searchEntityOptions as o}
+              <option value={o.id}>{o.label}</option>
+            {/each}
+          </select>
+        </div>
+        <div class="field col-span-3">
+          <label>Filtro testo (opzionale)</label>
+          <input bind:value={searchText}
+                 placeholder="es. LabFisica, Mate, Borghi"/>
+        </div>
+        <div class="col-span-2 flex gap-1">
+          <button class="btn-primary !text-xs" on:click={runSearch}
+                  disabled={searchBusy}>
+            {searchBusy ? '...' : 'Cerca'}
+          </button>
+          <button class="btn !text-xs" on:click={resetSearch}>Reset</button>
+        </div>
+      </div>
+
+      <div class="flex gap-2 text-xs items-center mb-2">
+        <span class="text-ink-500">Livelli:</span>
+        {#each ['hard', 'soft', 'preferred', 'enforced', 'allowed', 'forbidden'] as lv}
+          <label class="flex items-center gap-1">
+            <input type="checkbox" value={lv}
+                   bind:group={searchLevels}/>
+            {lv}
+          </label>
+        {/each}
+      </div>
+
+      {#if searchResults && searchResults.length}
+        <table class="tbl text-xs w-full">
+          <thead>
+            <tr>
+              <th>Kind</th><th>Origine</th><th>Scope</th>
+              <th>Owner</th><th>Livello</th>
+              <th>Dettaglio / Espressione</th>
+              <th>Menzioni</th><th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {#each searchResults as r}
+              <tr>
+                <td><code class="text-[10px]">{r.kind}</code></td>
+                <td>
+                  <span class="pill !text-[10px]">tab: {r.origin}</span>
+                </td>
+                <td><span class="pill !text-[10px]">{r.scope}</span></td>
+                <td>{r.owner_name}</td>
+                <td>
+                  <span class="{levelPill(r.level)} !text-[10px]">
+                    {levelLabel(r.level)}
+                  </span>
+                </td>
+                <td><code class="text-[10px]">{r.detail}</code></td>
+                <td class="text-[10px] text-ink-500">
+                  {r.mentions.map((m) => m.entity_type + '#' + m.entity_id).join(', ')}
+                </td>
+                <td>
+                  <button class="btn-red !text-[10px] !px-1.5 !py-0.5"
+                          on:click={async () => {
+                            if (r.kind === 'general_dsl') {
+                              await deleteDSL(r.id);
+                            } else {
+                              if (!confirm('Eliminare questo vincolo?')) return;
+                              try {
+                                await api.del(`/api/monitor/constraints/${r.kind}/${r.id}`);
+                                flash('Vincolo eliminato.', 'success');
+                              } catch (e) { flash('Errore: ' + e.message, 'error'); }
+                            }
+                            await runSearch();
+                            if (listRef) await listRef.reload();
+                          }}>✕</button>
+                </td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      {:else if searchBusy}
+        <p class="text-xs text-ink-400 italic">cerco...</p>
+      {:else}
+        <p class="text-xs text-ink-400 italic">
+          Nessun risultato. Imposta un'entita' e clicca Cerca.
+        </p>
+      {/if}
     </div>
   {/if}
 
