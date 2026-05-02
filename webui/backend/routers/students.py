@@ -74,6 +74,7 @@ def list_students(q: str | None = Query(None),
                   class_id: int | None = Query(None),
                   limit: int | None = Query(None, ge=0, le=10000),
                   offset: int | None = Query(None, ge=0),
+                  format: str | None = Query(None),
                   db: Session = Depends(get_db)):
     """List students. Pagination opt-in via `?limit=N&offset=M`:
     when either is set, response is `{items, total, limit, offset}`;
@@ -89,7 +90,8 @@ def list_students(q: str | None = Query(None),
         filtered = filter_and_sort(out, "students", q, sort)
     except QueryError as e:
         raise HTTPException(400, f"Errore query: {e}")
-    return paginated_or_list(filtered, limit, offset)
+    return paginated_or_list(filtered, limit, offset,
+                              fmt=format, entity="students")
 
 
 @router.get("/by-tags")

@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from .. import models, schemas
 from ..db import get_db
 from ..utils.list_query import filter_and_sort, parse_query, QueryError
+from ..utils.pagination import paginated_or_list
 
 router = APIRouter(prefix="/api/teachers", tags=["teachers"])
 
@@ -186,6 +187,9 @@ def list_teachers(q: str | None = Query(None,
                     description="Optional DSL filter, e.g. 'group=A026 AND max_hours>=18'"),
                   sort: str | None = Query(None,
                     description="Comma/colon sort, e.g. 'group:name,asc:max_hours,desc'"),
+                  format: str | None = Query(None,
+                    description="If set to 'xlsx' or 'csv', returns the "
+                                "filtered+sorted list as a binary file."),
                   db: Session = Depends(get_db)):
     rows = db.query(models.Teacher).order_by(models.Teacher.name).all()
     # Compute extra denormalized fields for the DSL
@@ -213,9 +217,11 @@ def list_teachers(q: str | None = Query(None,
         )
         out.append(d)
     try:
-        return filter_and_sort(out, "teachers", q, sort)
+        filtered = filter_and_sort(out, "teachers", q, sort)
     except QueryError as e:
         raise HTTPException(400, f"Errore query: {e}")
+    return paginated_or_list(filtered, None, None,
+                              fmt=format, entity="teachers")
 
 
 @router.get("/{teacher_id}", response_model=schemas.TeacherOut)

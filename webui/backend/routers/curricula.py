@@ -28,6 +28,7 @@ from .. import models, schemas
 from ..db import get_db
 from ..utils.list_query import filter_and_sort, QueryError
 from ..utils.logic_parser import LogicError, parse_to_dnf, dnf_to_pretty
+from ..utils.pagination import paginated_or_list
 
 router = APIRouter(prefix="/api/curricula", tags=["curricula"])
 
@@ -57,13 +58,16 @@ def _to_out(c: models.Curriculum, db: Session) -> schemas.CurriculumOut:
 @router.get("")
 def list_curricula(q: str | None = Query(None),
                    sort: str | None = Query(None),
+                   format: str | None = Query(None),
                    db: Session = Depends(get_db)):
     rows = db.query(models.Curriculum).order_by(models.Curriculum.code).all()
     out = [_to_out(c, db).model_dump() for c in rows]
     try:
-        return filter_and_sort(out, "curricula", q, sort)
+        filtered = filter_and_sort(out, "curricula", q, sort)
     except QueryError as e:
         raise HTTPException(400, f"Errore query: {e}")
+    return paginated_or_list(filtered, None, None,
+                              fmt=format, entity="curricula")
 
 
 @router.get("/{cid}", response_model=schemas.CurriculumOut)

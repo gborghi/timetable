@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from .. import models, schemas
 from ..db import get_db
 from ..utils.list_query import filter_and_sort, QueryError
+from ..utils.pagination import paginated_or_list
 
 router = APIRouter(prefix="/api/groups", tags=["groups"])
 
@@ -48,13 +49,16 @@ def _to_out(g: models.StudyGroup, db: Session) -> schemas.StudyGroupOut:
 @router.get("")
 def list_groups(q: str | None = Query(None),
                 sort: str | None = Query(None),
+                format: str | None = Query(None),
                 db: Session = Depends(get_db)):
     rows = db.query(models.StudyGroup).order_by(models.StudyGroup.name).all()
     out = [_to_out(g, db).model_dump() for g in rows]
     try:
-        return filter_and_sort(out, "groups", q, sort)
+        filtered = filter_and_sort(out, "groups", q, sort)
     except QueryError as e:
         raise HTTPException(400, f"Errore query: {e}")
+    return paginated_or_list(filtered, None, None,
+                              fmt=format, entity="groups")
 
 
 @router.get("/{gid}", response_model=schemas.StudyGroupOut)

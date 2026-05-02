@@ -8,6 +8,7 @@ from .. import models, schemas
 from ..db import get_db
 from .. import optimization
 from ..utils.list_query import filter_and_sort, QueryError
+from ..utils.pagination import paginated_or_list
 
 router = APIRouter(prefix="/api/classrooms", tags=["classrooms"])
 
@@ -83,13 +84,16 @@ def _sync_tags(r: models.Classroom, tag_names: list[str], db: Session):
 @router.get("")
 def list_rooms(q: str | None = Query(None),
                sort: str | None = Query(None),
+               format: str | None = Query(None),
                db: Session = Depends(get_db)):
     rows = db.query(models.Classroom).order_by(models.Classroom.name).all()
     out = [_to_out(c).model_dump() for c in rows]
     try:
-        return filter_and_sort(out, "classrooms", q, sort)
+        filtered = filter_and_sort(out, "classrooms", q, sort)
     except QueryError as e:
         raise HTTPException(400, f"Errore query: {e}")
+    return paginated_or_list(filtered, None, None,
+                              fmt=format, entity="classrooms")
 
 
 @router.get("/suggested-counts")

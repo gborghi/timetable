@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from .. import models, schemas
 from ..db import get_db
 from ..utils.list_query import filter_and_sort, QueryError
+from ..utils.pagination import paginated_or_list
 
 router = APIRouter(prefix="/api/classes", tags=["classes"])
 
@@ -81,15 +82,18 @@ def _to_out(c: models.SchoolClass, db=None) -> schemas.ClassOut:
 @router.get("")
 def list_classes(q: str | None = Query(None),
                  sort: str | None = Query(None),
+                 format: str | None = Query(None),
                  db: Session = Depends(get_db)):
     rows = db.query(models.SchoolClass).order_by(
         models.SchoolClass.name
     ).all()
     out = [_to_out(c, db).model_dump() for c in rows]
     try:
-        return filter_and_sort(out, "classes", q, sort)
+        filtered = filter_and_sort(out, "classes", q, sort)
     except QueryError as e:
         raise HTTPException(400, f"Errore query: {e}")
+    return paginated_or_list(filtered, None, None,
+                              fmt=format, entity="classes")
 
 
 @router.get("/{class_id}", response_model=schemas.ClassOut)
