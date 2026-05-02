@@ -41,7 +41,7 @@
     try {
       hallReport = await api.post(
         "/api/diagnostics/hall-check",
-        { n_samples: 256 },
+        { n_samples: 256, sync: true },
       );
       flash(
         hallReport!.ok

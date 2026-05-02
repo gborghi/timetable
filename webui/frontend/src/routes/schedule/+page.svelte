@@ -248,6 +248,41 @@
     }
   }
 
+  async function unscheduleLesson(cell) {
+    if (!cell || !cell.lesson_id) return;
+    if (!confirm(
+      `Svincolare la lezione (${cell.subjects?.join('+')
+        ?? cell.subject ?? '?'}, ${cell.class_name
+        ?? cell.teachers?.join('+') ?? '?'}) dallo slot?\n\n`
+      + 'La cattedra resta invariata: l\'ora dovra\' essere '
+      + 'ripiazzata altrove al prossimo run del solver.'
+    )) return;
+    try {
+      await api.del('/api/schedule/lesson/' + cell.lesson_id);
+      flash('Lezione svincolata', 'success');
+      await loadAll();
+      await refreshDataset();
+    } catch (e) { flash('Errore: ' + e.message, 'error'); }
+  }
+
+  async function deleteLesson(cell) {
+    if (!cell || !cell.lesson_id) return;
+    if (!confirm(
+      `Eliminare la lezione (${cell.subjects?.join('+')
+        ?? cell.subject ?? '?'}, ${cell.class_name
+        ?? cell.teachers?.join('+') ?? '?'})?\n\n`
+      + 'La cattedra del docente verra ridotta di 1 ora '
+      + '(non sara piu ripiazzata).'
+    )) return;
+    try {
+      await api.del('/api/schedule/lesson/' + cell.lesson_id
+                     + '?reduce_assignment=true');
+      flash('Lezione eliminata + cattedra ridotta', 'success');
+      await loadAll();
+      await refreshDataset();
+    } catch (e) { flash('Errore: ' + e.message, 'error'); }
+  }
+
   async function setRoom(lessonId, roomName) {
     try {
       const url = '/api/schedule/lesson/' + lessonId + '/classroom'
@@ -406,11 +441,23 @@
                       {cell.subjects.join('+')}
                     </div>
                     {#if !moveSrc}
-                      <button class="text-[10px] text-accent-500 hover:underline focus-ring"
-                        title="Sposta... (oppure Invio sulla cella)"
-                        on:click|stopPropagation={() => startMove(cell, d, h, 'classes')}>
-                        sposta
-                      </button>
+                      <div class="flex gap-1 text-[10px] leading-none">
+                        <button class="text-accent-500 hover:underline focus-ring"
+                          title="Sposta... (oppure Invio sulla cella)"
+                          on:click|stopPropagation={() => startMove(cell, d, h, 'classes')}>
+                          sposta
+                        </button>
+                        <button class="text-amber-600 hover:underline focus-ring"
+                          title="Svincola: rimuove dal slot, la cattedra resta"
+                          on:click|stopPropagation={() => unscheduleLesson(cell)}>
+                          svincola
+                        </button>
+                        <button class="text-rose-600 hover:underline focus-ring"
+                          title="Elimina: anche la cattedra viene ridotta di 1 ora"
+                          on:click|stopPropagation={() => deleteLesson(cell)}>
+                          elimina
+                        </button>
+                      </div>
                     {/if}
                   </div>
                   <div class="text-ink-500">{cell.teachers.join(' + ')}</div>
@@ -540,11 +587,23 @@
                       {cell.class_name}
                     </div>
                     {#if !moveSrc}
-                      <button class="text-[10px] text-accent-500 hover:underline focus-ring"
-                        title="Sposta... (oppure Invio sulla cella)"
-                        on:click|stopPropagation={() => startMove(cell, d, h, 'teachers')}>
-                        sposta
-                      </button>
+                      <div class="flex gap-1 text-[10px] leading-none">
+                        <button class="text-accent-500 hover:underline focus-ring"
+                          title="Sposta... (oppure Invio sulla cella)"
+                          on:click|stopPropagation={() => startMove(cell, d, h, 'teachers')}>
+                          sposta
+                        </button>
+                        <button class="text-amber-600 hover:underline focus-ring"
+                          title="Svincola dallo slot (cattedra invariata)"
+                          on:click|stopPropagation={() => unscheduleLesson(cell)}>
+                          svincola
+                        </button>
+                        <button class="text-rose-600 hover:underline focus-ring"
+                          title="Elimina + riduci la cattedra di 1 ora"
+                          on:click|stopPropagation={() => deleteLesson(cell)}>
+                          elimina
+                        </button>
+                      </div>
                     {/if}
                   </div>
                   <div class="text-ink-500">{cell.subject}</div>
@@ -673,14 +732,28 @@
                       <div class="text-ink-500">{l.subject}</div>
                       <div class="text-ink-400 text-[10px]">{l.teacher}</div>
                       {#if !moveSrc}
-                        <button class="text-[10px] text-accent-500 hover:underline"
-                          title="Sposta..."
-                          on:click|stopPropagation={() => startMove(
-                            { lesson_id: l.lesson_id, class_name: l.class_name,
-                              subject: l.subject, teachers: [l.teacher],
-                              subjects: [l.subject] }, d, h, 'teachers')}>
-                          sposta
-                        </button>
+                        {@const _cell = { lesson_id: l.lesson_id,
+                                           class_name: l.class_name,
+                                           subject: l.subject,
+                                           teachers: [l.teacher],
+                                           subjects: [l.subject] }}
+                        <div class="flex gap-1 text-[10px] leading-none">
+                          <button class="text-accent-500 hover:underline"
+                            title="Sposta..."
+                            on:click|stopPropagation={() => startMove(_cell, d, h, 'teachers')}>
+                            sposta
+                          </button>
+                          <button class="text-amber-600 hover:underline"
+                            title="Svincola dallo slot"
+                            on:click|stopPropagation={() => unscheduleLesson(_cell)}>
+                            svincola
+                          </button>
+                          <button class="text-rose-600 hover:underline"
+                            title="Elimina (riduce cattedra)"
+                            on:click|stopPropagation={() => deleteLesson(_cell)}>
+                            elimina
+                          </button>
+                        </div>
                       {/if}
                     </div>
                   {/each}

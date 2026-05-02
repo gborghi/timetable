@@ -19,10 +19,9 @@
   import DiagnosticResult from
     '$lib/components/diagnostics/DiagnosticResult.svelte';
 
-  // ---- Hall (sync) ----
-  let busyHall = false;
-  let hallReport = null;
+  // ---- Hall (now async, like the others) ----
   let hallSamples = 256;
+  let hl = _emptyDiag();   // hall is just another async run now
 
   // ---- Async diagnostic runs ----
   // Each section keeps {runId, status, busy, result}. busy stays true
@@ -129,7 +128,8 @@
           target.error = run.error || 'run failed';
         }
         // Force reactivity (assignment to its own ref)
-        if (target === mc) mc = mc;
+        if (target === hl) hl = hl;
+        else if (target === mc) mc = mc;
         else if (target === bp) bp = bp;
         else if (target === co) co = co;
         else if (target === ds) ds = ds;
@@ -140,21 +140,19 @@
       flash('Errore: ' + e.message, 'error');
     }
     // Force reactivity
-    if (target === mc) mc = mc;
+    if (target === hl) hl = hl;
+    else if (target === mc) mc = mc;
     else if (target === bp) bp = bp;
     else if (target === co) co = co;
     else if (target === ds) ds = ds;
   }
 
   // ---- Run handlers ----
-  async function runHall() {
-    busyHall = true;
-    try {
-      hallReport = await api.post('/api/diagnostics/hall-check',
-                                   { n_samples: hallSamples });
-    } catch (e) { flash('Errore: ' + e.message, 'error'); }
-    finally { busyHall = false; }
-  }
+  const runHall = () => spawnRun(
+    '/api/diagnostics/hall-check',
+    { n_samples: hallSamples },     // omits `sync:true` -> async
+    hl,
+  );
 
   const runMc = () => spawnRun(
     '/api/diagnostics/montecarlo',
@@ -288,11 +286,19 @@
     "verde/rosso" prima di lanciare Phase A.
   </p>
 
-  <!-- 1) Hall (sync) -->
+  <!-- 1) Hall (async run, like the others) -->
   <section class="card p-4 space-y-2">
     <div class="flex items-baseline gap-2 flex-wrap">
       <h2 class="!text-base">1) Pre-check fattibilita' (Hall)</h2>
-      <span class="pill pill-amber !text-[10px]">sync, &lt;100ms</span>
+      <span class="pill !text-[10px]">async run</span>
+      {#if statusPill(hl)}
+        <span class="{statusPill(hl).cls} !text-[10px]">
+          {statusPill(hl).label}
+        </span>
+        <a href="/runs/{hl.runId}" class="text-xs text-accent-500 hover:underline">
+          run #{hl.runId}
+        </a>
+      {/if}
       <div class="ml-auto flex gap-2 items-end">
         <div class="field !mb-0">
           <label class="!text-[11px]">N campioni</label>
@@ -300,30 +306,16 @@
                  bind:value={hallSamples} class="w-24"/>
         </div>
         <button class="btn-primary !text-xs" on:click={runHall}
-                disabled={busyHall}>
-          {busyHall ? '...' : 'Lancia Hall pre-check'}
+                disabled={hl.busy}>
+          {hl.busy ? '...' : 'Lancia Hall pre-check'}
         </button>
       </div>
     </div>
-    {#if hallReport}
-      <div class="text-sm">
-        <div class={hallReport.ok ? 'text-emerald-700' : 'text-rose-700'}>
-          <strong>{hallReport.ok ? 'Feasible (Hall OK)' : 'INFEASIBILE'}</strong>
-          - {hallReport.n_classes} classi, {hallReport.n_teachers} docenti
-          - domanda {hallReport.stats.total_demand_hours}h vs supply
-          {hallReport.stats.total_supply_hours}h
-        </div>
-        {#if hallReport.violations.length}
-          <table class="tbl mt-2 text-xs">
-            <thead><tr><th>Tipo</th><th>Messaggio</th></tr></thead>
-            <tbody>
-              {#each hallReport.violations as v}
-                <tr><td class="font-mono">{v.kind}</td><td>{v.msg ?? ''}</td></tr>
-              {/each}
-            </tbody>
-          </table>
-        {/if}
-      </div>
+    {#if hl.error}
+      <p class="text-xs text-rose-700">{hl.error}</p>
+    {/if}
+    {#if hl.result}
+      <DiagnosticResult kind="diag_hall" result={hl.result}/>
     {/if}
   </section>
 

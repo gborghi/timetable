@@ -40,7 +40,7 @@
     busyHall = true;
     try {
       hallReport = await api.post('/api/diagnostics/hall-check',
-                                   { n_samples: hallSamples });
+                                   { n_samples: hallSamples, sync: true });
       const status = hallReport.ok ? 'success' : 'warning';
       const msg = hallReport.ok
         ? `Hall OK: ${hallReport.n_classes} classi, `

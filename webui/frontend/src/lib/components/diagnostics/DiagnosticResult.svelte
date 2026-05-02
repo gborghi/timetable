@@ -118,6 +118,28 @@
 
 {#if !result}
   <p class="text-sm text-ink-500 italic">Nessun risultato.</p>
+{:else if kind === 'diag_hall'}
+  <div class="text-sm">
+    <div class={result.ok ? 'text-emerald-700' : 'text-rose-700'}>
+      <strong>{result.ok ? 'Feasible (Hall OK)' : 'INFEASIBILE'}</strong>
+      - {result.n_classes} classi, {result.n_teachers} docenti
+      - domanda {result.stats?.total_demand_hours}h / supply
+      {result.stats?.total_supply_hours}h
+    </div>
+    {#if result.violations && result.violations.length}
+      <table class="tbl mt-2 text-xs">
+        <thead><tr><th>Tipo</th><th>Messaggio</th></tr></thead>
+        <tbody>
+          {#each result.violations as v}
+            <tr>
+              <td class="font-mono">{v.kind}</td>
+              <td>{v.msg ?? ''}</td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+    {/if}
+  </div>
 {:else if kind === 'diag_montecarlo'}
   {#if result.ok}
     <div class="text-xs flex flex-wrap gap-3 text-ink-600 mb-2">

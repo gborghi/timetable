@@ -179,7 +179,13 @@
     lezioni. Il log live arriva via SSE dal backend.
   </p>
 
-  <div class="grid lg:grid-cols-2 gap-6">
+  <!-- CSS columns layout: cards still take half-width on lg+ but
+       each one keeps its NATURAL height instead of being stretched
+       to match its row sibling. The browser packs cards vertically
+       column-by-column, top-to-bottom, like a Pinterest board.
+       Each direct child is `break-inside: avoid` so a single card
+       never splits across columns. -->
+  <div class="columns-1 lg:columns-2 gap-6 [&>*]:break-inside-avoid [&>*]:mb-6">
     <!-- Step 1 -->
     <div class="card p-5">
       <h2 class="mb-3">1) Genera / carica scuola</h2>
