@@ -1023,6 +1023,43 @@ class StudentTagAssignment(Base):
     )
 
 
+class RunTelemetry(Base):
+    """Time-series telemetry of a Run.
+
+    One row per (run_id, step) sample. The solver/metaheuristic
+    modules push samples via `utils.telemetry.collect()` at a
+    sane sampling cadence (~100ms or per iteration).
+
+    Stored fields:
+      - run_id:   FK Runs.id
+      - step:     monotonic counter inside the producer
+      - timestamp_s:  seconds since the run started (float)
+      - phase:    'phase_a' | 'phase_b_decomp' | 'stage_lns' |
+                   'stage_alns' | 'stage_sa' | 'stage_ts' |
+                   'stage_vns' | 'stage_ils' | 'stage_lagrangian' |
+                   'stage_cg' | 'rooms' | ...
+      - payload_json:  small JSON blob with stage-specific metrics
+                        (objective_value, hard_violations_count,
+                         placed_events_pct, accepted_moves, ...).
+
+    Indexed on (run_id, step) for fast paginated reads.
+    """
+    __tablename__ = "run_telemetry"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    run_id: Mapped[int] = mapped_column(
+        ForeignKey("runs.id", ondelete="CASCADE"), index=True
+    )
+    step: Mapped[int] = mapped_column(Integer, default=0)
+    timestamp_s: Mapped[float] = mapped_column(Float, default=0.0)
+    phase: Mapped[str] = mapped_column(String(32), index=True,
+                                         default="")
+    payload_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    __table_args__ = (
+        UniqueConstraint("run_id", "step", "phase",
+                          name="uq_run_telemetry_step"),
+    )
+
+
 class SavedView(TimestampMixin, Base):
     """A named filter+sort combination saved by the user for an
     entity list (teachers, classes, classrooms, ...).

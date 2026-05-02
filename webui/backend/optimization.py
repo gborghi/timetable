@@ -730,7 +730,20 @@ def run_meta(stage: str, budget_s: float, workers: int, log: bool,
         else:
             budget_estimate = budget_s
         update_run(rid, progress=0.05)
-        with _progress_ticker(rid, budget_estimate, start=0.05, end=0.95):
+        # Telemetry: a top-level collector for the whole stage; the
+        # individual algorithm modules are oblivious to it -- we
+        # snapshot only the entry / exit objective. A future
+        # iteration can plumb the collector deeper (per-iteration
+        # samples) without breaking this code path.
+        from .utils import telemetry as tel
+        with _progress_ticker(rid, budget_estimate, start=0.05,
+                                end=0.95), \
+              tel.collector(rid, phase=f"stage_{stage}") as _tcol:
+            init_v, init_m = meta.compute_soft(sol, profs)
+            _tcol.sample(step=0, objective_value=float(init_v),
+                          hard_violations_count=0,
+                          placed_lessons_count=sum(int(v) for v in
+                                                    sol.values()))
             if stage == "lns":
                 new_sol, _hist = meta.run_lns(
                     sol, profs, dc_value, budget_s,
@@ -784,6 +797,14 @@ def run_meta(stage: str, budget_s: float, workers: int, log: bool,
                 )
             else:
                 raise RuntimeError(f"Unknown stage {stage}")
+
+            # Final telemetry sample
+            final_v, _ = meta.compute_soft(new_sol, profs)
+            _tcol.sample(step=1, objective_value=float(final_v),
+                          hard_violations_count=0,
+                          placed_lessons_count=sum(int(v) for v in
+                                                    new_sol.values()),
+                          improvement=float(init_v - final_v))
 
         v, m = meta.compute_soft(new_sol, profs)
         feasible = meta.is_hard_feasible(new_sol, profs, verbose=False)

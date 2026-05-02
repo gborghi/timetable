@@ -134,6 +134,33 @@ def delete_runs_batch(payload: RunDeleteBatchIn,
             "skipped_active": skipped}
 
 
+@router.get("/runs/{run_id}/telemetry")
+def run_telemetry(run_id: int,
+                   limit: int = 5000,
+                   offset: int = 0,
+                   phase: str | None = None):
+    """Return the telemetry samples of a run.
+
+    Each entry: `{step, timestamp_s, phase, payload: {...}}`.
+    Payload keys depend on the producing stage and typically
+    include `objective_value`, `hard_violations_count`,
+    `placed_lessons_count`, `accepted_moves`, `temperature`, ...
+    """
+    from ..utils import telemetry as tel
+    return {
+        "run_id": run_id,
+        "samples": tel.fetch_telemetry(run_id, limit=limit,
+                                         offset=offset, phase=phase),
+    }
+
+
+@router.get("/runs/{run_id}/summary")
+def run_summary_get(run_id: int):
+    """Aggregated stats across all telemetry phases for a run."""
+    from ..utils import telemetry as tel
+    return tel.fetch_summary(run_id)
+
+
 @router.get("/runs/{run_id}/log-text")
 def get_run_log(run_id: int, db: Session = Depends(get_db)):
     rows = db.query(models.RunLog).filter(
