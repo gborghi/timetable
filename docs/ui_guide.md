@@ -121,6 +121,40 @@ completa.
 
 ## Tab per tab
 
+### Import bulk via xlsx (`/import`)
+
+Pagina dedicata: `Import bulk` nella nav. Layout a due colonne:
+
+- **Configurazione**: dropdown entita' (docenti / classi / aule /
+  materie / studenti / indirizzi / gruppi), dropdown
+  modalita' (`upsert` / `append` / `replace`), bottone
+  "Scarica template".
+- **File da importare**: drop area + selettore file. Accetta
+  `.xlsx` / `.xls` / `.csv` / `.tsv`. Bottone "Importa" lancia il
+  POST e mostra il report riga per riga (inserite, aggiornate,
+  saltate, errori).
+
+Il template xlsx scaricato ha 3 fogli:
+
+- `Istruzioni` -- tabella `Campo | Hint` con descrizione di ogni
+  colonna + note generali (sinonimi italiani, righe vuote
+  ignorate, separatori, etc.).
+- `Esempi` -- una riga di esempio pre-popolata.
+- `Dati` -- foglio vuoto da compilare. L'importer xlsx legge per
+  default questo foglio (se presente).
+
+Campi di import gia' integrati con le feature recenti:
+
+- `tags` su `students` e `classrooms` (lista comma-separata,
+  i tag sconosciuti vengono creati al volo)
+- `graduatoria_score`, `required_free_days_count`,
+  `preferred_free_days_json` su `teachers`
+- `max_hours_per_day`, `required_free_days_count`,
+  `preferred_free_days_json` su `classes`
+
+Lo stesso endpoint `POST /api/import/{entity}` e' raggiungibile
+via curl o Postman; vedi `docs/api.md`.
+
 ### Import / Export DB (Dashboard)
 
 Card prominente nella prima riga della Dashboard. Funzioni:

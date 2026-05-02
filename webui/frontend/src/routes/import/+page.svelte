@@ -1,0 +1,225 @@
+<script>
+  /**
+   * Import bulk via xlsx/csv.
+   *
+   * Layout:
+   *   - left: entity selector + 'Scarica template' + mode selector
+   *   - right: drop area + Import button + per-row report
+   *
+   * Uses POST /api/import/{entity} (multipart) with optional ?sheet=
+   * and `mode` form field. Templates come from
+   * GET /api/import/{entity}/template.
+   */
+  import { flash, refreshDataset, bumpMutation } from '$lib/stores';
+  import { downloadUrl } from '$lib/api';
+
+  const ENTITIES = [
+    { value: 'teachers',   label: 'Docenti'   },
+    { value: 'classes',    label: 'Classi'    },
+    { value: 'classrooms', label: 'Aule'      },
+    { value: 'subjects',   label: 'Materie'   },
+    { value: 'students',   label: 'Studenti'  },
+    { value: 'curricula',  label: 'Indirizzi' },
+    { value: 'groups',     label: 'Gruppi'    },
+  ];
+
+  let entity = 'teachers';
+  let mode = 'upsert';
+  let selectedFile = null;
+  let dragOver = false;
+  let busy = false;
+  let report = null;
+
+  function pickFile(ev) {
+    selectedFile = ev.target.files?.[0] ?? null;
+    report = null;
+  }
+
+  function onDrop(ev) {
+    ev.preventDefault();
+    dragOver = false;
+    const f = ev.dataTransfer?.files?.[0];
+    if (f) {
+      selectedFile = f;
+      report = null;
+    }
+  }
+
+  async function runImport() {
+    if (!selectedFile) {
+      flash('Seleziona prima un file', 'error');
+      return;
+    }
+    busy = true;
+    report = null;
+    try {
+      const fd = new FormData();
+      fd.append('file', selectedFile);
+      fd.append('mode', mode);
+      const res = await fetch('/api/import/' + entity, {
+        method: 'POST', body: fd,
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j.detail || j.error || ('HTTP ' + res.status));
+      }
+      report = await res.json();
+      const ok = report.n_inserted + report.n_updated;
+      flash(
+        `Import ${entity}: ${ok} righe (` +
+        `${report.n_inserted} nuove, ${report.n_updated} aggiornate, ` +
+        `${report.n_skipped} saltate)`,
+        report.errors?.length ? 'warning' : 'success',
+      );
+      bumpMutation();
+      await refreshDataset();
+    } catch (e) {
+      flash('Errore import: ' + e.message, 'error');
+    } finally {
+      busy = false;
+    }
+  }
+
+  $: templateUrl = downloadUrl('/api/import/' + entity + '/template');
+</script>
+
+<div class="space-y-5">
+  <div>
+    <h1>Import bulk</h1>
+    <p class="text-sm text-ink-500 mt-1">
+      Carica file <code>.xlsx</code> / <code>.csv</code> per importare in
+      blocco docenti, classi, aule, materie, studenti, indirizzi,
+      gruppi. Se non hai un file di partenza scarica il template
+      dell'entita': il foglio <strong>Istruzioni</strong> spiega ogni
+      colonna, <strong>Esempi</strong> contiene una riga di esempio,
+      <strong>Dati</strong> e' il foglio che l'importer legge.
+    </p>
+  </div>
+
+  <div class="grid md:grid-cols-2 gap-5">
+    <section class="card p-4 space-y-3">
+      <h2 class="!text-base">1) Configurazione</h2>
+
+      <div class="field">
+        <label>Entita'</label>
+        <select bind:value={entity}>
+          {#each ENTITIES as e (e.value)}
+            <option value={e.value}>{e.label} ({e.value})</option>
+          {/each}
+        </select>
+      </div>
+
+      <div class="field">
+        <label>Modalita'</label>
+        <select bind:value={mode}>
+          <option value="upsert">upsert (aggiunge / aggiorna)</option>
+          <option value="append">append (solo nuove righe)</option>
+          <option value="replace">replace (svuota la tabella prima!)</option>
+        </select>
+      </div>
+
+      <div class="flex gap-2">
+        <a class="btn-primary" href={templateUrl}
+           title="Scarica un .xlsx con header + Istruzioni + Esempi + Dati">
+          Scarica template
+        </a>
+        <a class="btn !text-xs" href="/api/import/{entity}/template?dry"
+           on:click|preventDefault={() => {
+             location.href = templateUrl;
+           }}>
+          (link diretto)
+        </a>
+      </div>
+    </section>
+
+    <section class="card p-4 space-y-3">
+      <h2 class="!text-base">2) File da importare</h2>
+
+      <div class="border-2 border-dashed rounded-md p-6 text-center
+                  text-sm transition-colors"
+           class:bg-accent-500={dragOver}
+           class:bg-opacity-5={dragOver}
+           class:border-accent-500={dragOver}
+           class:border-ink-200={!dragOver}
+           on:dragover|preventDefault={() => (dragOver = true)}
+           on:dragleave={() => (dragOver = false)}
+           on:drop={onDrop}>
+        {#if selectedFile}
+          <p class="font-medium">{selectedFile.name}</p>
+          <p class="text-xs text-ink-500">
+            {Math.round(selectedFile.size / 1024)} KB &middot;
+            {selectedFile.type || 'tipo non rilevato'}
+          </p>
+          <button class="btn !text-xs mt-2"
+                  on:click={() => { selectedFile = null; report = null; }}>
+            Cambia file
+          </button>
+        {:else}
+          <p class="text-ink-500">
+            Trascina qui un .xlsx o .csv, oppure
+          </p>
+          <label class="btn-primary mt-2 inline-block cursor-pointer">
+            Seleziona file
+            <input type="file" hidden
+                   accept=".xlsx,.xls,.xlsm,.csv,.tsv,.txt"
+                   on:change={pickFile}/>
+          </label>
+        {/if}
+      </div>
+
+      <button class="btn-primary w-full"
+              disabled={busy || !selectedFile}
+              on:click={runImport}>
+        {busy ? 'Import in corso...' : 'Importa'}
+      </button>
+    </section>
+  </div>
+
+  {#if report}
+    <section class="card p-4">
+      <h2 class="!text-base">Report import</h2>
+      <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mt-2 text-center">
+        <div class="card !shadow-none p-2">
+          <div class="text-2xl font-semibold">{report.n_total_rows}</div>
+          <div class="text-xs text-ink-500">Righe lette</div>
+        </div>
+        <div class="card !shadow-none p-2">
+          <div class="text-2xl font-semibold text-emerald-600">
+            {report.n_inserted}
+          </div>
+          <div class="text-xs text-ink-500">Inserite</div>
+        </div>
+        <div class="card !shadow-none p-2">
+          <div class="text-2xl font-semibold text-sky-600">
+            {report.n_updated}
+          </div>
+          <div class="text-xs text-ink-500">Aggiornate</div>
+        </div>
+        <div class="card !shadow-none p-2">
+          <div class="text-2xl font-semibold text-amber-600">
+            {report.n_skipped}
+          </div>
+          <div class="text-xs text-ink-500">Saltate</div>
+        </div>
+        <div class="card !shadow-none p-2">
+          <div class="text-2xl font-semibold text-rose-600">
+            {(report.errors || []).length}
+          </div>
+          <div class="text-xs text-ink-500">Errori</div>
+        </div>
+      </div>
+
+      {#if report.errors && report.errors.length}
+        <h3 class="!text-sm mt-4">Errori riga per riga</h3>
+        <div class="card !shadow-none p-2 bg-rose-50 border-rose-200
+                    max-h-72 overflow-auto text-xs">
+          <ul class="list-disc ml-5">
+            {#each report.errors as e}
+              <li>{e}</li>
+            {/each}
+          </ul>
+        </div>
+      {/if}
+    </section>
+  {/if}
+</div>

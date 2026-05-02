@@ -39,6 +39,7 @@
     { href: '/constraints',label: 'Vincoli'                  },
     { href: '/optimize',   label: 'Workflow'                 },
     { href: '/runs',       label: 'Runs'                     },
+    { href: '/import',     label: 'Import bulk'              },
   ];
 
   onMount(() => {

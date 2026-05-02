@@ -35,6 +35,25 @@ LogicalUnavailability filtrato per `entity_type=teacher`).
 `/api/classes`. Embed: `subjects[]`, `unavailability[]`. Sub:
 `/api/classes/{id}/logical-unavailabilities`.
 
+### Bulk import (xlsx / csv)
+- `POST /api/import/{entity}` -- multipart upload. Form:
+  `file` (xlsx/csv), `mode` in `upsert|append|replace`,
+  `sheet` (xlsx only). Restituisce `ImportReport(n_total_rows,
+  n_inserted, n_updated, n_skipped, errors[])`.
+  Entita' supportate: `teachers, subjects, classes, classrooms,
+  curricula, students, groups`.
+- `GET /api/import/{entity}/template` -- xlsx con 3 fogli
+  (`Istruzioni`, `Esempi`, `Dati`). Dati e' il foglio che la
+  POST legge per default.
+
+Campi nuovi supportati negli importer:
+  - **teachers**: `graduatoria_score`,
+    `required_free_days_count`, `preferred_free_days_json`
+  - **classes**: `max_hours_per_day`,
+    `required_free_days_count`, `preferred_free_days_json`
+  - **classrooms**: `tags` (CSV)
+  - **students**: `tags` (CSV)
+
 ### Dashboard: Import/Export DB
 - `GET /api/dashboard/export-db?schema_only=<bool>` -- restituisce
   un .zip con `database.db` (raw SQLite, quando applicabile),
