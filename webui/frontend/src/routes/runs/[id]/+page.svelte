@@ -26,27 +26,62 @@
   let pollTimer = null;
   let xAxis = 'time';                      // 'time' | 'step'
 
+  // Telemetry summary is HEAVY (1 row per sample, hundreds of kB).
+  // We only fetch it on demand when the user expands the chart
+  // section. The lightweight `run` payload (status, progress,
+  // metrics) is always loaded.
+  let showChart = false;
+  let summaryLoading = false;
+
   $: runId = Number($page.params.id);
 
-  async function load() {
+  async function loadRun() {
     try {
-      [run, summary] = await Promise.all([
-        api.get('/api/optimize/runs/' + runId),
-        api.get('/api/optimize/runs/' + runId + '/summary'),
-      ]);
+      run = await api.get('/api/optimize/runs/' + runId);
     } catch (e) { flash('Errore: ' + e.message, 'error'); }
     finally { busy = false; }
   }
 
+  async function loadSummary() {
+    if (summaryLoading) return;
+    summaryLoading = true;
+    try {
+      summary = await api.get('/api/optimize/runs/' + runId + '/summary');
+    } catch (e) { flash('Errore: ' + e.message, 'error'); }
+    finally { summaryLoading = false; }
+  }
+
+  function isActive() {
+    return run && (run.status === 'running' || run.status === 'pending');
+  }
+
+  // Smart polling: 2s only while the run is alive; STOPPED if
+  // - the document is hidden (background tab) -- avoid burning
+  //   bandwidth + backend cycles when the user is not looking
+  // - the user navigates away (onDestroy clears the timer)
+  // The chart-summary fetch only fires when `showChart` is true,
+  // because that endpoint is heavier (full telemetry rollup).
+  function _tick() {
+    if (typeof document !== 'undefined' && document.hidden) return;
+    if (!isActive()) return;
+    loadRun();
+    if (showChart) loadSummary();
+  }
+
   onMount(async () => {
-    await load();
-    pollTimer = setInterval(async () => {
-      if (run && (run.status === 'running' || run.status === 'pending')) {
-        await load();
-      }
-    }, 2000);
+    await loadRun();
+    pollTimer = setInterval(_tick, 2000);
   });
-  onDestroy(() => { if (pollTimer) clearInterval(pollTimer); });
+  onDestroy(() => {
+    if (pollTimer) clearInterval(pollTimer);
+  });
+
+  // When the user expands the chart, fetch summary once now
+  // (subsequent updates come from the smart-poll tick).
+  async function toggleChart() {
+    showChart = !showChart;
+    if (showChart && !summary) await loadSummary();
+  }
 
   function fmt(ts) {
     if (!ts) return '';
@@ -166,13 +201,36 @@
     </section>
   {/if}
 
-  {#if summary && summary.n_samples > 0}
+  <section class="card p-4 space-y-2">
+    <div class="flex items-baseline gap-3">
+      <h2 class="!text-base">Grafico objective + statistiche stage</h2>
+      <span class="text-xs text-ink-500">
+        {#if summary}
+          {summary.n_samples} sample,
+          durata {summary.duration_s?.toFixed(1)}s
+        {/if}
+      </span>
+      <button class="btn !text-xs ml-auto"
+              on:click={toggleChart}
+              disabled={summaryLoading}>
+        {showChart ? 'Nascondi' : (summary ? 'Mostra' : 'Carica grafico')}
+        {#if summaryLoading} ...{/if}
+      </button>
+    </div>
+    {#if !showChart}
+      <p class="text-[11px] text-ink-500 italic">
+        Il grafico carica la telemetria via
+        <code>/api/optimize/runs/{runId}/summary</code>
+        (puo' essere pesante). Premi "Mostra" quando vuoi
+        analizzarlo.
+      </p>
+    {/if}
+  </section>
+
+  {#if showChart && summary && summary.n_samples > 0}
     <section class="card p-4 space-y-2">
       <div class="flex items-baseline gap-3">
         <h2 class="!text-base">Grafico objective</h2>
-        <span class="text-xs text-ink-500">
-          {summary.n_samples} sample, durata {summary.duration_s?.toFixed(1)}s
-        </span>
         <div class="ml-auto">
           <label class="text-xs">
             <input type="radio" bind:group={xAxis} value="time"/> tempo
@@ -212,12 +270,31 @@
         </tbody>
       </table>
     </section>
-  {:else if summary}
+  {:else if showChart && summary}
     <section class="card p-4">
       <p class="text-sm text-ink-500 italic">
         Nessuna telemetria registrata per questo run (versione del
-        solver precedente al collector).
+        solver precedente al collector, oppure run di tipo
+        diagnostico — il risultato e' nelle metriche del
+        riepilogo).
       </p>
+    </section>
+  {/if}
+
+  <!-- For DIAGNOSTIC runs (kind starts with 'diag_'), render the
+       result inline from run.metrics. The /diagnostics tab does
+       the same; this is the alternative entry point for users
+       coming from /runs. -->
+  {#if run && (run.kind || '').startsWith('diag_') && run.metrics}
+    <section class="card p-4 space-y-2">
+      <h2 class="!text-base">Risultato diagnostica</h2>
+      <p class="text-[11px] text-ink-500">
+        Vista rapida del payload (vedi anche il tab
+        <a class="text-accent-500 hover:underline" href="/diagnostics">
+          Statistiche
+        </a> per la visualizzazione grafica).
+      </p>
+      <pre class="bg-ink-50 border border-ink-200 rounded p-2 text-xs overflow-auto max-h-96">{JSON.stringify(run.metrics, null, 2)}</pre>
     </section>
   {/if}
 

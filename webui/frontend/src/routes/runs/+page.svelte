@@ -195,6 +195,15 @@
   }
   function clearSelection() { selected = new Set(); }
 
+  async function killRun(r) {
+    if (!confirm(`Interrompere run #${r.id} (${r.kind})?`)) return;
+    try {
+      await api.post('/api/optimize/runs/' + r.id + '/cancel', {});
+      flash(`Run #${r.id} richiesta cancellazione`, 'success');
+      await refresh({ silent: true });
+    } catch (e) { flash('Errore: ' + e.message, 'error'); }
+  }
+
   // Per-row + bulk delete. If the user clicks "Elimina" on a row
   // that's part of a multi-selection, we ask whether they meant the
   // whole batch or just that one row.
@@ -472,14 +481,19 @@
                       on:click|stopPropagation={() => (logFor = logFor === r.id ? null : r.id)}>
                 {logFor === r.id ? 'nascondi log' : 'log'}
               </button>
-              <button class="btn-red !text-[10px] !px-2 !py-0.5 ml-1"
-                      on:click|stopPropagation={() => deleteRun(r)}
-                      disabled={r.status === 'running' || r.status === 'pending'}
-                      title={r.status === 'running' || r.status === 'pending'
-                                ? 'Run ancora attivo'
-                                : 'Elimina questo run (o tutti i selezionati)'}>
-                Elimina
-              </button>
+              {#if r.status === 'running' || r.status === 'pending'}
+                <button class="btn-red !text-[10px] !px-2 !py-0.5 ml-1"
+                        on:click|stopPropagation={() => killRun(r)}
+                        title="Interrompi questo run">
+                  Kill
+                </button>
+              {:else}
+                <button class="btn-red !text-[10px] !px-2 !py-0.5 ml-1"
+                        on:click|stopPropagation={() => deleteRun(r)}
+                        title="Elimina questo run (o tutti i selezionati)">
+                  Elimina
+                </button>
+              {/if}
             </td>
           </tr>
           {#if expanded.has(r.id)}
