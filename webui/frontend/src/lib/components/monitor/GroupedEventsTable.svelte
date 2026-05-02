@@ -511,17 +511,54 @@
           {#each groupedBuckets as bucket (bucket.key1)}
             {@const g1Open = (groupBy1 === 'none') || !collapsedG1.has(bucket.key1)}
             {#if groupBy1 !== 'none'}
-              <tr style="background-color:#e0e7ff;"
-                  class="cursor-pointer"
-                  on:click={() => toggleG1(bucket.key1)}>
+              <tr style="background-color:#e0e7ff;">
                 <td colspan={selectable ? 10 : 9} class="font-semibold py-1 px-2">
-                  <span class="inline-block w-4 text-ink-400">
+                  <button class="inline-block w-4 text-ink-400 cursor-pointer"
+                          on:click={() => toggleG1(bucket.key1)}
+                          title="Espandi/comprimi gruppo">
                     {g1Open ? '▼' : '▶'}
-                  </span>
-                  {GROUP_OPTIONS.find((o) => o.value === groupBy1)?.label || ''}:
-                  {bucket.key1 || '(vuoto)'}
+                  </button>
+                  <button class="cursor-pointer hover:underline"
+                          on:click={() => toggleG1(bucket.key1)}>
+                    {GROUP_OPTIONS.find((o) => o.value === groupBy1)?.label || ''}:
+                    {bucket.key1 || '(vuoto)'}
+                  </button>
                   <span class="text-ink-500 font-normal text-[10px] ml-2">
                     {bucket.rows1.length} righe
+                  </span>
+                  <!-- Group-level action buttons: applicano l'azione a
+                       tutte le righe del gruppo (le rows1 contengono
+                       sia placeholder che lezioni schedulate; ogni
+                       handler decide cosa fare). -->
+                  <span class="ml-3 inline-flex gap-1">
+                    {#if onBulkDissociate}
+                      <button class="btn-amber !text-[10px] !px-2 !py-0.5"
+                              on:click|stopPropagation={async () => { await onBulkDissociate(bucket.rows1); refresh(); onChanged(); }}
+                              title="Dissocia tutte le lezioni schedulate del gruppo">
+                        Dissocia gruppo
+                      </button>
+                    {/if}
+                    {#if onBulkLock}
+                      <button class="btn !text-[10px] !px-2 !py-0.5"
+                              on:click|stopPropagation={async () => { await onBulkLock(bucket.rows1); refresh(); onChanged(); }}
+                              title="Toggle lock per tutte le cattedre del gruppo">
+                        🔒 Blocca gruppo
+                      </button>
+                    {/if}
+                    {#if onBulkPlace}
+                      <button class="btn-primary !text-[10px] !px-2 !py-0.5"
+                              on:click|stopPropagation={async () => { await onBulkPlace(bucket.rows1); refresh(); onChanged(); }}
+                              title="Apri il modal di piazzamento per tutto il gruppo">
+                        Piazza gruppo
+                      </button>
+                    {/if}
+                    {#if onBulkDelete}
+                      <button class="btn-red !text-[10px] !px-2 !py-0.5"
+                              on:click|stopPropagation={async () => { await onBulkDelete(bucket.rows1); refresh(); onChanged(); }}
+                              title="Elimina tutte le righe del gruppo">
+                        Elimina gruppo
+                      </button>
+                    {/if}
                   </span>
                 </td>
               </tr>
@@ -531,16 +568,46 @@
                 {@const g2Key = bucket.key1 + '|' + sb.key2}
                 {@const g2Open = (groupBy2 === 'none') || !collapsedG2.has(g2Key)}
                 {#if groupBy1 !== 'none' && groupBy2 !== 'none'}
-                  <tr style="background-color:#eef2ff;"
-                      class="cursor-pointer"
-                      on:click={() => toggleG2(g2Key)}>
+                  <tr style="background-color:#eef2ff;">
                     <td colspan={selectable ? 10 : 9} class="text-[11px] pl-6 py-1">
-                      <span class="inline-block w-4 text-ink-400">
+                      <button class="inline-block w-4 text-ink-400 cursor-pointer"
+                              on:click={() => toggleG2(g2Key)}
+                              title="Espandi/comprimi sotto-gruppo">
                         {g2Open ? '▼' : '▶'}
-                      </span>
-                      {GROUP_OPTIONS.find((o) => o.value === groupBy2)?.label || ''}:
-                      <strong>{sb.key2 || '(vuoto)'}</strong>
+                      </button>
+                      <button class="cursor-pointer hover:underline"
+                              on:click={() => toggleG2(g2Key)}>
+                        {GROUP_OPTIONS.find((o) => o.value === groupBy2)?.label || ''}:
+                        <strong>{sb.key2 || '(vuoto)'}</strong>
+                      </button>
                       <span class="text-ink-400 ml-2">{sb.rows2.length}</span>
+                      <!-- Sub-group level buttons (same as level-1) -->
+                      <span class="ml-3 inline-flex gap-1">
+                        {#if onBulkDissociate}
+                          <button class="btn-amber !text-[10px] !px-2 !py-0.5"
+                                  on:click|stopPropagation={async () => { await onBulkDissociate(sb.rows2); refresh(); onChanged(); }}>
+                            Dissocia
+                          </button>
+                        {/if}
+                        {#if onBulkLock}
+                          <button class="btn !text-[10px] !px-2 !py-0.5"
+                                  on:click|stopPropagation={async () => { await onBulkLock(sb.rows2); refresh(); onChanged(); }}>
+                            🔒 Blocca
+                          </button>
+                        {/if}
+                        {#if onBulkPlace}
+                          <button class="btn-primary !text-[10px] !px-2 !py-0.5"
+                                  on:click|stopPropagation={async () => { await onBulkPlace(sb.rows2); refresh(); onChanged(); }}>
+                            Piazza
+                          </button>
+                        {/if}
+                        {#if onBulkDelete}
+                          <button class="btn-red !text-[10px] !px-2 !py-0.5"
+                                  on:click|stopPropagation={async () => { await onBulkDelete(sb.rows2); refresh(); onChanged(); }}>
+                            Elimina
+                          </button>
+                        {/if}
+                      </span>
                     </td>
                   </tr>
                 {/if}

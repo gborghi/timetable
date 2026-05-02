@@ -19,12 +19,16 @@
   // tab filter (Tutti / Incompleti / Lockati). Each tab composes a
   // different `auxQuery` that's ANDed into the user's DSL query.
   let mainTable;
-  let activeTab = 'all';   // 'all' | 'incomplete' | 'locked'
+  let activeTab = 'all';   // 'all' | 'incomplete' | 'unscheduled' | 'locked'
 
   // Map a tab key into the auxQuery DSL fragment.
+  // - incomplete = qualunque manchi (ore, aule, gruppo)
+  // - unscheduled = solo le righe placeholder senza giorno/ora
+  // - locked = is_locked=1
   $: tabAuxQuery = {
     all: '',
     incomplete: 'completo = 0',
+    unscheduled: 'schedulato = 0',
     locked: 'is_locked = 1',
   }[activeTab];
 
@@ -94,16 +98,24 @@
     if (mainTable) await mainTable.refresh();
   }
 
-  // Per-row Dissocia: keep cattedra, drop all its lessons.
+  // Per-row Dissocia: rimuove SOLO questa singola lezione dal suo
+  // slot temporale. La cattedra resta; missing_hours +1. Per le righe
+  // placeholder (gia' non schedulate) e' un no-op informativo.
   async function dissociateRow(row) {
-    if (!confirm(`Confermi di dissociare la cattedra `
-        + `${row.class_name} / ${row.subject} / ${row.teacher_name}? `
-        + `La cattedra resta, ma tutte le sue lezioni gia' schedulate `
-        + `verranno rimosse.`)) return;
+    if (!row.is_scheduled || row.lesson_id == null) {
+      flash('Evento gia\' non schedulato (nessuno slot da rimuovere).',
+            'info');
+      return;
+    }
+    if (!confirm(`Dissociare la lezione di ${row.subject} `
+        + `(${row.class_name}, ${row.teacher_name}) di `
+        + `${row.day_name} ${row.hour}:00? `
+        + `La cattedra resta; questa singola ora torna fra le mancanti.`)) {
+      return;
+    }
     try {
-      await api.post('/api/monitor/event/' + row.assignment_id
-                      + '/dissociate', {});
-      flash('Cattedra dissociata.', 'success');
+      await api.del('/api/monitor/lesson/' + row.lesson_id);
+      flash('Lezione dissociata.', 'success');
     } catch (e) {
       flash('Errore: ' + (e.message || e), 'error');
     }
@@ -134,19 +146,32 @@
     placeOpen = true;
   }
 
-  // Bulk handlers shared across selection
+  // Bulk Dissocia: rimuove le SINGOLE lezioni schedulate selezionate
+  // (placeholder ignorate). La cattedra resta in ogni caso.
   async function bulkDissociate(rows) {
     if (rows.length === 0) return;
-    const aids = Array.from(new Set(rows.map((r) => r.assignment_id)));
-    if (!confirm(`Confermi di dissociare ${aids.length} cattedre?`)) return;
-    try {
-      const r = await api.post('/api/monitor/events/dissociate-batch',
-                                { event_ids: aids });
-      flash(`${r.deleted_lessons} lezioni rimosse da ${r.n_assignments} `
-            + `cattedre.`, 'success');
-    } catch (e) {
-      flash('Errore: ' + (e.message || e), 'error');
+    const lessonRows = rows.filter((r) => r.is_scheduled
+                                            && r.lesson_id != null);
+    const skipped = rows.length - lessonRows.length;
+    if (lessonRows.length === 0) {
+      flash('Nessuna lezione schedulata da dissociare nella selezione.',
+            'info');
+      return;
     }
+    let msg = `Dissociare ${lessonRows.length} singole lezioni? `
+            + `Le cattedre restano; le ore tornano fra le mancanti.`;
+    if (skipped > 0) msg += `\n(${skipped} placeholder verranno ignorate)`;
+    if (!confirm(msg)) return;
+    let okCount = 0;
+    for (const r of lessonRows) {
+      try {
+        await api.del('/api/monitor/lesson/' + r.lesson_id);
+        okCount++;
+      } catch (e) {
+        console.warn('bulk dissociate failed for lesson', r.lesson_id, e);
+      }
+    }
+    flash(`${okCount}/${lessonRows.length} lezioni dissociate.`, 'success');
     await refreshAll();
   }
 
@@ -456,18 +481,30 @@
       {/if}
     </button>
     <button class="btn !text-xs"
-            class:!bg-red-500={activeTab === 'incomplete'}
+            class:!bg-amber-500={activeTab === 'incomplete'}
             class:!text-white={activeTab === 'incomplete'}
-            on:click={() => (activeTab = 'incomplete')}>
+            on:click={() => (activeTab = 'incomplete')}
+            title="Eventi con almeno una mancanza (ore, aula, gruppo)">
       Incompleti
+      {#if summary?.n_incomplete != null}
+        <span class="ml-1 pill pill-amber !text-[10px]">{summary.n_incomplete}</span>
+      {/if}
+    </button>
+    <button class="btn !text-xs"
+            class:!bg-red-500={activeTab === 'unscheduled'}
+            class:!text-white={activeTab === 'unscheduled'}
+            on:click={() => (activeTab = 'unscheduled')}
+            title="Solo eventi senza assegnazione temporale (placeholder)">
+      Senza orario
       {#if summary?.n_rows_unscheduled != null}
         <span class="ml-1 pill pill-red !text-[10px]">{summary.n_rows_unscheduled}</span>
       {/if}
     </button>
     <button class="btn !text-xs"
-            class:!bg-amber-500={activeTab === 'locked'}
+            class:!bg-amber-600={activeTab === 'locked'}
             class:!text-white={activeTab === 'locked'}
-            on:click={() => (activeTab = 'locked')}>
+            on:click={() => (activeTab = 'locked')}
+            title="Eventi marcati is_locked = 1: non si muovono durante l'ottimizzazione">
       🔒 Lockati
       {#if summary?.n_rows_locked != null}
         <span class="ml-1 pill pill-amber !text-[10px]">{summary.n_rows_locked}</span>
@@ -479,17 +516,21 @@
     <GroupedEventsTable bind:this={mainTable}
                         endpoint="/api/monitor/event-rows"
                         auxQuery={tabAuxQuery}
-                        redTheme={activeTab === 'incomplete'}
+                        redTheme={activeTab === 'unscheduled'}
                         title={activeTab === 'incomplete'
-                                ? 'Eventi senza assegnazione temporale'
-                                : (activeTab === 'locked'
-                                    ? 'Eventi bloccati'
-                                    : 'Tutti gli eventi')}
+                                ? 'Eventi incompleti'
+                                : (activeTab === 'unscheduled'
+                                    ? 'Eventi senza assegnazione temporale'
+                                    : (activeTab === 'locked'
+                                        ? 'Eventi bloccati'
+                                        : 'Tutti gli eventi'))}
                         subtitle={activeTab === 'incomplete'
-                                ? 'Cattedre per cui non tutte le ore attese sono state schedulate. Usa "Piazza" per collocarle.'
-                                : (activeTab === 'locked'
-                                    ? 'Cattedre marcate come bloccate: non si muovono durante Phase B / metaeuristiche.'
-                                    : '')}
+                                ? 'Eventi con almeno una mancanza: ore non schedulate, aula assente, o gruppo mancante.'
+                                : (activeTab === 'unscheduled'
+                                    ? 'Cattedre per cui non tutte le ore attese sono state schedulate. Usa "Piazza" per collocarle.'
+                                    : (activeTab === 'locked'
+                                        ? 'Cattedre marcate come bloccate: non si muovono durante Phase B / metaeuristiche.'
+                                        : ''))}
                         selectable={true}
                         bind:selectedIds={mainSelected}
                         onModify={modifyEventRow}
