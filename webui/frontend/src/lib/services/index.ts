@@ -15,6 +15,7 @@ import { api } from "../api";
 import type {
   Assignment,
   Classroom,
+  ClassroomTag,
   Curriculum,
   CoteachingRule,
   DatasetState,
@@ -79,6 +80,19 @@ export const classrooms = {
       "/api/classrooms/auto-generate",
       b,
     ),
+};
+
+// ---------------- Classroom tags ----------
+
+export const classroomTags = {
+  list: () => api.get<ClassroomTag[]>("/api/classroom-tags"),
+  create: (b: { name: string; description?: string | null }) =>
+    api.post<ClassroomTag>("/api/classroom-tags", b),
+  update: (
+    id: number,
+    b: { name?: string; description?: string | null },
+  ) => api.put<ClassroomTag>("/api/classroom-tags/" + id, b),
+  remove: (id: number) => api.del<void>("/api/classroom-tags/" + id),
 };
 
 // ---------------- Students ----------------

@@ -9,15 +9,46 @@
   import LogicalUnavailabilitiesPanel from '$lib/components/LogicalUnavailabilitiesPanel.svelte';
   import ImportButton from '$lib/components/ImportButton.svelte';
   import BulkApplyModal from '$lib/components/BulkApplyModal.svelte';
+  import ClassroomTagPicker from '$lib/components/ClassroomTagPicker.svelte';
+  import ManageTagsModal from '$lib/components/ManageTagsModal.svelte';
   import { cloneRow } from '$lib/utils';
-  import { classrooms as classroomsSvc, subjects as subjectsSvc, classes as classesSvc } from '$lib/services';
+  import {
+    classrooms as classroomsSvc,
+    classroomTags as tagSvc,
+    subjects as subjectsSvc,
+    classes as classesSvc,
+  } from '$lib/services';
+
+  // colour helper shared with the picker
+  const PALETTE = [
+    'bg-emerald-100 text-emerald-700 border-emerald-200',
+    'bg-sky-100 text-sky-700 border-sky-200',
+    'bg-violet-100 text-violet-700 border-violet-200',
+    'bg-amber-100 text-amber-700 border-amber-200',
+    'bg-rose-100 text-rose-700 border-rose-200',
+    'bg-teal-100 text-teal-700 border-teal-200',
+    'bg-indigo-100 text-indigo-700 border-indigo-200',
+    'bg-lime-100 text-lime-700 border-lime-200',
+    'bg-fuchsia-100 text-fuchsia-700 border-fuchsia-200',
+    'bg-cyan-100 text-cyan-700 border-cyan-200',
+    'bg-orange-100 text-orange-700 border-orange-200',
+    'bg-pink-100 text-pink-700 border-pink-200',
+  ];
+  function tagColor(name) {
+    const s = String(name || '');
+    let h = 0;
+    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+    return PALETTE[h % PALETTE.length];
+  }
 
   let editing = null;
   let allSubjects = [];
   let allClasses = [];
+  let allTagNames = [];
   let listRef = null;
   let selectedIds = [];
   let showBulk = false;
+  let showTagsModal = false;
 
   let showGenPanel = false;
   let suggested = null;
@@ -32,7 +63,15 @@
       allSubjects = (await subjectsSvc.list()).map((s) => s.name).sort();
       allClasses = (await classesSvc.list()).map((c) => c.name).sort();
     } catch { /* */ }
+    await reloadTags();
   });
+
+  async function reloadTags() {
+    try {
+      const ts = await tagSvc.list();
+      allTagNames = ts.map((t) => t.name).sort();
+    } catch { /* */ }
+  }
 
   async function loadSuggested() {
     try {
@@ -71,11 +110,16 @@
       capacity: 30, multi_class: false, multi_class_max: 1,
       multi_class_pref: 1, multi_class_pref_weight: 10,
       notes: '',
-      subject_prefs: [], class_prefs: [], unavailability: []
+      subject_prefs: [], class_prefs: [], unavailability: [],
+      tags: [],
     };
   }
   function edit(row) { editing = cloneRow(row);
     if (!Array.isArray(editing.unavailability)) editing.unavailability = [];
+    if (!Array.isArray(editing.tags)) editing.tags = [];
+  }
+  function onTagsChange(next) {
+    editing = { ...editing, tags: next };
   }
   function addSubjectPref() { editing.subject_prefs = [...editing.subject_prefs, { subject: '', weight: 10, required: false }]; }
   function delSubjectPref(i) { editing.subject_prefs = editing.subject_prefs.filter((_, idx) => idx !== i); }
@@ -119,14 +163,19 @@
     { key: 'capacity', label: 'Capienza' },
     { key: 'multi_class', label: 'Multi-classe',
       render: (r) => r.multi_class ? `max ${r.multi_class_max} (pref ${r.multi_class_pref})` : 'no' },
+    { key: 'tags', label: 'Tag', sortable: false,
+      render: (r) => (r.tags || []).join(', ') || '-' },
   ];
   const help = {
-    fields: ['name', 'kind', 'tipo', 'capacity', 'capienza', 'multi_class', 'multi_classe'],
+    fields: ['name', 'kind', 'tipo', 'capacity', 'capienza',
+             'multi_class', 'multi_classe', 'tags', 'tag'],
     examples: [
       'tipo = palestra',
       'tipo in [lab_fisica, lab_chimica]',
       'capienza >= 25 AND tipo contains lab',
       'multi_class = 1',
+      'has_tag(matematica)',
+      'tag(scientifico) AND tipo = standard',
       'unavailable_on(giovedi, 13)'
     ]
   };
@@ -136,6 +185,10 @@
   <div class="flex items-baseline gap-3 flex-wrap">
     <h1>Aule</h1>
     <button class="btn ml-auto" on:click={loadSuggested}>Genera aule...</button>
+    <button class="btn" on:click={() => (showTagsModal = true)}
+            title="Crea, rinomina o elimina i tag delle aule">
+      Gestisci tag
+    </button>
     <button class="btn-primary" on:click={newRoom}>+ Nuova aula</button>
     <ImportButton entity="classrooms" onDone={() => listRef?.reload()}/>
     <button class="btn !text-xs" on:click={() => (showBulk = true)}
@@ -195,6 +248,18 @@
     <td class="text-center">
       {#if row.multi_class}max {row.multi_class_max} (pref {row.multi_class_pref}){:else}no{/if}
     </td>
+    <td>
+      {#if (row.tags || []).length === 0}
+        <span class="text-ink-400">-</span>
+      {:else}
+        <div class="flex flex-wrap gap-1">
+          {#each row.tags as t (t)}
+            <span class="inline-flex items-center px-1.5 py-0.5 rounded-full
+                         border text-[10px] font-medium {tagColor(t)}">#{t}</span>
+          {/each}
+        </div>
+      {/if}
+    </td>
     <td class="whitespace-nowrap">
       <button class="btn !text-xs !px-2 !py-1" on:click={() => edit(row)}>Modifica</button>
       <button class="btn-danger !text-xs !px-2 !py-1" on:click={() => del(row)}>Elimina</button>
@@ -205,6 +270,10 @@
 <BulkApplyModal entity="classrooms" bind:open={showBulk}
                 {selectedIds}
                 onDone={() => { selectedIds = []; listRef?.reload(); }}/>
+
+<ManageTagsModal bind:open={showTagsModal}
+                 onClose={() => (showTagsModal = false)}
+                 onChanged={async () => { await reloadTags(); listRef?.reload(); }}/>
 
 <Modal open={!!editing} title={editing?._new ? 'Nuova aula' : 'Modifica aula'} onClose={() => (editing = null)}>
   {#if editing}
@@ -222,6 +291,22 @@
       <div class="field"><label>Max classi simultanee (HARD)</label><input type="number" bind:value={editing.multi_class_max}/></div>
       <div class="field"><label>Preferito (SOFT)</label><input type="number" bind:value={editing.multi_class_pref}/></div>
       <div class="field"><label>Peso preferenza concorrenza</label><input type="number" bind:value={editing.multi_class_pref_weight}/></div>
+    </div>
+
+    <div class="mt-4 field">
+      <div class="flex items-baseline gap-3 mb-1">
+        <label class="!mb-0">Tag</label>
+        <span class="text-[11px] text-ink-500">
+          Etichette libere usabili dal DSL (es. <code>"matematica" in l.classroom.tags</code>).
+          I nuovi tag vengono creati automaticamente al salvataggio.
+        </span>
+        <button type="button" class="btn !text-xs !px-2 !py-0.5 ml-auto"
+                on:click={() => (showTagsModal = true)}>Gestisci tag...</button>
+      </div>
+      <ClassroomTagPicker
+        value={editing.tags || []}
+        suggestions={allTagNames}
+        onChange={onTagsChange}/>
     </div>
 
     <div class="mt-4">

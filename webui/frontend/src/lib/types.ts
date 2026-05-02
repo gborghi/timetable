@@ -188,6 +188,14 @@ export interface Classroom {
   subject_prefs: ClassroomSubjectPref[];
   class_prefs: ClassroomClassPref[];
   unavailability: UnavailabilitySlot[];
+  tags?: string[];
+}
+
+export interface ClassroomTag {
+  id: number;
+  name: string;
+  description?: string | null;
+  n_classrooms?: number;
 }
 
 // ============================================================
