@@ -852,6 +852,10 @@ def run_hall_check(*, n_samples: int = 256,
     """Synchronous Hall's theorem pre-check. Returns the diagnostic
     dict directly (no run_id thread): the operation is < 100 ms even
     on superhuge schools so a sync API is fine.
+
+    Kept for back-compat. New code should prefer
+    `run_diag_hall_check` which spawns an async run consistent with
+    the other diagnostics.
     """
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..",
                                      "experiments"))
@@ -861,6 +865,30 @@ def run_hall_check(*, n_samples: int = 256,
             db, n_samples=n_samples,
             teacher_max_hours=teacher_max_hours,
         )
+
+
+def run_diag_hall_check(*, n_samples: int = 256,
+                         teacher_max_hours: int = 18) -> int:
+    """Async Hall pre-check: same algorithm as `run_hall_check` but
+    spawned as a run (kind='diag_hall'). Used by the /diagnostics
+    tab so the result lands in /runs alongside the other
+    diagnostics."""
+    sys.path.insert(0, os.path.join(
+        os.path.dirname(__file__), "..", "..", "experiments",
+    ))
+
+    def _go() -> dict:
+        from diagnostics import hall_check as hc  # type: ignore
+        with SessionLocal() as db:
+            return hc.hall_check_from_db(
+                db, n_samples=n_samples,
+                teacher_max_hours=teacher_max_hours,
+            )
+    return run_diagnostic_async(
+        "diag_hall",
+        f"Hall pre-check (N={n_samples})",
+        _go,
+    )
 
 
 def run_diagnostic_async(kind: str, label: str,

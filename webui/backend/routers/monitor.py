@@ -53,7 +53,11 @@ def _teacher_display(t: models.Teacher) -> str:
         return t.nickname
     if t.last_name and t.first_name:
         return f"{t.last_name} {t.first_name}"
-    return t.name
+    if t.last_name:
+        return t.last_name
+    if t.first_name:
+        return t.first_name
+    return t.name or f"docente #{t.id}"
 
 
 def _build_events(db: Session) -> list[dict]:

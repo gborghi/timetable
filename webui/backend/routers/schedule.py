@@ -273,6 +273,70 @@ def move_lesson(payload: schemas.MoveLessonIn,
     return out
 
 
+@router.delete("/lesson/{lesson_id}")
+def delete_lesson(lesson_id: int,
+                   reduce_assignment: bool = False,
+                   db: Session = Depends(get_db)) -> dict:
+    """Per-cell delete from /schedule grid.
+
+    Two semantics, selected via `?reduce_assignment=`:
+
+    - **reduce_assignment=false (default, "svincola")**: remove only
+      this Lesson row. The underlying Assignment (cattedra) keeps
+      the same `hours`, so the next solver run will re-place the
+      lesson somewhere else. Use this when the lesson is in the
+      wrong slot but should still be scheduled.
+
+    - **reduce_assignment=true ("elimina")**: also decrement
+      `Assignment.hours` by 1 (clamping at 0). The cattedra shrinks
+      and the lesson will NOT be re-placed by the solver. Use this
+      when the lesson should disappear entirely.
+
+    Returns `{ok, reduced_assignment_hours, lesson}`.
+    """
+    l = db.get(models.Lesson, int(lesson_id))
+    if l is None:
+        raise HTTPException(404, f"lesson {lesson_id} non trovata")
+    snap = {
+        "id": l.id,
+        "teacher_name": l.teacher_name,
+        "class_name": l.class_name,
+        "subject": l.subject,
+        "day": l.day, "hour": l.hour,
+        "classroom_name": l.classroom_name,
+    }
+    new_hours = None
+    if reduce_assignment:
+        # Find the matching Assignment row by (teacher, class, subject)
+        teacher = db.query(models.Teacher).filter(
+            models.Teacher.name == l.teacher_name).first()
+        cls = db.query(models.SchoolClass).filter(
+            models.SchoolClass.name == l.class_name).first()
+        if teacher is not None and cls is not None:
+            a = db.query(models.Assignment).filter(
+                models.Assignment.teacher_id == teacher.id,
+                models.Assignment.class_id == cls.id,
+                models.Assignment.subject == l.subject,
+            ).first()
+            if a is not None and a.hours > 0:
+                a.hours = max(0, int(a.hours) - 1)
+                new_hours = int(a.hours)
+    db.delete(l)
+    db.commit()
+    # Bump the mutation epoch so client caches reload
+    try:
+        from ..utils.ttl_cache import bump_mutation
+        bump_mutation()
+    except Exception:
+        pass
+    return {
+        "ok": True,
+        "reduce_assignment": bool(reduce_assignment),
+        "reduced_assignment_hours": new_hours,
+        "lesson": snap,
+    }
+
+
 @router.post("/move-preview")
 def move_preview(payload: dict, db: Session = Depends(get_db)):
     """Given a lesson_id (or src tuple), simulate the move to ALL 36

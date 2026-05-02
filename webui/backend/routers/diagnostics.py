@@ -40,23 +40,36 @@ if _EXPERIMENTS not in sys.path:
     sys.path.insert(0, _EXPERIMENTS)
 
 
-# ---------- Hall (sync, fast: < 100ms) ----------
+# ---------- Hall (async run by default, sync available) ----------
 
 class HallCheckIn(BaseModel):
     n_samples: int = 256
     teacher_max_hours: int = 18
+    sync: bool = False     # opt-in for the legacy <100ms inline path
 
 
 @router.post("/hall-check")
 def hall_check(payload: HallCheckIn,
                db: Session = Depends(get_db)):
-    """Hall pre-check stays SYNC: it's <100ms and the user wants the
-    answer immediately on the Phase A card."""
-    from diagnostics import hall_check as hc  # type: ignore
-    return hc.hall_check_from_db(
-        db, n_samples=payload.n_samples,
+    """By default Hall is now spawned as an async run (kind='diag_hall')
+    so the result shows up in /runs alongside MC / bipartite /
+    correlations / distributions.
+
+    For UI surfaces that want the inline answer (e.g. the green/red
+    pre-check button on the Phase A card), pass `sync=true` to get
+    the diagnostic dict back directly without a run row.
+    """
+    if payload.sync:
+        from diagnostics import hall_check as hc  # type: ignore
+        return hc.hall_check_from_db(
+            db, n_samples=payload.n_samples,
+            teacher_max_hours=payload.teacher_max_hours,
+        )
+    rid = optimization.run_diag_hall_check(
+        n_samples=payload.n_samples,
         teacher_max_hours=payload.teacher_max_hours,
     )
+    return {"run_id": rid}
 
 
 # ---------- Monte Carlo (async run) ----------
