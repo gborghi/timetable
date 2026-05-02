@@ -334,6 +334,26 @@ class EventBatchLockIn(_BM):
     locked: bool | None = None
 
 
+class TempLockIn(_BM):
+    """Temporarily lock the Assignments NOT in `event_ids` per
+    `lock_mode`, so a chained "Piazza" pipeline (greedy + phase_b +
+    meta...) doesn't reshuffle events the user wanted to keep.
+
+    Returns the list of aids that were newly locked -- the caller is
+    responsible for unlocking them at the end of the pipeline (or on
+    error) by POSTing /events/lock-batch with locked=false.
+
+    `lock_mode`:
+        all_others_locked              every non-target -> locked
+        same_class_or_teacher_movable  non-targets that don't share
+                                       teacher/class with a target are
+                                       locked; siblings stay movable
+        all_others_movable             nothing locked (no-op)
+    """
+    event_ids: list[int]
+    lock_mode: str = "all_others_locked"
+
+
 @router.post("/event/{assignment_id}/dissociate")
 def dissociate_event(assignment_id: int, db: Session = Depends(get_db)):
     """Dissocia: keep the cattedra, delete all its Lessons in the active
@@ -381,6 +401,48 @@ def lock_event(assignment_id: int, payload: EventLockIn,
     db.commit()
     return {"ok": True, "assignment_id": assignment_id,
             "locked": bool(a.locked)}
+
+
+@router.post("/events/temp-lock")
+def temp_lock_events(payload: TempLockIn,
+                      db: Session = Depends(get_db)):
+    """Apply temporary locks per `lock_mode`. Returns the list of
+    Assignment ids that were just locked (so the caller can unlock
+    them later via /events/lock-batch with locked=false)."""
+    if payload.lock_mode not in (
+        "all_others_locked", "same_class_or_teacher_movable",
+        "all_others_movable",
+    ):
+        raise HTTPException(400, f"lock_mode sconosciuto: {payload.lock_mode!r}")
+    if payload.lock_mode == "all_others_movable":
+        return {"locked_aids": [], "lock_mode": payload.lock_mode}
+
+    target_ids = set(int(x) for x in payload.event_ids)
+    target_assigns = db.query(models.Assignment).filter(
+        models.Assignment.id.in_(target_ids)
+    ).all()
+    target_teachers = {a.teacher_id for a in target_assigns}
+    target_classes = {a.class_id for a in target_assigns}
+
+    rows = db.query(models.Assignment).filter(
+        ~models.Assignment.id.in_(target_ids),
+        models.Assignment.locked == False,  # noqa: E712
+    ).all()
+    to_lock: list[int] = []
+    for a in rows:
+        if payload.lock_mode == "all_others_locked":
+            to_lock.append(a.id)
+        elif payload.lock_mode == "same_class_or_teacher_movable":
+            touches = (a.teacher_id in target_teachers
+                       or a.class_id in target_classes)
+            if not touches:
+                to_lock.append(a.id)
+    if to_lock:
+        db.query(models.Assignment).filter(
+            models.Assignment.id.in_(to_lock)
+        ).update({"locked": True}, synchronize_session=False)
+        db.commit()
+    return {"locked_aids": to_lock, "lock_mode": payload.lock_mode}
 
 
 @router.post("/events/lock-batch")
