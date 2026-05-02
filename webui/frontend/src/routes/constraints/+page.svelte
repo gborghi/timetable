@@ -6,6 +6,7 @@
   import SortableQueryableList from '$lib/components/SortableQueryableList.svelte';
   import { levelPill, levelLabel } from '$lib/constraint_levels';
   import NewConstraintModal from '$lib/components/constraints/NewConstraintModal.svelte';
+  import FeasibilityPanel from '$lib/components/constraints/FeasibilityPanel.svelte';
 
   let listRef = null;
   let conflicts = null;
@@ -14,6 +15,8 @@
 
   // "Nuovo vincolo" wizard
   let newConstraintOpen = false;
+  // Feasibility Check panel
+  let feasibilityOpen = false;
 
   // Lookup data for the owner dropdowns in the edit modal.
   let allTeachers = [];     // [{id, name, display}]
@@ -187,6 +190,11 @@
             on:click={() => (newConstraintOpen = true)}>
       + Nuovo vincolo
     </button>
+    <button class="btn-primary"
+            on:click={() => (feasibilityOpen = !feasibilityOpen)}
+            title="Analisi MUS dei vincoli HARD/ENFORCED">
+      {feasibilityOpen ? 'Nascondi' : ''} Feasibility Check
+    </button>
     <button class="btn" on:click={loadConflicts} disabled={conflictsBusy}>
       {conflictsBusy ? 'cerco...' : 'Cerca conflitti'}
     </button>
@@ -197,6 +205,15 @@
       </button>
     {/if}
   </div>
+
+  {#if feasibilityOpen}
+    <div class="card p-4 border-2 border-accent-500/30 bg-accent-500/5">
+      <h2 class="mb-2">Feasibility Check (MUS)</h2>
+      <FeasibilityPanel onChanged={async () => {
+        if (listRef) await listRef.reload();
+      }}/>
+    </div>
+  {/if}
 
   {#if showConflicts && conflicts}
     <div class="card p-3 border-red-300 bg-red-50/50 space-y-2">

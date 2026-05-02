@@ -465,6 +465,48 @@ l'aula sia la materia; `coteach` richiede n_teachers >= 2). I
 livelli mostrati allo step 2 sono filtrati in base al kind dello
 step 3 (le `room_pref` non accettano HARD ma `forbidden`/`allowed`).
 
+#### Feasibility Check (MUS)
+
+Bottone primario `[Feasibility Check]` accanto a `[+ Nuovo vincolo]`.
+Click → apre un pannello collapsibile che lancia
+`POST /api/constraints/feasibility-check`. Il backend costruisce un
+modello CP-SAT minimale codificante:
+
+- una variabile booleana `lesson[(assignment, day, hour)]` per ogni
+  cattedra e ogni slot
+- vincolo `Sum == hours` per assignment
+- `AtMostOne` per (teacher, slot) e per (class, slot)
+- ogni vincolo HARD/ENFORCED matrix-cell viene aggiunto come
+  *assumption letterale* (`model.AddAssumption(lit)`)
+- `teacher.free_day` come HARD non-assumption (background)
+
+Se il modello e' SAT → banner verde **"✅ Modello feasible"**.
+
+Se UNSAT → CP-SAT restituisce
+`solver.SufficientAssumptionsForInfeasibility()`, l'insieme minimale
+di assumption che insieme rendono il modello infeasible. Il pannello
+mostra:
+
+1. **Lista dei "core"** raggruppati. Per ogni core: livello (pill
+   colorata), scope, owner_name, dettaglio, e bottoni `[Rimuovi]` /
+   `[Vedi]`.
+2. **Grafo dei conflitti** (Cytoscape `fcose`): nodi = vincoli, archi
+   tra ogni coppia di vincoli appartenenti allo stesso core.
+   Click su nodo → popover con dettaglio + Rimuovi.
+3. **Rimozione suggerita**: per ogni core il dispatcher propone di
+   tenere il vincolo ENFORCED piu' "forte" e rimuovere gli altri;
+   bottone `[Applica suggerimento]` chiama
+   `POST /api/constraints/delete-batch` dopo conferma con preview
+   dei primi 5 vincoli.
+4. **Ri-verifica** lancia un nuovo check.
+5. **Esporta JSON** scarica il report completo.
+
+Limiti: il check **non modella le aule** (per scalabilita') ne' i
+vincoli logici DNF (catturati dal Cerca conflitti adiacente). Per
+scuole molto grandi (>500 cattedre) il time_limit_s default 30s
+puo' non bastare; in quel caso il pannello mostra un risultato
+"inconclusivo" e l'utente puo' aumentare il limite.
+
 Pill colorate per livello (HARD rosso / SOFT giallo / PREFERITO blu /
 ENFORCED verde scuro / ALLOWED verde chiaro / FORBIDDEN rosso). Per
 ogni riga: bottoni Modifica (modal con livello + peso + espressione

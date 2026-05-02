@@ -1,8 +1,16 @@
-"""Unified constraint creation: POST /api/constraints.
+"""Unified constraint creation + feasibility check + batch ops.
 
-A single polymorphic endpoint that the frontend NewConstraintModal
-calls with a (scope, kind, level, owner_id[, owner_id_2], ...) payload.
-Dispatches to the correct underlying model:
+Endpoints:
+  POST   /api/constraints                  unified creation dispatcher
+  POST   /api/constraints/feasibility-check
+  POST   /api/constraints/delete-batch     bulk delete by (kind, id) pairs
+
+Per-row deletes go through /api/monitor/constraints/{kind}/{id} (already
+exposed in monitor.py).
+
+The creation dispatcher is a single polymorphic endpoint that the
+frontend NewConstraintModal calls with a (scope, kind, level,
+owner_id[, owner_id_2], ...) payload. Dispatches to:
 
   (teacher | class | classroom, matrix_slot)  -> *Unavailability
   (teacher | class | classroom, logical)      -> LogicalUnavailability
@@ -11,9 +19,9 @@ Dispatches to the correct underlying model:
   (teacher_room, room_pref)                   -> TeacherClassroomPreference
   (class, coteach)                            -> CoTeachingRule
 
-Existing per-resource endpoints (PUT /api/teachers/{id} et al.) keep
-working; this one is added on top to power the unified creation flow
-in /constraints.
+The feasibility-check builds a minimal CP-SAT model + extracts an
+unsatisfiable core via SufficientAssumptionsForInfeasibility().
+See utils/feasibility.py.
 """
 from __future__ import annotations
 
@@ -340,3 +348,75 @@ def create_constraint(payload: schemas.ConstraintCreateIn,
                 "detail": f"{payload.subject}: {n} docenti"}
 
     raise HTTPException(400, f"kind sconosciuto: {kind!r}")
+
+
+# ---------------------------------------------------------------------
+# Feasibility check (MUS extraction)
+# ---------------------------------------------------------------------
+
+
+from pydantic import BaseModel as _BM
+
+
+class FeasibilityCheckIn(_BM):
+    time_limit_s: float = 30.0
+
+
+@router.post("/feasibility-check")
+def run_feasibility_check(payload: FeasibilityCheckIn | None = None,
+                           db: Session = Depends(get_db)):
+    """Run the HARD/ENFORCED-only feasibility analyzer + MUS extractor.
+    Returns {feasible, cores, suggested_removal, ...} per
+    utils/feasibility.feasibility_check."""
+    from ..utils.feasibility import feasibility_check
+    tlim = float(payload.time_limit_s) if payload else 30.0
+    return feasibility_check(db, time_limit_s=tlim)
+
+
+# ---------------------------------------------------------------------
+# Batch delete
+# ---------------------------------------------------------------------
+
+
+class ConstraintDeleteBatchIn(_BM):
+    """List of (kind, id) pairs to delete in one shot. Used by
+    "Applica suggerimento" in the FeasibilityPanel."""
+    items: list[dict]   # [{kind: str, id: int}, ...]
+
+
+_DELETE_MODEL_FOR = {
+    "teacher_cell": models.TeacherUnavailability,
+    "class_cell": models.ClassUnavailability,
+    "room_cell": models.ClassroomUnavailability,
+    "logical_teacher": models.LogicalUnavailability,
+    "logical_class": models.LogicalUnavailability,
+    "logical_classroom": models.LogicalUnavailability,
+    "logical_curriculum": models.CurriculumLogicalConstraint,
+    "coteach": models.CoTeachingRule,
+    "subject_room_pref": models.ClassroomSubjectPreference,
+    "teacher_room_pref": models.TeacherClassroomPreference,
+}
+
+
+@router.post("/delete-batch")
+def delete_constraints_batch(payload: ConstraintDeleteBatchIn,
+                              db: Session = Depends(get_db)):
+    """Bulk delete by (kind, id) pairs. Skips unknown kinds + missing
+    ids; returns counts + skipped list."""
+    n_ok = 0
+    skipped: list[dict] = []
+    for it in payload.items or []:
+        kind = (it.get("kind") or "").lower()
+        rid = int(it.get("id") or 0)
+        Model = _DELETE_MODEL_FOR.get(kind)
+        if Model is None or rid == 0:
+            skipped.append({**it, "reason": "kind sconosciuto"})
+            continue
+        row = db.get(Model, rid)
+        if row is None:
+            skipped.append({**it, "reason": "non trovato"})
+            continue
+        db.delete(row)
+        n_ok += 1
+    db.commit()
+    return {"ok": True, "deleted": n_ok, "skipped": skipped}

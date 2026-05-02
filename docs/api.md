@@ -227,6 +227,37 @@ i log via `/api/optimize/runs/{run_id}/stream` (SSE).
 
 ### Unified constraint creation
 
+- `POST /api/constraints/feasibility-check` body
+  `{time_limit_s?: float = 30}` -- esegue l'analisi MUS dei vincoli
+  HARD/ENFORCED. Risposta:
+  ```
+  {
+    feasible: bool | null,            # null = solver inconclusivo
+    n_constraints: int,
+    n_assignments: int,
+    time_s: float,
+    cores: [
+      {
+        id: int,
+        kind: "matrix_hard_enforced" | "cpsat_unsat_core" | ...,
+        reason: str,
+        members: [
+          { db_kind: str, db_id: int, level: str, scope: str,
+            owner_name: str, detail: str },
+          ...
+        ],
+      }, ...
+    ],
+    suggested_removal: [
+      { db_kind, db_id, level, scope, owner_name, detail, reason },
+      ...
+    ],
+  }
+  ```
+- `POST /api/constraints/delete-batch` body
+  `{items: [{kind: str, id: int}, ...]}` -- bulk delete. Skip
+  silenzioso su kind sconosciuti / id mancanti; ritorna
+  `{deleted, skipped}`.
 - `POST /api/constraints` (`ConstraintCreateIn`) -- dispatcher unico
   per creare vincoli da zero. Usato dal wizard "Nuovo vincolo" in
   `/constraints`. Payload polimorfo:
