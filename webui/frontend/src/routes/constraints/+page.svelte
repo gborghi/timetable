@@ -151,19 +151,25 @@
   const columns = [
     { key: 'kind', label: 'Kind' },
     { key: 'scope', label: 'Ambito' },
-    { key: 'owner', label: 'Owner' },
+    { key: 'applicato_a', label: 'Applicato a' },
     { key: 'level', label: 'Stato' },
     { key: 'weight', label: 'Peso' },
     { key: 'detail', label: 'Dettaglio' }
   ];
   const help = {
-    fields: ['kind', 'tipo', 'scope', 'ambito', 'owner', 'level', 'stato',
+    fields: ['kind', 'tipo', 'scope', 'ambito',
+             'applicato_a', 'applicato', 'chi', 'nome',
+             'docente', 'classe', 'aula', 'materia', 'subject',
+             'owner', 'level', 'stato',
              'weight', 'peso', 'detail', 'dettaglio', 'extra'],
     examples: [
       'level = hard',
       'level = enforced',
       'kind = logical_teacher',
-      'owner contains Rossi',
+      'applicato_a contains Rossi',
+      'docente = Bianchi',
+      'classe contains 3A',
+      'aula = LabFisica',
       'peso > 100',
       'scope = aula'
     ]
@@ -239,9 +245,23 @@
         <span class="pill !text-[10px]">{row.scope}</span>
       </td>
       <td class="text-xs">
+        <!-- "Applicato a": l'entita' a cui il vincolo si riferisce.
+             Ricercabile via owner / applicato_a / chi / nome /
+             docente / classe / aula nel DSL. -->
+        {#if row.scope === 'docente'}
+          <span class="text-ink-500">👤 docente:</span>
+        {:else if row.scope === 'classe'}
+          <span class="text-ink-500">🏫 classe:</span>
+        {:else if row.scope === 'aula'}
+          <span class="text-ink-500">🚪 aula:</span>
+        {:else if row.scope === 'indirizzo'}
+          <span class="text-ink-500">🎓 indirizzo:</span>
+        {:else if row.scope === 'materia/aula' || row.scope === 'docente/aula'}
+          <span class="text-ink-500">{row.scope}:</span>
+        {/if}
         <strong class="text-accent-700">{row.owner_name}</strong>
         {#if row.subject}
-          <span class="text-ink-500"> - {row.subject}</span>
+          <span class="text-ink-500"> · materia: {row.subject}</span>
         {/if}
       </td>
       <td>

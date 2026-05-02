@@ -355,14 +355,32 @@ def constraint_fields() -> dict[str, Callable[[Any], Any]]:
         "tipo": lambda r: r.get("kind") or "",
         "scope": lambda r: r.get("scope") or "",
         "ambito": lambda r: r.get("scope") or "",
+        # The OWNER (applies-to) name. Aliases in Italian make this
+        # discoverable via the query box: "applicato_a contains Rossi",
+        # "docente = Bianchi", "chi contains 3A", "nome contains Lab".
         "owner": lambda r: r.get("owner_name") or "",
         "owner_name": lambda r: r.get("owner_name") or "",
+        "applicato_a": lambda r: r.get("owner_name") or "",
+        "applicato": lambda r: r.get("owner_name") or "",
+        "chi": lambda r: r.get("owner_name") or "",
+        "nome": lambda r: r.get("owner_name") or "",
+        "docente": lambda r: (r.get("owner_name") or ""
+                              if (r.get("scope") or "").startswith("doc")
+                              else ""),
+        "classe": lambda r: (r.get("owner_name") or ""
+                              if (r.get("scope") or "") == "classe"
+                              else ""),
+        "aula": lambda r: (r.get("owner_name") or ""
+                            if (r.get("scope") or "") == "aula"
+                            else ""),
         "level": lambda r: r.get("level") or "",
         "stato": lambda r: r.get("level") or "",
         "weight": lambda r: r.get("weight", 0),
         "peso": lambda r: r.get("weight", 0),
         "detail": lambda r: r.get("detail") or "",
         "dettaglio": lambda r: r.get("detail") or "",
+        "subject": lambda r: r.get("subject") or "",
+        "materia": lambda r: r.get("subject") or "",
         "extra": lambda r: r.get("extra") or "",
     }
 
