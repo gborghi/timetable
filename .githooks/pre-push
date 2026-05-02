@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# pre-push hook: rebuild docs/manual.pdf if manual.tex (or any .md
+# under docs/) changed since the last push, and amend it to the
+# pending push so the PDF on GitHub stays in sync.
+#
+# Install once with:
+#   git config core.hooksPath .githooks
+#
+# To skip on a single push:  PITANTUM_SKIP_PDF=1 git push
+set -e
+
+if [[ "${PITANTUM_SKIP_PDF:-}" == "1" ]]; then
+  exit 0
+fi
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "$REPO_ROOT"
+
+# Only rebuild if docs sources changed in any commit being pushed
+# (compare HEAD against the upstream branch's tip).
+if git rev-parse --verify "@{u}" >/dev/null 2>&1; then
+  CHANGED=$(git diff --name-only "@{u}"..HEAD -- docs/manual.tex 'docs/*.md' \
+            'webui/docs/*.md' 2>/dev/null || true)
+else
+  CHANGED="docs/manual.tex"   # first push -- always build
+fi
+
+if [[ -z "$CHANGED" ]]; then
+  exit 0
+fi
+
+if ! command -v lualatex >/dev/null 2>&1; then
+  echo "[pre-push] lualatex non trovato; skip rebuild manual.pdf" >&2
+  exit 0
+fi
+
+echo "[pre-push] rebuilding docs/manual.pdf"
+bash docs/build_manual.sh
+
+if ! git diff --quiet -- docs/manual.pdf; then
+  git add docs/manual.pdf
+  git commit -m "docs: rebuild manual.pdf"
+  echo "[pre-push] manual.pdf rebuilt and committed"
+fi

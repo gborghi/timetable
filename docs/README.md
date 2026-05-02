@@ -19,6 +19,33 @@ per una versione PDF stampabile con copertina e indice, vedere
 | [api.md](api.md)                           | reference REST: gruppi di endpoint, formati request/response, esempi curl |
 | [extending.md](extending.md)               | come aggiungere un nuovo tipo di vincolo, una nuova tabella, una nuova pagina UI |
 
+## Ricompilare il manuale PDF
+
+`docs/manual.pdf` segue gli stessi `.md` di questo indice. Per
+rigenerarlo dopo aver modificato `manual.tex`:
+
+```
+# Linux / macOS / Git Bash:
+docs/build_manual.sh
+# Windows:
+docs\build_manual.bat
+```
+
+La pipeline e' `lualatex -> biber -> makeindex -> lualatex x2`,
+con cleanup degli aux files. Aggiungi `--quick` per saltare i
+passi 2-3 quando stai iterando velocemente.
+
+Per rigenerare il PDF automaticamente prima di ogni `git push`:
+
+```
+git config core.hooksPath .githooks
+```
+
+Il pre-push hook controlla se `manual.tex` o un .md sotto
+`docs/` e' cambiato rispetto a `@{u}`, ricompila il PDF, lo
+committa e poi prosegue. Lo skip una tantum:
+`PITANTUM_SKIP_PDF=1 git push`.
+
 ## Avvio rapido
 
 ```
