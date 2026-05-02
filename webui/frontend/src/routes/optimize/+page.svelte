@@ -5,6 +5,8 @@
   import { OPTIMIZE_DEFAULTS } from '$lib/constants';
   import RunLogPanel from '$lib/components/RunLogPanel.svelte';
   import PhaseACard from '$lib/components/optimize/PhaseACard.svelte';
+  import AdvancedTechniquesCard from
+    '$lib/components/optimize/AdvancedTechniquesCard.svelte';
 
   let runId = null;
   let runs = [];
@@ -34,26 +36,38 @@
   // step honours its OWN optimize_rooms toggle on cards 3 / 4-7 -- the
   // pipeline itself does not have a separate rooms toggle.
   const PIPELINE_LABEL = {
+    hall_check: 'Pre-check Hall (diagnostico)',
     phase_a: '2) Assegnazione (Phase A)',
     phase_b: '3) Schedulazione orario (Phase B)',
+    cg:      'Column Generation (alternativo a Phase B)',
     lns:     '4) LNS',
+    alns:    '4-bis) ALNS (Adaptive LNS)',
     sa:      '5) SA',
     ts:      '6) TS',
+    vns:     '6-bis) VNS (Variable Neighbourhood Search)',
     ils:     '7) ILS',
     rooms:   '8) Assegna aule (indipendente)',
   };
-  // Default pipeline includes rooms as the last step but UNTICKED. The
-  // user can drag it to any position. Unticked it just doesn't run --
-  // tip: leave it unticked and tick "Ottimizza aule insieme" on cards
-  // 3/4-7 if you want rooms folded into the timetable solver.
+  // Default pipeline. Order:
+  //   - Hall pre-check (ON, optional structural diagnostic)
+  //   - phase_a, phase_b (ON)
+  //   - lns + alns (ON; ALNS replaces or follows LNS)
+  //   - sa, ts (ON)
+  //   - vns (OFF; rifinitura, attivabile per qualita' massima)
+  //   - ils (ON)
+  //   - cg, rooms (OFF; specialised stages)
   let pipelineList = [
-    { key: 'phase_a', enabled: true },
-    { key: 'phase_b', enabled: true },
-    { key: 'lns',     enabled: true },
-    { key: 'sa',      enabled: true },
-    { key: 'ts',      enabled: true },
-    { key: 'ils',     enabled: true },
-    { key: 'rooms',   enabled: false },
+    { key: 'hall_check', enabled: true  },
+    { key: 'phase_a',    enabled: true  },
+    { key: 'phase_b',    enabled: true  },
+    { key: 'cg',         enabled: false },
+    { key: 'lns',        enabled: true  },
+    { key: 'alns',       enabled: true  },
+    { key: 'sa',         enabled: true  },
+    { key: 'ts',         enabled: true  },
+    { key: 'vns',        enabled: false },
+    { key: 'ils',        enabled: true  },
+    { key: 'rooms',      enabled: false },
   ];
   let stepFull = {
     profile: '', workers: 8, time_assign: 30,
@@ -290,6 +304,10 @@
         <button class="btn-primary" on:click={() => launchMeta('ils')}>7) ILS</button>
       </div>
     </div>
+
+    <!-- Step 4-bis: advanced techniques -->
+    <AdvancedTechniquesCard
+      onRunStarted={(rid) => { runId = rid; reloadRuns(); }}/>
 
     <!-- Step rooms -->
     <div class="card p-5">
