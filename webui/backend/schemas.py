@@ -883,6 +883,7 @@ class StudentBase(BaseModel):
     student_code: str | None = None
     class_id: int | None = None
     notes: str | None = None
+    tags: list[str] = Field(default_factory=list)
 
 
 class StudentIn(StudentBase):
@@ -893,6 +894,19 @@ class StudentOut(StudentBase):
     id: int
     class_name: str | None = None
     n_groups: int = 0
+    model_config = ConfigDict(from_attributes=True)
+
+
+class StudentTagIn(BaseModel):
+    name: str
+    description: str | None = None
+
+
+class StudentTagOut(BaseModel):
+    id: int
+    name: str
+    description: str | None = None
+    n_students: int = 0
     model_config = ConfigDict(from_attributes=True)
 
 

@@ -199,6 +199,9 @@ def curriculum_funcs() -> dict[str, Callable[..., bool]]:
 
 
 def student_fields() -> dict[str, Callable[[Any], Any]]:
+    def _tags_csv(r):
+        ts = r.get("tags") or []
+        return " ".join(t.lower() for t in ts)
     return {
         "last_name": lambda r: r.get("last_name") or "",
         "cognome": lambda r: r.get("last_name") or "",
@@ -214,11 +217,19 @@ def student_fields() -> dict[str, Callable[[Any], Any]]:
         "email": lambda r: r.get("email") or "",
         "gender": lambda r: r.get("gender") or "",
         "n_groups": lambda r: r.get("n_groups", 0),
+        "tags": _tags_csv,
+        "tag": _tags_csv,
     }
 
 
 def student_funcs() -> dict[str, Callable[..., bool]]:
-    return {}
+    def has_tag(record: Any, tag_name: str) -> bool:
+        ts = record.get("tags") or []
+        if not isinstance(tag_name, str):
+            return False
+        n = tag_name.lower()
+        return any((t or "").lower() == n for t in ts)
+    return {"has_tag": has_tag, "tag": has_tag}
 
 
 # ---------- Study groups ----------

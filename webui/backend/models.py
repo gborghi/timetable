@@ -968,9 +968,58 @@ class Student(TenantMixin, TimestampMixin, Base):
     memberships: Mapped[list["GroupMembership"]] = relationship(
         back_populates="student", cascade="all, delete-orphan"
     )
+    tag_assignments: Mapped[list["StudentTagAssignment"]] = relationship(
+        back_populates="student", cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
     __table_args__ = (
         UniqueConstraint("last_name", "first_name", "birth_date",
                          name="uq_student_identity"),
+    )
+
+
+class StudentTag(Base):
+    """Lightweight label attachable to students (many-to-many).
+
+    Examples used in production:
+      - 'BES', 'DSA' (special needs)
+      - 'debito_matematica_4' (subject debt by year)
+      - 'pcto_ditta_X' (work-study placement at company X)
+      - 'studente_atleta' (athletic-student flexibility)
+
+    Tags are passive metadata for filtering / grouping; they do NOT
+    replace StudyGroup. They can be queried with
+      `forall s in students where "BES" in s.tags: ...`
+    in the general DSL, or `has_tag(BES)` in the students list.
+    """
+    __tablename__ = "student_tags"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    assignments: Mapped[list["StudentTagAssignment"]] = relationship(
+        back_populates="tag", cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class StudentTagAssignment(Base):
+    """Join row: student <-> tag."""
+    __tablename__ = "student_tag_assignments"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    student_id: Mapped[int] = mapped_column(
+        ForeignKey("students.id", ondelete="CASCADE"), index=True
+    )
+    tag_id: Mapped[int] = mapped_column(
+        ForeignKey("student_tags.id", ondelete="CASCADE"), index=True
+    )
+    student: Mapped["Student"] = relationship(
+        back_populates="tag_assignments"
+    )
+    tag: Mapped["StudentTag"] = relationship(
+        back_populates="assignments"
+    )
+    __table_args__ = (
+        UniqueConstraint("student_id", "tag_id", name="uq_student_tag"),
     )
 
 

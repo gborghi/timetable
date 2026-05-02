@@ -258,7 +258,7 @@ class Call(Node):
 
 _VALID_SOURCES = {
     "lessons", "assignments", "teachers", "classes", "classrooms",
-    "subjects", "curricula", "groups", "days", "hours", "slots",
+    "subjects", "curricula", "groups", "students", "days", "hours", "slots",
 }
 
 
@@ -495,13 +495,15 @@ _KNOWN_ENTITY_FIELDS: dict[str, set[str]] = {
     "assignment": {"teacher", "class", "subject", "hours", "locked"},
     "teacher":   {"name", "group", "max_hours", "free_day",
                   "graduatoria_score", "completion_hours",
-                  "exemption_hours"},
+                  "exemption_hours", "subject", "subjects"},
     "class":     {"name", "year", "section", "curriculum",
                   "n_students"},
-    "classroom": {"name", "kind", "type", "capacity"},
+    "classroom": {"name", "kind", "type", "capacity", "tags"},
     "subject":   {"name"},
     "curriculum": {"name", "code", "score"},
     "group":     {"name", "kind"},
+    "student":   {"id", "name", "last_name", "first_name", "class",
+                  "tags", "groups"},
     "slot":      {"day", "hour"},
     "day":       {"name", "index"},
     "hour":      {"index"},
@@ -602,6 +604,7 @@ def _source_to_entity(src: str) -> str | None:
         "teachers": "teacher", "classes": "class",
         "classrooms": "classroom", "subjects": "subject",
         "curricula": "curriculum", "groups": "group",
+        "students": "student",
         "slots": "slot", "days": "day", "hours": "hour",
     }.get(src)
 
@@ -668,9 +671,40 @@ def build_world(db) -> dict[str, list]:
         {"name": c.name, "code": c.code, "score": c.score}
         for c in curricula_by_id.values()
     ]
+    # ----- Students with tags + groups -----
+    student_tags: dict[int, list[str]] = {}
+    for sa in db.query(_m.StudentTagAssignment).all():
+        if sa.tag is not None:
+            student_tags.setdefault(sa.student_id, []).append(sa.tag.name)
+    student_groups: dict[int, list[dict]] = {}
+    groups_by_id: dict[int, _m.StudyGroup] = {
+        g.id: g for g in db.query(models.StudyGroup).all()
+    }
+    for gm in db.query(_m.GroupMembership).all():
+        g = groups_by_id.get(gm.group_id)
+        if g is None:
+            continue
+        student_groups.setdefault(gm.student_id, []).append({
+            "name": g.name, "kind": g.kind,
+        })
+    out["students"] = [
+        {
+            "id": s.id,
+            "name": ((s.last_name or "") + " "
+                     + (s.first_name or "")).strip(),
+            "last_name": s.last_name,
+            "first_name": s.first_name,
+            "class": (classes_by_id.get(s.class_id).name
+                      if s.class_id and classes_by_id.get(s.class_id)
+                      else None),
+            "tags": sorted(student_tags.get(s.id, [])),
+            "groups": student_groups.get(s.id, []),
+        }
+        for s in db.query(models.Student).all()
+    ]
     out["groups"] = [
         {"name": g.name, "kind": g.kind}
-        for g in db.query(models.StudyGroup).all()
+        for g in groups_by_id.values()
     ]
     out["days"] = [{"index": d, "name": _day_name(d)}
                    for d in range(1, 7)]
