@@ -49,12 +49,29 @@ def _normalize_header(h: Any) -> str:
 
 def _read_xlsx(content: bytes, sheet: str | None
                ) -> tuple[list[str], list[list[Any]]]:
+    """Read a sheet from a xlsx workbook. When sheet is None and a
+    'Dati' sheet exists (multi-sheet templates produced by GET
+    /api/import/{entity}/template), prefer that one over the default
+    first-sheet behaviour.
+    """
     try:
         from openpyxl import load_workbook
     except ImportError as e:  # pragma: no cover
         raise HTTPException(500, f"openpyxl non disponibile: {e}")
     wb = load_workbook(io.BytesIO(content), data_only=True, read_only=True)
-    ws = wb[sheet] if sheet else wb.worksheets[0]
+    if sheet:
+        if sheet not in wb.sheetnames:
+            raise HTTPException(
+                400, f"foglio '{sheet}' non trovato; disponibili: "
+                     f"{wb.sheetnames}"
+            )
+        ws = wb[sheet]
+    else:
+        # Prefer 'Dati' if present (templates), else first sheet
+        if "Dati" in wb.sheetnames:
+            ws = wb["Dati"]
+        else:
+            ws = wb.worksheets[0]
     rows = ws.iter_rows(values_only=True)
     try:
         header = list(next(rows))
@@ -197,6 +214,21 @@ def _import_teachers(db: Session, rows: Iterable[dict],
         t.free_day = _pick(r, "free_day", "giorno_libero")
         t.max_consecutive = _norm_int(_pick(r, "max_consecutive",
                                             "max_consecutive_ore"), 5)
+        # New fields (added since the original importer)
+        gs = _pick(r, "graduatoria_score", "graduatoria",
+                   "punteggio_graduatoria")
+        if gs not in (None, ""):
+            t.graduatoria_score = _norm_float(gs, t.graduatoria_score or 0.0)
+        rfdc = _pick(r, "required_free_days_count",
+                     "giorni_liberi_richiesti")
+        if rfdc not in (None, ""):
+            t.required_free_days_count = _norm_int(
+                rfdc, getattr(t, "required_free_days_count", 1) or 1
+            )
+        pfd = _pick(r, "preferred_free_days_json",
+                     "preferred_free_days")
+        if pfd not in (None, ""):
+            t.preferred_free_days_json = str(pfd)
         t.notes = _pick(r, "notes", "note")
         if not is_update:
             db.add(t)
@@ -294,6 +326,23 @@ def _import_classes(db: Session, rows: Iterable[dict],
             c.curriculum_id = curr_by_code[str(curr)].id
         c.n_students = _norm_int(_pick(r0, "n_students", "studenti"),
                                  c.n_students or 22)
+        # New: max_hours_per_day, preferred_free_days_json,
+        # required_free_days_count
+        mhpd = _pick(r0, "max_hours_per_day", "max_ore_giorno")
+        if mhpd not in (None, ""):
+            c.max_hours_per_day = _norm_int(
+                mhpd, getattr(c, "max_hours_per_day", 5) or 5
+            )
+        rfdc = _pick(r0, "required_free_days_count",
+                     "giorni_liberi_richiesti")
+        if rfdc not in (None, ""):
+            c.required_free_days_count = _norm_int(
+                rfdc, getattr(c, "required_free_days_count", 0) or 0
+            )
+        pfd = _pick(r0, "preferred_free_days_json",
+                     "preferred_free_days")
+        if pfd not in (None, ""):
+            c.preferred_free_days_json = str(pfd)
         c.notes = _pick(r0, "notes", "note")
         if not is_update:
             db.add(c)
@@ -352,6 +401,32 @@ def _import_classrooms(db: Session, rows: Iterable[dict],
         room.notes = _pick(r, "notes", "note")
         if not is_update:
             db.add(room)
+            db.flush()
+        # ----- Tags column (comma-separated) -----
+        tag_field = _pick(r, "tags", "tag", "etichette")
+        if tag_field is not None:
+            wanted = {
+                t.strip().lower()
+                for t in _split_csv_field(tag_field)
+                if t and t.strip()
+            }
+            existing_tags = {
+                t.name: t for t in db.query(models.ClassroomTag).filter(
+                    models.ClassroomTag.name.in_(wanted)
+                ).all()
+            } if wanted else {}
+            for n in wanted - set(existing_tags):
+                new_tag = models.ClassroomTag(name=n)
+                db.add(new_tag)
+                db.flush()
+                existing_tags[n] = new_tag
+            db.query(models.ClassroomTagAssignment).filter(
+                models.ClassroomTagAssignment.classroom_id == room.id
+            ).delete()
+            for n in wanted:
+                db.add(models.ClassroomTagAssignment(
+                    classroom_id=room.id, tag_id=existing_tags[n].id,
+                ))
         if is_update:
             rep.n_updated += 1
         else:
@@ -481,6 +556,34 @@ def _import_students(db: Session, rows: Iterable[dict],
         cname = _pick(r, "class_name", "classe", "class")
         s.class_id = classes_by_name.get(str(cname)) if cname else None
         s.notes = _pick(r, "notes", "note")
+        # ----- Tags (created on the fly, lower-cased) -----
+        tag_field = _pick(r, "tags", "tag", "etichette")
+        if tag_field is not None:
+            db.flush()
+            wanted = {
+                t.strip().lower()
+                for t in _split_csv_field(tag_field)
+                if t and t.strip()
+            }
+            # ensure all tag rows exist
+            existing_tags = {
+                t.name: t for t in db.query(models.StudentTag).filter(
+                    models.StudentTag.name.in_(wanted)
+                ).all()
+            } if wanted else {}
+            for n in wanted - set(existing_tags):
+                new_tag = models.StudentTag(name=n)
+                db.add(new_tag)
+                db.flush()
+                existing_tags[n] = new_tag
+            # rewrite assignments
+            db.query(models.StudentTagAssignment).filter(
+                models.StudentTagAssignment.student_id == s.id
+            ).delete()
+            for n in wanted:
+                db.add(models.StudentTagAssignment(
+                    student_id=s.id, tag_id=existing_tags[n].id,
+                ))
         if is_update:
             rep.n_updated += 1
         else:
@@ -616,7 +719,7 @@ async def do_import(entity: str,
 # ---------- template generator ----------
 
 
-_TEMPLATES = {
+_TEMPLATES: dict[str, list[tuple[str, Any]]] = {
     "teachers": [
         ("name", "Mario Rossi"),
         ("matricola", "MR123"),
@@ -624,6 +727,9 @@ _TEMPLATES = {
         ("max_hours", 18),
         ("free_day", "Saturday"),
         ("subjects", "Matematica,Fisica"),
+        ("graduatoria_score", 0.0),
+        ("required_free_days_count", 1),
+        ("preferred_free_days_json", ""),
         ("notes", ""),
     ],
     "subjects": [
@@ -642,6 +748,9 @@ _TEMPLATES = {
         ("n_students", 22),
         ("subject", "Matematica"),
         ("hours_per_week", 5),
+        ("max_hours_per_day", 5),
+        ("required_free_days_count", 0),
+        ("preferred_free_days_json", ""),
         ("notes", ""),
     ],
     "classrooms": [
@@ -650,6 +759,7 @@ _TEMPLATES = {
         ("capacity", 30),
         ("multi_class", "no"),
         ("multi_class_max", 1),
+        ("tags", "matematica,scientifico"),
         ("notes", ""),
     ],
     "curricula": [
@@ -669,6 +779,7 @@ _TEMPLATES = {
         ("email", ""),
         ("student_code", "S001"),
         ("class_name", "1A"),
+        ("tags", "BES,debito_matematica_4"),
         ("notes", ""),
     ],
     "groups": [
@@ -683,22 +794,170 @@ _TEMPLATES = {
 }
 
 
+# Per-column hints displayed in the "Istruzioni" sheet of the
+# downloadable template. Keys NOT listed here use a generic
+# "campo libero" message.
+_TEMPLATE_HINTS: dict[str, dict[str, str]] = {
+    "teachers": {
+        "name": "OBBLIGATORIO -- nome univoco del docente (chiave).",
+        "matricola": "Codice esterno (matricola). Opzionale.",
+        "group": "Classe di concorso (es. A050, A026).",
+        "max_hours": "Ore settimanali standard (es. 18).",
+        "free_day": "Giorno libero legacy (Monday..Saturday). "
+                    "Convertito in HARD-cells.",
+        "subjects": "Lista materie separate da virgola. Esempio: "
+                    "'Matematica,Fisica'.",
+        "graduatoria_score": "Float; usato dal modulo supplenze per "
+                             "ordinare le candidature.",
+        "required_free_days_count": "HARD: numero esatto di giorni "
+                                     "liberi a settimana (CCNL=1).",
+        "preferred_free_days_json": "Opzionale -- JSON [{day:1..6,"
+                                     "is_hard:bool,soft_penalty:int}]. "
+                                     "Lascia vuoto per default.",
+        "notes": "Annotazioni libere.",
+    },
+    "classes": {
+        "name": "OBBLIGATORIO -- nome classe (es. 1A_Scientifico).",
+        "year": "Anno (1..5).",
+        "section": "Sezione (A,B,C,...). Opzionale.",
+        "curriculum": "Codice indirizzo (vedi /curricula).",
+        "n_students": "Numero studenti.",
+        "subject": "Una riga per (classe,materia): elenca qui la "
+                   "materia di questa riga.",
+        "hours_per_week": "Ore settimanali della materia indicata.",
+        "max_hours_per_day": "HARD: massimo ore al giorno (default 5).",
+        "required_free_days_count": "HARD: numero esatto di giorni "
+                                     "liberi (default 0 per classi).",
+        "preferred_free_days_json": "JSON come per i docenti.",
+    },
+    "classrooms": {
+        "name": "OBBLIGATORIO -- nome aula (es. 'Aula 12', "
+                "'Lab Fisica 1').",
+        "kind": "Uno di: standard / lab_chimica / lab_fisica / "
+                 "lab_informatica / lab_linguistico / palestra / "
+                 "biblioteca / aula_speciale.",
+        "capacity": "Capienza (intero).",
+        "multi_class": "yes/no (palestre+biblioteche multi-classe).",
+        "multi_class_max": "Max classi simultanee (HARD).",
+        "tags": "Lista tag separati da virgola (lower-case, creati "
+                "al volo). Esempio: 'matematica,scientifico'.",
+    },
+    "curricula": {
+        "code": "OBBLIGATORIO -- codice macchina (Scientifico, "
+                 "Linguistico, Itis...).",
+        "name": "Nome visibile.",
+        "score": "Peso normalizzato dal motore mock.",
+        "year": "Anno (1..5).",
+        "subject": "Materia (una riga per (curriculum,year,subject)).",
+        "hours_per_week": "Ore settimanali del monte ore.",
+    },
+    "students": {
+        "last_name": "OBBLIGATORIO -- cognome.",
+        "first_name": "OBBLIGATORIO -- nome.",
+        "birth_date": "Formato ISO (YYYY-MM-DD). Parte della chiave "
+                       "univoca insieme a cognome+nome.",
+        "gender": "M/F/other (opzionale).",
+        "student_code": "Matricola (opzionale).",
+        "class_name": "Nome classe di appartenenza (vedi /classes).",
+        "tags": "Lista tag separati da virgola (lower-case, creati "
+                "al volo). Esempio: 'BES,debito_matematica_4'.",
+    },
+    "groups": {
+        "name": "OBBLIGATORIO -- nome gruppo univoco.",
+        "kind": "splitting / language / religion / support / other.",
+        "subject": "Una riga per (gruppo,materia).",
+        "hours_per_week": "Ore settimanali della materia.",
+        "student_codes": "Lista student_code separati da virgola.",
+    },
+    "subjects": {
+        "name": "OBBLIGATORIO -- nome materia (chiave).",
+        "pretty_name": "Etichetta visualizzata nell'orario.",
+        "distribute_days_weight": "SOFT -- peso per distribuire le ore "
+                                   "su giorni diversi.",
+        "dual_hours_weight": "SOFT -- peso per favorire ore doppie.",
+        "no_sixth_hour_weight": "SOFT -- penalizza la 6a ora.",
+    },
+}
+
+
 @router.get("/{entity}/template")
 def download_template(entity: str):
+    """Download a 3-sheet xlsx template:
+       - Istruzioni: per-column hint table + general usage notes
+       - Esempi:    a few pre-populated example rows
+       - Dati:      the empty sheet the user fills in (this is the
+                    sheet POST /api/import/{entity} reads by default)
+    """
     if entity not in _TEMPLATES:
         raise HTTPException(404, f"entity '{entity}' non supportata")
     try:
         from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment
     except ImportError as e:  # pragma: no cover
         raise HTTPException(500, f"openpyxl non disponibile: {e}")
-    wb = Workbook()
-    ws = wb.active
-    ws.title = entity
     rows = _TEMPLATES[entity]
     headers = [k for k, _ in rows]
     sample = [v for _, v in rows]
-    ws.append(headers)
-    ws.append(sample)
+    hints = _TEMPLATE_HINTS.get(entity, {})
+
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill("solid", fgColor="2563EB")
+
+    wb = Workbook()
+    # 1) Istruzioni
+    ws_help = wb.active
+    ws_help.title = "Istruzioni"
+    ws_help.append(["Campo", "Hint"])
+    for cell in ws_help[1]:
+        cell.font = header_font
+        cell.fill = header_fill
+    ws_help.column_dimensions["A"].width = 30
+    ws_help.column_dimensions["B"].width = 90
+    for k, _ in rows:
+        ws_help.append([k, hints.get(k, "(campo libero)")])
+    # General notes block
+    ws_help.append([])
+    ws_help.append(["NOTE GENERALI"])
+    for n in [
+        "L'import accetta i sinonimi italiani dei campi (es. 'cognome' "
+            "<-> 'last_name', 'classe' <-> 'class_name').",
+        "Le righe vuote vengono ignorate. Se manca un campo "
+            "obbligatorio la riga viene saltata e segnalata in "
+            "ImportReport.errors.",
+        "I valori di liste (subjects, tags, student_codes) sono separati "
+            "da virgola.",
+        "Per gli xlsx la prima riga del foglio 'Dati' deve contenere gli "
+            "header. Per CSV stesse regole, separatore auto-detected.",
+        "Mode possibili: 'upsert' (default), 'replace' (cancella e "
+            "ricarica tutto), 'append' (solo inserimenti).",
+    ]:
+        ws_help.append(["", n])
+
+    # 2) Esempi
+    ws_ex = wb.create_sheet("Esempi")
+    ws_ex.append(headers)
+    for cell in ws_ex[1]:
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal="center")
+    ws_ex.append(sample)
+
+    # 3) Dati (empty user-fillable sheet)
+    ws_data = wb.create_sheet("Dati")
+    ws_data.append(headers)
+    for cell in ws_data[1]:
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal="center")
+    # Column widths so the user sees the headers
+    for i, h in enumerate(headers, start=1):
+        ws_data.column_dimensions[
+            ws_data.cell(row=1, column=i).column_letter
+        ].width = max(14, min(40, len(h) + 4))
+        ws_ex.column_dimensions[
+            ws_ex.cell(row=1, column=i).column_letter
+        ].width = max(14, min(40, len(h) + 4))
+
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
