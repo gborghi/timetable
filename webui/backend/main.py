@@ -40,6 +40,7 @@ from backend.routers import (  # noqa: E402
     curricula,
     dashboard,
     dataset,
+    diagnostics,
     groups,
     imports,
     logical,
@@ -133,6 +134,7 @@ app.include_router(monitor.router)
 app.include_router(dashboard.router)
 app.include_router(constraints.router)
 app.include_router(saved_views.router)
+app.include_router(diagnostics.router)
 
 
 @app.get("/")

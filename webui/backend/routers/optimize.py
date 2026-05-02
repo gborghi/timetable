@@ -288,7 +288,8 @@ def launch_column_generation(payload: schemas.ColumnGenerationIn):
 # first (otherwise /rooms would be parsed as stage="rooms").
 @router.post("/meta/{stage}")
 def launch_meta(stage: str, payload: schemas.MetaRunIn):
-    if stage not in ("lns", "sa", "ts", "ils", "alns", "vns"):
+    if stage not in ("lns", "sa", "ts", "ils", "alns", "vns",
+                      "lagrangian"):
         raise HTTPException(400, f"unknown stage {stage}")
     rid = optimization.run_meta(
         stage,
@@ -306,5 +307,8 @@ def launch_meta(stage: str, payload: schemas.MetaRunIn):
         alns_destroy=payload.alns_destroy,
         alns_repair=payload.alns_repair,
         vns_neighbourhoods=payload.vns_neighbourhoods,
+        lagrangian_max_iter=payload.lagrangian_max_iter,
+        lagrangian_tolerance=payload.lagrangian_tolerance,
+        lagrangian_alpha_0=payload.lagrangian_alpha_0,
     )
     return {"run_id": rid}

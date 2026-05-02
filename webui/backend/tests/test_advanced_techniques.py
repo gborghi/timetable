@@ -222,3 +222,89 @@ def test_cg_smoke_run_full():
     assert info["kind"] == "column_generation"
     assert info["duration_s"] is not None
     assert info["duration_s"] < 5.0
+
+
+# ---------- Lagrangian ----------
+
+def test_lagrangian_module_imports():
+    import lagrangian
+    assert callable(lagrangian.run_lagrangian)
+
+
+def test_lagrangian_no_bridges_is_noop():
+    """When there are no inter-cluster bridges, the run returns a
+    'no bridge' info dict and the input solution unchanged."""
+    import lagrangian
+    sol = _tiny_feasible_solution()
+    profs = _tiny_profs()
+    out, info = lagrangian.run_lagrangian(
+        sol, profs, dc_value={},
+        time_budget_s=1.0,
+        max_iter=2,
+        classes_clusters=None,   # no clustering -> no bridges
+        log=False,
+    )
+    assert info["kind"] == "lagrangian"
+    assert info["n_bridges"] == 0
+    # When no bridges, returns the input solution
+    assert out == sol
+
+
+# ---------- Diagnostic modules ----------
+
+def test_montecarlo_module_imports():
+    from diagnostics import montecarlo_sensitivity as mc
+    assert callable(mc.run_montecarlo)
+
+
+def test_montecarlo_handles_empty_history():
+    """run_montecarlo on a fresh solution returns ok=True with at
+    least one sample."""
+    from diagnostics import montecarlo_sensitivity as mc
+    sol = _tiny_feasible_solution()
+    profs = _tiny_profs()
+    res = mc.run_montecarlo(sol, profs, dc_value={},
+                              n_samples=5, moves_per_sample=3, seed=0)
+    assert res["ok"] is True
+    assert res["n_samples"] == 5
+    assert res["mean"] >= 0
+    assert res["std"] >= 0
+
+
+def test_bipartite_module_imports():
+    from diagnostics import bipartite_analysis as ba
+    assert callable(ba.analyze)
+
+
+def test_bipartite_analyze_tiny_graph():
+    from diagnostics import bipartite_analysis as ba
+    profs = {
+        "T1": {"classi": {"1A": {"Mat": {"ore": 5}},
+                          "1B": {"Mat": {"ore": 5}}}},
+        "T2": {"classi": {"1A": {"Ita": {"ore": 4}},
+                          "1B": {"Ita": {"ore": 4}}}},
+    }
+    res = ba.analyze(profs, mode="classes")
+    assert res["ok"] is True
+    assert res["n_nodes"] == 2
+    assert 0 <= res["density"] <= 1
+
+
+def test_correlations_module_imports():
+    from diagnostics import correlations as co
+    assert callable(co.run)
+
+
+def test_distributions_module_imports():
+    from diagnostics import distributions as ds
+    assert callable(ds.run)
+
+
+def test_distributions_run_tiny_solution():
+    from diagnostics import distributions as ds
+    sol = _tiny_feasible_solution()
+    profs = _tiny_profs()
+    res = ds.run(sol, profs)
+    assert res["ok"] is True
+    assert "teacher_loads" in res
+    assert "subject_slot_heatmap" in res

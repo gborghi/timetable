@@ -481,6 +481,10 @@ class MetaRunIn(BaseModel):
     alns_repair: list[str] | None = None
     # VNS-only:
     vns_neighbourhoods: list[str] | None = None
+    # Lagrangian-only:
+    lagrangian_max_iter: int = 8
+    lagrangian_tolerance: float = 1e-2
+    lagrangian_alpha_0: float = 1.0
     # Per-step rooms toggle (same semantics as PhaseBRunIn): if True
     # the rooms step runs on the new active solution at the end.
     optimize_rooms: bool = False
@@ -494,7 +498,8 @@ class MetaRunIn(BaseModel):
 DEFAULT_PIPELINE_STEPS = ["phase_a", "phase_b", "lns", "alns", "sa",
                           "ts", "vns", "ils"]
 PIPELINE_STEP_KEYS = {"phase_a", "phase_b", "lns", "alns", "sa", "ts",
-                       "vns", "ils", "rooms", "hall_check", "cg"}
+                       "vns", "ils", "rooms", "hall_check", "cg",
+                       "lagrangian"}
 
 
 class HallCheckIn(BaseModel):

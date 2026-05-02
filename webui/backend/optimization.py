@@ -674,7 +674,10 @@ def run_meta(stage: str, budget_s: float, workers: int, log: bool,
              alns_alpha: float = 0.995,
              alns_destroy: list[str] | None = None,
              alns_repair: list[str] | None = None,
-             vns_neighbourhoods: list[str] | None = None) -> int:
+             vns_neighbourhoods: list[str] | None = None,
+             lagrangian_max_iter: int = 8,
+             lagrangian_tolerance: float = 1e-2,
+             lagrangian_alpha_0: float = 1.0) -> int:
     params = dict(stage=stage, budget_s=budget_s, workers=workers, log=log,
                   n_cycles=n_cycles,
                   ts_budget_per_cycle=ts_budget_per_cycle,
@@ -686,7 +689,10 @@ def run_meta(stage: str, budget_s: float, workers: int, log: bool,
                   alns_T0=alns_T0, alns_alpha=alns_alpha,
                   alns_destroy=alns_destroy,
                   alns_repair=alns_repair,
-                  vns_neighbourhoods=vns_neighbourhoods)
+                  vns_neighbourhoods=vns_neighbourhoods,
+                  lagrangian_max_iter=lagrangian_max_iter,
+                  lagrangian_tolerance=lagrangian_tolerance,
+                  lagrangian_alpha_0=lagrangian_alpha_0)
     run_id = create_run(stage, f"{stage.upper()} on active solution",
                         None, params)
 
@@ -764,6 +770,17 @@ def run_meta(stage: str, budget_s: float, workers: int, log: bool,
                     sol, profs, dc_value, budget_s,
                     log=log,
                     enabled_neighbourhoods=vns_neighbourhoods,
+                )
+            elif stage == "lagrangian":
+                import lagrangian as lag_mod  # type: ignore
+                new_sol, _info = lag_mod.run_lagrangian(
+                    sol, profs, dc_value,
+                    time_budget_s=budget_s,
+                    max_iter=lagrangian_max_iter,
+                    tolerance=lagrangian_tolerance,
+                    alpha_0=lagrangian_alpha_0,
+                    classes_clusters=classes_clusters,
+                    log=log,
                 )
             else:
                 raise RuntimeError(f"Unknown stage {stage}")
@@ -928,7 +945,8 @@ def run_full_pipeline(profile: str,
         # Sanitize the steps list. Unknown keys are silently dropped;
         # an empty list is a no-op (still creates a 'done' run).
         valid = {"hall_check", "phase_a", "phase_b", "cg",
-                  "lns", "alns", "sa", "ts", "vns", "ils", "rooms"}
+                  "lns", "alns", "sa", "ts", "vns", "ils",
+                  "lagrangian", "rooms"}
         seq = [s for s in (steps or []) if s in valid]
         n_steps = max(1, len(seq))
         with SessionLocal() as db:
@@ -1177,7 +1195,8 @@ def run_full_pipeline(profile: str,
                                   metrics={**m, "feasible": True})
                 continue
 
-            if step in ("lns", "alns", "sa", "ts", "vns", "ils"):
+            if step in ("lns", "alns", "sa", "ts", "vns", "ils",
+                         "lagrangian"):
                 print(f"[full] === STEP {step} ===")
                 if state["full_solution"] is None or state["profs"] is None:
                     # Try to load from active DB solution
@@ -1242,6 +1261,17 @@ def run_full_pipeline(profile: str,
                     import vns as vns_mod  # type: ignore
                     new_sol, _hist = vns_mod.run_vns(
                         sol, profs, dc_value, budget_ts, log=True,
+                    )
+                elif step == "lagrangian":
+                    sys.path.insert(0, os.path.join(
+                        os.path.dirname(__file__), "..", "..", "experiments",
+                    ))
+                    import lagrangian as lag_mod  # type: ignore
+                    new_sol, _info = lag_mod.run_lagrangian(
+                        sol, profs, dc_value,
+                        time_budget_s=budget_lns,
+                        classes_clusters=classes_clusters,
+                        log=True,
                     )
                 else:  # "ils"
                     new_sol = meta.run_ils(
