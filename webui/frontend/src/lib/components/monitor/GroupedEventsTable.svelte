@@ -37,7 +37,13 @@
   export let subtitle = '';
   export let onModify = (_row) => {};
   export let onDelete = (_row) => {};
+  export let onDissociate = null;     // optional async (row) => void
+  export let onLockToggle = null;     // optional async (row) => void
+  export let onPlace = null;          // optional async (row) => void
   export let onBulkDelete = null;     // optional async (rows[]) => void
+  export let onBulkDissociate = null; // optional async (rows[]) => void
+  export let onBulkLock = null;       // optional async (rows[]) => void
+  export let onBulkPlace = null;      // optional async (rows[]) => void
   export let onChanged = () => {};
   // Multi-select like SortableQueryableList. When true, a checkbox
   // column is shown; the parent can read `selectedIds` via
@@ -252,8 +258,7 @@
     selectedIds = [];
     lastClickedKey = null;
   }
-  async function bulkDelete() {
-    if (!onBulkDelete) return;
+  function _selectedRows() {
     const idSet = new Set(selectedIds);
     const rows = [];
     let i = 0;
@@ -261,8 +266,40 @@
       if (idSet.has(rowId(r, i))) rows.push(r);
       i++;
     }
+    return rows;
+  }
+  async function bulkDelete() {
+    if (!onBulkDelete) return;
+    const rows = _selectedRows();
     if (rows.length === 0) return;
     await onBulkDelete(rows);
+    clearSelection();
+    await refresh();
+    onChanged();
+  }
+  async function bulkDissociate() {
+    if (!onBulkDissociate) return;
+    const rows = _selectedRows();
+    if (rows.length === 0) return;
+    await onBulkDissociate(rows);
+    clearSelection();
+    await refresh();
+    onChanged();
+  }
+  async function bulkLock() {
+    if (!onBulkLock) return;
+    const rows = _selectedRows();
+    if (rows.length === 0) return;
+    await onBulkLock(rows);
+    clearSelection();
+    await refresh();
+    onChanged();
+  }
+  async function bulkPlace() {
+    if (!onBulkPlace) return;
+    const rows = _selectedRows();
+    if (rows.length === 0) return;
+    await onBulkPlace(rows);
     clearSelection();
     await refresh();
     onChanged();
@@ -334,6 +371,27 @@
               disabled={selectedIds.length === 0}>
         Deseleziona
       </button>
+      {#if onBulkDissociate}
+        <button class="btn-amber !text-xs" on:click={bulkDissociate}
+                disabled={selectedIds.length === 0}
+                title="Toglie l'assegnazione temporale a tutti i selezionati (cattedra resta)">
+          Dissocia selezionati
+        </button>
+      {/if}
+      {#if onBulkLock}
+        <button class="btn !text-xs" on:click={bulkLock}
+                disabled={selectedIds.length === 0}
+                title="Blocca / sblocca i selezionati (toggle)">
+          Blocca selezionati
+        </button>
+      {/if}
+      {#if onBulkPlace}
+        <button class="btn-primary !text-xs" on:click={bulkPlace}
+                disabled={selectedIds.length === 0}
+                title="Esegue il placer sui selezionati">
+          Piazza selezionati
+        </button>
+      {/if}
       {#if onBulkDelete}
         <button class="btn-red !text-xs" on:click={bulkDelete}
                 disabled={selectedIds.length === 0}
@@ -492,7 +550,9 @@
                                 ? 'background-color: rgba(59,130,246,0.18);'
                                 : (r.is_scheduled
                                     ? (r.is_complete ? '' : 'background-color:#fef9c3;')
-                                    : 'background-color:#fef2f2;')}>
+                                    : 'background-color:#fef2f2;')}
+                        class:border-l-4={r.is_locked || r.locked}
+                        class:border-amber-500={r.is_locked || r.locked}>
                       {#if selectable}
                         <td class="w-6 text-center">
                           <input type="checkbox"
@@ -501,6 +561,9 @@
                         </td>
                       {/if}
                       <td>
+                        {#if r.is_locked || r.locked}
+                          <span class="text-amber-600" title="Evento bloccato (non si muove durante l'ottimizzazione)">🔒</span>
+                        {/if}
                         <strong>{r.teacher_display}</strong>
                         <span class="text-[10px] text-ink-400">({r.teacher_name})</span>
                       </td>
@@ -530,9 +593,34 @@
                       </td>
                       <td class="text-right whitespace-nowrap">
                         <button class="btn !text-[10px] !px-2 !py-0.5"
-                                on:click={() => onModify(r)}>
+                                on:click={() => onModify(r)}
+                                title="Modifica (sposta o disassocia da slot)">
                           Modifica
                         </button>
+                        {#if onDissociate}
+                          <button class="btn-amber !text-[10px] !px-2 !py-0.5 ml-1"
+                                  on:click={async () => { await onDissociate(r); refresh(); onChanged(); }}
+                                  title="Toglie l'assegnazione temporale (cattedra resta, ore tornano da assegnare)">
+                            Dissocia
+                          </button>
+                        {/if}
+                        {#if onLockToggle}
+                          <button class="btn !text-[10px] !px-2 !py-0.5 ml-1"
+                                  class:!bg-amber-100={r.is_locked || r.locked}
+                                  on:click={async () => { await onLockToggle(r); refresh(); onChanged(); }}
+                                  title={(r.is_locked || r.locked)
+                                    ? 'Sblocca questo evento (sara\' nuovamente movibile)'
+                                    : 'Blocca questo evento (non si muovera\' durante Phase B / metaeuristiche)'}>
+                            {(r.is_locked || r.locked) ? '🔓 Sblocca' : '🔒 Blocca'}
+                          </button>
+                        {/if}
+                        {#if onPlace}
+                          <button class="btn-primary !text-[10px] !px-2 !py-0.5 ml-1"
+                                  on:click={() => onPlace(r)}
+                                  title="Apri il modal di piazzamento per questo evento">
+                            Piazza
+                          </button>
+                        {/if}
                         <button class="btn-red !text-[10px] !px-2 !py-0.5 ml-1"
                                 on:click={async () => { await onDelete(r); refresh(); onChanged(); }}>
                           Elimina

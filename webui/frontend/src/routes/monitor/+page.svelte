@@ -8,18 +8,30 @@
   import AddEventModal from '$lib/components/schedule/AddEventModal.svelte';
   import AddLessonModal from '$lib/components/schedule/AddLessonModal.svelte';
   import GroupedEventsTable from '$lib/components/monitor/GroupedEventsTable.svelte';
+  import PlaceEventModal from '$lib/components/monitor/PlaceEventModal.svelte';
 
   let summary = null;
   let allRooms = [];
   let allTeachers = [];
   let allClasses = [];
 
-  // Two GroupedEventsTable instances; each has its own grouping/sort/
-  // query state. We hold refresh handles so a mutation in one panel
-  // can refresh the other.
+  // Single GroupedEventsTable instance driven by a segmented-control
+  // tab filter (Tutti / Incompleti / Lockati). Each tab composes a
+  // different `auxQuery` that's ANDed into the user's DSL query.
   let mainTable;
-  let redTable;
-  let redPanelOpen = false;
+  let activeTab = 'all';   // 'all' | 'incomplete' | 'locked'
+
+  // Map a tab key into the auxQuery DSL fragment.
+  $: tabAuxQuery = {
+    all: '',
+    incomplete: 'completo = 0',
+    locked: 'is_locked = 1',
+  }[activeTab];
+
+  // Place-event modal state
+  let placeOpen = false;
+  let placeIds = [];
+  let placeSummaries = [];
 
   // Add-event / Add-lesson / slot-picker modal state owned at the page
   // level so per-row actions across both tables share the same dialogs.
@@ -80,7 +92,98 @@
   async function refreshAll() {
     await refreshSummary();
     if (mainTable) await mainTable.refresh();
-    if (redTable) await redTable.refresh();
+  }
+
+  // Per-row Dissocia: keep cattedra, drop all its lessons.
+  async function dissociateRow(row) {
+    if (!confirm(`Confermi di dissociare la cattedra `
+        + `${row.class_name} / ${row.subject} / ${row.teacher_name}? `
+        + `La cattedra resta, ma tutte le sue lezioni gia' schedulate `
+        + `verranno rimosse.`)) return;
+    try {
+      await api.post('/api/monitor/event/' + row.assignment_id
+                      + '/dissociate', {});
+      flash('Cattedra dissociata.', 'success');
+    } catch (e) {
+      flash('Errore: ' + (e.message || e), 'error');
+    }
+    await refreshAll();
+  }
+
+  // Per-row Lock toggle.
+  async function lockToggleRow(row) {
+    const newState = !(row.is_locked || row.locked);
+    try {
+      await api.post('/api/monitor/event/' + row.assignment_id + '/lock',
+                      { locked: newState });
+      flash(newState ? 'Evento bloccato.' : 'Evento sbloccato.', 'success');
+    } catch (e) {
+      flash('Errore: ' + (e.message || e), 'error');
+    }
+    await refreshAll();
+  }
+
+  // Per-row Piazza: open the modal with this single event preselected.
+  function placeRow(row) {
+    placeIds = [row.assignment_id];
+    placeSummaries = [{
+      teacher_display: row.teacher_display,
+      class_name: row.class_name,
+      subject: row.subject,
+    }];
+    placeOpen = true;
+  }
+
+  // Bulk handlers shared across selection
+  async function bulkDissociate(rows) {
+    if (rows.length === 0) return;
+    const aids = Array.from(new Set(rows.map((r) => r.assignment_id)));
+    if (!confirm(`Confermi di dissociare ${aids.length} cattedre?`)) return;
+    try {
+      const r = await api.post('/api/monitor/events/dissociate-batch',
+                                { event_ids: aids });
+      flash(`${r.deleted_lessons} lezioni rimosse da ${r.n_assignments} `
+            + `cattedre.`, 'success');
+    } catch (e) {
+      flash('Errore: ' + (e.message || e), 'error');
+    }
+    await refreshAll();
+  }
+
+  async function bulkLock(rows) {
+    if (rows.length === 0) return;
+    const aids = Array.from(new Set(rows.map((r) => r.assignment_id)));
+    try {
+      // locked=null -> backend computes the toggle (lock all if any is
+      // unlocked, else unlock all).
+      const r = await api.post('/api/monitor/events/lock-batch',
+                                { event_ids: aids, locked: null });
+      flash(`${r.n_assignments} eventi `
+            + (r.locked ? 'bloccati.' : 'sbloccati.'), 'success');
+    } catch (e) {
+      flash('Errore: ' + (e.message || e), 'error');
+    }
+    await refreshAll();
+  }
+
+  function bulkPlace(rows) {
+    if (rows.length === 0) return;
+    const seen = new Set();
+    const ids = [];
+    const summ = [];
+    for (const r of rows) {
+      if (seen.has(r.assignment_id)) continue;
+      seen.add(r.assignment_id);
+      ids.push(r.assignment_id);
+      summ.push({
+        teacher_display: r.teacher_display,
+        class_name: r.class_name,
+        subject: r.subject,
+      });
+    }
+    placeIds = ids;
+    placeSummaries = summ;
+    placeOpen = true;
   }
 
   // Bulk delete handler shared by both tables. The parent owns the
@@ -113,9 +216,8 @@
     flash(`${okCount}/${rows.length} righe eliminate.`, 'success');
     await refreshAll();
   }
-  // Selected rows per table (independent state).
+  // Selected rows for the (single) tabbed table.
   let mainSelected = [];
-  let redSelected = [];
 
   async function disassociateFromSlot() {
     if (!slotPicker) return;
@@ -338,38 +440,69 @@
             on:click={() => (addEventOpen = true)}>
       + Nuovo evento
     </button>
+  </div>
+
+  <!-- Segmented control: Tutti / Incompleti / Lockati. Each tab
+       composes a different auxQuery into the table; Reset query
+       still works (it clears only the user-typed query). -->
+  <div class="card p-2 flex items-center gap-1 flex-wrap">
     <button class="btn !text-xs"
-            on:click={() => (redPanelOpen = !redPanelOpen)}
-            title="Mostra/nascondi pannello eventi senza assegnazione temporale">
-      {redPanelOpen ? 'Nascondi' : 'Mostra'} pannello rosso
+            class:!bg-accent-500={activeTab === 'all'}
+            class:!text-white={activeTab === 'all'}
+            on:click={() => (activeTab = 'all')}>
+      Tutti
+      {#if summary?.n_rows != null}
+        <span class="ml-1 pill !text-[10px]">{summary.n_rows}</span>
+      {/if}
+    </button>
+    <button class="btn !text-xs"
+            class:!bg-red-500={activeTab === 'incomplete'}
+            class:!text-white={activeTab === 'incomplete'}
+            on:click={() => (activeTab = 'incomplete')}>
+      Incompleti
+      {#if summary?.n_rows_unscheduled != null}
+        <span class="ml-1 pill pill-red !text-[10px]">{summary.n_rows_unscheduled}</span>
+      {/if}
+    </button>
+    <button class="btn !text-xs"
+            class:!bg-amber-500={activeTab === 'locked'}
+            class:!text-white={activeTab === 'locked'}
+            on:click={() => (activeTab = 'locked')}>
+      🔒 Lockati
+      {#if summary?.n_rows_locked != null}
+        <span class="ml-1 pill pill-amber !text-[10px]">{summary.n_rows_locked}</span>
+      {/if}
     </button>
   </div>
 
-  {#if redPanelOpen}
-    <GroupedEventsTable bind:this={redTable}
+  {#key activeTab}
+    <GroupedEventsTable bind:this={mainTable}
                         endpoint="/api/monitor/event-rows"
-                        auxQuery="schedulato = 0"
-                        redTheme={true}
-                        title="Eventi senza assegnazione temporale"
-                        subtitle="Cattedre per cui non tutte le ore attese sono state schedulate nella soluzione attiva. Per ognuna assegna le ore mancanti cliccando 'Modifica' qui sotto, o creane di nuove con '+ Nuovo evento'."
+                        auxQuery={tabAuxQuery}
+                        redTheme={activeTab === 'incomplete'}
+                        title={activeTab === 'incomplete'
+                                ? 'Eventi senza assegnazione temporale'
+                                : (activeTab === 'locked'
+                                    ? 'Eventi bloccati'
+                                    : 'Tutti gli eventi')}
+                        subtitle={activeTab === 'incomplete'
+                                ? 'Cattedre per cui non tutte le ore attese sono state schedulate. Usa "Piazza" per collocarle.'
+                                : (activeTab === 'locked'
+                                    ? 'Cattedre marcate come bloccate: non si muovono durante Phase B / metaeuristiche.'
+                                    : '')}
                         selectable={true}
-                        bind:selectedIds={redSelected}
+                        bind:selectedIds={mainSelected}
                         onModify={modifyEventRow}
                         onDelete={deleteEventRow}
+                        onDissociate={dissociateRow}
+                        onLockToggle={lockToggleRow}
+                        onPlace={placeRow}
                         onBulkDelete={bulkDelete}
+                        onBulkDissociate={bulkDissociate}
+                        onBulkLock={bulkLock}
+                        onBulkPlace={bulkPlace}
                         onChanged={refreshAll}/>
-  {/if}
-
-  <GroupedEventsTable bind:this={mainTable}
-                      endpoint="/api/monitor/event-rows"
-                      auxQuery=""
-                      title="Tutti gli eventi"
-                      selectable={true}
-                      bind:selectedIds={mainSelected}
-                      onModify={modifyEventRow}
-                      onDelete={deleteEventRow}
-                      onBulkDelete={bulkDelete}
-                      onChanged={refreshAll}/>
+  {/key}
 </div>
 
 <Modal open={!!slotPicker}
@@ -471,3 +604,9 @@
                 rooms={allRooms}
                 onClose={() => (addLessonOpen = false)}
                 onCreated={refreshAll}/>
+
+<PlaceEventModal bind:open={placeOpen}
+                 eventIds={placeIds}
+                 summaries={placeSummaries}
+                 onClose={() => (placeOpen = false)}
+                 onCompleted={refreshAll}/>
