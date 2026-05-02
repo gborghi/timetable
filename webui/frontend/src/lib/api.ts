@@ -183,6 +183,35 @@ export interface StreamRunHandlers {
   onError?: (e: Event) => void;
 }
 
+/** Wait for a run to reach a terminal state (done | failed). Resolves
+ * with the final status payload. Useful for chaining steps in the
+ * PlaceEventModal pipeline. */
+export function waitForRun(
+  runId: number,
+  { onLog, onStatus }: {
+    onLog?: (line: string) => void;
+    onStatus?: (status: { status: string; progress?: number }) => void;
+  } = {},
+): Promise<{ status: string }> {
+  return new Promise((resolve, reject) => {
+    let lastStatus: { status?: string } = {};
+    const unsub = streamRun(runId, {
+      onLog: (l) => { if (onLog) onLog(l); },
+      onStatus: (s) => {
+        lastStatus = s as { status?: string };
+        if (onStatus) onStatus(s as { status: string; progress?: number });
+      },
+      onEnd: () => {
+        resolve({ status: lastStatus.status || 'done' });
+      },
+      onError: () => {
+        unsub();
+        reject(new Error('SSE connection error'));
+      },
+    });
+  });
+}
+
 /** Subscribe to SSE for a run; returns an unsubscriber. */
 export function streamRun(
   runId: number,
