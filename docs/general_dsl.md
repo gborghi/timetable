@@ -52,6 +52,7 @@ I quantificatori e `count` iterano su una di queste sorgenti
 | `teachers`    | docenti                               |
 | `classes`     | classi                                |
 | `classrooms`  | aule                                  |
+| `students`    | studenti (con `tags[]` e `groups[]`)  |
 | `subjects`    | materie                               |
 | `curricula`   | indirizzi di studio                   |
 | `groups`      | gruppi articolati                     |
@@ -73,6 +74,7 @@ l'esecuzione (saranno trattati come `None`).
 | teacher    | name, group, max_hours, free_day, graduatoria_score, completion_hours, exemption_hours |
 | class      | name, year, section, curriculum, n_students            |
 | classroom  | name, kind, type, capacity, tags                       |
+| student    | id, name, last_name, first_name, class, tags, groups   |
 | subject    | name                                                   |
 | curriculum | name, code, score                                      |
 | group      | name, kind                                             |
@@ -193,6 +195,33 @@ Per le query sulla **lista aule** (tab Aule, NOT general DSL) si
 usa il predicato compatto `has_tag(<name>)`, ad esempio
 `has_tag(scientifico) AND tipo = standard`. Vedi
 `docs/query_examples.md`.
+
+### Tag degli studenti
+
+Parallelo al sistema delle aule. Casi d'uso tipici:
+
+- `BES`, `DSA`              - bisogni educativi
+- `debito_matematica_4`     - studenti delle quarte con debito
+- `pcto_ditta_X`            - alternanza presso un'azienda
+- `studente_atleta`         - flessibilita' sportiva
+
+```
+# Tutti gli studenti con debito di matematica in quarta devono
+# appartenere al gruppo "Recupero Matematica 4 anno".
+forall s in students where "debito_matematica_4" in s.tags:
+    exists g in s.groups: g.name == "Recupero Matematica 4 anno"
+
+# Gli studenti BES non hanno mai lezione il sabato (HARD).
+forall l in lessons:
+    forall s in students where l.class == s.class
+                            and "BES" in s.tags:
+        l.day != 6
+```
+
+I tag NON sostituiscono i gruppi: i gruppi restano l'unita'
+operativa di scheduling. Quando crei un nuovo gruppo dalla scheda
+"Gruppi", trovi il pannello "Precompila da tag" che aggiunge in
+massa i membri matchando `any_of` o `all_of` su una lista di tag.
 
 ### Implicazioni e relazioni fra cattedre
 

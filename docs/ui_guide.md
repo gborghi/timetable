@@ -259,7 +259,14 @@ CRUD indirizzi. Il modal ha due tab interne:
 
 CRUD studenti. Modal: cognome, nome, nickname (default "Cognome
 Nome"), data nascita, sesso, email, matricola, classe (dropdown),
-note.
+note, **tag** (multi-select autocomplete con creazione al volo).
+
+I tag sono etichette globali con CRUD via il bottone "Gestisci tag"
+in cima alla lista (rinomina, descrizione, eliminazione cascata).
+Casi d'uso: `BES`, `DSA`, `debito_matematica_4`, `pcto_ditta_<x>`,
+`studente_atleta`. Le query DSL accettano `has_tag(<name>)` o
+`tag(<name>)` (case-insensitive); la general-DSL dei vincoli
+accetta `"BES" in s.tags`. **I tag NON sostituiscono i gruppi**.
 
 ### Gruppi (`/groups`)
 
@@ -270,6 +277,10 @@ classi. Modal:
   other), descrizione
 - Lista studenti del gruppo con filtro testuale (cognome / nome /
   classe / matricola); checkbox per ogni studente
+- Pannello "Precompila da tag" (collapsible): inserisci una lista
+  di tag separati da virgola, scegli `any_of` (OR) o `all_of` (AND),
+  premi "Aggiungi" per importare in massa gli studenti che
+  matchano. Mantiene gli studenti gia' selezionati, deduplica.
 - Tabella materie+ore del gruppo (autocomplete su materie note)
 
 ### Materie (`/subjects`)

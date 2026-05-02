@@ -71,7 +71,18 @@ in `webui/backend/db.py::_apply_lightweight_migrations`.
   `curriculum_logical_constraints`.
 - **students** -- studenti. Identita' `(last_name, first_name, birth_date)`
   unica, `student_code` opzionale, `class_id` FK opzionale,
-  `nickname` opzionale.
+  `nickname` opzionale. Relazione M-N con `student_tags` via
+  `student_tag_assignments`.
+- **student_tags** -- etichette globali (M-N con `students`). `name`
+  UNIQUE in minuscolo, `description` opzionale. Casi d'uso comuni:
+  `BES`, `DSA`, `debito_matematica_4`, `pcto_ditta_<x>`,
+  `studente_atleta`. **I tag NON sostituiscono i gruppi**: i gruppi
+  restano l'unita' operativa di scheduling, i tag sono metadato
+  passivo per filtrare/raggruppare. Esposti dalla DSL come
+  `s.tags` (lista) e tramite `has_tag(<name>)` nelle query lista
+  studenti.
+- **student_tag_assignments** -- riga di join `(student_id, tag_id)`,
+  UNIQUE su `(student_id, tag_id)`, ON DELETE CASCADE.
 - **study_groups** -- gruppi articolati (type-C: studenti da una o piu'
   classi, raggruppati per certe materie). `kind` in {splitting / language
   / religion / support / other}. Relazioni: `group_memberships`,

@@ -74,6 +74,24 @@ appartenere a tante aule e una aula puo' avere tanti tag.
 `/api/students`, `/api/groups`. Standard CRUD. Groups embedda
 `student_ids[]` e `subject_hours[]`.
 
+`POST/PUT /api/students` accetta `tags: list[str]`, riconciliato
+con `student_tags` (i nomi sconosciuti vengono creati lower-case
+al volo). `GET /api/students` espone `tags[]` per ogni studente.
+
+Sub-endpoint:
+- `GET /api/students/by-tags?any_of=BES,DSA&all_of=tag1,tag2` --
+  ritorna gli studenti che matchano il filtro tag. Usato dal
+  pannello "Precompila da tag" della scheda gruppi.
+
+### Student tags
+- `GET /api/student-tags` -- lista globale; ogni voce include
+  `n_students` (conteggio).
+- `POST /api/student-tags` -- body `{name, description?}`.
+  409 se esistente.
+- `PUT /api/student-tags/{id}` -- rinomina e/o aggiorna descrizione.
+- `DELETE /api/student-tags/{id}` -- cascata: rimuove gli
+  `StudentTagAssignment` collegati.
+
 ### Assignments (cattedre)
 `/api/assignments` -- list flat. `/api/assignments/by-class` --
 group by class. `PUT /api/assignments/manual` (ManualAssignmentIn) --

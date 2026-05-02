@@ -97,6 +97,17 @@ l'altro solo l'ordinamento.
 | `tag(scientifico) AND tipo = standard` | home rooms del scientifico |
 | `tags contains lab` | aule con almeno un tag che contiene "lab" |
 
+### Studenti (`/students`)
+
+| Esempio | Significato |
+|---|---|
+| `cognome startswith Ross` | tutti i Rossi/Rossini/... |
+| `classe = 1A` | studenti della 1A |
+| `gender = F` | studentesse |
+| `n_groups > 0` | studenti in almeno un gruppo articolato |
+| `has_tag(BES)` | studenti BES |
+| `tag(debito_matematica_4) AND classe startswith 4` | quarte con debito di mate |
+
 ### Materie (`/subjects`)
 
 | Esempio | Significato |
