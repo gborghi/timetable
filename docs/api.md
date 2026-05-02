@@ -162,6 +162,12 @@ i log via `/api/optimize/runs/{run_id}/stream` (SSE).
 - `POST /api/optimize/lns | sa | ts | ils` (MetaRunIn)
 - `POST /api/optimize/full` (FullPipelineIn)
 - `POST /api/optimize/classroom-assignment` (ClassroomAssignRunIn)
+- `POST /api/optimize/place-event` (PlaceEventIn:
+  `event_ids: [int]`, `lock_mode: "all_others_locked" |
+  "same_class_or_teacher_movable" | "all_others_movable"`,
+  `prefer_pref?: bool`) -- greedy HARD-feasible placer per le
+  cattedre selezionate. Usato da "Piazza" / "Piazza selezionati"
+  in /monitor.
 - `GET /api/optimize/runs` -- lista
 - `GET /api/optimize/runs/{id}` -- dettaglio
 - `GET /api/optimize/runs/{id}/stream` -- SSE log streaming
@@ -172,13 +178,41 @@ i log via `/api/optimize/runs/{run_id}/stream` (SSE).
   completezza (assigned_hours, missing_hours, missing_room,
   group_name, missing_group, is_complete, status). Filtra/ordina
   via DSL.
-- `GET /api/monitor/summary`
+- `GET /api/monitor/event-rows?q=...&sort=...` -- granularita' di
+  lezione: una riga per ogni Lesson schedulata + una placeholder
+  per ogni "ora mancante" di cattedra. Espone `is_locked`,
+  `is_scheduled`, `is_complete`, `day_name`, etc. Driver del
+  /monitor con tabs Tutti/Incompleti/Lockati e dei controlli
+  multi-livello sort + DSL query.
+- `GET /api/monitor/incomplete-events` -- shortcut sui placeholder.
+- `GET /api/monitor/summary` -- counts globali, incluso `n_rows`,
+  `n_rows_unscheduled`, `n_rows_locked` per i tab badge.
 - `GET /api/monitor/event/{aid}/lessons` -- dettaglio lezioni di
   una cattedra.
 - `PUT /api/monitor/event/{aid}/lesson/{lid}` (LessonReassignIn:
   `day?`, `hour?`, `classroom_name?`, `on_conflict`) -- sposta
   una singola lezione. `on_conflict` in
-  {`dry_run`, `cancel`, `unassign`, `optimize`}.
+  {`dry_run`, `cancel`, `unbind`, `delete`} (alias retro-compat
+  `unassign` / `optimize` mappano a `delete`).
+- `POST /api/monitor/event` (AddEventIn) -- crea una nuova cattedra
+  (con possibile lezione iniziale) anche con `force=true` per
+  forzare la creazione di una lezione orfana se la cattedra esiste
+  gia' di un altro docente.
+- `POST /api/monitor/event/{aid}/dissociate` -- elimina TUTTE le
+  lezioni di una cattedra preservando l'Assignment.
+- `POST /api/monitor/events/dissociate-batch` body
+  `{event_ids: [int]}` -- versione bulk.
+- `POST /api/monitor/event/{aid}/lock` body `{locked: bool}` --
+  set/unset Assignment.locked. Le run di Phase B / metaeuristiche
+  snapshot+restore le lezioni lockate.
+- `POST /api/monitor/events/lock-batch` body
+  `{event_ids: [int], locked?: bool}`. Se `locked` e' omesso, il
+  backend computa il toggle: lock all if any unlocked, else
+  unlock all.
+- `DELETE /api/monitor/lesson/{lesson_id}` -- elimina una singola
+  Lesson preservando la cattedra.
+- `DELETE /api/monitor/event/{aid}` -- elimina la cattedra E tutte
+  le sue lezioni.
 - `GET /api/monitor/constraints` -- lista flat di tutti i vincoli
   editabili.
 - `GET /api/monitor/conflicts` -- detector best-effort di conflitti.
@@ -188,7 +222,8 @@ i log via `/api/optimize/runs/{run_id}/stream` (SSE).
   logical_curriculum, coteach, subject_room_pref,
   teacher_room_pref}).
 - `PUT /api/monitor/constraints/{kind}/{id}` (ConstraintPatchIn:
-  `level?`, `weight?`, `expression?`, `reason?`).
+  `level?`, `weight?`, `expression?`, `reason?`,
+  `owner_id?`, `secondary_owner_id?`, `subject?`).
 
 ## Esempi curl
 

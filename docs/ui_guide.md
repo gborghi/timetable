@@ -345,21 +345,77 @@ con scoperte residue chiede conferma.
 
 ### Monitor (`/monitor`)
 
-Lista degli **eventi** (uno per `Assignment`: docente x classe x
-materia). Per ogni evento: ore attese / assegnate / mancanti, aule
-mancanti, gruppo associato, stato. Sfondo giallino se incompleto.
+Lista degli **eventi** a granularita' di lezione (un row per Lesson +
+una placeholder row per ogni "ora mancante" di una cattedra). La
+tabella e' identica per UX a docenti/classi/aule (vedere `Tab dati
+master`): colonna ordinabile con doppio click sul nome (max 3
+livelli), pill di sort, query DSL con Cerca/Reset, due dropdown di
+raggruppamento + Toggle/Untoggle all per i nesting collapsibili.
 
-Header con counts globali: incompleti, senza ore, senza aula, senza
-gruppo.
+#### Tabs in cima (segmented control)
 
-Click su una riga la espande mostrando le singole lezioni
-(lesson_id, giorno/ora, aula, eventuale "no aula"). Per ogni lezione:
+Tre tab filtrano cosa mostrare; ognuno ANDed nella query DSL come
+auxQuery, mentre la query digitata dall'utente resta separata e
+filtra ulteriormente:
 
-- bottone Giorno/Ora -> apre modal con matrice 6x6 disponibilita'
-  (verde / rosso / ambra / azzurro per slot attuale). Click su uno
-  slot fa dry-run; se conflitto apre modal di risoluzione (Annulla /
-  Disassegna in conflitto / Disassegna e ottimizza dopo).
-- dropdown Aula -> stesso flusso.
+- **Tutti**: tutti gli eventi (placeholder + lezioni schedulate)
+- **Incompleti** (rosso): equivalente a `completo = 0`
+- **🔒 Lockati** (ambra): equivalente a `is_locked = 1`
+
+Ogni tab mostra un count pill accanto al nome
+(n_rows / n_rows_unscheduled / n_rows_locked dal `/api/monitor/summary`).
+
+#### Azioni per riga
+
+Cinque bottoni per ogni riga, modulati dallo stato:
+
+- **Modifica** (default): per lezioni schedulate apre lo slot picker
+  6x6; per placeholder apre AddLessonModal pre-fillato per
+  schedulare quell'ora.
+- **Dissocia** (amber): rimuove TUTTE le lezioni della cattedra
+  preservando l'`Assignment`. La cattedra ritorna 'incomplete' con
+  tutte le ore da riassegnare. Endpoint:
+  `POST /api/monitor/event/{aid}/dissociate`.
+- **🔒 Blocca / 🔓 Sblocca** (toggle): marca/smarca
+  `Assignment.locked`. Una riga lockata mostra il lucchetto +
+  bordo sinistro ambra. Le run successive di Phase B / metaeuristiche
+  prendono uno snapshot delle lezioni lockate e le ripristinano
+  alla fine, evictando eventuali lezioni che il solver ha messo
+  negli stessi slot (post-hoc enforcement, non CP-SAT-nativo).
+  Endpoint: `POST /api/monitor/event/{aid}/lock` body `{locked: bool}`.
+- **Piazza** (primario): apre `PlaceEventModal` per piazzare le ore
+  mancanti dell'evento (greedy HARD-feasible). Tre lock_mode:
+  - `all_others_locked` (default): tutte le altre lezioni sono
+    fisse; il placer fitta solo gli slot vuoti rimasti.
+  - `same_class_or_teacher_movable`: le lezioni della classe o del
+    docente coinvolti sono evictabili; il resto e' fisso.
+  - `all_others_movable`: il placer puo' evictare qualunque lezione.
+  Streaming del log via SSE come negli altri run del Workflow.
+  Endpoint: `POST /api/optimize/place-event`.
+- **Elimina** (rosso): elimina la riga (lesson) o l'intera cattedra
+  (placeholder).
+
+#### Multi-selezione + toolbar bulk
+
+Checkbox in cima alla tabella + per riga (selectable=true). Quando
+1+ righe sono selezionate compaiono nella toolbar:
+
+- **Seleziona tutto / Deseleziona**
+- **Dissocia selezionati** -> `/events/dissociate-batch`
+- **Blocca selezionati** -> `/events/lock-batch` con toggle smart:
+  se almeno una e' sbloccata blocca tutto, altrimenti sblocca tutto.
+- **Piazza selezionati** -> apre `PlaceEventModal` per il set intero;
+  il lock_mode si applica al set ("le altre" = tutto cio' che non
+  e' selezionato).
+- **Elimina selezionati** (rosso) -> conferma unica, batch DELETE.
+
+#### Vincoli vs preserve
+
+`Dissocia` rimuove le lezioni; `Blocca` le pinna; `Piazza` ricalcola
+quelle mancanti. La combinazione tipica e' "Dissocia X -> click
+Piazza con lock_mode=altri-lockati": tutti gli slot di X vengono
+ricollocati senza toccare il resto della scuola (sub-secondi su
+small/medium).
 
 ### Vincoli (`/constraints`)
 
