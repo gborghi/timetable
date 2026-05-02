@@ -19,6 +19,8 @@
   import { flash } from '$lib/stores';
   import EChart from '$lib/components/EChart.svelte';
   import RunLogPanel from '$lib/components/RunLogPanel.svelte';
+  import DiagnosticResult from
+    '$lib/components/diagnostics/DiagnosticResult.svelte';
 
   let run = null;
   let summary = null;
@@ -201,31 +203,37 @@
     </section>
   {/if}
 
-  <section class="card p-4 space-y-2">
-    <div class="flex items-baseline gap-3">
-      <h2 class="!text-base">Grafico objective + statistiche stage</h2>
-      <span class="text-xs text-ink-500">
-        {#if summary}
-          {summary.n_samples} sample,
-          durata {summary.duration_s?.toFixed(1)}s
-        {/if}
-      </span>
-      <button class="btn !text-xs ml-auto"
-              on:click={toggleChart}
-              disabled={summaryLoading}>
-        {showChart ? 'Nascondi' : (summary ? 'Mostra' : 'Carica grafico')}
-        {#if summaryLoading} ...{/if}
-      </button>
-    </div>
-    {#if !showChart}
-      <p class="text-[11px] text-ink-500 italic">
-        Il grafico carica la telemetria via
-        <code>/api/optimize/runs/{runId}/summary</code>
-        (puo' essere pesante). Premi "Mostra" quando vuoi
-        analizzarlo.
-      </p>
-    {/if}
-  </section>
+  <!-- The "telemetry" section only makes sense for SOLVER runs
+       (LNS/SA/TS/ALNS/...). For diagnostic runs the result is
+       already rendered above; suppress the telemetry chart
+       prompt to avoid confusion. -->
+  {#if !((run?.kind || '').startsWith('diag_'))}
+    <section class="card p-4 space-y-2">
+      <div class="flex items-baseline gap-3">
+        <h2 class="!text-base">Grafico objective + statistiche stage</h2>
+        <span class="text-xs text-ink-500">
+          {#if summary}
+            {summary.n_samples} sample,
+            durata {summary.duration_s?.toFixed(1)}s
+          {/if}
+        </span>
+        <button class="btn !text-xs ml-auto"
+                on:click={toggleChart}
+                disabled={summaryLoading}>
+          {showChart ? 'Nascondi' : (summary ? 'Mostra' : 'Carica grafico')}
+          {#if summaryLoading} ...{/if}
+        </button>
+      </div>
+      {#if !showChart}
+        <p class="text-[11px] text-ink-500 italic">
+          Il grafico carica la telemetria via
+          <code>/api/optimize/runs/{runId}/summary</code>
+          (puo' essere pesante). Premi "Mostra" quando vuoi
+          analizzarlo.
+        </p>
+      {/if}
+    </section>
+  {/if}
 
   {#if showChart && summary && summary.n_samples > 0}
     <section class="card p-4 space-y-2">
@@ -282,19 +290,24 @@
   {/if}
 
   <!-- For DIAGNOSTIC runs (kind starts with 'diag_'), render the
-       result inline from run.metrics. The /diagnostics tab does
-       the same; this is the alternative entry point for users
-       coming from /runs. -->
+       full graphical result via the shared <DiagnosticResult>
+       component. Same charts you see on /diagnostics, but
+       reachable from the runs list too. -->
   {#if run && (run.kind || '').startsWith('diag_') && run.metrics}
     <section class="card p-4 space-y-2">
-      <h2 class="!text-base">Risultato diagnostica</h2>
-      <p class="text-[11px] text-ink-500">
-        Vista rapida del payload (vedi anche il tab
-        <a class="text-accent-500 hover:underline" href="/diagnostics">
-          Statistiche
-        </a> per la visualizzazione grafica).
-      </p>
-      <pre class="bg-ink-50 border border-ink-200 rounded p-2 text-xs overflow-auto max-h-96">{JSON.stringify(run.metrics, null, 2)}</pre>
+      <div class="flex items-baseline gap-2">
+        <h2 class="!text-base">Risultato diagnostica</h2>
+        <span class="text-xs text-ink-500">
+          {run.kind} - generato il {fmt(run.finished_at) || '...'}
+        </span>
+      </div>
+      <DiagnosticResult kind={run.kind} result={run.metrics}/>
+      <details class="text-xs">
+        <summary class="cursor-pointer text-ink-500">
+          Mostra payload JSON grezzo
+        </summary>
+        <pre class="bg-ink-50 border border-ink-200 rounded p-2 mt-2 text-xs overflow-auto max-h-96">{JSON.stringify(run.metrics, null, 2)}</pre>
+      </details>
     </section>
   {/if}
 

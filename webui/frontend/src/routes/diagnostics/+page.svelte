@@ -12,10 +12,12 @@
    * Each section also exposes the run_id as a link to /runs/[id]
    * so the user can navigate to the dedicated detail view.
    */
-  import { onDestroy } from 'svelte';
+  import { onDestroy, onMount } from 'svelte';
   import { api } from '$lib/api';
   import { flash } from '$lib/stores';
   import EChart from '$lib/components/EChart.svelte';
+  import DiagnosticResult from
+    '$lib/components/diagnostics/DiagnosticResult.svelte';
 
   // ---- Hall (sync) ----
   let busyHall = false;
@@ -39,12 +41,53 @@
   let mcSeed = 0;
   let bpMode = 'classes';
 
+  // Correlations: variable picker + custom models spec.
+  // `coVariables` is loaded once from
+  // /api/diagnostics/correlations/variables and drives the
+  // dropdowns. `coModels` is the list the user composes; if empty
+  // the backend uses the default 3-model panel.
+  let coVariables = null;       // {scopes, variables_by_scope}
+  let coModels = [];            // user-composed list
+  function _newModel() {
+    return { kind: 'ols', scope: 'teachers',
+              x: 'teacher_hours', y: 'teacher_gap_count',
+              label: '' };
+  }
+
+  async function loadCoVariables() {
+    if (coVariables) return;
+    try {
+      coVariables = await api.get('/api/diagnostics/correlations/variables');
+    } catch (e) { flash('Errore: ' + e.message, 'error'); }
+  }
+  function addCoModel() {
+    coModels = [...coModels, _newModel()];
+  }
+  function removeCoModel(i) {
+    coModels = coModels.filter((_, j) => j !== i);
+  }
+  // When the scope of a row changes, reset x/y to defaults of that
+  // scope (otherwise old keys may not exist on the new scope).
+  function onCoScopeChange(i) {
+    const m = { ...coModels[i] };
+    const vars = (coVariables?.variables_by_scope?.[m.scope] || []);
+    if (vars.length >= 2) {
+      m.x = vars[0].key;
+      m.y = vars[1].key;
+    }
+    coModels = coModels.map((mm, j) => j === i ? m : mm);
+  }
+
   // ---- Polling ----
   let pollTimers = new Map();   // run_id -> setInterval handle
   onDestroy(() => {
     for (const t of pollTimers.values()) clearInterval(t);
     pollTimers.clear();
   });
+
+  // Eagerly load the variable menu so the user can compose a
+  // model the moment they click on the correlations section.
+  onMount(() => { loadCoVariables(); });
 
   async function _pollRun(runId, onUpdate) {
     try {
@@ -125,7 +168,7 @@
   );
   const runCo = () => spawnRun(
     '/api/diagnostics/correlations',
-    {},
+    coModels.length ? { models: coModels } : {},
     co,
   );
   const runDs = () => spawnRun(
@@ -408,7 +451,7 @@
     {/if}
   </section>
 
-  <!-- 4) Correlations (async run) -->
+  <!-- 4) Correlations (async run, parametrizable) -->
   <section class="card p-4 space-y-2">
     <div class="flex items-baseline gap-2 flex-wrap">
       <h2 class="!text-base">4) Correlazioni e regressioni</h2>
@@ -423,43 +466,105 @@
       {/if}
       <button class="btn-primary !text-xs ml-auto" on:click={runCo}
               disabled={co.busy}>
-        {co.busy ? '...' : 'Calcola correlazioni'}
+        {co.busy ? '...' : (coModels.length === 0
+                              ? 'Calcola (3 modelli default)'
+                              : `Calcola (${coModels.length} modell${coModels.length === 1 ? 'o' : 'i'} custom)`)}
       </button>
     </div>
+
+    <!-- Variable picker / model builder -->
+    <details class="border border-ink-200 rounded p-2 bg-ink-50/40">
+      <summary class="cursor-pointer text-xs font-medium">
+        Personalizza modelli ({coModels.length} custom configurat{coModels.length === 1 ? 'o' : 'i'})
+      </summary>
+      <p class="text-[11px] text-ink-500 mt-1 mb-2">
+        Se la lista qui sotto e' vuota, vengono calcolati i 3 modelli
+        canonici (carico vs buchi, materie vs SOFT, saturazione vs 6a
+        ora). Aggiungi righe per scegliere altre x/y, OLS o Logit, scope
+        teachers o classes.
+      </p>
+
+      {#if !coVariables}
+        <p class="text-[11px] text-ink-500 italic">
+          Caricamento variabili...
+        </p>
+      {:else}
+        <table class="tbl text-xs">
+          <thead>
+            <tr>
+              <th>Tipo</th>
+              <th>Scope</th>
+              <th>x (predittore)</th>
+              <th>y (dipendente)</th>
+              <th>Etichetta (opzionale)</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {#each coModels as m, i}
+              <tr>
+                <td>
+                  <select class="px-1 py-0.5 border border-ink-200 rounded"
+                          bind:value={m.kind}>
+                    <option value="ols">OLS (lineare)</option>
+                    <option value="logit">Logit (binaria)</option>
+                  </select>
+                </td>
+                <td>
+                  <select class="px-1 py-0.5 border border-ink-200 rounded"
+                          bind:value={m.scope}
+                          on:change={() => onCoScopeChange(i)}>
+                    {#each coVariables.scopes as s}
+                      <option value={s}>{s}</option>
+                    {/each}
+                  </select>
+                </td>
+                <td>
+                  <select class="px-1 py-0.5 border border-ink-200 rounded"
+                          bind:value={m.x}>
+                    {#each (coVariables.variables_by_scope[m.scope] || []) as v}
+                      <option value={v.key}>{v.label} ({v.type})</option>
+                    {/each}
+                  </select>
+                </td>
+                <td>
+                  <select class="px-1 py-0.5 border border-ink-200 rounded"
+                          bind:value={m.y}>
+                    {#each (coVariables.variables_by_scope[m.scope] || []) as v}
+                      <option value={v.key}>{v.label} ({v.type})</option>
+                    {/each}
+                  </select>
+                </td>
+                <td>
+                  <input class="px-1 py-0.5 border border-ink-200 rounded w-full"
+                         placeholder="(auto)"
+                         bind:value={m.label}/>
+                </td>
+                <td>
+                  <button class="btn-red !text-[10px] !px-1 !py-0.5"
+                          on:click={() => removeCoModel(i)}>x</button>
+                </td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+        <button class="btn !text-xs mt-2" on:click={addCoModel}>
+          + Aggiungi modello
+        </button>
+        {#if coModels.length}
+          <button class="btn !text-xs ml-2"
+                  on:click={() => (coModels = [])}>
+            Svuota (usa 3 default)
+          </button>
+        {/if}
+      {/if}
+    </details>
+
     {#if co.error}
       <p class="text-xs text-rose-700">{co.error}</p>
     {/if}
-    {#if co.result && co.result.ok}
-      <table class="tbl text-xs">
-        <thead>
-          <tr>
-            <th>Modello</th>
-            <th>n</th>
-            <th>coef</th>
-            <th>p-value</th>
-            <th>R^2 / pseudo</th>
-            <th>Interpretazione</th>
-          </tr>
-        </thead>
-        <tbody>
-          {#each co.result.models as m}
-            <tr>
-              <td>{m.label || m.name}</td>
-              <td>{m.n ?? '-'}</td>
-              <td>{m.coef !== undefined ? m.coef.toFixed(3) : '-'}</td>
-              <td>{m.p_value !== undefined ? m.p_value.toFixed(3) : '-'}</td>
-              <td>{m.r2 !== undefined ? m.r2.toFixed(3) :
-                    m.pseudo_r2 !== undefined ? m.pseudo_r2.toFixed(3) : '-'}</td>
-              <td class="text-[11px]">{m.interpretation || m.warn || m.error || ''}</td>
-            </tr>
-          {/each}
-        </tbody>
-      </table>
-      <div class="grid md:grid-cols-2 gap-3 mt-2">
-        {#each co.result.models.filter((m) => m.scatter) as m}
-          <EChart option={scatterOption(m)} height={240}/>
-        {/each}
-      </div>
+    {#if co.result}
+      <DiagnosticResult kind="diag_correlations" result={co.result}/>
     {/if}
   </section>
 

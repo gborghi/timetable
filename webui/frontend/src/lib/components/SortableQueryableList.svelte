@@ -67,6 +67,15 @@
   let showHelp = false;
   let lastUrl = '';
 
+  // Pagination -- enabled when the user picks a page size other than
+  // 'all'. The endpoints accept `?limit=N&offset=M` and return the
+  // envelope `{items, total, limit, offset}`. When pageSize is 'all'
+  // we send neither and get a flat list.
+  const PAGE_SIZE_OPTIONS = [25, 50, 100, 250, 'all'];
+  export let pageSize = 50;       // 'all' or number
+  let offset = 0;
+  let total = null;               // null when not paginating
+
   $: sortString = sortLevels.map((l) => `${l.column},${l.direction}`).join(':');
 
   export async function reload() {
@@ -75,12 +84,26 @@
     const params = new URLSearchParams();
     if (q) params.set('q', q);
     if (sortString) params.set('sort', sortString);
+    if (pageSize !== 'all') {
+      params.set('limit', String(pageSize));
+      params.set('offset', String(offset));
+    }
     const url = endpoint + (params.toString() ? '?' + params.toString() : '');
     lastUrl = url;
     try {
       const result = await api.get(url);
       if (!_alive) return;          // user navigated away mid-fetch
-      rows = result;
+      // Detect paginated envelope vs flat list. Paginated:
+      //   {items: [...], total: N, limit: L, offset: O}
+      if (result && typeof result === 'object'
+          && Array.isArray(result.items)
+          && typeof result.total === 'number') {
+        rows = result.items;
+        total = result.total;
+      } else {
+        rows = result;
+        total = null;
+      }
       onRowsChange(rows);
     } catch (e) {
       if (!_alive) return;
@@ -93,6 +116,25 @@
       }
     }
   }
+
+  // ----- Pagination helpers -----
+  function gotoPage(newOffset) {
+    if (newOffset < 0) newOffset = 0;
+    offset = newOffset;
+    reload();
+  }
+  function changePageSize(newSize) {
+    pageSize = newSize;
+    offset = 0;       // reset to first page when size changes
+    reload();
+  }
+  $: pageSizeNum = pageSize === 'all'
+                    ? (total || rows.length || 1)
+                    : Number(pageSize);
+  $: numPages = total != null
+                 ? Math.max(1, Math.ceil(total / pageSizeNum))
+                 : 1;
+  $: currentPage = Math.floor(offset / Math.max(1, pageSizeNum)) + 1;
 
   function indexOfColumn(key) {
     return sortLevels.findIndex((l) => l.column === key);
@@ -107,9 +149,10 @@
     } else if (sortLevels.length < MAX_SORT_LEVELS) {
       sortLevels = [...sortLevels, { column: key, direction: 'asc' }];
     } else {
-      flash(`Massimo ${MAX_SORT_LEVELS} livelli di sort.`, 'error');
+      flash(`Massimo ${MAX_SORT_LEVELS} levels di sort.`, 'error');
       return;
     }
+    offset = 0;       // sort change -> back to page 1
     reload();
   }
 
@@ -120,18 +163,26 @@
     sortLevels = sortLevels.map((l, i) =>
       i === idx ? { ...l, direction: l.direction === 'asc' ? 'desc' : 'asc' } : l
     );
+    offset = 0;
     reload();
   }
 
   function resetSort() {
     if (sortLevels.length === 0) return;
     sortLevels = [];
+    offset = 0;
     reload();
   }
 
   function resetQuery() {
     if (!q) return;
     q = '';
+    offset = 0;
+    reload();
+  }
+
+  function applyQuery() {
+    offset = 0;
     reload();
   }
 
@@ -304,9 +355,9 @@
       <input class="w-full px-2 py-1.5 rounded-md border border-ink-200 font-mono text-sm"
              placeholder="es. group=A026 AND max_hours>=18"
              bind:value={q}
-             on:keydown={(e) => { if (e.key === 'Enter') reload(); }}/>
+             on:keydown={(e) => { if (e.key === 'Enter') applyQuery(); }}/>
     </div>
-    <button class="btn" on:click={reload} disabled={busy}>{busy ? '...' : 'Cerca'}</button>
+    <button class="btn" on:click={applyQuery} disabled={busy}>{busy ? '...' : 'Cerca'}</button>
     <button class="btn !text-xs" on:click={() => (showHelp = !showHelp)}>?  guida</button>
     <span class="border-l border-ink-200 h-6 mx-1"></span>
     <button class="btn !text-xs" on:click={resetQuery}
@@ -379,11 +430,73 @@
           <span class="sr-only">Caricamento...</span>
           aggiorno...
         </span>
+      {:else if total != null}
+        {total} risultati
+        {#if pageSize !== 'all'}
+          - mostrati {Math.min(rows.length, pageSizeNum)}
+          (pag {currentPage}/{numPages})
+        {/if}
       {:else}
         {rows.length} risultati
       {/if}
     </span>
   </div>
+
+  <!-- Pagination strip: shown only when paginating (pageSize !=
+       'all' and the endpoint returned the total). The user can
+       switch page size without losing query/sort. -->
+  {#if total != null && pageSize !== 'all'}
+    <div class="card p-2 text-xs flex flex-wrap items-center gap-2">
+      <span class="text-ink-500">Pagina</span>
+      <button class="btn !text-xs !px-2 !py-0.5"
+              on:click={() => gotoPage(0)}
+              disabled={offset === 0 || busy}>{'|<'}</button>
+      <button class="btn !text-xs !px-2 !py-0.5"
+              on:click={() => gotoPage(offset - pageSizeNum)}
+              disabled={offset === 0 || busy}>{'<'} prec</button>
+      <span class="px-2">{currentPage} / {numPages}</span>
+      <button class="btn !text-xs !px-2 !py-0.5"
+              on:click={() => gotoPage(offset + pageSizeNum)}
+              disabled={currentPage >= numPages || busy}>succ {'>'}</button>
+      <button class="btn !text-xs !px-2 !py-0.5"
+              on:click={() => gotoPage((numPages - 1) * pageSizeNum)}
+              disabled={currentPage >= numPages || busy}>{'>|'}</button>
+      <span class="ml-auto flex items-center gap-1">
+        <span class="text-ink-500">Per pagina:</span>
+        <select class="px-1 py-0.5 border border-ink-200 rounded"
+                value={pageSize}
+                on:change={(e) => changePageSize(
+                  e.currentTarget.value === 'all' ? 'all'
+                    : Number(e.currentTarget.value),
+                )}>
+          {#each PAGE_SIZE_OPTIONS as opt}
+            <option value={opt}>{opt}</option>
+          {/each}
+        </select>
+      </span>
+    </div>
+  {:else if total == null && pageSize !== 'all' && rows.length > 0}
+    <!-- Endpoint doesn't paginate; expose a switcher so the user
+         can opt into "all" or smaller views via DSL filtering -->
+    <div class="card p-2 text-xs flex items-center gap-2">
+      <span class="text-ink-500">
+        Endpoint senza paginazione (tutto in una pagina).
+      </span>
+      <span class="ml-auto flex items-center gap-1">
+        <span class="text-ink-500">Per pagina:</span>
+        <select class="px-1 py-0.5 border border-ink-200 rounded"
+                value={pageSize}
+                on:change={(e) => changePageSize(
+                  e.currentTarget.value === 'all' ? 'all'
+                    : Number(e.currentTarget.value),
+                )}>
+          {#each PAGE_SIZE_OPTIONS as opt}
+            <option value={opt}>{opt}</option>
+          {/each}
+        </select>
+      </span>
+    </div>
+  {/if}
 
   {#if sortLevels.length > 0}
     <div class="card p-2 text-xs flex flex-wrap items-center gap-2 bg-accent-500/5 border-accent-500/30">
