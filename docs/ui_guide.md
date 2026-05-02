@@ -164,6 +164,19 @@ CRUD docenti. Il modal di edit ha:
   con la lista globale delle materie)
 - AvailabilityMatrix 5-stati per il docente (vedere
   [constraints.md](constraints.md))
+- **Giorni liberi (avanzato)**: sezione dedicata con due gruppi:
+  - **3 preferenze ordinate**: ognuna con dropdown del giorno
+    (Lun..Sab) + radio HARD / SOFT. Per SOFT compare un campo
+    numerico `Penalty` (default 100). HARD blocca le 6 ore del
+    giorno nella matrice di disponibilita' automaticamente
+    (sincronizzazione bidirezionale con la matrice rossa).
+    Validazione: i tre giorni devono essere distinti; warning
+    inline se collidono.
+  - **Numero totale di giorni liberi (HARD)**: input numerico
+    range 0-6, default 1 (CCNL italiano). Il modello deve
+    garantire ESATTAMENTE quel numero di giorni liberi a settimana.
+    0 = lavora tutti i giorni; 6 = mai (caso teorico). Tooltip ℹ️
+    spiega l'uso.
 - ClassroomGrid 5-stati per assegnare aule preferred / forbidden /
   enforced specifiche al docente
 - LogicalUnavailabilitiesPanel per i vincoli logici DNF

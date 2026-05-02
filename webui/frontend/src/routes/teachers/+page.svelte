@@ -104,6 +104,8 @@
       pref_no_five_weight: TEACHER_DEFAULTS.pref_no_five_weight,
       pref_no_one_weight: TEACHER_DEFAULTS.pref_no_one_weight,
       preferred_days_csv: '',
+      preferred_free_days: [],
+      required_free_days_count: 1,
       subjects: [], unavailability: [],
       mandatory_free_days: [], compatible_classes: [],
       classroom_prefs: []
@@ -395,6 +397,94 @@
           a HARD (rosso) automaticamente.
         </p>
       {/if}
+    </div>
+
+    <!-- Giorni liberi: 3 preferenze ordinate (HARD/SOFT) + count totale HARD -->
+    <div class="mt-4 card !shadow-none p-3 bg-ink-50/40 space-y-3">
+      <div class="text-sm font-semibold">Giorni liberi (avanzato)</div>
+      <p class="text-xs text-ink-500">
+        Tre preferenze ordinate di giorno libero. Se HARD, le 6 ore
+        del giorno vengono bloccate automaticamente nella matrice di
+        disponibilita' (rosso). Se SOFT, il modello paga la penalty
+        per ogni ora occupata in quel giorno. La 1a preferenza e'
+        quella prioritaria; 2a/3a sono fallback.
+      </p>
+      {#each [0, 1, 2] as i}
+        {@const cur = (editing.preferred_free_days ?? [])[i]
+                        ?? { day: 0, is_hard: true, soft_penalty: 100 }}
+        <div class="grid grid-cols-12 gap-2 items-end">
+          <div class="field col-span-3">
+            <label>{['Prima', 'Seconda', 'Terza'][i]} preferenza</label>
+            <select value={cur.day || 0} on:change={(e) => {
+              const list = [...(editing.preferred_free_days ?? [])];
+              while (list.length <= i) list.push({ day: 0, is_hard: true, soft_penalty: 100 });
+              list[i] = { ...list[i], day: Number(e.target.value) };
+              editing = { ...editing, preferred_free_days: list.filter((x) => x.day) };
+            }}>
+              <option value={0}>(nessuno)</option>
+              <option value={1}>Lunedi</option>
+              <option value={2}>Martedi</option>
+              <option value={3}>Mercoledi</option>
+              <option value={4}>Giovedi</option>
+              <option value={5}>Venerdi</option>
+              <option value={6}>Sabato</option>
+            </select>
+          </div>
+          {#if cur.day}
+            <div class="col-span-3 flex items-center gap-3 self-center">
+              <label class="flex items-center gap-1 text-xs">
+                <input type="radio" checked={cur.is_hard}
+                       on:change={() => {
+                         const list = [...(editing.preferred_free_days ?? [])];
+                         list[i] = { ...list[i], is_hard: true };
+                         editing = { ...editing, preferred_free_days: list };
+                       }}/>
+                🟥 HARD
+              </label>
+              <label class="flex items-center gap-1 text-xs">
+                <input type="radio" checked={!cur.is_hard}
+                       on:change={() => {
+                         const list = [...(editing.preferred_free_days ?? [])];
+                         list[i] = { ...list[i], is_hard: false };
+                         editing = { ...editing, preferred_free_days: list };
+                       }}/>
+                🟨 SOFT
+              </label>
+            </div>
+            {#if !cur.is_hard}
+              <div class="field col-span-2">
+                <label>Penalty</label>
+                <input type="number" value={cur.soft_penalty ?? 100}
+                       on:input={(e) => {
+                         const list = [...(editing.preferred_free_days ?? [])];
+                         list[i] = { ...list[i], soft_penalty: Number(e.target.value) };
+                         editing = { ...editing, preferred_free_days: list };
+                       }}/>
+              </div>
+            {/if}
+          {/if}
+        </div>
+      {/each}
+      {#if (editing.preferred_free_days ?? []).map((p) => p.day).filter((d, i, a) => d && a.indexOf(d) !== i).length > 0}
+        <div class="text-xs text-red-600">
+          ⚠️ I tre giorni preferiti devono essere distinti.
+        </div>
+      {/if}
+      <div class="field max-w-xs">
+        <label>Giorni liberi totali nella settimana (HARD)
+          <span title="Numero esatto di giornate libere richieste da CCNL o accordo individuale. 0 = lavora tutti i giorni; 1 = un giorno libero (default); fino a 6 (caso teorico).">
+            ℹ️
+          </span>
+        </label>
+        <input type="number" min="0" max="6"
+               value={editing.required_free_days_count ?? 1}
+               on:input={(e) => editing = { ...editing,
+                 required_free_days_count: Math.max(0, Math.min(6, Number(e.target.value) || 0)) }}/>
+        <div class="text-xs text-ink-500">
+          Default 1 (italian CCNL). 0 = lavora tutti i 6 giorni; 6 =
+          mai (teorico).
+        </div>
+      </div>
     </div>
 
     <div class="mt-4 grid grid-cols-3 gap-3">

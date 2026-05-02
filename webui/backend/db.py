@@ -242,6 +242,22 @@ def _apply_lightweight_migrations() -> None:
                 "ALTER TABLE teachers ADD COLUMN graduatoria_score FLOAT"
             ))
 
+        # Free-day preferences (Section: Giorni liberi). 3 ordered
+        # preferences stored as JSON, plus a HARD count of required
+        # free days per week.
+        if insp.has_table("teachers") and not has_column(
+                "teachers", "preferred_free_days_json"):
+            conn.execute(text(
+                "ALTER TABLE teachers ADD COLUMN "
+                "preferred_free_days_json TEXT"
+            ))
+        if insp.has_table("teachers") and not has_column(
+                "teachers", "required_free_days_count"):
+            conn.execute(text(
+                "ALTER TABLE teachers ADD COLUMN "
+                "required_free_days_count INTEGER NOT NULL DEFAULT 1"
+            ))
+
         # tenant_id on user-facing entities (Section 2.5 P3).
         # Defaults everything to tenant 1 -- the existing single school.
         for tbl in timestamped:

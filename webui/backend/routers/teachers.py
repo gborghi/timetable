@@ -23,10 +23,16 @@ HOURS_FULL = list(range(8, 14))
 def _autofill_free_day_cells(t: models.Teacher,
                              persisted: list[models.TeacherUnavailability]
                              ) -> list[schemas.UnavailabilitySlot]:
-    """Ensure that all 6 cells of the teacher's free_day are surfaced as
-    HARD red, even if not yet persisted in DB. Persisted cells take
-    precedence (so the user can over-ride a single hour as 'soft' if
-    needed)."""
+    """Ensure that all 6 cells of the teacher's free_day(s) are surfaced
+    as HARD/SOFT red/amber, even if not yet persisted in DB. Persisted
+    cells take precedence so the user can override a single hour.
+
+    Sources for auto-fill (all merged):
+      - legacy `free_day: str` (HARD)
+      - new `preferred_free_days_json` entries:
+          - is_hard=True   -> 6 HARD cells
+          - is_hard=False  -> 6 SOFT cells with `soft_penalty`
+    """
     persisted_by_dh = {(p.day, p.hour): p for p in persisted}
     out = [
         schemas.UnavailabilitySlot(
@@ -35,15 +41,47 @@ def _autofill_free_day_cells(t: models.Teacher,
         )
         for p in persisted
     ]
+    autofilled: set[tuple[int, int]] = set()
     fd = DAY_TO_INT.get(t.free_day or "")
-    if fd is None:
-        return out
-    for h in HOURS_FULL:
-        if (fd, h) not in persisted_by_dh:
-            out.append(schemas.UnavailabilitySlot(
-                day=fd, hour=h, state="hard",
-                soft_penalty=0, reason="giorno libero (auto)"
-            ))
+    if fd is not None:
+        for h in HOURS_FULL:
+            if (fd, h) not in persisted_by_dh and (fd, h) not in autofilled:
+                out.append(schemas.UnavailabilitySlot(
+                    day=fd, hour=h, state="hard",
+                    soft_penalty=0,
+                    reason="giorno libero (auto, free_day legacy)"
+                ))
+                autofilled.add((fd, h))
+    # New: preferred_free_days_json
+    raw = getattr(t, "preferred_free_days_json", None) or ""
+    if raw:
+        try:
+            import json as _json
+            arr = _json.loads(raw)
+            if isinstance(arr, list):
+                for idx, it in enumerate(arr[:3]):
+                    if not isinstance(it, dict):
+                        continue
+                    d = int(it.get("day", 0))
+                    if d < 1 or d > 6:
+                        continue
+                    is_hard = bool(it.get("is_hard", True))
+                    pen = it.get("soft_penalty")
+                    state = "hard" if is_hard else "soft"
+                    label = ["1a", "2a", "3a"][idx] if idx < 3 else f"{idx+1}a"
+                    for h in HOURS_FULL:
+                        if (d, h) in persisted_by_dh:
+                            continue
+                        if (d, h) in autofilled:
+                            continue
+                        out.append(schemas.UnavailabilitySlot(
+                            day=d, hour=h, state=state,
+                            soft_penalty=int(pen) if pen is not None else 0,
+                            reason=f"giorno libero {label} preferenza (auto)",
+                        ))
+                        autofilled.add((d, h))
+        except Exception:
+            pass
     return out
 
 
@@ -92,6 +130,25 @@ def _apply_teacher_classroom_prefs(db, teacher_id: int,
 
 
 def _to_out(t: models.Teacher, db=None) -> schemas.TeacherOut:
+    # Decode preferred_free_days_json (defensive — best-effort).
+    import json as _json
+    pfd_list: list[schemas.FreeDayPref] = []
+    raw = getattr(t, "preferred_free_days_json", None) or ""
+    if raw:
+        try:
+            arr = _json.loads(raw)
+            if isinstance(arr, list):
+                for it in arr[:3]:
+                    if isinstance(it, dict) and "day" in it:
+                        pfd_list.append(schemas.FreeDayPref(
+                            day=int(it["day"]),
+                            is_hard=bool(it.get("is_hard", True)),
+                            soft_penalty=(int(it["soft_penalty"])
+                                          if it.get("soft_penalty") is not None
+                                          else None),
+                        ))
+        except Exception:
+            pass
     return schemas.TeacherOut(
         id=t.id,
         name=t.name,
@@ -105,6 +162,10 @@ def _to_out(t: models.Teacher, db=None) -> schemas.TeacherOut:
         exemption_hours=t.exemption_hours,
         graduatoria_score=t.graduatoria_score,
         free_day=t.free_day,
+        preferred_free_days=pfd_list,
+        required_free_days_count=int(
+            getattr(t, "required_free_days_count", 1) or 1
+        ),
         max_consecutive=t.max_consecutive,
         notes=t.notes,
         pref_no_buchi_weight=t.pref_no_buchi_weight,
@@ -184,6 +245,27 @@ def _apply_payload(t: models.Teacher, p: schemas.TeacherIn,
     t.pref_no_five_weight = p.pref_no_five_weight
     t.pref_no_one_weight = p.pref_no_one_weight
     t.preferred_days_csv = p.preferred_days_csv
+    # Preferred-free-day list (up to 3) is JSON-encoded.
+    import json as _json
+    pfd = []
+    seen_days: set[int] = set()
+    for it in (p.preferred_free_days or [])[:3]:
+        d = int(it.day)
+        if d in seen_days or d < 1 or d > 6:
+            continue
+        seen_days.add(d)
+        pfd.append({
+            "day": d,
+            "is_hard": bool(it.is_hard),
+            "soft_penalty": (int(it.soft_penalty)
+                              if it.soft_penalty is not None else None),
+        })
+    t.preferred_free_days_json = _json.dumps(pfd) if pfd else None
+    # Required free days per week (HARD).
+    rc = int(p.required_free_days_count if p.required_free_days_count is not None
+             else 1)
+    rc = max(0, min(6, rc))
+    t.required_free_days_count = rc
     # Replace subject set
     if t.id is not None:
         db.query(models.TeacherSubject).filter(

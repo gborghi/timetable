@@ -110,7 +110,29 @@ class Teacher(TenantMixin, TimestampMixin, Base):
                 "peso maggiore."
     )
     free_day: Mapped[str | None] = mapped_column(String(16), nullable=True,
-                                                 comment="day name (Italian)")
+                                                 comment="day name (Italian); "
+                                                 "legacy single-day free-day "
+                                                 "field. Superseded by "
+                                                 "`preferred_free_days_json` "
+                                                 "for new code, kept for "
+                                                 "backwards compat with "
+                                                 "older mock pickles.")
+    # Up to 3 preferred-free-day entries with per-day HARD/SOFT level
+    # and SOFT penalty. Stored as JSON to avoid a new satellite table:
+    # [{"day": 1..6, "is_hard": bool, "soft_penalty": int|None}, ...].
+    preferred_free_days_json: Mapped[str | None] = mapped_column(
+        Text, nullable=True,
+        comment="JSON list of up to 3 free-day preferences, each "
+                "{day: 1..6, is_hard: bool, soft_penalty: int|None}. "
+                "Day numbering 1=Lun .. 6=Sab."
+    )
+    # Exact number of free days per week (HARD). Default 1 (italian
+    # CCNL norm). 0 = teacher works every day, 6 = teacher never
+    # teaches (theoretical).
+    required_free_days_count: Mapped[int] = mapped_column(
+        Integer, default=1,
+        comment="HARD: numero esatto di giorni liberi a settimana."
+    )
     max_consecutive: Mapped[int] = mapped_column(Integer, default=5,
                                                  comment="HARD: max ore "
                                                  "consecutive nel giorno")

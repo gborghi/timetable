@@ -97,6 +97,16 @@ class UnavailabilitySlot(BaseModel):
     reason: str | None = None
 
 
+class FreeDayPref(BaseModel):
+    """One ordered preference for a free day. Up to 3 entries allowed
+    in `preferred_free_days`. day=1..6 (Lun..Sab); is_hard=True means
+    the day is fully blocked; SOFT means the model pays soft_penalty
+    for every busy hour on that day."""
+    day: int
+    is_hard: bool = True
+    soft_penalty: int | None = 100
+
+
 class TeacherBase(BaseModel):
     name: str
     last_name: str | None = None
@@ -114,6 +124,10 @@ class TeacherBase(BaseModel):
                     "anzianita' e indirizzi pesanti."
     )
     free_day: str | None = None
+    # New: structured up-to-3 ordered free-day preferences.
+    preferred_free_days: list[FreeDayPref] = Field(default_factory=list)
+    # New: HARD count of free days per week. Default 1 (italian CCNL).
+    required_free_days_count: int = 1
     max_consecutive: int = 5
     notes: str | None = None
     pref_no_buchi_weight: float = 10.0

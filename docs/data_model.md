@@ -15,7 +15,13 @@ in `webui/backend/db.py::_apply_lightweight_migrations`.
   `matricola`, `group` (classe di concorso), `max_hours`,
   `completion_hours`, `exemption_hours`,
   `graduatoria_score` (Float nullable, range tipico 0-300, usato dal
-  preset Phase-A "Anzianita'"), `free_day` (string, day name),
+  preset Phase-A "Anzianita'"), `free_day` (string, day name; legacy
+  single-day field), `preferred_free_days_json` (TEXT JSON, fino a 3
+  preferenze ordinate `[{day:1..6, is_hard:bool, soft_penalty:int|null}]`;
+  HARD blocca le 6 ore del giorno via auto-fill in
+  `teacher_unavailability`, SOFT applica `soft_penalty` per ora
+  occupata), `required_free_days_count` (INT 0-6, default 1, HARD:
+  numero esatto di giorni liberi a settimana — CCNL italiano = 1),
   `max_consecutive`, `pref_no_buchi_weight`, `pref_no_five_weight`,
   `pref_no_one_weight`, `preferred_days_csv`. Relazioni:
   `teacher_subjects`, `teacher_unavailability`,
