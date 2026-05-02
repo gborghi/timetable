@@ -7,6 +7,23 @@ sotto e [api.md](api.md) per i campi disponibili).
 
 ## Funzionalita' trasversali
 
+### Viste salvate
+
+Sopra ogni tabella, accanto ai bottoni di Reset e Export, trovi
+un dropdown "Viste salvate..." e i bottoni "Salva vista" / "x":
+
+- **Salva vista**: chiede un nome e memorizza la query DSL +
+  l'attuale sort multi-livello come `SavedView(entity, name,
+  dsl_query, sort_levels)`. La vista e' globale (condivisa fra
+  tutti i client che colpiscono lo stesso DB). Unique su
+  `(entity, name)`.
+- **Dropdown "Viste salvate..."**: applica una vista (sostituisce
+  query + sort + ricarica la lista).
+- **x**: elimina la vista correntemente selezionata nel dropdown.
+
+Endpoint: `/api/saved-views?entity=<entity>` (GET / POST / PUT
+{id} / DELETE {id}).
+
 ### Esportazione liste (xlsx / csv)
 
 Sopra ogni tabella, accanto a "Reset query" / "Reset sort", trovi

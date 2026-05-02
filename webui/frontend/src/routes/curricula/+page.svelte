@@ -212,6 +212,7 @@
   <SortableQueryableList
     bind:this={listRef}
     endpoint="/api/curricula"
+    entity="curricula"
     {columns}
     {help}
     rowKey={(r) => r.id}

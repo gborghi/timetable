@@ -26,8 +26,10 @@
   //
   // Slots: default takes (row, columns) and renders a <tr>.
 
+  import { onMount } from 'svelte';
   import { api } from '../api';
   import { flash } from '../stores';
+  import { savedViews as savedViewsSvc } from '../services';
 
   export let endpoint;
   export let columns = [];
@@ -40,6 +42,10 @@
   // explicit reload from the parent only if reload-clear is true.
   export let selectable = false;
   export let selectedIds = [];
+  // Optional: machine name of the entity, e.g. 'teachers'. When set,
+  // the toolbar shows a "Viste salvate" dropdown linked to the
+  // /api/saved-views endpoint scoped to this entity.
+  export let entity = '';
 
   let lastClickedIdx = -1;
 
@@ -179,6 +185,66 @@
     lastClickedIdx = -1;
   }
 
+  // ----- Saved views ----------------------------------------------------
+
+  let savedViewsList = [];
+  let selectedViewId = '';
+
+  async function reloadSavedViews() {
+    if (!entity) return;
+    try {
+      savedViewsList = await savedViewsSvc.list(entity);
+    } catch { /* */ }
+  }
+
+  async function applyView(id) {
+    selectedViewId = id;
+    if (!id) return;
+    const v = savedViewsList.find((x) => String(x.id) === String(id));
+    if (!v) return;
+    q = v.dsl_query || '';
+    sortLevels = (v.sort_levels || []).map((l) => ({
+      column: l.column,
+      direction: l.direction === 'desc' ? 'desc' : 'asc',
+    }));
+    await reload();
+  }
+
+  async function saveCurrentView() {
+    if (!entity) return;
+    const name = (prompt('Nome della vista:') || '').trim();
+    if (!name) return;
+    try {
+      await savedViewsSvc.create({
+        entity,
+        name,
+        dsl_query: q || null,
+        sort_levels: sortLevels.map((l) => ({
+          column: l.column, direction: l.direction,
+        })),
+      });
+      flash('Vista salvata', 'success');
+      await reloadSavedViews();
+    } catch (e) { flash('Errore: ' + e.message, 'error'); }
+  }
+
+  async function deleteSelectedView() {
+    if (!selectedViewId) return;
+    const v = savedViewsList.find(
+      (x) => String(x.id) === String(selectedViewId),
+    );
+    if (!v) return;
+    if (!confirm('Eliminare la vista "' + v.name + '"?')) return;
+    try {
+      await savedViewsSvc.remove(v.id);
+      selectedViewId = '';
+      await reloadSavedViews();
+      flash('Vista eliminata', 'success');
+    } catch (e) { flash('Errore: ' + e.message, 'error'); }
+  }
+
+  onMount(() => { reloadSavedViews(); });
+
   // ----- Export ---------------------------------------------------------
 
   /** Build a URL that mirrors the current view (q + sort) plus a
@@ -238,6 +304,28 @@
             title="Torna all'ordine originale">
       Reset sort
     </button>
+    {#if entity}
+      <span class="border-l border-ink-200 h-6 mx-1"></span>
+      <select class="btn !text-xs !pr-2"
+              title="Carica una vista salvata (query + sort)"
+              bind:value={selectedViewId}
+              on:change={(e) => applyView(e.currentTarget.value)}>
+        <option value="">Viste salvate...</option>
+        {#each savedViewsList as v (v.id)}
+          <option value={v.id}>{v.name}</option>
+        {/each}
+      </select>
+      <button class="btn !text-xs" on:click={saveCurrentView}
+              title="Salva la query+sort corrente come vista nominata">
+        Salva vista
+      </button>
+      <button class="btn-danger !text-xs"
+              on:click={deleteSelectedView}
+              disabled={!selectedViewId}
+              title="Elimina la vista selezionata">
+        x
+      </button>
+    {/if}
     <span class="border-l border-ink-200 h-6 mx-1"></span>
     <button class="btn !text-xs" on:click={() => downloadExport('xlsx', false)}
             disabled={exporting || rows.length === 0}

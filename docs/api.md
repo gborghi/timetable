@@ -35,6 +35,19 @@ LogicalUnavailability filtrato per `entity_type=teacher`).
 `/api/classes`. Embed: `subjects[]`, `unavailability[]`. Sub:
 `/api/classes/{id}/logical-unavailabilities`.
 
+### Saved views
+- `GET /api/saved-views?entity=<entity>` -- lista viste salvate
+  (filtrabile per entita').
+- `POST /api/saved-views` -- body
+  `{entity, name, dsl_query?, sort_levels: [{column, direction}]}`.
+  409 se esistente.
+- `PUT /api/saved-views/{id}` -- aggiorna nome / dsl_query /
+  sort_levels / description.
+- `DELETE /api/saved-views/{id}` -- elimina.
+
+Entita' valide: teachers, classes, classrooms, subjects, students,
+groups, curricula, constraints, monitor.
+
 ### Esportazione liste
 
 Tutti gli endpoint di lista qui sotto (`/api/teachers`,

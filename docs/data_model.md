@@ -164,6 +164,10 @@ in `webui/backend/db.py::_apply_lightweight_migrations`.
 ### Misc
 
 - **app_state** -- key/value singleton (impostazioni app).
+- **saved_views** -- viste nominate `(entity, name, dsl_query,
+  sort_levels_json, description)`. UNIQUE `(entity, name)`. Usate
+  dal dropdown "Viste salvate" del componente
+  `SortableQueryableList`.
 
 ## Relazioni rilevanti
 

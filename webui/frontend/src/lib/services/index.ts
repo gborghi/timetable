@@ -281,3 +281,26 @@ export const logic = {
       expression,
     }),
 };
+
+// ---------------- Saved views -------------
+
+export interface SavedView {
+  id: number;
+  entity: string;
+  name: string;
+  dsl_query?: string | null;
+  sort_levels: Array<{ column: string; direction: "asc" | "desc" }>;
+  description?: string | null;
+}
+
+export const savedViews = {
+  list: (entity?: string) =>
+    api.get<SavedView[]>(
+      "/api/saved-views" + (entity ? "?entity=" + encodeURIComponent(entity) : ""),
+    ),
+  create: (b: Partial<SavedView>) =>
+    api.post<SavedView>("/api/saved-views", b),
+  update: (id: number, b: Partial<SavedView>) =>
+    api.put<SavedView>("/api/saved-views/" + id, b),
+  remove: (id: number) => api.del<void>("/api/saved-views/" + id),
+};
