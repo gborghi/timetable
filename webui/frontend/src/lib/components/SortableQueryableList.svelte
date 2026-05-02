@@ -179,6 +179,40 @@
     lastClickedIdx = -1;
   }
 
+  // ----- Export ---------------------------------------------------------
+
+  /** Build a URL that mirrors the current view (q + sort) plus a
+   *  format param. When `all` is true, the q+sort filters are
+   *  dropped so the user gets the full unfiltered table. */
+  function exportUrl(format, all = false) {
+    const params = new URLSearchParams();
+    if (!all) {
+      if (q) params.set('q', q);
+      if (sortString) params.set('sort', sortString);
+    }
+    params.set('format', format);
+    return endpoint + '?' + params.toString();
+  }
+
+  let exporting = false;
+
+  async function downloadExport(format, all = false) {
+    exporting = true;
+    try {
+      const url = exportUrl(format, all);
+      // Trigger download via a hidden anchor — browser handles the file
+      // save natively, no FileSaver dep needed.
+      const a = document.createElement('a');
+      a.href = url;
+      a.rel = 'noopener';
+      // Let the server's Content-Disposition pick the filename.
+      a.click();
+    } finally {
+      // small delay so the user sees the spinner if the file is huge
+      setTimeout(() => { exporting = false; }, 300);
+    }
+  }
+
   reload();
 </script>
 
@@ -203,6 +237,22 @@
             disabled={sortLevels.length === 0}
             title="Torna all'ordine originale">
       Reset sort
+    </button>
+    <span class="border-l border-ink-200 h-6 mx-1"></span>
+    <button class="btn !text-xs" on:click={() => downloadExport('xlsx', false)}
+            disabled={exporting || rows.length === 0}
+            title="Esporta la vista corrente (query + sort) come xlsx">
+      {exporting ? '...' : 'xlsx'}
+    </button>
+    <button class="btn !text-xs" on:click={() => downloadExport('csv', false)}
+            disabled={exporting || rows.length === 0}
+            title="Esporta la vista corrente (query + sort) come csv">
+      csv
+    </button>
+    <button class="btn !text-xs" on:click={() => downloadExport('xlsx', true)}
+            disabled={exporting}
+            title="Esporta TUTTE le righe (ignora query e sort)">
+      tutto
     </button>
     {#if selectable}
       <span class="border-l border-ink-200 h-6 mx-1"></span>

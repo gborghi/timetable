@@ -35,6 +35,24 @@ LogicalUnavailability filtrato per `entity_type=teacher`).
 `/api/classes`. Embed: `subjects[]`, `unavailability[]`. Sub:
 `/api/classes/{id}/logical-unavailabilities`.
 
+### Esportazione liste
+
+Tutti gli endpoint di lista qui sotto (`/api/teachers`,
+`/api/classes`, `/api/classrooms`, `/api/subjects`,
+`/api/students`, `/api/groups`, `/api/curricula`) accettano un
+parametro `format=xlsx|csv` che sostituisce la risposta JSON con
+un file binario:
+
+- `format=xlsx` -- workbook openpyxl (header colorato, auto-fit
+  colonne)
+- `format=csv`  -- UTF-8 con BOM (Excel italiano), separatore `,`,
+  CRLF, RFC 4180
+
+I filtri `q=` e `sort=` sono applicati prima dell'export, quindi
+il file rispecchia esattamente la vista che l'utente sta
+guardando. Filename automatico:
+`<entita>_YYYYMMDD_HHMMSS.<ext>`.
+
 ### Classrooms
 `/api/classrooms`. Embed: `subject_prefs[]` (ClassroomSubjectPreference),
 `class_prefs[]` (ClassroomClassPreference, con `is_home`),

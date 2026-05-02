@@ -7,6 +7,25 @@ sotto e [api.md](api.md) per i campi disponibili).
 
 ## Funzionalita' trasversali
 
+### Esportazione liste (xlsx / csv)
+
+Sopra ogni tabella, accanto a "Reset query" / "Reset sort", trovi
+3 bottoni di esportazione:
+
+- **xlsx** -- esporta la **vista corrente** (solo le righe filtrate
+  dalla query DSL, nell'ordine determinato dal sort multi-livello)
+  come file `.xlsx` con header colorato e auto-fit colonne.
+- **csv** -- stesso contenuto, formato CSV UTF-8 con BOM
+  (compatibile con Excel italiano).
+- **tutto** -- ignora query e sort, esporta tutte le righe
+  dell'entita' come `.xlsx` (utile per backup totale o dump).
+
+Il filename ha il formato `<entita>_<YYYYMMDD>_<HHMMSS>.<ext>`. I
+parametri `?format=xlsx|csv` sono accettati da tutti gli endpoint
+di lista (`/api/teachers`, `/api/classes`, `/api/classrooms`,
+`/api/subjects`, `/api/students`, `/api/groups`, `/api/curricula`),
+quindi gli stessi export sono disponibili anche via curl.
+
 ### Query DSL e sort multi-livello
 
 Ogni pagina lista ha:
