@@ -184,8 +184,17 @@ export interface StreamRunHandlers {
 }
 
 /** Wait for a run to reach a terminal state (done | failed). Resolves
- * with the final status payload. Useful for chaining steps in the
- * PlaceEventModal pipeline. */
+ * with the final status payload. Used for chaining steps in the
+ * PlaceEventModal pipeline.
+ *
+ * Implementation: SSE 'end' alone is unreliable on long runs --
+ * browsers can close idle EventSource connections (e.g. after ~30s
+ * of no traffic), and the 'error' fallback can fire transient blips.
+ * We instead authoritatively poll GET /api/optimize/runs/{id} every
+ * 2s and resolve when .status is 'done' or 'failed'. SSE is still
+ * used for the live log + status pushes; its 'end' just triggers an
+ * immediate poll to avoid waiting up to 2s for the next tick.
+ */
 export function waitForRun(
   runId: number,
   { onLog, onStatus }: {
@@ -193,22 +202,46 @@ export function waitForRun(
     onStatus?: (status: { status: string; progress?: number }) => void;
   } = {},
 ): Promise<{ status: string }> {
-  return new Promise((resolve, reject) => {
-    let lastStatus: { status?: string } = {};
-    const unsub = streamRun(runId, {
+  return new Promise((resolve) => {
+    let resolved = false;
+    let pollTimer: ReturnType<typeof setInterval> | null = null;
+    let unsub: (() => void) | null = null;
+
+    function finish(status: string) {
+      if (resolved) return;
+      resolved = true;
+      if (pollTimer) clearInterval(pollTimer);
+      try { if (unsub) unsub(); } catch { /* ignore */ }
+      resolve({ status });
+    }
+
+    async function pollOnce() {
+      try {
+        const r = await request<{ status: string; progress?: number }>(
+          `/api/optimize/runs/${runId}`,
+        );
+        if (onStatus) onStatus(r);
+        if (r.status === 'done' || r.status === 'failed') {
+          finish(r.status);
+        }
+      } catch {
+        /* ignore transient poll errors; retry on the next tick */
+      }
+    }
+
+    unsub = streamRun(runId, {
       onLog: (l) => { if (onLog) onLog(l); },
       onStatus: (s) => {
-        lastStatus = s as { status?: string };
         if (onStatus) onStatus(s as { status: string; progress?: number });
       },
-      onEnd: () => {
-        resolve({ status: lastStatus.status || 'done' });
-      },
-      onError: () => {
-        unsub();
-        reject(new Error('SSE connection error'));
-      },
+      onEnd: () => { pollOnce(); },
+      // SSE error is non-terminal: ignore it and rely on polling.
+      onError: () => { /* swallow */ },
     });
+
+    // Immediate first probe + 2s pulse
+    pollOnce();
+    pollTimer = setInterval(pollOnce, 2000);
   });
 }
 

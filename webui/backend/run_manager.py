@@ -251,6 +251,17 @@ async def stream_events(run_id: int, replay: bool = True) -> Iterable[str]:
                     yield _format_event("end", r.status)
                     return
         if finished:
+            # The buffer is finished but the row may still show 'running'
+            # for a few ms because the worker thread's update_run commit
+            # hasn't propagated to this connection yet. Wait + re-read
+            # a few times before declaring 'done' as a fallback.
+            for _ in range(10):
+                await asyncio.sleep(0.1)
+                with SessionLocal() as db2:
+                    r2 = db2.get(models.Run, run_id)
+                    if r2 is not None and r2.status in ("done", "failed"):
+                        yield _format_event("end", r2.status)
+                        return
             yield _format_event("end", "done")
             return
 
