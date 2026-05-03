@@ -223,10 +223,20 @@ class Iff(Node):
 
 @dataclass
 class Quant(Node):
-    """forall / exists. Body is the inner expression."""
+    """forall / exists. Body is the inner expression.
+
+    `source` is either:
+      - a string naming one of `_VALID_SOURCES` (the canonical path:
+        iterate `world[source]`), or
+      - a `Ref` (dotted path) that, when evaluated in the enclosing
+        environment, returns a list/tuple/set to iterate. This
+        enables expressions like `exists g in s.groups: ...` where
+        `s.groups` resolves to the list of group dicts attached to
+        the student bound by an outer `forall s in students`.
+    """
     quant: str = ""           # 'forall' | 'exists'
     var: str = ""
-    source: str = ""
+    source: Any = ""          # str | Ref
     where: Node | None = None
     body: Node | None = None
     kind: str = field(default="QUANT", init=False)
@@ -234,9 +244,10 @@ class Quant(Node):
 
 @dataclass
 class Count(Node):
-    """count v in source [where filter] op N."""
+    """count v in source [where filter] op N. `source` semantics
+    are the same as for Quant: literal name or Ref path."""
     var: str = ""
-    source: str = ""
+    source: Any = ""          # str | Ref
     where: Node | None = None
     op: str = ""
     rhs: Any = None
@@ -350,16 +361,33 @@ class Parser:
         # comparison or value-only
         return self._parse_comparison_or_call()
 
+    def _parse_source(self) -> Any:
+        """Parse the source after `IN`: either a literal source name
+        (must be in _VALID_SOURCES) or a dotted path (Ref) that
+        resolves to a list at runtime."""
+        first = self._eat("IDENT")[1]
+        # Dotted-path source: tokenize the rest into a Ref
+        if self._peek()[0] == "DOT":
+            path = [first]
+            while self._peek()[0] == "DOT":
+                self._eat()
+                path.append(self._eat("IDENT")[1])
+            return Ref(path=path)
+        # Literal name source -- must be a known iterable
+        if first not in _VALID_SOURCES:
+            raise DSLError(
+                f"sorgente sconosciuta '{first}'. "
+                f"Validi: {sorted(_VALID_SOURCES)}, oppure usa un "
+                f"path tipo `s.groups` per iterare su una lista "
+                f"raggiunta tramite un attributo."
+            )
+        return first
+
     def _parse_quant(self):
         qtok = self._eat("QUANT")
         var = self._eat("IDENT")[1]
         self._eat("IN")
-        src = self._eat("IDENT")[1]
-        if src not in _VALID_SOURCES:
-            raise DSLError(
-                f"sorgente sconosciuta '{src}'. "
-                f"Validi: {sorted(_VALID_SOURCES)}"
-            )
+        src = self._parse_source()
         where = None
         if self._peek()[0] == "WHERE":
             self._eat()
@@ -373,9 +401,7 @@ class Parser:
         self._eat("COUNT")
         var = self._eat("IDENT")[1]
         self._eat("IN")
-        src = self._eat("IDENT")[1]
-        if src not in _VALID_SOURCES:
-            raise DSLError(f"sorgente sconosciuta '{src}'")
+        src = self._parse_source()
         where = None
         if self._peek()[0] == "WHERE":
             self._eat()
@@ -574,13 +600,24 @@ def validate(tree: Node, max_atoms: int = 1_000_000
         elif isinstance(n, (Implies, Iff)):
             visit(n.left, env); visit(n.right, env)
         elif isinstance(n, Quant):
-            new_env = {**env, n.var: n.source}
+            # When source is a Ref (path), validate the path against
+            # the enclosing env first; the bound variable's "kind"
+            # is unknown so we record an empty placeholder.
+            src_kind: str | Ref = n.source
+            if isinstance(n.source, Ref):
+                visit(n.source, env)
+                src_kind = ""    # unknown element kind for path
+            new_env = {**env, n.var: src_kind}
             if n.where is not None:
                 visit(n.where, new_env)
             if n.body is not None:
                 visit(n.body, new_env)
         elif isinstance(n, Count):
-            new_env = {**env, n.var: n.source}
+            src_kind: str | Ref = n.source
+            if isinstance(n.source, Ref):
+                visit(n.source, env)
+                src_kind = ""
+            new_env = {**env, n.var: src_kind}
             if n.where is not None:
                 visit(n.where, new_env)
             if isinstance(n.rhs, Node):
@@ -824,6 +861,24 @@ def _resolve_path(env: dict, path: list[str]) -> Any:
     return cur
 
 
+def _resolve_source(source: Any, env: dict, world: dict) -> list:
+    """Quant/Count `source` is either a literal name (string) into
+    world, or a Ref (dotted path) that should resolve to a list at
+    runtime via the enclosing env."""
+    if isinstance(source, str):
+        return world.get(source, []) or []
+    if isinstance(source, Ref):
+        coll = _resolve_path(env, source.path)
+        if isinstance(coll, (list, tuple, set)):
+            return list(coll)
+        if coll is None:
+            return []
+        # Singleton fallback (so `forall x in s.foo: ...` with a
+        # scalar `foo` still iterates one item rather than crashing)
+        return [coll]
+    return []
+
+
 def _eval(node: Node, env: dict, world: dict) -> Any:
     if isinstance(node, Lit):
         return node.value
@@ -844,7 +899,7 @@ def _eval(node: Node, env: dict, world: dict) -> Any:
     if isinstance(node, Cmp):
         return _eval_cmp(node, env, world)
     if isinstance(node, Quant):
-        items = world.get(node.source, [])
+        items = _resolve_source(node.source, env, world)
         if node.quant == "forall":
             for it in items:
                 new_env = {**env, node.var: it}
@@ -864,7 +919,7 @@ def _eval(node: Node, env: dict, world: dict) -> Any:
                     return True
             return False
     if isinstance(node, Count):
-        items = world.get(node.source, [])
+        items = _resolve_source(node.source, env, world)
         n = 0
         for it in items:
             new_env = {**env, node.var: it}

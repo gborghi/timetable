@@ -1198,6 +1198,382 @@ aggiornamento via subgradient ascent
 $\lambda_{k+1} = \max(0, \lambda_k + \alpha_k g_k)$ con
 $\alpha_k = \alpha_0 / (1+k)$. Per-iteration refinement via SA.
 
+% =========== DSL generico ===========
+\chapter{DSL generico per i vincoli}
+\label{ch:dsl}
+
+Linguaggio compatto, dichiarativo, totalmente componibile per
+esprimere vincoli HARD/SOFT/PREFERITO/ENFORCED su qualunque
+combinazione logica di predicati sul modello dei dati.
+Implementato in \texttt{webui/backend/utils/general\_dsl.py}
+(parser ricorsivo discendente + AST + evaluator post-hoc, $\sim$250
+LOC, no dipendenze esterne). Esposto via
+\texttt{POST /api/constraints/general}, validato live da
+\texttt{POST /api/constraints/general/validate}, accessibile dal
+modal ``+ Nuovo vincolo DSL'' del tab Vincoli.
+
+\section{Filosofia}
+
+Prima del DSL generico il sistema aveva quattro sub-DSL
+specializzati (query, logical, objective, introspettivo). Stessa
+grammatica implementata 4 volte. Il DSL generico unifica tutto
+sotto una sola grammatica con quattro ``sapori'' di compilazione
+(LIST, LOGIC, OBJECTIVE, EVAL): \emph{un parser, molti
+compilatori}. La sintassi di
+\texttt{forall x in S where Filter: Body} e dei predicati atomici
+(\texttt{==}, \texttt{!=}, \texttt{<}, \texttt{in}, \dots) e'
+identica in tutti i contesti; cambia solo il backend di
+traduzione.
+
+Il DSL e' interpretato \emph{post-hoc}: parsea l'espressione e
+la valuta DOPO che la pipeline (Phase A, Phase B, metaeuristiche)
+ha prodotto una soluzione candidata. Le violazioni HARD sono
+rilevate dal Feasibility Check; le SOFT alimentano lo score
+globale.
+
+\section{Grammatica BNF}
+
+\begin{lstlisting}[basicstyle=\ttfamily\small]
+expr           ::= iff_expr
+iff_expr       ::= implies_expr ( "<=>" implies_expr )*
+implies_expr   ::= or_expr     ( "=>"  or_expr )*
+or_expr        ::= and_expr    ( ("OR"|"or") and_expr )*
+and_expr       ::= not_expr    ( ("AND"|"and") not_expr )*
+not_expr       ::= ("NOT"|"not") not_expr | atom
+
+atom           ::= quant_expr | count_expr | comparison
+                 | call | bool_lit | "(" expr ")"
+
+quant_expr     ::= ("forall"|"exists") IDENT "in" source
+                   ["where" or_expr] ":" expr
+
+count_expr     ::= "count" IDENT "in" source ["where" or_expr]
+                   ( ":" comparison | op value )
+
+source         ::= IDENT                  -- literal name
+                 | IDENT ("." IDENT)+     -- path (runtime)
+
+comparison     ::= value ( op value
+                         | "in" "[" value ("," value)* "]"
+                         | "in" path
+                         | "not_in" "[" value ("," value)* "]"
+                         | "not_in" path )
+
+op             ::= "==" | "!=" | "<" | "<=" | ">" | ">="
+value          ::= IDENT ( "." IDENT )* | NUM | STRING
+                 | BOOL | function_call
+function_call  ::= IDENT "(" [arg_list] ")"
+arg_list       ::= arg ("," arg)*
+arg            ::= IDENT "==" value | value
+\end{lstlisting}
+
+Precedenze (dal pi\`u basso al pi\`u alto):
+\texttt{<=>}, \texttt{=>}, \texttt{OR}, \texttt{AND}, \texttt{NOT},
+confronti, \texttt{.} (member access). Le parentesi sovrascrivono.
+
+\section{Sorgenti iterabili}
+
+\begin{tabular}{ll}
+\toprule
+\textbf{Sorgente} & \textbf{Tipo elemento} \\
+\midrule
+\texttt{lessons}     & lezioni della soluzione attiva \\
+\texttt{assignments} & cattedre (Assignment rows) \\
+\texttt{teachers}    & docenti (\texttt{name, group, max\_hours, subject}) \\
+\texttt{classes}     & classi (\texttt{name, year, curriculum, n\_students}) \\
+\texttt{classrooms}  & aule (\texttt{name, kind, type, tags}) \\
+\texttt{students}    & studenti (con \texttt{tags[]} e \texttt{groups[]}) \\
+\texttt{subjects}    & materie \\
+\texttt{curricula}   & indirizzi di studio \\
+\texttt{groups}      & gruppi articolati \\
+\texttt{slots}       & le 36 \texttt{(day, hour)} della settimana \\
+\texttt{days}        & i 6 giorni (Lun..Sab; index 1..6) \\
+\texttt{hours}       & le 6 ore (8..13) \\
+\bottomrule
+\end{tabular}
+
+\textbf{Sorgente-path}: dalla v0.5 puoi scrivere
+\texttt{exists g in s.groups: g.name == "X"} dove \texttt{s.groups}
+e' un attributo che restituisce una lista; il parser accetta
+qualunque path puntato dopo \texttt{in}.
+
+\section{Galleria di esempi}
+
+Ogni esempio sotto e' stato validato live contro il parser
+corrente; copia-incolla nell'editor del modal ``+ Nuovo vincolo
+DSL'' e funziona.
+
+\subsection{Vincoli docente (10 esempi)}
+
+\begin{enumerate}
+\item Borghi non insegna mai in 1A alla 6a ora:
+\begin{lstlisting}
+forall l in lessons where l.teacher == Borghi
+                       and l.class == 1A:
+    l.hour != 13
+\end{lstlisting}
+
+\item Borghi: max 4 ore/giorno totali:
+\begin{lstlisting}
+forall d in days:
+    count l in lessons where l.teacher == Borghi
+                          and l.day == d.index: l <= 4
+\end{lstlisting}
+
+\item Lab fisica: ogni docente di Fisica esattamente 1 ora a
+settimana in lab\_fisica:
+\begin{lstlisting}
+forall t in teachers where t.subject == "Fisica":
+    count l in lessons where l.teacher == t
+        and l.classroom.type == "lab_fisica": l == 1
+\end{lstlisting}
+
+\item Tetto cattedra Inglese: max 18h/settimana:
+\begin{lstlisting}
+forall t in teachers where t.subject == "Inglese":
+    count l in lessons where l.teacher == t: l <= 18
+\end{lstlisting}
+
+\item Rossi non lavora il sabato (HARD):
+\begin{lstlisting}
+forall l in lessons where l.teacher == Rossi
+                       and l.day == 6:
+    false
+\end{lstlisting}
+
+\item Rossi: al pi\`u 1 sesta ora/settimana:
+\begin{lstlisting}
+count l in lessons where l.teacher == Rossi
+                      and l.hour == 13: l <= 1
+\end{lstlisting}
+
+\item Tutti A050: max 5 ore/giorno:
+\begin{lstlisting}
+forall t in teachers where t.group == "A050":
+    forall d in days:
+        count l in lessons where l.teacher == t
+            and l.day == d.index: l <= 5
+\end{lstlisting}
+
+\item Coupling Rossi 3A $\Rightarrow$ Bianchi 3B:
+\begin{lstlisting}
+(exists l in lessons:
+    l.teacher == Rossi and l.class == 3A)
+=> (exists l in lessons:
+    l.teacher == Bianchi and l.class == 3B)
+\end{lstlisting}
+
+\item Rossi mai in palestra:
+\begin{lstlisting}
+forall l in lessons where l.teacher == Rossi:
+    l.classroom.type != "palestra"
+\end{lstlisting}
+
+\item Tutti i prof di mate: almeno una lezione di mattina:
+\begin{lstlisting}
+forall t in teachers where t.subject == "Matematica":
+    exists l in lessons where l.teacher == t:
+        l.hour <= 9
+\end{lstlisting}
+\end{enumerate}
+
+\subsection{Vincoli classe (5 esempi)}
+
+\begin{enumerate}
+\item La 1A non lavora il sabato:
+\begin{lstlisting}
+forall l in lessons where l.class == 1A: l.day != 6
+\end{lstlisting}
+
+\item Le prime: max 5 ore/giorno:
+\begin{lstlisting}
+forall c in classes where c.year == 1:
+    forall d in days:
+        count l in lessons where l.class == c.name
+            and l.day == d.index: l <= 5
+\end{lstlisting}
+
+\item Quarte/quinte: due ore CONSECUTIVE di mate:
+\begin{lstlisting}
+forall c in classes where c.year >= 4:
+    exists s1 in slots: exists s2 in slots:
+        consecutive(s1, s2)
+        and lesson(class==c.name, day==s1.day,
+                   hour==s1.hour, subject==Matematica)
+        and lesson(class==c.name, day==s2.day,
+                   hour==s2.hour, subject==Matematica)
+\end{lstlisting}
+
+\item Linguistico anno 1: niente sabato:
+\begin{lstlisting}
+forall l in lessons
+    where l.class.curriculum == Linguistico
+      and l.day == 6: false
+\end{lstlisting}
+
+\item 1A: religione solo nelle prime 4 ore:
+\begin{lstlisting}
+forall l in lessons where l.class == 1A
+                       and l.subject == Religione:
+    l.hour <= 11
+\end{lstlisting}
+\end{enumerate}
+
+\subsection{Vincoli aula (5 esempi)}
+
+\begin{enumerate}
+\item Lab Fisica 1: una sola lezione per slot:
+\begin{lstlisting}
+forall s in slots:
+    count l in lessons
+        where l.classroom == "Lab Fisica 1"
+          and l.day == s.day and l.hour == s.hour:
+        l <= 1
+\end{lstlisting}
+
+\item Matematica solo in aule taggate ``matematica'':
+\begin{lstlisting}
+forall l in lessons where l.subject == Matematica:
+    "matematica" in l.classroom.tags
+\end{lstlisting}
+
+\item Storia delle terze: aula con proiettore:
+\begin{lstlisting}
+forall l in lessons where l.subject == Storia
+                       and l.class.year >= 3:
+    "proiettore" in l.classroom.tags
+\end{lstlisting}
+
+\item La palestra ospita SOLO Scienze motorie:
+\begin{lstlisting}
+forall l in lessons
+    where l.classroom.type == "palestra":
+    l.subject == Scienzemotorie
+\end{lstlisting}
+
+\item Lab chimica: max 2 lezioni concorrenti:
+\begin{lstlisting}
+forall s in slots:
+    count l in lessons
+        where l.classroom.type == "lab_chimica"
+          and l.day == s.day and l.hour == s.hour:
+        l <= 2
+\end{lstlisting}
+\end{enumerate}
+
+\subsection{Vincoli materia (3 esempi)}
+
+\begin{enumerate}
+\item Mate distribuita: max 2 ore/giorno per classe:
+\begin{lstlisting}
+forall c in classes:
+    forall d in days:
+        count l in lessons
+            where l.class == c.name
+              and l.subject == Matematica
+              and l.day == d.index: l <= 2
+\end{lstlisting}
+
+\item Mate preferibilmente entro la 5a ora:
+\begin{lstlisting}
+forall l in lessons where l.subject == Matematica:
+    l.hour <= 12
+\end{lstlisting}
+
+\item Educazione fisica solo in palestra:
+\begin{lstlisting}
+forall l in lessons
+    where l.subject == Educazionefisica:
+    l.classroom.type == "palestra"
+\end{lstlisting}
+\end{enumerate}
+
+\subsection{Vincoli gruppo / studenti (3 esempi)}
+
+\begin{enumerate}
+\item Studenti BES devono essere in un gruppo Sostegno (uso di
+\texttt{exists g in s.groups}):
+\begin{lstlisting}
+forall s in students where "BES" in s.tags:
+    exists g in s.groups: g.name == "Sostegno"
+\end{lstlisting}
+
+\item Studenti con debito mate quarto $\to$ gruppo Recupero:
+\begin{lstlisting}
+forall s in students
+    where "debito_matematica_4" in s.tags:
+    exists g in s.groups:
+        g.name == "Recupero Matematica"
+\end{lstlisting}
+
+\item Studenti BES: nessuna lezione il sabato:
+\begin{lstlisting}
+forall l in lessons:
+    forall s in students
+        where l.class == s.class
+          and "BES" in s.tags:
+        l.day != 6
+\end{lstlisting}
+\end{enumerate}
+
+\subsection{Vincoli relazionali / coupling (4 esempi)}
+
+\begin{enumerate}
+\item Rossi in Aula 12: solo Matematica:
+\begin{lstlisting}
+forall l in lessons where l.teacher == Rossi
+                       and l.classroom == "Aula 12":
+    l.subject == Matematica
+\end{lstlisting}
+
+\item Se Rossi in 3A allora deve usare lab fisica almeno una
+volta:
+\begin{lstlisting}
+(exists l in lessons:
+    l.teacher == Rossi and l.class == 3A)
+=>
+(exists l2 in lessons:
+    l2.teacher == Rossi and l2.class == 3A
+    and l2.classroom.type == "lab_fisica")
+\end{lstlisting}
+
+\item Inglese alle prime: max 3 ore/sett per (docente,classe):
+\begin{lstlisting}
+forall t in teachers where t.subject == "Inglese":
+    forall c in classes where c.year == 1:
+        count l in lessons
+            where l.teacher == t
+              and l.class == c.name: l <= 3
+\end{lstlisting}
+
+\item Religione alle prime: mai in 1a ora:
+\begin{lstlisting}
+forall l in lessons where l.subject == Religione
+                       and l.class.year == 1:
+    l.hour != 8
+\end{lstlisting}
+\end{enumerate}
+
+\section{Errori comuni}
+
+\begin{itemize}
+\item \texttt{Atteso COLON, trovato OP (=)} -- usa \texttt{==}
+nei confronti dopo \texttt{where} (\texttt{=} singolo e' lecito,
+ma confonde il parser quando appare in contesti ambigui).
+\item \texttt{sorgente sconosciuta 'foo'} -- sorgente non in
+\texttt{\_VALID\_SOURCES} e non e' un path raggiungibile via
+env. Controlla l'ortografia.
+\item \texttt{oltre 1000000 atomi: probabile esplosione
+combinatoria} -- quantificatori troppo annidati. Sposta filtri
+nel \texttt{where} pi\`u esterno per ridurre il set; oppure
+splitta il vincolo in pi\`u vincoli salvati separatamente.
+\end{itemize}
+
+Vedere \texttt{docs/general\_dsl.md} per la guida completa con
+sezioni 1--12 (galleria di 30+ esempi commentati,
+troubleshooting esteso, reference tabellare di tutti gli
+attributi per ciascuna entit\`a).
+
 \chapter{Diagnostica statistica}
 
 Il tab \texttt{/diagnostics} aggrega tutte le analisi sul

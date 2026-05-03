@@ -197,6 +197,35 @@ Four kinds: HARD / SOFT / PREFERRED / ENFORCED. Documentation in
 honored by the solver today; predicate-atom enforcement is partial
 and described in the same doc.
 
+### DSL generico (general DSL)
+
+Per vincoli arbitrari su qualunque combinazione di docenti, classi,
+aule, materie, gruppi, studenti, giorni, ore, c'e' un **DSL
+generico** (un parser, molti compilatori) con quantificatori
+`forall` / `exists` / `count`, predicati atomici, connettivi
+logici, funzioni built-in (`lesson()`, `consecutive()`, `same_day()`,
+...), sorgenti-path (es. `exists g in s.groups`).
+
+Esempi tipici:
+
+```
+# Ogni docente di Fisica deve avere esattamente 1 ora a settimana
+# in un'aula di tipo lab_fisica
+forall t in teachers where t.subject == "Fisica":
+    count l in lessons where l.teacher == t
+                          and l.classroom.type == "lab_fisica":
+        l == 1
+
+# Studenti BES devono appartenere a un gruppo Sostegno
+forall s in students where "BES" in s.tags:
+    exists g in s.groups: g.name == "Sostegno"
+```
+
+Reference completo + galleria di 30+ esempi in
+[`docs/general_dsl.md`](docs/general_dsl.md) e nel capitolo
+"DSL generico per i vincoli" del manuale PDF
+([`docs/manual.pdf`](docs/manual.pdf)).
+
 ## Repository layout
 
 ```
