@@ -12,18 +12,18 @@ Convenzioni:
 - Stato: V (verde, completo) | G (giallo, parziale o caveat) |
   R (rosso, stub o non funzionante).
 
-## Tabella sintetica
+## Tabella sintetica (aggiornata 2026-05-03 dopo i fix `b7bb776`)
 
 | # | Stage | Modulo Python | Funzione principale | Endpoint REST | Stato | Note |
 |---|---|---|---|---|---|---|
 | 1 | Decomposizione temporale | `experiments/decomposition_temporal.py` | `run_temporal_pipeline` | `POST /api/optimize/decomposition/temporal` | V | Implementato in `88bd76c`. Smoke test su small (3.1x), medium (5.3x), big (4.6x), MEGA (5.9x), 6/6 days ok in ogni profilo. |
-| 2 | Decomposizione METIS | `experiments/decomposition_metis.py` | `solve_with_metis_decomposition` | `POST /api/optimize/decomposition/metis` | R | `solve_with_metis_decomposition` solleva `NotImplementedError` (line 141). Endpoint risponde 501. Partitioning (`metis_cluster`, `auto_k_metis`) e' implementato; manca solo il solve loop. |
-| 3 | Decomposizione per curriculum | `experiments/decomposition_curriculum.py` | `solve_with_curriculum_decomposition` | `POST /api/optimize/decomposition/curriculum` | R | Idem METIS: partitioning ok (`build_clusters_by_curriculum`, `find_bridges`), solve loop solleva `NotImplementedError` (line 176). Endpoint 501. |
-| 4 | Combined (spectral + temporal) | -- | -- | `POST /api/optimize/decomposition/combined` | R | Endpoint 501, nessun orchestrator dedicato. |
+| 2 | Decomposizione METIS | `experiments/decomposition_metis.py` | `solve_with_metis_decomposition` | `POST /api/optimize/decomposition/metis` | V | Implementato in `14aea9a`. Solve loop riusa il pattern Stage A/B/C/mono via `decomposition_loop.run_partitioned_pipeline`. Fallback Python balanced-k-way quando `pymetis` manca (Windows). Smoke test small: 6/6 days ok, master 30s + days 1.9s. |
+| 3 | Decomposizione per curriculum | `experiments/decomposition_curriculum.py` | `solve_with_curriculum_decomposition` | `POST /api/optimize/decomposition/curriculum` | V | Implementato in `14aea9a`. Stesso pattern. Smoke test small (Scientifico + ScienzeApplicate, 16/19 docenti come bridges): 6/6 days ok, master 30s + days 3.6s. |
+| 4 | Combined (spectral + temporal) | -- | -- | `POST /api/optimize/decomposition/combined` | V | Decisione esplicita: NON e' un orchestrator dedicato. L'utente ticka entrambi `decomp_spectral` e `decomp_temporal` nella card Pipeline (card 9 del Workflow). L'endpoint `combined` ritorna 200 con un hint che spiega questo. Documentato in `docs/optimization_strategies.md`. |
 | 5 | ALNS | `experiments/alns.py` | `run_alns` | `POST /api/optimize/meta/alns` | V | 6+ destroy operators e 3 repair operators reali. Selector adattivo via roulette wheel. Wirato in `optimization.run_meta('alns')`. |
 | 6 | VNS | `experiments/vns.py` | `run_vns` | `POST /api/optimize/meta/vns` | V | 4 vicinati di dimensione crescente. Wirato in `run_meta('vns')`. |
 | 7 | Lagrangian Relaxation | `experiments/lagrangian.py` | `run_lagrangian` | `POST /api/optimize/meta/lagrangian` | V | Subgradient ascent con SA refinement. Wirato in `run_meta('lagrangian')`. |
-| 8 | Column Generation | `experiments/column_generation.py` | `run_column_generation` | `POST /api/optimize/column-generation` | G | Documentato come "skeleton" nel docstring (line 24): master LP + seed pattern + un'iterazione, ma "iterare CG" e' marcato "non implementato in skeleton" nelle metriche di output (line 281). Funziona come prototipo single-iteration su scuole piccole. |
+| 8 | Column Generation | `experiments/column_generation.py` | `run_column_generation` | `POST /api/optimize/column-generation` | V | Aggiornato in `b7bb776`: pipeline iterativa con master LP + diversified pattern enrichment + integer recovery + completion fallback day-by-day. Smoke test small: 4 iterazioni, 114 patterns, master obj=60, completion riempie i gap, 1662 celle, HARD=100%, 25.8s. La variante full branch-and-price con per-teacher CP-SAT sub-problems guidati dai duali resta in roadmap (esplicitato in `info["mode"] = "iterative-diversified"`). |
 | 9 | Hall pre-check | `experiments/diagnostics/hall_check.py` (CLI) + `optimization.run_hall_check`/`run_diag_hall_check` | -- | `POST /api/optimize/hall-check` + `POST /api/diagnostics/hall-check` | V | Tre punti UI come da specifica (Phase A card, AdvancedTechniques, tab Diagnostica). Sync e async modes. |
 | 10 | Monte Carlo Sensitivity | (interno a `optimization.py`) | `run_diag_montecarlo` | `POST /api/diagnostics/montecarlo` | V | Run async kind `diag_montecarlo`. Catalogo + parametri esposti dal frontend. Cronologia DB-backed (commit `06a78af`). |
 | 11 | Bipartite analysis (modularity, betweenness, density) | (interno) | `run_diag_bipartite` | `POST /api/diagnostics/bipartite` | V | Run async kind `diag_bipartite`. |
@@ -47,32 +47,34 @@ Convenzioni:
 | 29 | Decomposition auto-detect | `experiments/decomposition_auto.py` | `auto_detect_decomposition_strategy` | `GET /api/optimize/decomposition/recommend` | V | Modularita' + densita' -> raccomandazione strategia primaria + combine_with_temporal. Restituisce 200 con motivazione testuale. |
 | 30 | Card Strategie di decomposizione (Workflow) | `webui/frontend/src/routes/optimize/+page.svelte` | -- | client di endpoints sopra | V | 4 sotto-card (3a-3d) + Suggerimento. 4 nuove righe pipeline reorderable. Aggiunto in `d02575d`/`b27fe8c`. |
 
-## Rosso (R) -- da chiudere
+## Aggiornamento post-audit
 
-Tre stage hanno endpoint 501 e/o `NotImplementedError`:
+Tutti i Rossi (3) e il Giallo (1) sono stati chiusi nei commit
+`14aea9a` (METIS + curriculum + combined hint) e `b7bb776` (CG
+iterativo). Nessun endpoint 501 e nessun `NotImplementedError`
+restano nel codice di progetto:
 
-1. **Decomposizione METIS**: `solve_with_metis_decomposition` raises `NotImplementedError` (line 141 di `decomposition_metis.py`). Partitioning OK, manca solo il solve loop. Pattern identico a quello implementato per la temporale e gia' presente in `decomposition_spectral_v2.run_decomposed_pipeline`.
+```
+$ grep -rn "HTTPException(\s*501" webui/backend/ --include="*.py" \
+    | grep -v ".venv"
+(no output)
 
-2. **Decomposizione per curriculum**: idem METIS. `solve_with_curriculum_decomposition` raises `NotImplementedError` (line 176 di `decomposition_curriculum.py`). Partitioning OK.
+$ grep -rn "NotImplementedError" webui/backend/ experiments/ \
+    --include="*.py" | grep -v ".venv"
+(no output)
+```
 
-3. **Combined**: nessun modulo dedicato. L'endpoint 501 punta alla roadmap ma non e' chiaro se Giovanni vuole questa combinazione come orchestrator separato (spectral->temporal o metis->temporal annidati) o se basta che l'utente ticki entrambi nella card pipeline esistente.
+Stato finale (30/30 V):
+- 26 stage gia' V dall'audit iniziale (CP-SAT + spectral + LNS +
+  SA + TS + ILS + ALNS + VNS + Lagrangian + Hall + MC + bipartite
+  + correlations + distributions + telemetry + DSL + tag + free-
+  day prefs + graduatoria + Phase A class/curriculum prefs +
+  Monitor + DNF + Import/Export DB + xlsx/csv export + navbar +
+  5-stati + diagnostics + branding + auto-detect + Workflow card)
+- 4 stage chiusi in questa sessione: METIS, per curriculum,
+  Combined (hint), Column Generation (iterative + completion).
 
-## Giallo (G) -- caveat
+## Pendenze del working tree
 
-1. **Column Generation**: skeleton single-iteration documentato come tale. Funziona su scuole piccole come prototipo ma non itera. Non bloccante per i workflow tipici (alternativa a Phase B opzionale, OFF di default).
-
-## Verde (V) -- nessuna azione
-
-26 stage su 30 sono pienamente implementati con endpoint reale, modulo Python funzionante e (per quasi tutti) test integration o smoke test passati nelle sessioni precedenti.
-
-## Pendenze del working tree (stash)
-
-Durante i turni precedenti avevo iniziato ad implementare i tre punti R sopra (curriculum solve loop, METIS solve loop, helper condiviso `decomposition_loop.py`). Quel lavoro e' stato **stashato** prima di scrivere questo audit per non sporcare la lettura. Comando per ripristinarlo: `git stash list` -> trovare l'entry "WIP: curriculum + metis solve loops + shared decomposition_loop (pre-audit)" -> `git stash pop`.
-
-## Decisioni richieste a Giovanni
-
-Per ciascuno dei tre stage Rossi:
-1. Procedere con l'implementazione subito? (Il pattern e' chiaro, ~150 righe per ciascuno + endpoint wiring + smoke test su small.)
-2. Oppure rimandare e lasciare i 501 con messaggio di roadmap esplicito?
-
-Aspetto OK prima di toccare codice. Niente UI pruning.
+Nessuna. Lo stash della sessione precedente e' stato applicato e
+committato in `14aea9a`.
