@@ -199,13 +199,15 @@ def create_constraint(payload: schemas.ConstraintCreateIn,
             o = db.get(owner_model, int(payload.owner_id))
             if o is None:
                 raise HTTPException(404, "owner non trovato")
+            # NB: LogicalUnavailability has no `label` column (only the
+            # curriculum-scoped variant does); silently drop it here so
+            # callers passing a description don't 500.
             row = models.LogicalUnavailability(
                 entity_type=entity_type,
                 entity_id=int(payload.owner_id),
                 expression=payload.expression,
                 parsed_dnf_json=_json.dumps(parsed.clauses),
                 kind=level, is_hard=is_hard, soft_penalty=weight,
-                label=payload.label or None,
             )
             db.add(row)
             db.commit()

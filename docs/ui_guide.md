@@ -175,6 +175,45 @@ Card prominente nella prima riga della Dashboard. Funzioni:
   `webui/data/snapshots/`. La lista snapshot mostra filename,
   data, dimensione e bottoni "Ripristina" / "Elimina".
 
+### Import / Export vincoli (Dashboard)
+
+Seconda card della prima riga, dedicata SOLO ai vincoli (non
+tocca docenti, classi, aule o cattedre). Tre operazioni:
+
+- **Stress dataset** -- dropdown con i sei profili
+  (`small` / `medium` / `big` / `huge` / `superhuge` / `mega`) +
+  bottone "Importa stress". Carica i record da
+  `experiments/stress_constraints/<profilo>/{teacher,classroom,relational}_constraints.json`,
+  risolve gli `owner_pattern` (`first_teacher`, `first_lab`, `gym`,
+  `main_room`, `first_class_year_1`, ...) contro le entita' del DB
+  attivo, e crea i vincoli passando per il dispatcher unificato
+  `POST /api/constraints`. Il report mostra il numero importati,
+  per categoria (teacher / classroom / relational), e quanti
+  record erano `intentionally_conflicting`. Espressioni con bare
+  day token (`mai sab`) sono espanse automaticamente in `(sab8 OR
+  sab9 OR sab10 OR sab11 OR sab12 OR sab13)`.
+
+- **File custom (JSON / xlsx)** -- drop area + bottone "Sfoglia".
+  Accetta una lista di record con campi `kind`, `scope`,
+  `owner_name` (risolto per nome contro il DB), `level`,
+  `expression`, `soft_penalty?`, `description?`. Lo stesso schema
+  funziona come xlsx con intestazioni nella prima riga. I record
+  invalidi (DSL non parseable, owner_name non trovato, scope/kind
+  mancanti) vengono scartati e riportati nel report con indice e
+  motivo, senza interrompere l'import dei record validi.
+
+- **Esporta JSON** / **Esporta xlsx** -- dump dei vincoli correnti
+  nel formato accettato dall'import (round-trip pulito).
+
+- **Cancella tutti i vincoli** -- doppia conferma; svuota
+  `logical_unavailabilities`, `curriculum_logical_constraints`,
+  le tre tabelle di matrix unavailability, le `coteaching_rules`
+  e le room preferences. Restituisce il conteggio per tabella.
+
+L'ultimo report rimane visibile sotto la card finche' non si
+esegue una nuova operazione, con il dettaglio espandibile per
+record (id dataset, db_id assegnato, eventuali errori).
+
 ### Dashboard (`/`)
 
 Punto di partenza. Tre card:

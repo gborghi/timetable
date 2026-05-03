@@ -146,6 +146,77 @@ Endpoint: \texttt{/api/dashboard/export-db},
 \texttt{/api/dashboard/snapshot/\{create|list|restore/<f>\}},
 \texttt{DELETE /api/dashboard/snapshot/\{f\}}.
 
+\subsection{Import / Export vincoli (Dashboard)}
+
+Seconda card della prima riga, indipendente dall'Import / Export
+DB: tocca solo le tabelle dei vincoli (logical, matrix, coteach,
+room preferences) e lascia inalterati docenti, classi, aule e
+cattedre. Concepita per due scenari distinti: caricare
+rapidamente un dataset di stress per provare il pannello di
+infeasibility, oppure importare un set di vincoli proveniente da
+un altro istituto o da un file Excel preparato a mano.
+
+Le quattro funzioni della card:
+
+\begin{itemize}
+  \item \textbf{Stress dataset}: dropdown con i sei profili
+        (\texttt{small}, \texttt{medium}, \texttt{big},
+        \texttt{huge}, \texttt{superhuge}, \texttt{mega}) e
+        bottone \emph{Importa stress}. Carica i record da
+        \texttt{experiments/stress\_constraints/<profilo>/}, ne
+        risolve gli \texttt{owner\_pattern} (\texttt{first\_teacher},
+        \texttt{first\_lab}, \texttt{gym}, \texttt{main\_room},
+        \texttt{first\_class\_year\_1}, \dots) contro le entit\`a
+        del DB attivo, e crea i vincoli passando per il
+        dispatcher unificato \texttt{POST /api/constraints}. Il
+        report che compare sotto la card riporta quanti record
+        sono stati importati, suddivisi per categoria (teacher /
+        classroom / relational), e quanti tra questi erano
+        \texttt{intentionally\_conflicting}: utile per verificare
+        che il \emph{feasibility-check} li identifichi nei core
+        minimali corrispondenti.
+  \item \textbf{File custom (JSON / xlsx)}: drop area + bottone
+        \emph{Sfoglia}. Accetta una lista di record con campi
+        \texttt{kind}, \texttt{scope}, \texttt{owner\_name}
+        (risolto per nome contro il DB), \texttt{level},
+        \texttt{expression}, \texttt{soft\_penalty} opzionale,
+        \texttt{description} opzionale. Lo stesso schema funziona
+        come xlsx con intestazioni nella prima riga. I record con
+        DSL invalido, \texttt{owner\_name} non risolvibile o
+        scope/kind mancanti vengono scartati e riportati nel
+        report con indice e motivo dell'errore, senza
+        interrompere l'import dei record validi.
+  \item \textbf{Esporta JSON / xlsx}: dump di tutti i vincoli
+        correnti nel formato accettato dall'import (round-trip
+        pulito). \`E pensato come backup, come strumento di
+        condivisione tra istituti che usano il sistema, e come
+        modo per congelare uno stato di vincoli prima di una
+        modifica massiva.
+  \item \textbf{Cancella tutti i vincoli}: doppia conferma;
+        svuota in un colpo solo
+        \texttt{logical\_unavailabilities},
+        \texttt{curriculum\_logical\_constraints}, le tre tabelle
+        di matrix unavailability,
+        \texttt{coteaching\_rules} e le room preferences.
+        Restituisce il conteggio per tabella. Utile per
+        ricominciare da zero un esperimento senza dover passare
+        dallo snapshot DB.
+\end{itemize}
+
+L'import accetta una scorciatoia di scrittura: un'espressione DSL
+con un giorno senza ora (es.\ \texttt{mai sab}, \texttt{lun OR
+mar}) viene espansa automaticamente nella forma esplicita che il
+parser richiede, cio\`e \texttt{(sab8 OR sab9 OR sab10 OR sab11
+OR sab12 OR sab13)}. La grammatica DSL principale resta cos\`{\i}
+intatta, ma i dataset di stress (e i file custom degli utenti)
+possono essere scritti in maniera pi\`u leggibile.
+
+Endpoint:
+\texttt{/api/dashboard/constraints/import-stress},
+\texttt{/api/dashboard/constraints/import-file},
+\texttt{/api/dashboard/constraints/export?format=json|xlsx},
+\texttt{DELETE /api/dashboard/constraints/all?confirm=true}.
+
 \section{Tab per tab}
 
 \subsection*{Dashboard}
