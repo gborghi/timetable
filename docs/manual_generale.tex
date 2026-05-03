@@ -1,0 +1,79 @@
+% piTantum -- Manuale generale (Parte I)
+% Per dirigenti scolastici, coordinatori d'orario, docenti utenti.
+% ASCII puro, accenti via macro \`e \'e \`a, virgolette ``...''.
+\input{manual/preamble}
+
+\begin{document}
+
+% =========== Cover (Parte I) ===========
+\begin{titlepage}
+\thispagestyle{empty}
+\centering
+\vspace*{1.4cm}
+
+{\Huge\bfseries $\pi$\,Tantum\par}
+\vspace{0.2cm}
+{\Large alias \emph{Tempus Tantum}\par}
+\vspace{0.4cm}
+{\Large\itshape sistema di generazione orario scolastico\par}
+
+\vspace{1.0cm}
+\rule{0.5\textwidth}{0.4pt}
+
+\vspace{0.8cm}
+\begin{minipage}{0.85\textwidth}
+\centering
+\itshape
+``Omnia, Lucili, aliena sunt, tempus tantum nostrum est.''\\
+\upshape\small Seneca, \emph{Epistulae morales ad Lucilium}, I, 1
+\end{minipage}
+
+\vspace{1.0cm}
+\rule{0.5\textwidth}{0.4pt}
+
+\vspace{1.4cm}
+{\LARGE Manuale generale\par}
+\vspace{0.4cm}
+{\Large\itshape Parte I --- per coordinatori d'orario\par}
+
+\vspace{2cm}
+
+\begin{minipage}{0.8\textwidth}
+\centering\small
+Una guida discorsiva all'uso quotidiano del sistema:
+preparazione dell'orario di inizio anno, gestione delle assenze,
+modifica in corso d'anno, creazione di corsi di recupero.
+Pensata per chi usa $\pi$Tantum come strumento di lavoro,
+senza dover conoscerne i dettagli implementativi.
+\end{minipage}
+
+\vfill
+
+{\large Giovanni Borghi\par}
+\vspace{0.2cm}
+{\large \today\par}
+\end{titlepage}
+
+\tableofcontents
+
+% =========== Capitoli generali ===========
+\input{manual/chapters/introduzione}
+\input{manual/chapters/installazione}
+\input{manual/chapters/vincoli}
+\input{manual/chapters/workflow_di_ottimizzazione}
+\input{manual/chapters/guida_ui}
+\input{manual/chapters/launcher}
+
+\appendix
+\chapter{Riferimenti}
+Per i dettagli tecnici (architettura, modello dati, API REST,
+DSL formale, strategie di ottimizzazione, diagnostica
+statistica, estendere il sistema) vedere il volume separato
+\textbf{Appendici tecniche} (file
+\texttt{appendici\_tecniche.pdf}). Per avere entrambi i volumi
+in un unico documento, vedere \texttt{manual\_completo.pdf}.
+
+Glossario di tutti i termini tecnici: file
+\texttt{docs/glossario.md} nel repository.
+
+\end{document}

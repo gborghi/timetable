@@ -1,0 +1,159 @@
+\chapter{Vincoli}
+
+\section{I 5 stati / 4 kind}
+
+Il sistema usa una tassonomia uniforme di \emph{5 stati} sia per le
+matrici di disponibilit\`a (cella per cella) sia per le preferenze
+di aula. I vincoli logici disgiuntivi (DNF) hanno \emph{4 kind}
+(\textsc{allowed} non si applica qui).
+
+\begin{center}
+\small
+\begin{tabular}{l l p{8cm}}
+\toprule
+Stato & Colore & Semantica \\
+\midrule
+\textcolor{cAllow}{ALLOWED} & verde chiaro &
+  default (solo grid materia$\leftrightarrow$aula e
+  docente$\leftrightarrow$aula); nessuna contribuzione all'obiettivo \\
+\textcolor{cSoft}{SOFT} & giallo &
+  penalit\`a positiva quando lo slot \`e usato (\texttt{+penalty}
+  aggiunto all'obiettivo, che \`e minimizzato) \\
+\textcolor{cHard}{HARD} & rosso &
+  il solver deve evitare questo slot, oppure il vincolo logico DEVE
+  essere soddisfatto \\
+\textcolor{cPref}{PREFERITO} & blu &
+  bonus negativo quando lo slot \`e usato / il vincolo logico \`e
+  soddisfatto (\texttt{-bonus} riduce l'obiettivo) \\
+\textcolor{cEnf}{ENFORCED} & verde scuro &
+  il solver DEVE far accadere questo slot / soddisfare il vincolo
+  con presence required \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section{Matrici di disponibilit\`a 5-stati}
+
+Il ciclo cliccando una cella \`e:
+
+\begin{center}
+\texttt{free $\to$ soft $\to$ hard $\to$ preferred $\to$ enforced $\to$
+free}
+\end{center}
+
+Le celle gialle e blu mostrano un input numerico per editare la
+penalit\`a (positiva sul giallo, negativa sul blu, sign-clamp
+automatico al salvataggio).
+
+\paragraph{Sincronizzazione free\_day.} Quando il docente ha
+\texttt{free\_day} settato, tutte e 6 le ore di quel giorno appaiono
+HARD nella matrice automaticamente. Se l'utente edita la matrice
+manualmente e tutte le ore di un giorno diventano HARD, il backend
+deduce il \texttt{free\_day}; viceversa cambiare il \texttt{free\_day}
+sostituisce le auto-cells.
+
+\paragraph{Mapping CP-SAT.} In
+\texttt{optimization.py::\_availability\_constraints} ogni tabella
+si traduce in: \texttt{<entity>\_hard} (set di tuple, forbidden
+assignment), \texttt{<entity>\_soft} (dict tuple$\to$penalty signed),
+\texttt{<entity>\_enforced} (set di tuple, presence required nel
+solver).
+
+\section{Vincoli logici (DNF)}
+
+\subsection{Sintassi}
+
+\begin{lstlisting}[basicstyle=\ttfamily\small]
+expr     := or_expr
+or_expr  := and_expr ('OR' and_expr)*
+and_expr := not_expr ('AND' not_expr)*
+not_expr := ('NOT' | 'mai') not_expr | atom
+atom     := slot | predicate | '(' expr ')'
+slot     := <giorno><ora>
+predicate:= <kind> ':' <name> ('@' <giorno> <ora>?)?
+kind     := aula | materia | classe | gruppo | docente | prof
+giorno   := lun|mar|mer|gio|ven|sab (anche lunedi|...|sabato,
+            monday|...|saturday)
+ora      := 1..6 (ordinale, 1=08:00) | 8..13 (assoluta)
+\end{lstlisting}
+
+Sono accettati \texttt{\&} (AND), \texttt{|} (OR), \texttt{!} (NOT).
+\texttt{mai} \`e alias di \texttt{NOT}.
+
+\subsection{Predicate atoms}
+
+\begin{lstlisting}[basicstyle=\ttfamily\small]
+aula:LabFisica           -- l'entita' usa l'aula a qualunque slot
+aula:LabFisica@mar       -- il martedi a qualunque ora
+aula:LabFisica@mar4      -- martedi 4a ora (= 11:00)
+materia:Religione@lun8   -- lezione di religione lunedi alle 8
+classe:1A_Scientifico    -- riferimento alla classe
+gruppo:IRC               -- riferimento al gruppo
+\end{lstlisting}
+
+I literal predicate vengono parsati e persistiti correttamente.
+Il solver li tratta otticamente per ora; l'integrazione strong con
+la fase classroom assignment \`e pianificata.
+
+\subsection{Esempi pratici}
+
+\begin{lstlisting}[basicstyle=\ttfamily\small]
+% Per docenti
+lun8 AND lun9
+(lun8 AND lun9) OR (mar8 AND mar9)
+gio11 OR gio12 OR gio13
+NOT (mer3 AND mer4)
+mai aula:LabFisica@mar
+mai materia:Religione@lun8
+
+% Per classi
+mer4 AND mer5 AND mer6
+mai aula:Palestra@gio
+aula:LabInformatica@mar OR aula:LabInformatica@gio
+
+% Per aule
+gio4 AND gio5 AND gio6
+mai materia:Religione
+gruppo:IRC OR gruppo:Alternativa
+\end{lstlisting}
+
+\subsection{Mapping CP-SAT}
+
+Per ogni regola con DNF \texttt{[clause1, clause2, ...]}:
+
+\begin{itemize}
+  \item HARD: il solver impone almeno una clausola fully active.
+  \item SOFT: se nessuna clausola \`e fully active, paga
+        \texttt{+soft\_penalty}.
+  \item PREFERITO: se almeno una clausola \`e fully active, ottiene
+        \texttt{+soft\_penalty} (negativo, quindi reduce dell'obiettivo).
+  \item ENFORCED: come HARD ma con presence required -- almeno
+        uno degli slot della DNF deve coincidere con un'ora di lezione
+        attiva per quell'entit\`a.
+\end{itemize}
+
+\section{Vincoli HARD a toggle (per classe)}
+
+In \texttt{school\_classes} ci sono 7 boolean strutturali:
+\texttt{hard\_entry\_at\_8}, \texttt{hard\_exit\_after\_12},
+\texttt{hard\_no\_holes}, \texttt{hard\_dual\_math},
+\texttt{hard\_dual\_italian}, \texttt{hard\_motorie\_pairs},
+\texttt{hard\_max\_6\_per\_day}. Il soft
+\texttt{soft\_minimize\_sixth\_weight} regola il peso della 6a ora.
+
+\section{Conflict detection}
+
+Il tab \emph{Vincoli} ha un bottone "Cerca conflitti"
+(\texttt{GET /api/monitor/conflicts}) che segnala:
+
+\begin{itemize}
+  \item \textbf{matrix\_hard\_enforced} -- stessa cella marcata sia
+        HARD sia ENFORCED.
+  \item \textbf{enforced\_on\_free\_day} -- cella ENFORCED del docente
+        nel suo \texttt{free\_day}.
+  \item \textbf{logical\_unsatisfiable} -- vincolo logico
+        HARD/ENFORCED la cui DNF non \`e soddisfacibile dato l'insieme
+        degli HARD slot dell'owner.
+\end{itemize}
+
+% =========== Cap 5: Workflow ===========

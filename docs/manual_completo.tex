@@ -1,0 +1,91 @@
+% piTantum -- Manuale completo (Parte I + Parte II)
+% Tutto in un unico volume.
+% ASCII puro, accenti via macro \`e \'e \`a, virgolette ``...''.
+\input{manual/preamble}
+
+\begin{document}
+
+% =========== Cover (volume completo) ===========
+\begin{titlepage}
+\thispagestyle{empty}
+\centering
+\vspace*{1.4cm}
+
+{\Huge\bfseries $\pi$\,Tantum\par}
+\vspace{0.2cm}
+{\Large alias \emph{Tempus Tantum}\par}
+\vspace{0.4cm}
+{\Large\itshape sistema di generazione orario scolastico\par}
+
+\vspace{1.0cm}
+\rule{0.5\textwidth}{0.4pt}
+
+\vspace{0.8cm}
+\begin{minipage}{0.85\textwidth}
+\centering
+\itshape
+``Omnia, Lucili, aliena sunt, tempus tantum nostrum est.''\\
+\upshape\small Seneca, \emph{Epistulae morales ad Lucilium}, I, 1
+\end{minipage}
+
+\vspace{1.0cm}
+\rule{0.5\textwidth}{0.4pt}
+
+\vspace{1.4cm}
+{\LARGE Manuale completo\par}
+\vspace{0.4cm}
+{\Large\itshape Parte I (manuale generale) + Parte II (appendici tecniche)\par}
+
+\vspace{2cm}
+
+\begin{tikzpicture}
+  \node[draw=cBox, very thick, rounded corners=4pt, minimum width=3cm,
+        minimum height=1cm, fill=cBox!30] (a) at (0,0) {\textbf{CP-SAT}};
+  \node[draw=cBox, very thick, rounded corners=4pt, minimum width=3cm,
+        minimum height=1cm, fill=cBox!30, right=0.6cm of a] (b)
+        {\textbf{spectral}};
+  \node[draw=cBox, very thick, rounded corners=4pt, minimum width=3cm,
+        minimum height=1cm, fill=cBox!30, right=0.6cm of b] (c)
+        {\textbf{LNS+SA+TS+ILS}};
+  \draw[-{Stealth[length=3mm]}, thick] (a) -- (b);
+  \draw[-{Stealth[length=3mm]}, thick] (b) -- (c);
+\end{tikzpicture}
+
+\vfill
+
+{\large Giovanni Borghi\par}
+\vspace{0.2cm}
+{\large \today\par}
+
+\vspace{0.6cm}
+{\small
+Repository: \url{https://github.com/gborghi/timetable}\\
+Documentazione sorgente: \texttt{docs/}
+\par}
+\end{titlepage}
+
+\tableofcontents
+\listoffigures
+
+% =========== Parte I -- Manuale generale ===========
+\part{Manuale generale}
+\input{manual/chapters/introduzione}
+\input{manual/chapters/installazione}
+\input{manual/chapters/vincoli}
+\input{manual/chapters/workflow_di_ottimizzazione}
+\input{manual/chapters/guida_ui}
+\input{manual/chapters/launcher}
+
+% =========== Parte II -- Appendici tecniche ===========
+\part{Appendici tecniche}
+\input{manual/chapters/architettura}
+\input{manual/chapters/modello_dati}
+\input{manual/chapters/dsl_generico_per_i_vincoli}
+\input{manual/chapters/tecniche_di_ottimizzazione_avanzate}
+\input{manual/chapters/diagnostica_statistica}
+\input{manual/chapters/api_rest}
+\input{manual/chapters/estendere_il_sistema}
+\input{manual/chapters/repository_github}
+\input{manual/chapters/reference}
+
+\end{document}

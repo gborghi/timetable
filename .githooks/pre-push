@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# pre-push hook: rebuild docs/manual.pdf if manual.tex (or any .md
-# under docs/) changed since the last push, and amend it to the
-# pending push so the PDF on GitHub stays in sync.
+# pre-push hook: rebuild the three manual PDFs (manuale_generale,
+# appendici_tecniche, manuale_completo) if any .tex source under
+# docs/ or any .md under docs/ changed since the last push, and
+# amend them to the pending push so GitHub stays in sync.
 #
 # Install once with:
 #   git config core.hooksPath .githooks
@@ -19,10 +20,11 @@ cd "$REPO_ROOT"
 # Only rebuild if docs sources changed in any commit being pushed
 # (compare HEAD against the upstream branch's tip).
 if git rev-parse --verify "@{u}" >/dev/null 2>&1; then
-  CHANGED=$(git diff --name-only "@{u}"..HEAD -- docs/manual.tex 'docs/*.md' \
-            'webui/docs/*.md' 2>/dev/null || true)
+  CHANGED=$(git diff --name-only "@{u}"..HEAD -- 'docs/*.tex' \
+            'docs/manual/**/*.tex' 'docs/*.md' 'webui/docs/*.md' \
+            2>/dev/null || true)
 else
-  CHANGED="docs/manual.tex"   # first push -- always build
+  CHANGED="docs/manual_completo.tex"   # first push -- always build
 fi
 
 if [[ -z "$CHANGED" ]]; then
@@ -30,15 +32,23 @@ if [[ -z "$CHANGED" ]]; then
 fi
 
 if ! command -v lualatex >/dev/null 2>&1; then
-  echo "[pre-push] lualatex non trovato; skip rebuild manual.pdf" >&2
+  echo "[pre-push] lualatex non trovato; skip rebuild PDFs" >&2
   exit 0
 fi
 
-echo "[pre-push] rebuilding docs/manual.pdf"
+echo "[pre-push] rebuilding the three manual PDFs"
 bash docs/build_manual.sh
 
-if ! git diff --quiet -- docs/manual.pdf; then
-  git add docs/manual.pdf
-  git commit -m "docs: rebuild manual.pdf"
-  echo "[pre-push] manual.pdf rebuilt and committed"
+# Amend any rebuilt PDFs into a single docs commit
+NEED_COMMIT=0
+for pdf in docs/manual_generale.pdf docs/appendici_tecniche.pdf \
+           docs/manual_completo.pdf; do
+  if ! git diff --quiet -- "$pdf"; then
+    git add "$pdf"
+    NEED_COMMIT=1
+  fi
+done
+if [[ "$NEED_COMMIT" -eq 1 ]]; then
+  git commit -m "docs: rebuild manual PDFs (3 outputs)"
+  echo "[pre-push] manual PDFs rebuilt and committed"
 fi

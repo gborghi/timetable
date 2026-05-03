@@ -1,0 +1,83 @@
+\chapter{Estendere il sistema}
+
+\section{Aggiungere una nuova tabella + CRUD}
+
+\begin{enumerate}
+  \item Modello in \texttt{webui/backend/models.py}.
+  \item Pydantic in \texttt{schemas.py} (\texttt{XxxIn}, \texttt{XxxOut}).
+  \item Router in \texttt{routers/xxx.py}. Copia un router esistente
+        come template.
+  \item Includi il router in \texttt{main.py}:
+        \texttt{app.include\_router(xxx.router)}.
+  \item Adapter DSL in \texttt{utils/list\_query.py}.
+  \item Frontend: nuova route
+        \texttt{webui/frontend/src/routes/xxx/+page.svelte},
+        riusando \emph{SortableQueryableList}.
+  \item Voce in \texttt{+layout.svelte} per la nav.
+\end{enumerate}
+
+\section{Migrazione idempotente}
+
+Aggiorna \texttt{db.py::\_apply\_lightweight\_migrations}. Pattern:
+
+\begin{lstlisting}[style=py]
+if insp.has_table("my_table") \
+        and not has_column("my_table", "new_field"):
+    conn.execute(text(
+        "ALTER TABLE my_table ADD COLUMN new_field VARCHAR(64)"
+    ))
+\end{lstlisting}
+
+\section{Aggiungere un nuovo tipo di vincolo}
+
+\paragraph{Per-cella.} Copia il pattern di
+\texttt{TeacherUnavailability}: unique (entity\_id, day, hour),
+columns state/penalty/reason. Aggiorna \texttt{models.py},
+\texttt{schemas.py}, router, \texttt{optimization.py::\_availability\_constraints},
+\texttt{routers/monitor.py::\_build\_constraints} (per il tab
+Vincoli), \texttt{routers/bulk.py::ENTITY\_UNAV\_MODEL} se vuoi
+supportare bulk.
+
+\paragraph{Logico.} Aggiungi \texttt{entity\_type} a
+\texttt{LogicalUnavailability}; aggiorna
+\texttt{routers/logical.py::ENTITY\_MODEL} e \texttt{ENTITY\_TYPE};
+modifica \texttt{routers/monitor.py::\_build\_constraints}; aggiungi
+il branch nel solver.
+
+\section{Aggiungere un nuovo step di ottimizzazione}
+
+\begin{lstlisting}[style=py]
+def my_new_step(...):
+    params = dict(...)
+    run_id = create_run("my_step", "Nome leggibile", profile, params)
+
+    def target(rid: int):
+        # carica dati, lancia solver, persiste
+        update_run(rid, progress=0.5)
+        ...
+        update_run(rid, solution_id=sid, obj_value=v, metrics=m)
+        update_run(rid, progress=1.0)
+
+    start_thread(run_id, target)
+    return run_id
+\end{lstlisting}
+
+Esponi via \texttt{routers/optimize.py} con un endpoint POST.
+Frontend in \texttt{/optimize} per il bottone di lancio + log
+streaming via \emph{RunLogPanel} (SSE).
+
+\section{Testing}
+
+Non c'\`e una test suite formale. Per smoke-testare end-to-end:
+
+\begin{itemize}
+  \item Backend boot pulito: \texttt{uvicorn backend.main:app}.
+  \item Live curl: vedere \S7.2.
+  \item Frontend \texttt{vite build} deve passare clean.
+  \item Migrazione idempotente: rilancia su DB esistente per
+        confermare zero data loss.
+\end{itemize}
+
+% =========== Appendice ===========
+\appendix
+

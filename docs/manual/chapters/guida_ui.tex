@@ -1,0 +1,191 @@
+\chapter{Guida UI}
+
+\section{Funzionalit\`a trasversali}
+
+\subsection{Query DSL e sort multi-livello}
+
+Ogni pagina lista ha:
+\begin{itemize}
+  \item barra Query (DSL: \texttt{=, !=, <, <=, >, >=, contains,
+        startswith, endswith, in [...]}, logica
+        \texttt{AND / OR}, parentesi);
+  \item sort multi-livello (max 4 livelli);
+  \item pannello Help con la lista dei campi.
+\end{itemize}
+
+\subsection{Multi-select}
+
+Sulle pagine Docenti / Classi / Aule la lista supporta:
+\begin{itemize}
+  \item click semplice: single-select (replace);
+  \item Ctrl+click: toggle;
+  \item Shift+click: range;
+  \item bottone "Vincolo collettivo" che apre il
+        \emph{BulkApplyModal}.
+\end{itemize}
+
+\subsection{Excel/CSV import}
+
+Ogni pagina lista ha "Importa Excel/CSV" + "Template". Lo stesso
+endpoint \texttt{POST /api/import/\{entity\}} gestisce le 7 entit\`a
+(teachers, subjects, classes, classrooms, curricula, students,
+groups). Modalit\`a: \texttt{upsert} (default), \texttt{append},
+\texttt{replace}. Header alias italiani / inglesi accettati.
+
+\subsection{Esportazione liste (xlsx / csv)}
+
+Sopra ogni tabella, accanto a "Reset query" / "Reset sort", trovi
+3 bottoni di esportazione:
+
+\begin{itemize}
+  \item \textbf{xlsx}: la \emph{vista corrente} (solo le righe
+        filtrate dalla query DSL, nell'ordine determinato dal
+        sort multi-livello) come file \texttt{.xlsx} con header
+        colorato e auto-fit colonne.
+  \item \textbf{csv}: stesso contenuto, formato CSV UTF-8 con BOM
+        (compatibile con Excel italiano).
+  \item \textbf{tutto}: ignora query e sort, esporta tutte le righe
+        dell'entit\`a.
+\end{itemize}
+
+Filename: \texttt{<entita>\_<YYYYMMDD>\_<HHMMSS>.<ext>}. I parametri
+\texttt{?format=xlsx|csv} sono accettati da tutti gli endpoint di
+lista, quindi gli stessi export sono disponibili anche via curl.
+
+\subsection{Viste salvate}
+
+Sopra ogni tabella, accanto ai bottoni di Reset e Export, trovi un
+dropdown "Viste salvate..." e i bottoni "Salva vista" / "x":
+
+\begin{itemize}
+  \item \textbf{Salva vista}: chiede un nome e memorizza la query
+        DSL + il sort multi-livello come \texttt{SavedView(entity,
+        name, dsl\_query, sort\_levels)}. La vista \`e globale.
+  \item \textbf{Dropdown "Viste salvate..."}: applica una vista
+        (sostituisce query + sort + ricarica la lista).
+  \item \textbf{x}: elimina la vista correntemente selezionata.
+\end{itemize}
+
+Endpoint: \texttt{/api/saved-views?entity=<entity>} (GET / POST /
+PUT \{id\} / DELETE \{id\}). Tabella: \texttt{saved\_views}.
+
+\subsection{Tag (aule e studenti)}
+
+Sistema many-to-many parallelo per aule e studenti.
+
+\textbf{Tag aule}: tabella \texttt{classroom\_tags} + join
+\texttt{classroom\_tag\_assignments}. UI: multi-select autocomplete
+nella scheda aula, bottone "Gestisci tag" per CRUD globale,
+colonna "Tag" con pill colorate (un colore stabile per nome). Il
+generatore mock tagga automaticamente le aule per kind
+(\texttt{lab\_fisica $\to$ [lab, fisica, scienze]}, palestra
+$\to$ \texttt{[palestra, motorie]}, ecc.) e propaga il curriculum
+dalla home class (\texttt{3B\_scientifico} $\to$ tag
+\texttt{scientifico}).
+
+DSL: \texttt{"matematica" in l.classroom.tags} (vincoli) o
+\texttt{has\_tag(matematica)} (query lista). I tag sconosciuti
+vengono creati al volo al salvataggio.
+
+\textbf{Tag studenti}: tabella \texttt{student\_tags} + join
+\texttt{student\_tag\_assignments}. Casi d'uso: \texttt{BES},
+\texttt{DSA}, \texttt{debito\_matematica\_4},
+\texttt{pcto\_ditta\_<x>}, \texttt{studente\_atleta}. UI analoga
+a quella delle aule. Pannello "Precompila da tag" nel modal
+\emph{Gruppi} che aggiunge in massa gli studenti che matchano
+\texttt{any\_of} o \texttt{all\_of} su una lista di tag.
+
+\textbf{Importante}: i tag NON sostituiscono i gruppi. I gruppi
+restano l'unit\`a operativa di scheduling, i tag sono metadato
+passivo per filtrare/raggruppare.
+
+\subsection{Import bulk dedicato (\texttt{/import})}
+
+Pagina dedicata raggiungibile dalla nav. Layout a due colonne:
+configurazione (entit\`a, modalit\`a, "Scarica template") +
+file da importare (drop area + selettore file). Il template xlsx
+ha 3 fogli:
+
+\begin{itemize}
+  \item \texttt{Istruzioni}: tabella \texttt{Campo | Hint} con
+        descrizione di ogni colonna + note generali (sinonimi
+        italiani, righe vuote ignorate, etc.);
+  \item \texttt{Esempi}: una riga di esempio pre-popolata;
+  \item \texttt{Dati}: foglio vuoto da compilare. L'importer
+        legge per default questo foglio.
+\end{itemize}
+
+Campi importabili gi\`a integrati con le feature recenti:
+\texttt{tags} su \texttt{students} e \texttt{classrooms},
+\texttt{graduatoria\_score} / \texttt{required\_free\_days\_count}
+/ \texttt{preferred\_free\_days\_json} su \texttt{teachers}, e
+\texttt{max\_hours\_per\_day} su \texttt{classes}.
+
+\subsection{Import / Export DB (Dashboard)}
+
+Card prominente nella prima riga della Dashboard. Funzioni:
+
+\begin{itemize}
+  \item \textbf{Esporta DB completo}: scarica un \texttt{.zip}
+        contenente \texttt{database.db} (raw SQLite),
+        \texttt{tables/<t>.csv} per ogni tabella e
+        \texttt{metadata.json} (schema\_version + sha256).
+  \item \textbf{Solo schema}: omette i dati di scheduling --
+        utile come template per inizializzare un'altra scuola.
+  \item \textbf{Import}: selettore file \texttt{.zip} + conferma
+        esplicita. Una copia
+        \texttt{timetable.db.pre\_import\_backup} viene salvata
+        prima dello swap.
+  \item \textbf{Snapshot}: timestampati in
+        \texttt{webui/data/snapshots/}, lista con bottoni
+        Ripristina / Elimina.
+\end{itemize}
+
+Endpoint: \texttt{/api/dashboard/export-db},
+\texttt{/api/dashboard/import-db},
+\texttt{/api/dashboard/snapshot/\{create|list|restore/<f>\}},
+\texttt{DELETE /api/dashboard/snapshot/\{f\}}.
+
+\section{Tab per tab}
+
+\subsection*{Dashboard}
+Importa profilo (5 size) con 3 checkbox per i pool
+(curricula, aule, studenti); genera scuola di test; stato corrente
+con 7 card-numero; \emph{RunLogPanel} streaming.
+
+\subsection*{Docenti, Classi, Indirizzi, Studenti, Gruppi, Materie, Aule, Compresenze}
+CRUD entit\`a con modal di edit. Vedere
+\texttt{ui\_guide.md} per i campi specifici di ognuna.
+
+\subsection*{Cattedre}
+Layout a card: una card per classe, lista materie+docente+ore.
+Bottone "cambia": apre modal con dropdown filtrato per materia,
+ogni opzione mostra \texttt{Cognome Nome - assigned/max
+[SFORA: +Xh]} / \texttt{[pieno]}. Bottone "Warnings cattedre":
+pannello con docenti SFORA / sotto / vuoti / ok.
+
+\subsection*{Orario}
+4 viste (per classe, per docente, per aula, per slot), ognuna con
+toggle matrice/lista. Drag-and-drop con preview live, dropdown
+aule colorate (verde libera / rosso occupata).
+
+\subsection*{Assenze e supplenze}
+Vista settimanale 6$\times$6. Click su intestazione giorno: modal
+gestione assenze. Click su cella rossa: modal con classi scoperte
+(sinistra) + docenti disponibili (destra), drag-drop per assegnare
+supplenti.
+
+\subsection*{Monitor}
+Lista \emph{eventi} (uno per Assignment). Espansione lezione-per-lezione
+con bottone Giorno/Ora che apre slot picker matriciale (vedere
+\S5.6).
+
+\subsection*{Vincoli}
+Lista flat di tutti i vincoli editabili con pill colorate per livello.
+Bottone "Cerca conflitti": pannello con conflitti rilevati.
+
+\subsection*{Workflow}
+Pulsanti per lanciare le 4 fasi separatamente o "Pipeline completa".
+SSE log streaming.
+
+% =========== Cap 6.bis: Tecniche di ottimizzazione ===========

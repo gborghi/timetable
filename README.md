@@ -43,9 +43,24 @@ performance numbers across school sizes.
   comandi di clone, note Apple Silicon, troubleshooting per OS,
   verifica installazione, aggiornamento, disinstallazione. **Quick
   start** per ciascun OS in cima al file.
-- **[Technical manual (PDF, 29 pages)](docs/manual.pdf)** -- single
-  printable document with cover, TOC, schemas, code snippets and
-  index of all features. Include il capitolo "Installazione".
+- **Tre manuali in PDF** (la documentazione e' divisa in due
+  parti per adattarsi a pubblici diversi):
+  - **[Manuale generale (PDF, ~19 pagine)](docs/manual_generale.pdf)**
+    --- per chi vuole iniziare a usare $\pi$Tantum: dirigenti
+    scolastici, coordinatori d'orario, docenti utenti. Tono
+    discorsivo, casi d'uso pratici, niente jargon.
+  - **[Appendici tecniche (PDF, ~20 pagine)](docs/appendici_tecniche.pdf)**
+    --- per sviluppatori e curiosi tecnici: architettura,
+    modello dati, API REST, grammatica DSL, strategie di
+    ottimizzazione, diagnostica, guida all'estensione.
+  - **[Manuale completo (PDF, ~41 pagine)](docs/manual_completo.pdf)**
+    --- entrambi i volumi in un unico documento.
+  Tutti compilati con la pipeline lualatex+biber+makeindex+lualatex.
+  Sorgenti `.tex` in `docs/manual_generale.tex`,
+  `docs/appendici_tecniche.tex`, `docs/manual_completo.tex` (con
+  capitoli condivisi in `docs/manual/chapters/`); ricompila con
+  `docs/build_manual.sh` (Linux/macOS/Git Bash) o
+  `docs/build_manual.bat` (Windows).
 - **[docs/](docs/)** -- modular markdown reference:
   [installation](docs/installation.md) /
   [architecture](docs/architecture.md) /
@@ -223,8 +238,8 @@ forall s in students where "BES" in s.tags:
 
 Reference completo + galleria di 30+ esempi in
 [`docs/general_dsl.md`](docs/general_dsl.md) e nel capitolo
-"DSL generico per i vincoli" del manuale PDF
-([`docs/manual.pdf`](docs/manual.pdf)).
+"DSL generico per i vincoli" delle Appendici tecniche
+([`docs/appendici_tecniche.pdf`](docs/appendici_tecniche.pdf)).
 
 ## Repository layout
 

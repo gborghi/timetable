@@ -1,0 +1,86 @@
+\chapter{API REST}
+
+Tutti gli endpoint sono sotto \texttt{/api/}. Backend espone $\sim$118
+route. Lista non esaustiva delle p\`iu rilevanti.
+
+\section{Pattern CRUD}
+
+Ogni risorsa CRUD ha la stessa forma:
+
+\begin{center}
+\small
+\begin{tabular}{l l l}
+\toprule
+Verbo & Path & Descrizione \\
+\midrule
+GET    & \texttt{/api/<entity>}      & lista (q + sort)  \\
+GET    & \texttt{/api/<entity>/\{id\}} & dettaglio       \\
+POST   & \texttt{/api/<entity>}      & create           \\
+PUT    & \texttt{/api/<entity>/\{id\}} & replace        \\
+DELETE & \texttt{/api/<entity>/\{id\}} & delete         \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section{Esempi curl}
+
+\begin{lstlisting}[style=shell]
+# stato dataset
+curl http://127.0.0.1:8000/api/dataset/state
+
+# import small con tutti i pool
+curl -X POST -H "Content-Type: application/json" \
+  -d '{"profile":"small","use_optimized":true,
+       "import_curricula":true,"import_classrooms":true,
+       "import_students":true}' \
+  http://127.0.0.1:8000/api/dataset/import-profile
+
+# vincolo logico HARD su un docente
+curl -X POST -H "Content-Type: application/json" \
+  -d '{"expression":"mai aula:LabFisica@mar","kind":"hard"}' \
+  http://127.0.0.1:8000/api/teachers/15/logical-unavailabilities
+
+# bulk dry-run su 3 classi
+curl -X POST -H "Content-Type: application/json" \
+  -d '{"entity_ids":[1,2,3],"action":"add_logical",
+       "payload":{"expression":"lun8 AND lun9","is_hard":true,
+                  "soft_penalty":100},
+       "on_conflict":"dry_run"}' \
+  http://127.0.0.1:8000/api/bulk/classes/dry-run
+
+# coverage settimana
+curl 'http://127.0.0.1:8000/api/coverage/week?week_start=2026-04-27'
+
+# event lessons (monitor)
+curl http://127.0.0.1:8000/api/monitor/event/1/lessons
+\end{lstlisting}
+
+\section{Riferimento gruppi di endpoint}
+
+\begin{itemize}
+  \item \textbf{Anagrafiche}: \texttt{/api/teachers},
+        \texttt{/classes}, \texttt{/classrooms},
+        \texttt{/subjects}, \texttt{/curricula},
+        \texttt{/students}, \texttt{/groups}.
+  \item \textbf{Cattedre}: \texttt{/api/assignments} +
+        \texttt{teachers-for-subject} + \texttt{loads}.
+  \item \textbf{Vincoli logici}:
+        \texttt{/api/\{teachers,classes,classrooms\}/\{id\}/logical-unavailabilities},
+        \texttt{/api/curricula/\{cid\}/logical-constraints}.
+  \item \textbf{Bulk ops}:
+        \texttt{/api/bulk/\{entity\}/dry-run|apply}.
+  \item \textbf{Schedule}:
+        \texttt{/api/schedule/by-class|by-teacher|by-room|by-slot},
+        \texttt{move-lesson}, \texttt{move-preview},
+        \texttt{lesson/\{lid\}/classroom}.
+  \item \textbf{Coverage}: \texttt{/api/coverage/week|cell},
+        \texttt{/api/absences}, \texttt{/api/substitutions}.
+  \item \textbf{Optimization}:
+        \texttt{/api/optimize/assignment|phase-b|lns|sa|ts|ils|full|classroom-assignment}.
+  \item \textbf{Monitor}: \texttt{/api/monitor/events|summary|constraints|conflicts},
+        \texttt{event/\{aid\}/lessons|lesson/\{lid\}}.
+  \item \textbf{Import}: \texttt{/api/import/\{entity\}},
+        \texttt{/api/import/\{entity\}/template}.
+\end{itemize}
+
+% =========== Cap 8: Estendere ===========

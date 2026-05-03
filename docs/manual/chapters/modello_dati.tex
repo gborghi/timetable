@@ -1,0 +1,121 @@
+\chapter{Modello dati}
+
+Tutto vive in \texttt{webui/backend/models.py}. Le tabelle si
+raggruppano in cinque famiglie tematiche.
+
+\section{Famiglie di tabelle}
+
+\subsection*{Anagrafiche}
+\texttt{subjects}, \texttt{teachers}, \texttt{school\_classes},
+\texttt{classrooms}, \texttt{curricula}, \texttt{students},
+\texttt{study\_groups}.
+
+\subsection*{Tag (M-N)}
+\texttt{classroom\_tags} + \texttt{classroom\_tag\_assignments},
+\texttt{student\_tags} + \texttt{student\_tag\_assignments}. Nome
+unique lower-cased, descrizione opzionale, cancellazione cascata.
+
+\subsection*{Assegnazione}
+\texttt{class\_subjects}, \texttt{curriculum\_subject\_hours},
+\texttt{teacher\_subjects}, \texttt{subject\_group\_weights},
+\texttt{assignments}.
+
+\subsection*{Disponibilit\`a / vincoli}
+\texttt{teacher\_unavailability}, \texttt{class\_unavailability},
+\texttt{classroom\_unavailability},
+\texttt{logical\_unavailabilities},
+\texttt{curriculum\_logical\_constraints},
+\texttt{classroom\_subject\_preferences},
+\texttt{teacher\_classroom\_preferences},
+\texttt{coteaching\_rules}.
+
+\subsection*{Soluzioni e scheduling}
+\texttt{solutions}, \texttt{lessons}, \texttt{day\_counts}.
+
+\subsection*{Coverage e Run}
+\texttt{absences}, \texttt{substitute\_assignments},
+\texttt{runs}, \texttt{run\_logs}, \texttt{app\_state}.
+
+\subsection*{Viste salvate}
+\texttt{saved\_views}: query DSL + sort multi-livello salvati per
+una entit\`a lista, esposti dal dropdown "Viste salvate" del
+componente \emph{SortableQueryableList}. UNIQUE \texttt{(entity,
+name)}.
+
+\section{Diagramma relazioni}
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[node distance=0.5cm and 0.4cm,
+  rect/.style={draw, rounded corners=2pt, thick, fill=cBox!20,
+               minimum width=2.4cm, minimum height=0.6cm,
+               align=center, font=\footnotesize}]
+  \node[rect] (sub) {subjects};
+  \node[rect, right=of sub] (ts) {teacher\_subjects};
+  \node[rect, right=of ts] (te) {teachers};
+  \node[rect, below=of te] (asn) {assignments};
+  \node[rect, left=of asn] (sc) {school\_classes};
+  \node[rect, left=of sc] (cur) {curricula};
+  \node[rect, below=of asn] (sol) {solutions};
+  \node[rect, below=of sol] (les) {lessons};
+  \node[rect, below=of cur] (cs) {class\_subjects};
+  \node[rect, below=of sc] (cu) {class\_unavail.};
+  \node[rect, right=of les] (rm) {classrooms};
+  \node[rect, above=of rm] (cp) {classroom\_subj\_pref};
+  \draw (sub) -- (ts) -- (te);
+  \draw (te) -- (asn);
+  \draw (sc) -- (asn);
+  \draw (sc) -- (cs);
+  \draw (sc) -- (cu);
+  \draw (cur) -- (sc);
+  \draw (asn) -- (sol);
+  \draw (sol) -- (les);
+  \draw (rm) -- (cp);
+  \draw (sub) to[out=270,in=180,looseness=1.4] (cp);
+\end{tikzpicture}
+\caption{Relazioni rilevanti del modello dati (semplificato).}
+\label{fig:datamodel}
+\end{figure}
+
+\section{Migrazioni idempotenti}
+
+Pattern (in \texttt{db.py}):
+
+\begin{lstlisting}[style=py]
+if insp.has_table("school_classes") \
+        and not has_column("school_classes", "curriculum_id"):
+    conn.execute(text(
+        "ALTER TABLE school_classes ADD COLUMN curriculum_id INTEGER"
+    ))
+\end{lstlisting}
+
+Ogni ALTER \`e guardato da una check su \texttt{PRAGMA table\_info}.
+Quando aggiungi una colonna nuova, segui lo stesso pattern: il DB
+preesistente sopravvive senza interventi manuali.
+
+\section{Pickle dell'engine}
+
+\texttt{engine\_io.py} converte fra DB e tre forme pickle:
+
+\begin{lstlisting}[style=py]
+school = {
+  'profile':   str,
+  'classes':   [{name, year, section, curriculum, subjects:{subj:ore}}],
+  'teachers':  [{name, group, max_hours, free_day,
+                 weights:{subj:int}}],
+  'cconcorsopersubject': {subj: {group: weight}},
+  'curriculum_scores':   {curriculum: int},
+  'curricula':           [...],
+  'students':            [...],
+  'groups':              [...],
+}
+profs = {
+  teacher_name: {
+    'classi':  {class_name: {subject: {'ore': N}}},
+    'glibero': [d1, d2, d3]
+  }
+}
+solution = {(prof, class, subj, day, hour): 0|1}
+\end{lstlisting}
+
+% =========== Cap 4: Vincoli ===========

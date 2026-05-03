@@ -1,0 +1,67 @@
+% Manuale tecnico del progetto piTantum (Tempus Tantum;
+% codename interno: timetable).
+% ASCII puro, accenti via macro \`e \'e \`a, virgolette ``...''.
+\documentclass[a4paper,11pt,oneside]{report}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[italian]{babel}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{geometry}
+\geometry{margin=2.4cm,headheight=14pt}
+\usepackage{xcolor}
+\usepackage{graphicx}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta,shapes.geometric,fit,calc}
+\usepackage{listings}
+\usepackage{enumitem}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage{booktabs}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage[hidelinks,bookmarksopen=true]{hyperref}
+
+\definecolor{cHard}{RGB}{220,38,38}
+\definecolor{cSoft}{RGB}{217,119,6}
+\definecolor{cPref}{RGB}{37,99,235}
+\definecolor{cEnf}{RGB}{6,95,70}
+\definecolor{cAllow}{RGB}{16,185,129}
+\definecolor{cBox}{RGB}{229,231,235}
+\definecolor{cCode}{RGB}{30,41,59}
+
+\lstset{
+  basicstyle=\ttfamily\footnotesize,
+  keywordstyle=\color{cPref}\bfseries,
+  commentstyle=\color{gray}\itshape,
+  stringstyle=\color{cEnf},
+  showstringspaces=false,
+  breaklines=true,
+  breakatwhitespace=true,
+  columns=fullflexible,
+  frame=single,
+  rulecolor=\color{cBox},
+  framesep=4pt,
+  xleftmargin=8pt,
+  xrightmargin=4pt,
+  numbers=none,
+}
+\lstdefinestyle{json}{language=,morekeywords={true,false,null}}
+\lstdefinestyle{py}{language=Python}
+\lstdefinestyle{shell}{language=bash,morekeywords={apt,brew,dnf,pacman,pip,npm,git,curl}}
+
+\titleformat{\chapter}[hang]{\Huge\bfseries}{\thechapter.}{12pt}{}
+\titleformat{\section}{\Large\bfseries}{\thesection}{10pt}{}
+\titleformat{\subsection}{\large\bfseries}{\thesubsection}{8pt}{}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\textit{piTantum -- manuale tecnico}}
+\fancyhead[R]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+\title{}
+\author{}
+\date{}
+

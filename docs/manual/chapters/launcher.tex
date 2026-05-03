@@ -1,0 +1,30 @@
+\chapter{Launcher}
+
+\section{Windows: \texttt{start.bat}}
+
+Apre due finestre cmd separate. Pre-flight:
+\begin{itemize}
+  \item npm reachable (forza \texttt{nodejs} nel PATH);
+  \item venv esiste in \texttt{backend/.venv};
+  \item \texttt{backend/main.py} e \texttt{frontend/package.json}
+        presenti;
+  \item se \texttt{node\_modules} manca, lancia \texttt{npm install};
+  \item avvisa se 8000 / 5173 sono g\`ia occupate.
+\end{itemize}
+
+I path sono relativi a \texttt{\%\textasciitilde dp0}, quindi lo
+script funziona ovunque venga messo.
+
+\section{Linux / macOS: \texttt{start.sh} + \texttt{stop.sh}}
+
+Default background: log in \texttt{webui/logs/}, PID in
+\texttt{webui/logs/pids}. Flag \texttt{-f} / \texttt{--foreground}
+per Ctrl+C cleanup. Auto-crea venv e fa \texttt{npm install} se
+mancano. Hint per \texttt{apt}, \texttt{dnf}, \texttt{pacman},
+\texttt{brew} se python3 / npm non sono nel PATH.
+
+\texttt{stop.sh} legge \texttt{logs/pids}, manda SIGTERM con
+fallback SIGKILL dopo 3s, killa anche i child via \texttt{pkill -P}
+e ha un fallback per ammazzare qualunque processo ancora in ascolto
+su 8000 / 5173 via \texttt{lsof}.
+

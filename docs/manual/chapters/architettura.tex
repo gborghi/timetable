@@ -1,0 +1,82 @@
+\chapter{Architettura}
+
+\section{Stack}
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Backend}: Python 3.11+, FastAPI, SQLAlchemy 2.0,
+        Pydantic 2, uvicorn, OR-Tools, NumPy, scikit-learn,
+        Faker.
+  \item \textbf{Frontend}: SvelteKit (Svelte 4), Vite 5, Tailwind CSS,
+        JavaScript puro.
+  \item \textbf{DB}: SQLite via SQLAlchemy. Migrazioni idempotenti
+        nel codice (no Alembic).
+  \item \textbf{Engine I/O}: pickle Python; \texttt{engine\_io.py}
+        converte fra DB e dict per il solver.
+\end{itemize}
+
+\section{Diagramma a blocchi}
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[node distance=0.6cm and 0.6cm,
+  every node/.style={draw, rounded corners=4pt, very thick,
+                     minimum width=4.5cm, minimum height=1cm,
+                     align=center, font=\small}]
+  \node[fill=cBox!30] (fe) {SvelteKit / Vite\\\textit{16 tabs}};
+  \node[fill=cBox!30, below=of fe] (be) {FastAPI backend\\\textit{18 router, 118 endpoint}};
+  \node[fill=cBox!30, below=of be] (db) {SQLite\\\textit{$\sim$30 tabelle}};
+  \node[fill=cBox!30, below=of db] (en) {CP-SAT engine\\\textit{decomp. spettrale + meta}};
+  \draw[-{Stealth[length=3mm]}, thick] (fe) -- node[draw=none, right]
+        {\footnotesize \texttt{/api/*} via Vite proxy} (be);
+  \draw[-{Stealth[length=3mm]}, thick] (be) -- node[draw=none, right]
+        {\footnotesize SQLAlchemy 2.0} (db);
+  \draw[-{Stealth[length=3mm]}, thick] (be) to[bend left=45]
+        node[draw=none, right]
+        {\footnotesize \texttt{engine\_io.py} (pickle)} (en);
+\end{tikzpicture}
+\caption{Architettura a blocchi della webapp.}
+\label{fig:arch}
+\end{figure}
+
+\section{Struttura cartelle}
+
+\begin{lstlisting}[style=shell]
+timetable/
++-- README.md                    -- landing page
++-- docs/                        -- manuale tecnico
++-- experiments/                 -- solver code + pickle snapshots
+|   +-- cpsat_v2_assignment.py   -- Phase A
+|   +-- cpsat_v2_timetable.py    -- Phase B
+|   +-- decomposition_spectral_v2.py
+|   +-- metaheuristics.py        -- LNS / SA / TS / ILS
+|   +-- classroom_assignment.py  -- Phase 4
++-- schedule/                    -- legacy single-file prototypes
++-- webui/
+|   +-- start.bat                -- launcher Windows
+|   +-- start.sh                 -- launcher Linux/macOS
+|   +-- stop.sh                  -- stop helper
+|   +-- backend/                 -- FastAPI app
+|   +-- frontend/                -- SvelteKit
+|   +-- data/timetable.db        -- SQLite
+|   +-- docs/                    -- guide brevi user-facing
++-- proposals/                   -- design notes + benchmarks
++-- *.pdf                        -- reference papers
+\end{lstlisting}
+
+\section{Lifecycle del backend}
+
+\texttt{webui/backend/main.py} definisce un \texttt{lifespan} che
+chiama \texttt{init\_db()} allo startup. Esso fa:
+
+\begin{enumerate}
+  \item \texttt{Base.metadata.create\_all(bind=engine)} -- crea le
+        tabelle mancanti.
+  \item \texttt{\_apply\_lightweight\_migrations()} -- ALTER TABLE
+        idempotenti per i campi aggiunti in versioni successive
+        (esempio: \texttt{school\_classes.curriculum\_id},
+        \texttt{teachers.last\_name/first\_name/nickname}, ecc.).
+        Ogni ALTER \`e guardato da \texttt{PRAGMA table\_info} per non
+        duplicare.
+\end{enumerate}
+
+% =========== Cap 3: Modello dati ===========

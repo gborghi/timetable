@@ -1,0 +1,38 @@
+\chapter{Diagnostica statistica}
+
+Il tab \texttt{/diagnostics} aggrega tutte le analisi sul
+modello e sulla soluzione attiva. Vedere
+\texttt{docs/diagnostics.md}. Visualizzazioni con Apache
+ECharts (lazy-loaded), tema \emph{pitantum} (palette indaco /
+oro / avorio / terra-di-siena).
+
+\section{Sensitivity Monte Carlo}
+Genera $N$ perturbazioni feasible (sequenze di mosse atomiche
+random accettate solo se HARD soddisfatto) e calcola statistiche
+SOFT. Coefficiente di variazione $< 0.05$ $\Rightarrow$
+soluzione vicina all'ottimo locale.
+
+\section{Analisi bipartito}
+Tre metriche networkx: densita' del grafo classe$\times$docente,
+modularita' Newman-Girvan greedy, top-K betweenness centrality.
+
+\section{Correlazioni e regressioni}
+Tre regressioni statsmodels: OLS \texttt{load\_vs\_gaps},
+OLS \texttt{subjects\_vs\_soft}, Logit
+\texttt{saturation\_vs\_sixth}. Output con coefficienti,
+p-values, $R^2$ (o pseudo-$R^2$) e interpretazione testuale
+auto-generata.
+
+\section{Distribuzioni}
+Cinque distribuzioni (carichi docenti, classi per giorno,
+materia$\times$slot heatmap, occupancy slot, KS-test, chi-quadro)
++ goodness-of-fit.
+
+\section{Run telemetry}
+Tabella \texttt{run\_telemetry} (alembic
+\texttt{a848420325b3}). I moduli solver pushano sample via
+\texttt{utils.telemetry.collector(run\_id, phase)}. Il run detail
+page (\texttt{/runs/[id]}) mostra il grafico objective vs tempo
+(multi-linea per phase) + statistiche per stage + export JSON.
+
+% =========== Cap 7: API ===========

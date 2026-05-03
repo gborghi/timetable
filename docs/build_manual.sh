@@ -1,45 +1,59 @@
 #!/usr/bin/env bash
-# Build docs/manual.pdf using the lualatex + biber + makeindex + lualatex x2
-# pipeline. ASCII pure in manual.tex. Run from anywhere; the script cd's to
-# its own directory first.
+# Build the three PDF manuals using lualatex + biber + makeindex.
+#
+# Outputs (all in docs/):
+#   manual_generale.pdf    Parte I  -- per coordinatori d'orario
+#   appendici_tecniche.pdf Parte II -- per sviluppatori
+#   manual_completo.pdf    entrambe le parti in un unico volume
 #
 # Usage:
-#   docs/build_manual.sh           # build, with all aux/bib indexing passes
-#   docs/build_manual.sh --quick   # single lualatex pass (skip biber + index)
-#
-# Outputs: docs/manual.pdf
+#   docs/build_manual.sh           # build all 3 PDFs (lualatex x2 each)
+#   docs/build_manual.sh --quick   # single lualatex pass per PDF
+#   docs/build_manual.sh <name>    # build only one
 set -euo pipefail
-
 cd "$(dirname "$0")"
 
 QUICK=0
-if [[ "${1:-}" == "--quick" ]]; then
-  QUICK=1
+PICK=""
+for arg in "$@"; do
+  case "$arg" in
+    --quick) QUICK=1 ;;
+    manual_generale|appendici_tecniche|manual_completo) PICK="$arg" ;;
+    *) echo "[manual] unknown arg: $arg" >&2 ;;
+  esac
+done
+
+build_one() {
+  local job="$1"
+  local tex="${job}.tex"
+  if [[ ! -f "$tex" ]]; then
+    echo "[manual] missing $tex, skipping"
+    return
+  fi
+  echo "[manual] === $job ==="
+  lualatex -interaction=nonstopmode -halt-on-error "$tex" >/dev/null \
+      || { echo "[manual] $job pass 1 FAILED"; return 1; }
+  if [[ "$QUICK" -eq 0 ]]; then
+    [[ -f "${job}.bcf" ]] && biber "$job" >/dev/null || true
+    [[ -f "${job}.idx" ]] && makeindex "${job}.idx" >/dev/null || true
+    lualatex -interaction=nonstopmode -halt-on-error "$tex" >/dev/null
+    lualatex -interaction=nonstopmode -halt-on-error "$tex" >/dev/null
+  fi
+  # Cleanup
+  rm -f "${job}".{aux,log,toc,out,bcf,run.xml,idx,ind,ilg,bbl,blg,lof,lot} \
+        "${job}"-blx.bib
+  if [[ -f "${job}.pdf" ]]; then
+    local sz=$(wc -c < "${job}.pdf")
+    echo "[manual] $job -> $job.pdf ($sz bytes)"
+  fi
+}
+
+if [[ -n "$PICK" ]]; then
+  build_one "$PICK"
+else
+  build_one manual_generale
+  build_one appendici_tecniche
+  build_one manual_completo
 fi
 
-JOB=manual
-TEX=manual.tex
-
-echo "[manual] pass 1: lualatex"
-lualatex -interaction=nonstopmode -halt-on-error "$TEX" >/dev/null
-
-if [[ "$QUICK" -eq 0 ]]; then
-  if [[ -f "$JOB.bcf" ]]; then
-    echo "[manual] biber"
-    biber "$JOB" >/dev/null || true
-  fi
-  if [[ -f "$JOB.idx" ]]; then
-    echo "[manual] makeindex"
-    makeindex "$JOB.idx" >/dev/null || true
-  fi
-  echo "[manual] pass 2: lualatex"
-  lualatex -interaction=nonstopmode -halt-on-error "$TEX" >/dev/null
-  echo "[manual] pass 3: lualatex"
-  lualatex -interaction=nonstopmode -halt-on-error "$TEX" >/dev/null
-fi
-
-echo "[manual] cleaning aux files"
-rm -f "$JOB".{aux,log,toc,out,bcf,run.xml,idx,ind,ilg,bbl,blg,lof,lot} \
-       "$JOB"-blx.bib
-
-echo "[manual] OK -> docs/manual.pdf"
+echo "[manual] OK"

@@ -1,0 +1,68 @@
+\chapter{Introduzione}
+
+\emph{$\pi$Tantum} (alias \emph{Tempus Tantum}, codename interno:
+\texttt{timetable}) \`e un sistema di generazione e gestione
+dell'orario scolastico per un Liceo italiano. Il nome richiama il
+celebre incipit dell'epistola I di Seneca a Lucilio:
+``Omnia, Lucili, aliena sunt, tempus tantum nostrum est'' (Seneca,
+\emph{Epistulae morales ad Lucilium}, I, 1) -- ``tutto ci appartiene
+di altri, soltanto il tempo \`e nostro''. Il gioco grafico fra la
+lettera greca $\pi$ e le due ``T'' di \emph{Tempus Tantum} riassume
+l'idea: organizzare il tempo della scuola, dato che del tempo non
+si dispone se non gestendolo.
+
+\`E composto di tre layer:
+
+\begin{enumerate}
+  \item \textbf{Solver} (\texttt{experiments/}): pipeline CP-SAT
+        (Google OR-Tools) con decomposizione spettrale per istanze
+        grandi e cascata metaeuristica (LNS, SA, TS, ILS).
+  \item \textbf{Web UI} (\texttt{webui/}): backend FastAPI su
+        SQLite + frontend SvelteKit. \`E il punto di accesso quotidiano:
+        gestisce CRUD, ottimizzazione, visualizzazione, drag-and-drop,
+        assenze e supplenze.
+  \item \textbf{Legacy} (\texttt{schedule/}): script monolitici da cui
+        il solver \`e nato; mantenuti per riferimento storico.
+\end{enumerate}
+
+Il manuale copre tutti e tre i layer ma si concentra sulla web UI,
+che ha assorbito quasi ogni funzionalit\`a operativa.
+
+\section{Avvio rapido}
+
+\paragraph{Windows.} Doppio click su \texttt{webui/start.bat}.
+Apre due finestre cmd: backend \emph{uvicorn} su porta 8000, frontend
+\emph{vite} su porta 5173.
+
+\paragraph{Linux / macOS.}
+\begin{lstlisting}[style=shell]
+cd timetable/webui
+./start.sh           # background; URLs sulla console
+./stop.sh            # ferma backend + frontend
+\end{lstlisting}
+
+Nel browser, aprire \texttt{http://127.0.0.1:5173} e dalla
+\textbf{Dashboard} importare un profilo g\`ia calcolato
+(\texttt{small} per cominciare).
+
+\section{Stato attuale del progetto}
+
+Le funzionalit\`a principali, al momento di questa redazione:
+
+\begin{itemize}
+  \item 16 sezioni (tab) della UI, $\sim$118 endpoint REST.
+  \item $\sim$30 tabelle SQLAlchemy con migrazioni idempotenti.
+  \item 5 stati di vincoli (HARD/SOFT/PREFERITO/ENFORCED/ALLOWED).
+  \item Vincoli logici DNF con DSL esteso (predicate atoms
+        \texttt{aula:}, \texttt{materia:}, \texttt{classe:},
+        \texttt{gruppo:}, \texttt{docente:}).
+  \item Conflict detection automatico nel tab \emph{Vincoli}.
+  \item Drag-and-drop con preview live (rosso/giallo/verde) e
+        \emph{room-follows-lesson}.
+  \item Gestione assenze settimanali con assegnazione supplenti
+        drag-drop.
+  \item Tab \emph{Monitor} con espansione lezione-per-lezione e
+        slot picker matriciale.
+\end{itemize}
+
+% =========== Cap 2: Installazione ===========

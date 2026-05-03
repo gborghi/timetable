@@ -1,0 +1,148 @@
+\chapter{Workflow di ottimizzazione}
+
+\section{Schema delle fasi}
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[node distance=0.5cm and 0.6cm,
+  rect/.style={draw, rounded corners=4pt, very thick, fill=cBox!30,
+               minimum width=3.4cm, minimum height=1.2cm,
+               align=center, font=\small}]
+  \node[rect] (a) {Phase A\\\textit{assignment}\\CP-SAT};
+  \node[rect, right=of a] (b) {Phase B\\\textit{scheduling}\\+ decomp. spettrale};
+  \node[rect, right=of b] (m) {Metaeuristiche\\\textit{LNS+SA+TS+ILS}};
+  \node[rect, right=of m] (r) {Phase 4\\\textit{aule}\\CP-SAT};
+  \draw[-{Stealth[length=3mm]}, thick] (a) -- (b);
+  \draw[-{Stealth[length=3mm]}, thick] (b) -- (m);
+  \draw[-{Stealth[length=3mm]}, thick] (m) -- (r);
+
+  \node[below=0.4cm of a, font=\scriptsize] {assignments};
+  \node[below=0.4cm of b, font=\scriptsize] {lessons};
+  \node[below=0.4cm of m, font=\scriptsize] {lessons SOFT-ottime};
+  \node[below=0.4cm of r, font=\scriptsize] {lessons.classroom};
+\end{tikzpicture}
+\caption{Pipeline a 4 fasi.}
+\label{fig:pipeline}
+\end{figure}
+
+\section{Phase A: assegnazione (cattedre)}
+
+\paragraph{Modulo.} \texttt{experiments/cpsat\_v2\_assignment.py}.
+\paragraph{Lancio.} \texttt{POST /api/optimize/assignment} con
+\texttt{\{time\_limit\_s, workers, log\}}.
+
+\paragraph{Input.} L'insieme di \texttt{(class, subject,
+hours\_per\_week)} letto da \texttt{class\_subjects} e/o
+\texttt{curriculum\_subject\_hours} + le abilitazioni docente in
+\texttt{teacher\_subjects} + la classe-di-concorso preference in
+\texttt{subject\_group\_weights}.
+
+\paragraph{Output.} La tabella \texttt{assignments}
+(\texttt{teacher x class x subject} con \texttt{hours}). Problema di
+covering: ogni \texttt{(class, subject)} riceve un docente abilitato,
+rispettando max-hours per docente, classi-di-concorso e
+\texttt{teacher\_compatible\_classes}.
+
+\section{Phase B: scheduling}
+
+\paragraph{Modulo.} \texttt{experiments/cpsat\_v2\_timetable.py} +
+\texttt{experiments/decomposition\_spectral\_v2.py}.
+
+\paragraph{Decomposizione spettrale.}
+Per istanze grandi, il problema CP-SAT integrale \`e intrattabile.
+La pipeline calcola un grafo di co-occupazione fra docenti, ne fa
+un'embedding spettrale via Laplaciano normalizzato e usa K-means su
+quell'embedding per partizionare in $k$ cluster
+\emph{loosely-coupled}. Ogni cluster diventa una sub-istanza CP-SAT
+indipendente; un secondo step "bridges" risolve solo i bordi; un
+terzo step "ricucitura" fa full-CPSAT con tutto il problema partendo
+dalla soluzione stitched.
+
+\section{Metaeuristiche}
+
+\paragraph{Modulo.} \texttt{experiments/metaheuristics.py}.
+Cascata di:
+
+\begin{itemize}
+  \item \textbf{LNS} -- destroy-and-repair su finestre
+        \texttt{(teacher, day)} o \texttt{(class, day)}; freeze del
+        60-70\% delle lezioni e CP-SAT-resolve del resto.
+  \item \textbf{SA} (Simulated Annealing) -- single-swap accettati
+        con Metropolis a $T$ decrescente con fattore $\alpha$.
+  \item \textbf{TS} (Tabu Search) -- best-improvement local search
+        con tabu list (default size 80).
+  \item \textbf{ILS} (Iterated Local Search) -- alterna $n$ cicli di
+        TS con \emph{kick} perturbativi (random 4-opt fra giorni).
+\end{itemize}
+
+Tutti contribuiscono al SOFT score: holes per teacher, isolated 1-
+and 5-hour days, weekly distribution, dual-hour pairs, no 6th hour,
+banded preferences su materie. Il SOFT include la contribuzione delle
+matrici di disponibilit\`a SOFT/PREFERITO e dei logical SOFT/PREFERITO.
+
+\section{Phase 4: assegnazione aule}
+
+\paragraph{Modulo.} \texttt{experiments/classroom\_assignment.py}.
+Input: la tabella \texttt{lessons} (g\`ia temporalmente fissata) +
+le classroom rules (\texttt{kind}, \texttt{capacity},
+\texttt{multi\_class}, preferenze materia$\leftrightarrow$aula,
+classe$\leftrightarrow$aula, docente$\leftrightarrow$aula).
+Output: \texttt{lessons.classroom\_name} popolato.
+
+\section{Drag-and-drop con preview live}
+
+Trascinando una lezione su un altro slot la UI fa due chiamate:
+
+\begin{enumerate}
+  \item \texttt{POST /api/schedule/move-preview} -- il backend simula
+        la mossa per tutte le 36 (day, hour) e per ognuna restituisce:
+        \begin{itemize}
+          \item \texttt{ok} con \texttt{delta\_soft <= 0} -- mossa
+                accettabile (verde se delta $<$ 0, verde chiaro
+                se delta $=$ 0).
+          \item \texttt{soft\_worse} -- mossa accettabile ma peggiora
+                il SOFT (giallo).
+          \item \texttt{hard\_violation} -- vincolo HARD violato
+                (rosso).
+          \item \texttt{noop} -- slot di origine.
+        \end{itemize}
+  \item L'utente droppa, la UI invia \texttt{PUT
+        /api/schedule/move-lesson} che valida e persiste.
+\end{enumerate}
+
+\subsection{Room-follows-lesson}
+
+Il move-preview NON considera l'aula nel calcolo HARD. Se la nuova
+posizione \`e compatibile con docente / classe ma l'aula attuale
+\`e g\`ia occupata o HARD-unavailable in destination, il backend:
+
+\begin{enumerate}
+  \item Sposta la lezione.
+  \item Lascia l'aula libera sul nuovo slot solo se non c'\`e conflitto.
+  \item Se c'\`e conflitto, rimuove l'aula dalla lezione spostata e
+        risponde con \texttt{room\_cleared=true, cleared\_room=<nome>}.
+  \item La UI apre un Modal che spiega cosa \`e successo e chiede di
+        scegliere una nuova aula dal dropdown (verde libera / rosso
+        occupata).
+\end{enumerate}
+
+\section{Slot picker matriciale (Monitor)}
+
+Nel tab \emph{Monitor}, espandendo una cattedra si vedono le singole
+lezioni; cliccando il bottone Giorno/Ora si apre un modal con una
+matrice 6x6 dove ogni cella \`e colorata in base alla disponibilit\`a:
+
+\begin{itemize}
+  \item verde: free (docente e classe liberi)
+  \item rosso: HARD (docente o classe g\`ia impegnati)
+  \item ambra: aula occupata da un'altra lezione
+  \item azzurro: slot attuale
+\end{itemize}
+
+Click su una cella libera fa un dry-run via
+\texttt{PUT /api/monitor/event/\{aid\}/lesson/\{lid\}}. Se
+ci sono conflitti, apre un secondo Modal con 3 opzioni:
+\textbf{Annulla}, \textbf{Disassegna le lezioni in conflitto},
+\textbf{Disassegna e ottimizza dopo}.
+
+% =========== Cap 6: UI guide ===========

@@ -1,0 +1,74 @@
+% piTantum -- Appendici tecniche (Parte II)
+% Per sviluppatori, manutentori, integratori.
+% ASCII puro, accenti via macro \`e \'e \`a.
+\input{manual/preamble}
+
+\begin{document}
+
+% =========== Cover (Parte II) ===========
+\begin{titlepage}
+\thispagestyle{empty}
+\centering
+\vspace*{1.4cm}
+
+{\Huge\bfseries $\pi$\,Tantum\par}
+\vspace{0.2cm}
+{\Large alias \emph{Tempus Tantum}\par}
+\vspace{0.4cm}
+{\Large\itshape sistema di generazione orario scolastico\par}
+
+\vspace{1.0cm}
+\rule{0.5\textwidth}{0.4pt}
+
+\vspace{1.4cm}
+{\LARGE Appendici tecniche\par}
+\vspace{0.4cm}
+{\Large\itshape Parte II --- per sviluppatori\par}
+
+\vspace{2cm}
+
+\begin{minipage}{0.8\textwidth}
+\centering\small
+Riferimento tecnico completo: architettura del sistema,
+modello dati con relazioni e vincoli FK, API REST, grammatica
+formale del DSL e traduzione AST $\to$ CP-SAT, strategie di
+ottimizzazione (CP-SAT, decomposizione spettrale,
+metaeuristiche), diagnostica statistica, guida all'estensione
+del sistema.
+\end{minipage}
+
+\vspace{1.4cm}
+\begin{tikzpicture}
+  \node[draw=cBox, very thick, rounded corners=4pt, minimum width=3cm,
+        minimum height=1cm, fill=cBox!30] (a) at (0,0) {\textbf{CP-SAT}};
+  \node[draw=cBox, very thick, rounded corners=4pt, minimum width=3cm,
+        minimum height=1cm, fill=cBox!30, right=0.6cm of a] (b)
+        {\textbf{spectral}};
+  \node[draw=cBox, very thick, rounded corners=4pt, minimum width=3cm,
+        minimum height=1cm, fill=cBox!30, right=0.6cm of b] (c)
+        {\textbf{LNS+SA+TS+ILS}};
+  \draw[-{Stealth[length=3mm]}, thick] (a) -- (b);
+  \draw[-{Stealth[length=3mm]}, thick] (b) -- (c);
+\end{tikzpicture}
+
+\vfill
+
+{\large Giovanni Borghi\par}
+\vspace{0.2cm}
+{\large \today\par}
+\end{titlepage}
+
+\tableofcontents
+
+% =========== Appendici tecniche ===========
+\input{manual/chapters/architettura}
+\input{manual/chapters/modello_dati}
+\input{manual/chapters/dsl_generico_per_i_vincoli}
+\input{manual/chapters/tecniche_di_ottimizzazione_avanzate}
+\input{manual/chapters/diagnostica_statistica}
+\input{manual/chapters/api_rest}
+\input{manual/chapters/estendere_il_sistema}
+\input{manual/chapters/repository_github}
+\input{manual/chapters/reference}
+
+\end{document}

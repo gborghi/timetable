@@ -1,0 +1,69 @@
+\begin{document}
+
+% =========== Cover ===========
+\begin{titlepage}
+\thispagestyle{empty}
+\centering
+\vspace*{1.4cm}
+
+{\Huge\bfseries $\pi$\,Tantum\par}
+\vspace{0.2cm}
+{\Large alias \emph{Tempus Tantum}\par}
+\vspace{0.4cm}
+{\Large\itshape sistema di generazione orario scolastico\par}
+
+\vspace{1.0cm}
+\rule{0.5\textwidth}{0.4pt}
+
+\vspace{0.8cm}
+\begin{minipage}{0.85\textwidth}
+\centering
+\itshape
+``Omnia, Lucili, aliena sunt, tempus tantum nostrum est.''\\
+\upshape\small Seneca, \emph{Epistulae morales ad Lucilium}, I, 1
+
+\medskip
+\itshape\small
+``Tutto, Lucilio mio, ci appartiene di altri; soltanto il tempo
+e' nostro.''
+\end{minipage}
+
+\vspace{1.0cm}
+\rule{0.5\textwidth}{0.4pt}
+
+\vspace{0.8cm}
+{\LARGE Manuale tecnico\par}
+
+\vspace{2.5cm}
+
+\begin{tikzpicture}
+  \node[draw=cBox, very thick, rounded corners=4pt, minimum width=3cm,
+        minimum height=1cm, fill=cBox!30] (a) at (0,0) {\textbf{CP-SAT}};
+  \node[draw=cBox, very thick, rounded corners=4pt, minimum width=3cm,
+        minimum height=1cm, fill=cBox!30, right=0.6cm of a] (b)
+        {\textbf{spectral}};
+  \node[draw=cBox, very thick, rounded corners=4pt, minimum width=3cm,
+        minimum height=1cm, fill=cBox!30, right=0.6cm of b] (c)
+        {\textbf{LNS+SA+TS+ILS}};
+  \draw[-{Stealth[length=3mm]}, thick] (a) -- (b);
+  \draw[-{Stealth[length=3mm]}, thick] (b) -- (c);
+\end{tikzpicture}
+
+\vspace{2cm}
+
+{\large Giovanni Borghi\par}
+\vspace{0.3cm}
+{\large \today\par}
+
+\vfill
+
+{\small
+Repository: \url{https://github.com/gborghi/timetable}\\
+Documentazione sorgente: \texttt{docs/}
+\par}
+\end{titlepage}
+
+\tableofcontents
+\listoffigures
+
+% =========== Cap 1: Introduzione ===========
