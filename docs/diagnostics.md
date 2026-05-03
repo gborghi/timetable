@@ -1,11 +1,28 @@
-# Statistiche e diagnostica
+# Statistiche e diagnostica: capire l'orario che il programma ha prodotto
 
-Il tab `/diagnostics` aggrega tutte le analisi statistiche
-sull'istanza corrente (modello + soluzione attiva). Tutti gli
-endpoint vivono sotto `/api/diagnostics/`. La UI usa il wrapper
-`<EChart>` (`webui/frontend/src/lib/components/EChart.svelte`,
-ECharts ^6 lazy-loaded, tema `pitantum` con palette
-indaco/oro/avorio/terra-di-siena).
+Una volta che piTantum ha generato un orario, viene voglia di
+chiederselo: \`E un orario buono? Ci sono squilibri di carico fra i
+docenti? Le materie sono distribuite bene nei giorni? La struttura
+della scuola \`e tale da rendere il problema "facile" o "difficile"
+da risolvere? Il tab **Statistiche e diagnostica** (`/diagnostics`)
+risponde proprio a queste domande, attraverso cinque analisi
+diverse che illuminano altrettanti aspetti dell'orario.
+
+Sei nel posto giusto se sei un coordinatore d'orario o un
+amministratore di sistema che vuole valutare la qualit\`a di una
+soluzione, capire dove si nasconde il "rumore" residuo, o sapere
+se conviene o no insistere con altre fasi di ottimizzazione.
+
+Le analisi pesanti vengono lanciate come **run asincroni**:
+compaiono nel tab Runs come una qualunque fase di ottimizzazione
+e tornano qui come grafici quando sono pronte. Cos\`i puoi
+lanciarle e fare altro nel frattempo.
+
+> **Per chi sviluppa**: tutti gli endpoint vivono sotto
+> `/api/diagnostics/`. La UI usa `<EChart>`
+> (`webui/frontend/src/lib/components/EChart.svelte`, Apache
+> ECharts ^6 lazy-loaded, tema `pitantum` con palette
+> indaco/oro/avorio/terra-di-siena).
 
 ## 1. Pre-check fattibilita' (Hall's theorem)
 
