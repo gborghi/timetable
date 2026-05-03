@@ -1,0 +1,391 @@
+{
+  "profile": "huge",
+  "category": "classroom",
+  "schema_version": 1,
+  "description": "Stress dataset classroom per huge, generato proceduralmente.",
+  "constraints": [
+    {
+      "id": "huge_r_001",
+      "kind": "logical_classroom",
+      "scope": "classroom",
+      "owner_pattern": "first_lab",
+      "level": "soft",
+      "expression": "mai mar8 AND mai mar11",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Aula: chiusa mar ore 8, 11.",
+      "weight": 76
+    },
+    {
+      "id": "huge_r_002",
+      "kind": "logical_classroom",
+      "scope": "classroom",
+      "owner_pattern": "second_lab",
+      "level": "enforced",
+      "expression": "mai ven8 AND mai ven12",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Aula: chiusa ven ore 8, 12."
+    },
+    {
+      "id": "huge_r_003",
+      "kind": "logical_classroom",
+      "scope": "classroom",
+      "owner_pattern": "third_lab",
+      "level": "soft",
+      "expression": "(lun8 AND lun9) OR (ven8 AND mer9)",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Aula: preferenza per coppie mattutine.",
+      "weight": 53
+    },
+    {
+      "id": "huge_r_004",
+      "kind": "logical_classroom",
+      "scope": "classroom",
+      "owner_pattern": "fourth_lab",
+      "level": "hard",
+      "expression": "(lun8 AND lun9) OR (mer8 AND mar9)",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Aula: preferenza per coppie mattutine."
+    },
+    {
+      "id": "huge_r_005",
+      "kind": "logical_classroom",
+      "scope": "classroom",
+      "owner_pattern": "gym",
+      "level": "hard",
+      "expression": "mai sab10 AND mai sab11",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Aula: chiusa sab ore 10, 11."
+    },
+    {
+      "id": "huge_r_006",
+      "kind": "logical_classroom",
+      "scope": "classroom",
+      "owner_pattern": "main_room",
+      "level": "hard",
+      "expression": "mai sab AND mai lun13",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Aula: chiusa sabato e ultima ora di lun."
+    },
+    {
+      "id": "huge_r_007",
+      "kind": "logical_classroom",
+      "scope": "classroom",
+      "owner_pattern": "first_lab",
+      "level": "hard",
+      "expression": "(lun8 AND lun9) OR (ven8 AND lun9)",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Aula: preferenza per coppie mattutine."
+    },
+    {
+      "id": "huge_r_008",
+      "kind": "logical_classroom",
+      "scope": "classroom",
+      "owner_pattern": "second_lab",
+      "level": "soft",
+      "expression": "mai mer9 AND mai mer10",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Aula: chiusa mer ore 9, 10.",
+      "weight": 55
+    },
+    {
+      "id": "huge_r_009",
+      "kind": "logical_classroom",
+      "scope": "classroom",
+      "owner_pattern": "third_lab",
+      "level": "enforced",
+      "expression": "mai mar",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Aula: indisponibile mar (corso esterno)."
+    },
+    {
+      "id": "huge_r_010",
+      "kind": "logical_classroom",
+      "scope": "classroom",
+      "owner_pattern": "fourth_lab",
+      "level": "preferred",
+      "expression": "mai mer",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Aula: indisponibile mer (corso esterno).",
+      "weight": 91
+    },
+    {
+      "id": "huge_r_011",
+      "kind": "logical_classroom",
+      "scope": "classroom",
+      "owner_pattern": "gym",
+      "level": "soft",
+      "expression": "mai sab",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Aula: indisponibile sab (corso esterno).",
+      "weight": 59
+    },
+    {
+      "id": "huge_r_012",
+      "kind": "logical_classroom",
+      "scope": "classroom",
+      "owner_pattern": "main_room",
+      "level": "soft",
+      "expression": "mai sab AND mai lun13",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Aula: chiusa sabato e ultima ora di lun.",
+      "weight": 48
+    },
+    {
+      "id": "huge_r_013",
+      "kind": "logical_classroom",
+      "scope": "classroom",
+      "owner_pattern": "first_lab",
+      "level": "hard",
+      "expression": "mai lun9 AND mai lun12",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Aula: chiusa lun ore 9, 12."
+    },
+    {
+      "id": "huge_r_014",
+      "kind": "logical_classroom",
+      "scope": "classroom",
+      "owner_pattern": "second_lab",
+      "level": "hard",
+      "expression": "(lun8 AND lun9) OR (sab8 AND mer9)",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Aula: preferenza per coppie mattutine."
+    },
+    {
+      "id": "huge_r_015",
+      "kind": "logical_classroom",
+      "scope": "classroom",
+      "owner_pattern": "third_lab",
+      "level": "enforced",
+      "expression": "(lun8 AND lun9) OR (mer8 AND ven9)",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Aula: preferenza per coppie mattutine."
+    },
+    {
+      "id": "huge_r_016",
+      "kind": "logical_classroom",
+      "scope": "classroom",
+      "owner_pattern": "fourth_lab",
+      "level": "hard",
+      "expression": "mai sab AND mai lun13",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Aula: chiusa sabato e ultima ora di lun."
+    },
+    {
+      "id": "huge_r_017",
+      "kind": "logical_classroom",
+      "scope": "classroom",
+      "owner_pattern": "gym",
+      "level": "hard",
+      "expression": "mai mer",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Aula: indisponibile mer (corso esterno)."
+    },
+    {
+      "id": "huge_r_018",
+      "kind": "logical_classroom",
+      "scope": "classroom",
+      "owner_pattern": "main_room",
+      "level": "preferred",
+      "expression": "mai mar9 AND mai mar10",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Aula: chiusa mar ore 9, 10.",
+      "weight": 85
+    },
+    {
+      "id": "huge_r_019",
+      "kind": "logical_classroom",
+      "scope": "classroom",
+      "owner_pattern": "first_lab",
+      "level": "hard",
+      "expression": "(lun8 AND lun9) OR (ven8 AND lun9)",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Aula: preferenza per coppie mattutine."
+    },
+    {
+      "id": "huge_r_020",
+      "kind": "logical_classroom",
+      "scope": "classroom",
+      "owner_pattern": "second_lab",
+      "level": "soft",
+      "expression": "mai sab AND mai sab13",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Aula: chiusa sabato e ultima ora di sab.",
+      "weight": 74
+    },
+    {
+      "id": "huge_r_021",
+      "kind": "logical_classroom",
+      "scope": "classroom",
+      "owner_pattern": "third_lab",
+      "level": "enforced",
+      "expression": "mai mer9 AND mai mer12",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Aula: chiusa mer ore 9, 12."
+    },
+    {
+      "id": "huge_r_022",
+      "kind": "logical_classroom",
+      "scope": "classroom",
+      "owner_pattern": "fourth_lab",
+      "level": "hard",
+      "expression": "mai mer8 AND mai mer10",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Aula: chiusa mer ore 8, 10."
+    },
+    {
+      "id": "huge_r_023",
+      "kind": "logical_classroom",
+      "scope": "classroom",
+      "owner_pattern": "gym",
+      "level": "soft",
+      "expression": "mai lun10 AND mai lun11",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Aula: chiusa lun ore 10, 11.",
+      "weight": 87
+    },
+    {
+      "id": "huge_r_024",
+      "kind": "logical_classroom",
+      "scope": "classroom",
+      "owner_pattern": "main_room",
+      "level": "soft",
+      "expression": "mai mar9 AND mai mar12",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Aula: chiusa mar ore 9, 12.",
+      "weight": 41
+    },
+    {
+      "id": "huge_r_025",
+      "kind": "logical_classroom",
+      "scope": "classroom",
+      "owner_pattern": "first_lab",
+      "level": "hard",
+      "expression": "mai mer9 AND mai mer11",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Aula: chiusa mer ore 9, 11."
+    },
+    {
+      "id": "huge_r_026",
+      "kind": "logical_classroom",
+      "scope": "classroom",
+      "owner_pattern": "second_lab",
+      "level": "enforced",
+      "expression": "mai sab AND mai lun13",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Aula: chiusa sabato e ultima ora di lun."
+    },
+    {
+      "id": "huge_r_027",
+      "kind": "logical_classroom",
+      "scope": "classroom",
+      "owner_pattern": "third_lab",
+      "level": "soft",
+      "expression": "mai gio9 AND mai gio12",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Aula: chiusa gio ore 9, 12.",
+      "weight": 69
+    },
+    {
+      "id": "huge_r_028",
+      "kind": "logical_classroom",
+      "scope": "classroom",
+      "owner_pattern": "fourth_lab",
+      "level": "preferred",
+      "expression": "mai mar8 AND mai mar9",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Aula: chiusa mar ore 8, 9.",
+      "weight": 75
+    },
+    {
+      "id": "huge_r_029",
+      "kind": "logical_classroom",
+      "scope": "classroom",
+      "owner_pattern": "gym",
+      "level": "preferred",
+      "expression": "mai lun10 AND mai lun12",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Aula: chiusa lun ore 10, 12.",
+      "weight": 75
+    },
+    {
+      "id": "huge_r_030",
+      "kind": "logical_classroom",
+      "scope": "classroom",
+      "owner_pattern": "main_room",
+      "level": "soft",
+      "expression": "(lun8 AND lun9) OR (ven8 AND mer9)",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Aula: preferenza per coppie mattutine.",
+      "weight": 47
+    },
+    {
+      "id": "huge_r_031",
+      "kind": "logical_classroom",
+      "scope": "classroom",
+      "owner_pattern": "gym",
+      "level": "enforced",
+      "expression": "sab10",
+      "intentionally_conflicting": true,
+      "conflict_with": [
+        "huge_r_005"
+      ],
+      "description": "[CONFLITTO INTENZIONALE] enforce sab10 contro mai sab10 (huge_r_005)."
+    },
+    {
+      "id": "huge_r_032",
+      "kind": "logical_classroom",
+      "scope": "classroom",
+      "owner_pattern": "main_room",
+      "level": "enforced",
+      "expression": "sab",
+      "intentionally_conflicting": true,
+      "conflict_with": [
+        "huge_r_006"
+      ],
+      "description": "[CONFLITTO INTENZIONALE] enforce sab contro mai sab (huge_r_006)."
+    },
+    {
+      "id": "huge_r_033",
+      "kind": "logical_classroom",
+      "scope": "classroom",
+      "owner_pattern": "first_lab",
+      "level": "enforced",
+      "expression": "lun9",
+      "intentionally_conflicting": true,
+      "conflict_with": [
+        "huge_r_013"
+      ],
+      "description": "[CONFLITTO INTENZIONALE] enforce lun9 contro mai lun9 (huge_r_013)."
+    }
+  ]
+}

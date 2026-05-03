@@ -1,0 +1,156 @@
+{
+  "profile": "medium",
+  "category": "teacher",
+  "schema_version": 1,
+  "description": "Stress dataset di vincoli sui docenti per il profilo medium. ~15 vincoli con 2-3 conflitti deliberati.",
+  "constraints": [
+    {
+      "id": "medium_t_001",
+      "kind": "logical_teacher",
+      "scope": "teacher",
+      "owner_pattern": "first_teacher",
+      "level": "hard",
+      "expression": "mai mar1 AND mai mar2 AND mai mar3",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Primo docente: martedi' mattina interamente impegnato fuori sede."
+    },
+    {
+      "id": "medium_t_002",
+      "kind": "logical_teacher",
+      "scope": "teacher",
+      "owner_pattern": "first_teacher",
+      "level": "enforced",
+      "expression": "mar2",
+      "intentionally_conflicting": true,
+      "conflict_with": ["medium_t_001"],
+      "description": "[CONFLITTO INTENZIONALE] Stesso docente forzato a essere presente martedi' alla 2a ora. In conflitto con medium_t_001."
+    },
+    {
+      "id": "medium_t_003",
+      "kind": "logical_teacher",
+      "scope": "teacher",
+      "owner_pattern": "second_teacher",
+      "level": "soft",
+      "weight": 90,
+      "expression": "mai sab",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Secondo docente: vuole evitare il sabato (peso alto)."
+    },
+    {
+      "id": "medium_t_004",
+      "kind": "logical_teacher",
+      "scope": "teacher",
+      "owner_pattern": "third_teacher",
+      "level": "hard",
+      "expression": "(lun8 AND lun9 AND lun10) OR (gio8 AND gio9 AND gio10)",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Terzo docente: deve avere 3 ore consecutive mattutine in lun o gio (lezione di laboratorio integrata)."
+    },
+    {
+      "id": "medium_t_005",
+      "kind": "logical_teacher",
+      "scope": "teacher",
+      "owner_pattern": "fourth_teacher",
+      "level": "hard",
+      "expression": "mai materia:Matematica@13",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Quarto docente: non insegna mai matematica alla 6a ora."
+    },
+    {
+      "id": "medium_t_006",
+      "kind": "logical_teacher",
+      "scope": "teacher",
+      "owner_pattern": "fifth_teacher",
+      "level": "preferred",
+      "weight": 70,
+      "expression": "lun OR mar",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Quinto docente: preferenza positiva per inizio settimana (lun/mar)."
+    },
+    {
+      "id": "medium_t_007",
+      "kind": "logical_teacher",
+      "scope": "teacher",
+      "owner_pattern": "sixth_teacher",
+      "level": "soft",
+      "weight": 50,
+      "expression": "mai (gio AND ven)",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Sesto docente: preferisce non avere lezioni gio E ven (uno dei due ok)."
+    },
+    {
+      "id": "medium_t_008",
+      "kind": "logical_teacher",
+      "scope": "teacher",
+      "owner_pattern": "seventh_teacher",
+      "level": "hard",
+      "expression": "mai aula:Palestra",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Settimo docente: non insegna mai in palestra (non e' di scienze motorie)."
+    },
+    {
+      "id": "medium_t_009",
+      "kind": "logical_teacher",
+      "scope": "teacher",
+      "owner_pattern": "eighth_teacher",
+      "level": "hard",
+      "expression": "(mar8 AND mar9) OR (mer8 AND mer9) OR (gio8 AND gio9)",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Ottavo docente (lab di chimica): coppie mattutine in mar/mer/gio."
+    },
+    {
+      "id": "medium_t_010",
+      "kind": "logical_teacher",
+      "scope": "teacher",
+      "owner_pattern": "ninth_teacher",
+      "level": "preferred",
+      "weight": 60,
+      "expression": "mer OR gio",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Nono docente: preferenza per meta' settimana."
+    },
+    {
+      "id": "medium_t_011",
+      "kind": "logical_teacher",
+      "scope": "teacher",
+      "owner_pattern": "tenth_teacher",
+      "level": "hard",
+      "expression": "mai materia:Religione@lun",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Decimo docente: religione mai il lunedi' (riunione fissa)."
+    },
+    {
+      "id": "medium_t_012",
+      "kind": "logical_teacher",
+      "scope": "teacher",
+      "owner_pattern": "tenth_teacher",
+      "level": "enforced",
+      "expression": "lun8",
+      "intentionally_conflicting": true,
+      "conflict_with": ["medium_t_011"],
+      "description": "[CONFLITTO INTENZIONALE] Stesso docente forzato a religione lun 1a ora. In conflitto con medium_t_011 (mai religione il lunedi')."
+    },
+    {
+      "id": "medium_t_013",
+      "kind": "logical_teacher",
+      "scope": "teacher",
+      "owner_pattern": "eleventh_teacher",
+      "level": "soft",
+      "weight": 40,
+      "expression": "mai materia:Storia@gio13",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Undicesimo docente: storia mai gio 6a ora."
+    }
+  ]
+}

@@ -399,6 +399,333 @@ _DELETE_MODEL_FOR = {
 
 
 # ---------------------------------------------------------------------
+# Apply-suggestion / revert / history (FeasibilityPanel actions)
+# ---------------------------------------------------------------------
+
+
+def _logical_owner_label(db: Session, row) -> str:
+    """Best-effort human label for a Logical/Curriculum constraint."""
+    if isinstance(row, models.CurriculumLogicalConstraint):
+        cur = db.query(models.Curriculum).filter_by(
+            id=row.curriculum_id).first()
+        return f"curriculum {cur.name if cur else row.curriculum_id}"
+    # LogicalUnavailability: scope is teacher/class/classroom
+    scope = getattr(row, "scope", None)
+    oid = getattr(row, "owner_id", None)
+    if scope == "teacher":
+        t = db.query(models.Teacher).filter_by(id=oid).first()
+        if t:
+            return (t.nickname
+                    or (f"{t.last_name or ''} {t.first_name or ''}".strip())
+                    or t.name or f"teacher#{oid}")
+    if scope == "class":
+        c = db.query(models.SchoolClass).filter_by(id=oid).first()
+        if c:
+            return c.name or f"class#{oid}"
+    if scope == "classroom":
+        r = db.query(models.Classroom).filter_by(id=oid).first()
+        if r:
+            return r.name or f"classroom#{oid}"
+    return f"{scope}#{oid}"
+
+
+def _snapshot_logical_row(row) -> dict:
+    """Capture the mutable fields of a logical/curriculum constraint
+    so a future 'restore' can put them back."""
+    snap = {}
+    for f in ("level", "expression", "soft_penalty", "weight",
+              "is_hard", "kind", "enabled", "scope", "owner_id"):
+        if hasattr(row, f):
+            v = getattr(row, f)
+            if v is not None:
+                snap[f] = v
+    return snap
+
+
+class ApplySuggestionIn(_BM):
+    """Body for /api/constraints/apply-suggestion.
+
+    `action` is one of:
+      - 'remove'   -> hard delete from DB. Reversible only via the
+                       `before_json` snapshot (re-create the row).
+      - 'soften'   -> turn HARD/ENFORCED into SOFT with the given
+                       `weight` (default 100). Only meaningful for
+                       logical constraints.
+      - 'disable'  -> set enabled=False (if the row has that field),
+                       otherwise lower level to ALLOWED. Reversible
+                       by 'enable' / 'restore'.
+      - 'edit'     -> apply the new fields from `params` (e.g.
+                       expression, level, weight). The caller is
+                       responsible for sending a sane payload.
+
+    `targets` is a list of `{kind, id}` pairs. The action is applied
+    atomically across all of them; partial failures roll back the
+    whole batch.
+    """
+    action: str
+    targets: list[dict]
+    params: dict | None = None
+    note: str | None = None
+
+
+def _apply_one(db: Session, target: dict, action: str,
+               params: dict | None) -> dict:
+    """Apply a single intervention. Returns
+    {kind, id, before, after, ok, error}."""
+    out = {"kind": target.get("kind"), "id": target.get("id"),
+           "before": None, "after": None, "ok": False, "error": None}
+    kind = target.get("kind")
+    rid = target.get("id")
+    Model = _DELETE_MODEL_FOR.get(kind)
+    if Model is None:
+        out["error"] = f"unknown kind {kind!r}"
+        return out
+    row = db.query(Model).filter_by(id=rid).first()
+    if row is None:
+        out["error"] = f"{kind} #{rid} not found"
+        return out
+    before = _snapshot_logical_row(row)
+    out["before"] = before
+    out["owner_label"] = _logical_owner_label(db, row)
+    if action == "remove":
+        db.delete(row)
+        out["ok"] = True
+        return out
+    if action == "soften":
+        if not hasattr(row, "level"):
+            out["error"] = ("soften: questo tipo di vincolo non ha "
+                             "un attributo 'level'")
+            return out
+        new_weight = int((params or {}).get("weight", 100))
+        row.level = "soft"
+        if hasattr(row, "soft_penalty"):
+            row.soft_penalty = abs(new_weight)
+        if hasattr(row, "weight"):
+            row.weight = abs(new_weight)
+        if hasattr(row, "is_hard"):
+            row.is_hard = False
+        out["after"] = _snapshot_logical_row(row)
+        out["ok"] = True
+        return out
+    if action == "disable":
+        if hasattr(row, "enabled"):
+            row.enabled = False
+        elif hasattr(row, "level"):
+            row.level = "allowed"
+        else:
+            out["error"] = ("disable: questo tipo di vincolo non ha "
+                             "un campo 'enabled' ne' 'level'")
+            return out
+        out["after"] = _snapshot_logical_row(row)
+        out["ok"] = True
+        return out
+    if action == "enable":
+        if hasattr(row, "enabled"):
+            row.enabled = True
+            out["after"] = _snapshot_logical_row(row)
+            out["ok"] = True
+            return out
+        out["error"] = "enable: il vincolo non ha campo 'enabled'"
+        return out
+    if action == "edit":
+        p = params or {}
+        for f in ("level", "expression", "soft_penalty", "weight",
+                  "is_hard"):
+            if f in p and hasattr(row, f):
+                setattr(row, f, p[f])
+        out["after"] = _snapshot_logical_row(row)
+        out["ok"] = True
+        return out
+    out["error"] = f"unknown action {action!r}"
+    return out
+
+
+@router.post("/apply-suggestion")
+def apply_suggestion(payload: ApplySuggestionIn,
+                      db: Session = Depends(get_db)):
+    """Apply a suggested action (remove / soften / disable / enable /
+    edit) on a list of constraints, atomically.
+
+    Each successful intervention writes a `ConstraintIntervention`
+    row capturing before/after JSON, the owner label, the action and
+    an optional note. The id of that row is returned in the response,
+    so the caller can later /revert/{intervention_id}.
+    """
+    action = payload.action
+    if action not in ("remove", "soften", "disable", "enable", "edit"):
+        raise HTTPException(400, f"unknown action {action!r}")
+
+    results = []
+    intervention_ids = []
+    try:
+        for tgt in payload.targets:
+            r = _apply_one(db, tgt, action, payload.params)
+            if not r["ok"]:
+                # roll back the whole batch on first error
+                db.rollback()
+                raise HTTPException(
+                    400,
+                    f"intervento fallito su {tgt}: {r['error']}",
+                )
+            iv = models.ConstraintIntervention(
+                action=action,
+                target_kind=r["kind"],
+                target_id=r["id"],
+                target_owner_label=r.get("owner_label"),
+                before_json=_json.dumps(r["before"]) if r["before"] else None,
+                after_json=_json.dumps(r["after"]) if r.get("after") else None,
+                note=payload.note,
+            )
+            db.add(iv)
+            db.flush()    # populate iv.id
+            intervention_ids.append(iv.id)
+            results.append({**r, "intervention_id": iv.id})
+        db.commit()
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(500, f"errore interno: {e}")
+    return {
+        "ok": True,
+        "action": action,
+        "n_applied": len(results),
+        "intervention_ids": intervention_ids,
+        "results": results,
+    }
+
+
+class RevertIn(_BM):
+    """Revert one or more interventions by their intervention_id."""
+    intervention_ids: list[int]
+
+
+@router.post("/revert")
+def revert_interventions(payload: RevertIn,
+                          db: Session = Depends(get_db)):
+    """Revert previously-applied interventions in reverse order. For
+    'remove' actions the row is re-created from `before_json` (with
+    a NEW id, since the old one is gone); the new id is reported. For
+    'soften' / 'disable' / 'edit' the original field values are
+    restored. Each revert writes its own ConstraintIntervention with
+    action='restore' and links back via `reverted_by_id`.
+    """
+    iv_rows = (db.query(models.ConstraintIntervention)
+                 .filter(
+                     models.ConstraintIntervention.id.in_(
+                         payload.intervention_ids))
+                 .order_by(models.ConstraintIntervention.id.desc())
+                 .all())
+    found_ids = {iv.id for iv in iv_rows}
+    missing = [i for i in payload.intervention_ids if i not in found_ids]
+    if missing:
+        raise HTTPException(404,
+                             f"interventi non trovati: {missing}")
+    out_results = []
+    try:
+        for iv in iv_rows:
+            if iv.reverted:
+                out_results.append({
+                    "intervention_id": iv.id, "ok": False,
+                    "error": "gia' revertito"})
+                continue
+            try:
+                before = _json.loads(iv.before_json or "{}")
+            except Exception:
+                before = {}
+            Model = _DELETE_MODEL_FOR.get(iv.target_kind)
+            if Model is None:
+                out_results.append({
+                    "intervention_id": iv.id, "ok": False,
+                    "error": f"unknown kind {iv.target_kind}"})
+                continue
+            if iv.action == "remove":
+                # Re-create the row from before_json. New id.
+                new_row = Model(**{k: v for k, v in before.items()
+                                    if hasattr(Model, k)})
+                db.add(new_row)
+                db.flush()
+                new_id = new_row.id
+                out_results.append({
+                    "intervention_id": iv.id, "ok": True,
+                    "restored_kind": iv.target_kind,
+                    "restored_id": new_id,
+                    "note": "row re-created with new id"})
+            else:
+                row = db.query(Model).filter_by(
+                    id=iv.target_id).first()
+                if row is None:
+                    out_results.append({
+                        "intervention_id": iv.id, "ok": False,
+                        "error": (f"{iv.target_kind} "
+                                   f"#{iv.target_id} non esiste piu'"
+                                   " (puoi ricrearlo via remove revert)")})
+                    continue
+                for f, v in before.items():
+                    if hasattr(row, f):
+                        setattr(row, f, v)
+                out_results.append({
+                    "intervention_id": iv.id, "ok": True,
+                    "restored_kind": iv.target_kind,
+                    "restored_id": iv.target_id})
+            iv.reverted = True
+            restore_iv = models.ConstraintIntervention(
+                action="restore",
+                target_kind=iv.target_kind,
+                target_id=iv.target_id,
+                target_owner_label=iv.target_owner_label,
+                before_json=iv.after_json,
+                after_json=iv.before_json,
+                note=f"revert of intervention #{iv.id}",
+            )
+            db.add(restore_iv)
+            db.flush()
+            iv.reverted_by_id = restore_iv.id
+        db.commit()
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(500, f"errore interno: {e}")
+    return {"ok": True, "n_reverted": len(out_results),
+            "results": out_results}
+
+
+@router.get("/interventions")
+def list_interventions(limit: int = 100,
+                        db: Session = Depends(get_db)):
+    """Audit history of constraint interventions. Most recent first."""
+    rows = (db.query(models.ConstraintIntervention)
+              .order_by(models.ConstraintIntervention.id.desc())
+              .limit(limit).all())
+    out = []
+    for r in rows:
+        try:
+            before = _json.loads(r.before_json) if r.before_json else None
+        except Exception:
+            before = None
+        try:
+            after = _json.loads(r.after_json) if r.after_json else None
+        except Exception:
+            after = None
+        out.append({
+            "id": r.id,
+            "timestamp": (r.timestamp.isoformat() + "Z"
+                          if r.timestamp else None),
+            "action": r.action,
+            "target_kind": r.target_kind,
+            "target_id": r.target_id,
+            "target_owner_label": r.target_owner_label,
+            "before": before,
+            "after": after,
+            "reverted": bool(r.reverted),
+            "reverted_by_id": r.reverted_by_id,
+            "note": r.note,
+        })
+    return out
+
+
+# ---------------------------------------------------------------------
 # General-purpose DSL constraints
 # ---------------------------------------------------------------------
 

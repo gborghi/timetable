@@ -1,0 +1,65 @@
+{
+  "profile": "small",
+  "category": "relational",
+  "schema_version": 1,
+  "description": "Stress dataset di vincoli relazionali (cross-scope) per il profilo small. Predicate atoms del DSL (materia:, aula:, classe:, gruppo:, docente:) per esprimere relazioni tra entita'. Include una coppia di conflitti deliberati con vincoli classroom.",
+  "constraints": [
+    {
+      "id": "small_x_001",
+      "kind": "logical_class",
+      "scope": "class",
+      "owner_pattern": "first_class_year_1",
+      "level": "hard",
+      "expression": "mai materia:Matematica@13",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Prima classe del primo anno: matematica mai alla 6a ora (concentrazione bassa al pomeriggio)."
+    },
+    {
+      "id": "small_x_002",
+      "kind": "logical_curriculum",
+      "scope": "curriculum",
+      "owner_pattern": "Scientifico",
+      "level": "preferred",
+      "weight": 50,
+      "expression": "(lun8 OR lun9 OR mar8 OR mar9 OR mer8 OR mer9)",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Curriculum Scientifico: preferenza per lezioni mattutine in lun/mar/mer."
+    },
+    {
+      "id": "small_x_003",
+      "kind": "logical_class",
+      "scope": "class",
+      "owner_pattern": "first_class_year_5",
+      "level": "soft",
+      "weight": 40,
+      "expression": "mai materia:Filosofia@8",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Quinta classe: filosofia mai come prima ora (preferibilmente dopo le 9)."
+    },
+    {
+      "id": "small_x_004",
+      "kind": "logical_classroom",
+      "scope": "classroom",
+      "owner_pattern": "first_lab",
+      "level": "enforced",
+      "expression": "materia:Fisica",
+      "intentionally_conflicting": true,
+      "conflict_with": ["small_r_001"],
+      "description": "[CONFLITTO INTENZIONALE] Il laboratorio deve ospitare lezioni di fisica. Combinato con small_r_001 (manutenzione mer8-10) puo' creare infeasibility se la fisica e' schedulata in quegli slot."
+    },
+    {
+      "id": "small_x_005",
+      "kind": "logical_class",
+      "scope": "class",
+      "owner_pattern": "second_class_year_2",
+      "level": "hard",
+      "expression": "(mer8 AND mer9) OR (gio8 AND gio9)",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Seconda classe del 2o anno: deve avere doppia ora di matematica nei primi due slot di mer o gio."
+    }
+  ]
+}

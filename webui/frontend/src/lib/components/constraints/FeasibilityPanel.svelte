@@ -29,6 +29,8 @@
   let cyContainer;
   let cy = null;
   let popover = null;       // {x, y, member}
+  let interventions = [];   // audit history (DB-backed)
+  let showHistory = false;
 
   async function run() {
     busy = true;
@@ -181,22 +183,116 @@
     });
   }
 
-  async function removeMember(m) {
-    if (!confirm(`Rimuovere il vincolo ${memberShort(m)}? `
-        + 'Questa azione non e\' reversibile.')) return;
+  // ----- Intervention actions (use the audit-trail endpoint) ----------
+
+  async function applyAction(member, action, params, opts) {
+    const o = opts || {};
+    if (o.confirmText && !confirm(o.confirmText)) return;
     try {
-      await api.del(`/api/monitor/constraints/${m.db_kind}/${m.db_id}`);
-      flash('Vincolo rimosso.', 'success');
+      const resp = await api.post('/api/constraints/apply-suggestion', {
+        action,
+        targets: [{ kind: member.db_kind, id: member.db_id }],
+        params: params || null,
+        note: o.note || null,
+      });
+      flash(o.successMsg
+        || `Azione '${action}' applicata (intervento `
+            + `#${resp.intervention_ids[0]}). Reversibile da Storico.`,
+        'success');
       onChanged();
       popover = null;
-      // Auto re-verify
+      await loadInterventions();
       run();
     } catch (e) {
       flash('Errore: ' + (e.message || e), 'error');
     }
   }
 
-  async function applySuggestion() {
+  function removeMember(m) {
+    return applyAction(m, 'remove', null, {
+      confirmText: `Rimuovere il vincolo ${memberShort(m)}?\n`
+        + `Reversibile dallo Storico (verra' ricreato con un nuovo id).`,
+      successMsg: 'Vincolo rimosso. Reversibile da Storico.',
+    });
+  }
+
+  function softenMember(m) {
+    const w = parseInt(prompt(
+      `Trasforma "${memberShort(m)}" in SOFT.\n\n`
+      + `Specifica la penalty (peso). Tipici: 50 = preferenza tenue, `
+      + `100 = preferenza media, 1000 = quasi-hard.`,
+      '100'), 10);
+    if (!w || w <= 0) return;
+    return applyAction(m, 'soften', { weight: w }, {
+      successMsg: `Vincolo trasformato in SOFT con penalty ${w}.`,
+    });
+  }
+
+  function disableMember(m) {
+    return applyAction(m, 'disable', null, {
+      confirmText: `Disabilitare temporaneamente "${memberShort(m)}"?\n`
+        + 'Il vincolo restera\' nel DB ma non sara\' applicato.',
+      successMsg: 'Vincolo disabilitato. Riabilitabile da Storico.',
+    });
+  }
+
+  function editMember(m) {
+    const newExpr = prompt(
+      `Modifica espressione DSL del vincolo "${memberShort(m)}":\n\n`
+      + `Espressione attuale: ${m.detail || '(non disponibile)'}`,
+      m.detail || '');
+    if (newExpr == null) return;
+    if (!newExpr.trim()) {
+      flash('Espressione vuota; modifica annullata.', 'info');
+      return;
+    }
+    return applyAction(m, 'edit', { expression: newExpr.trim() }, {
+      successMsg: 'Espressione modificata.',
+    });
+  }
+
+  // ----- Interventions history + revert -------------------------------
+
+  async function loadInterventions() {
+    try {
+      interventions = await api.get('/api/constraints/interventions?limit=50');
+    } catch (e) {
+      // non-fatal; just hide history
+      interventions = [];
+    }
+  }
+
+  async function revertIntervention(iv) {
+    if (iv.reverted) {
+      flash('Intervento gia\' revertito.', 'info');
+      return;
+    }
+    if (!confirm(`Revertire l'intervento #${iv.id} `
+        + `(${iv.action} ${iv.target_kind}#${iv.target_id})?`)) return;
+    try {
+      await api.post('/api/constraints/revert', {
+        intervention_ids: [iv.id],
+      });
+      flash(`Intervento #${iv.id} revertito.`, 'success');
+      onChanged();
+      await loadInterventions();
+      run();
+    } catch (e) {
+      flash('Errore: ' + (e.message || e), 'error');
+    }
+  }
+
+  function fmtTs(s) {
+    if (!s) return '';
+    try {
+      const d = new Date(s);
+      return d.toLocaleString();
+    } catch (_) { return s; }
+  }
+
+  onMount(() => { loadInterventions(); });
+
+  async function applySuggestion(action) {
     if (!result || !result.suggested_removal
         || result.suggested_removal.length === 0) {
       flash('Nessun suggerimento disponibile.', 'info');
@@ -206,15 +302,25 @@
     const summary = list.slice(0, 5).map((m) =>
       `${levelLabel(m.level)} ${memberShort(m)}`).join('\n');
     const more = list.length > 5 ? `\n...e altri ${list.length - 5}` : '';
-    if (!confirm(`Rimuovere ${list.length} vincoli per rendere il `
-        + `modello feasible?\n\n${summary}${more}`)) {
+    const verb = action === 'soften' ? 'trasformare in SOFT'
+              : action === 'disable' ? 'disabilitare temporaneamente'
+              : 'rimuovere';
+    if (!confirm(`${list.length} vincoli da ${verb} per rendere il `
+        + `modello feasible:\n\n${summary}${more}\n\n`
+        + `Tutte le azioni sono reversibili dallo Storico interventi.`)) {
       return;
     }
     try {
-      const items = list.map((m) => ({ kind: m.db_kind, id: m.db_id }));
-      const r = await api.post('/api/constraints/delete-batch', { items });
-      flash(`${r.deleted} vincoli rimossi.`, 'success');
+      const targets = list.map((m) => ({ kind: m.db_kind, id: m.db_id }));
+      const params = action === 'soften' ? { weight: 100 } : null;
+      const r = await api.post('/api/constraints/apply-suggestion', {
+        action, targets, params,
+        note: `batch ${action} from feasibility panel`,
+      });
+      flash(`${r.n_applied} vincoli: '${action}' applicato. `
+            + `Reversibile da Storico.`, 'success');
       onChanged();
+      await loadInterventions();
       run();
     } catch (e) {
       flash('Errore: ' + (e.message || e), 'error');
@@ -247,10 +353,25 @@
         Esporta JSON
       </button>
       {#if result.feasible === false && result.suggested_removal.length}
-        <button class="btn-amber" on:click={applySuggestion}>
-          Applica suggerimento ({result.suggested_removal.length} rimozioni)
+        <button class="btn-amber" on:click={() => applySuggestion('remove')}
+                title="Rimuovi tutti i vincoli del set suggerito (reversibile da Storico)">
+          Rimuovi suggeriti ({result.suggested_removal.length})
+        </button>
+        <button class="btn !text-xs" on:click={() => applySuggestion('soften')}
+                title="Trasforma in SOFT con penalty 100 (reversibile)">
+          Trasforma in SOFT
+        </button>
+        <button class="btn !text-xs" on:click={() => applySuggestion('disable')}
+                title="Disabilita temporaneamente (il vincolo resta nel DB)">
+          Disabilita temporaneamente
         </button>
       {/if}
+      <button class="btn !text-xs"
+              on:click={() => { showHistory = !showHistory;
+                                if (showHistory) loadInterventions(); }}
+              title="Storico interventi sui vincoli">
+        Storico ({interventions.length})
+      </button>
       <span class="text-xs text-ink-500 ml-auto">
         {result.n_constraints} vincoli HARD/ENFORCED ·
         {result.n_assignments} cattedre · {result.time_s}s
@@ -293,7 +414,7 @@
               <p class="text-xs text-ink-600 mb-2">{core.reason}</p>
               <ul class="space-y-1">
                 {#each core.members as m}
-                  <li class="flex items-center gap-2 text-xs">
+                  <li class="flex items-center gap-2 text-xs flex-wrap">
                     <span class="{levelPill(m.level)} !text-[10px]">
                       {levelLabel(m.level)}
                     </span>
@@ -305,8 +426,23 @@
                     </span>
                     <button class="btn-red !text-[10px] !px-1 !py-0"
                             on:click={() => removeMember(m)}
-                            title="Rimuovi questo vincolo">
+                            title="Rimuovi (reversibile da Storico)">
                       Rimuovi
+                    </button>
+                    <button class="btn !text-[10px] !px-1 !py-0"
+                            on:click={() => softenMember(m)}
+                            title="Trasforma in SOFT con penalty">
+                      Soften
+                    </button>
+                    <button class="btn !text-[10px] !px-1 !py-0"
+                            on:click={() => disableMember(m)}
+                            title="Disabilita temporaneamente">
+                      Disabilita
+                    </button>
+                    <button class="btn !text-[10px] !px-1 !py-0"
+                            on:click={() => editMember(m)}
+                            title="Modifica espressione DSL">
+                      Modifica
                     </button>
                   </li>
                 {/each}
@@ -359,10 +495,22 @@
               <div class="text-ink-400">
                 {popover.member.db_kind} #{popover.member.db_id}
               </div>
-              <div class="flex gap-2 pt-1 border-t border-ink-100">
+              <div class="flex gap-1 pt-1 border-t border-ink-100 flex-wrap">
                 <button class="btn-red !text-[10px] !px-2 !py-0.5"
                         on:click={() => removeMember(popover.member)}>
                   Rimuovi
+                </button>
+                <button class="btn !text-[10px] !px-2 !py-0.5"
+                        on:click={() => softenMember(popover.member)}>
+                  Soften
+                </button>
+                <button class="btn !text-[10px] !px-2 !py-0.5"
+                        on:click={() => disableMember(popover.member)}>
+                  Disabilita
+                </button>
+                <button class="btn !text-[10px] !px-2 !py-0.5"
+                        on:click={() => editMember(popover.member)}>
+                  Modifica
                 </button>
                 <button class="btn !text-[10px] !px-2 !py-0.5"
                         on:click={() => (popover = null)}>
@@ -380,5 +528,87 @@
         attivi.
       </div>
     {/if}
+  {/if}
+
+  {#if showHistory}
+    <div class="card p-3 border-ink-200 mt-2">
+      <div class="flex items-center mb-2 gap-2">
+        <h3 class="text-sm">Storico interventi sui vincoli</h3>
+        <span class="text-xs text-ink-500">
+          ({interventions.length} record, ordine cronologico inverso)
+        </span>
+        <button class="btn !text-xs ml-auto"
+                on:click={loadInterventions}>
+          Aggiorna
+        </button>
+        <button class="btn !text-xs"
+                on:click={() => (showHistory = false)}>
+          Chiudi
+        </button>
+      </div>
+      {#if interventions.length === 0}
+        <p class="text-xs text-ink-500 italic">
+          Nessun intervento registrato. Quando rimuovi, soften o disabiliti
+          un vincolo dal pannello qui sopra, l'azione viene salvata qui e
+          puo' essere revertita in qualsiasi momento.
+        </p>
+      {:else}
+        <div class="overflow-x-auto">
+          <table class="text-xs w-full">
+            <thead>
+              <tr class="text-left text-ink-500 border-b border-ink-200">
+                <th class="py-1 pr-2">#</th>
+                <th class="py-1 pr-2">Quando</th>
+                <th class="py-1 pr-2">Azione</th>
+                <th class="py-1 pr-2">Target</th>
+                <th class="py-1 pr-2">Vincolo</th>
+                <th class="py-1 pr-2">Stato</th>
+                <th class="py-1 pr-2"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {#each interventions as iv}
+                <tr class="border-b border-ink-100 align-top">
+                  <td class="py-1 pr-2 text-ink-400">{iv.id}</td>
+                  <td class="py-1 pr-2 text-ink-600">{fmtTs(iv.timestamp)}</td>
+                  <td class="py-1 pr-2">
+                    <span class="pill !text-[10px]">{iv.action}</span>
+                  </td>
+                  <td class="py-1 pr-2">
+                    {iv.target_kind}#{iv.target_id}
+                  </td>
+                  <td class="py-1 pr-2 text-ink-600">
+                    {iv.target_owner_label || ''}
+                  </td>
+                  <td class="py-1 pr-2">
+                    {#if iv.reverted}
+                      <span class="text-[10px] text-emerald-600">
+                        revertito {iv.reverted_by_id
+                          ? `(#${iv.reverted_by_id})` : ''}
+                      </span>
+                    {:else if iv.action === 'restore'}
+                      <span class="text-[10px] text-ink-400 italic">
+                        restore
+                      </span>
+                    {:else}
+                      <span class="text-[10px] text-ink-500">attivo</span>
+                    {/if}
+                  </td>
+                  <td class="py-1 pr-2">
+                    {#if !iv.reverted && iv.action !== 'restore'}
+                      <button class="btn !text-[10px] !px-1 !py-0"
+                              on:click={() => revertIntervention(iv)}
+                              title="Annulla questo intervento">
+                        Revert
+                      </button>
+                    {/if}
+                  </td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+      {/if}
+    </div>
   {/if}
 </div>

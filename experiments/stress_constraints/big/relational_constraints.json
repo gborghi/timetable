@@ -1,0 +1,204 @@
+{
+  "profile": "big",
+  "category": "relational",
+  "schema_version": 1,
+  "description": "Stress dataset relational per big, generato proceduralmente.",
+  "constraints": [
+    {
+      "id": "big_x_001",
+      "kind": "logical_classroom",
+      "scope": "classroom",
+      "owner_pattern": "gym",
+      "level": "soft",
+      "expression": "materia:Disegno@gio8",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Aula: ospita Disegno gio ora 8.",
+      "weight": 66
+    },
+    {
+      "id": "big_x_002",
+      "kind": "logical_class",
+      "scope": "class",
+      "owner_pattern": "third_class_year_1",
+      "level": "preferred",
+      "expression": "mai materia:Inglese@11",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Classe: Inglese mai alla 11a ora.",
+      "weight": 79
+    },
+    {
+      "id": "big_x_003",
+      "kind": "logical_classroom",
+      "scope": "classroom",
+      "owner_pattern": "first_lab",
+      "level": "hard",
+      "expression": "materia:Disegno@sab10",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Aula: ospita Disegno sab ora 10."
+    },
+    {
+      "id": "big_x_004",
+      "kind": "logical_curriculum",
+      "scope": "curriculum",
+      "owner_pattern": "ScienzeUmane",
+      "level": "hard",
+      "expression": "(lun8 OR mar8 OR ven8)",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Curriculum ScienzeUmane: preferenza per inizio mattina in giorni intermedi."
+    },
+    {
+      "id": "big_x_005",
+      "kind": "logical_curriculum",
+      "scope": "curriculum",
+      "owner_pattern": "LinguisticoFRA_TED",
+      "level": "hard",
+      "expression": "(mar8 OR mer8 OR gio8)",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Curriculum LinguisticoFRA_TED: preferenza per inizio mattina in giorni intermedi."
+    },
+    {
+      "id": "big_x_006",
+      "kind": "logical_classroom",
+      "scope": "classroom",
+      "owner_pattern": "main_room",
+      "level": "preferred",
+      "expression": "materia:Disegno@lun8",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Aula: ospita Disegno lun ora 8.",
+      "weight": 84
+    },
+    {
+      "id": "big_x_007",
+      "kind": "logical_classroom",
+      "scope": "classroom",
+      "owner_pattern": "first_lab",
+      "level": "enforced",
+      "expression": "materia:Fisica@mar9",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Aula: ospita Fisica mar ora 9."
+    },
+    {
+      "id": "big_x_008",
+      "kind": "logical_class",
+      "scope": "class",
+      "owner_pattern": "first_class_year_4",
+      "level": "hard",
+      "expression": "mai materia:Storia@11",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Classe: Storia mai alla 11a ora."
+    },
+    {
+      "id": "big_x_009",
+      "kind": "logical_class",
+      "scope": "class",
+      "owner_pattern": "second_class_year_4",
+      "level": "soft",
+      "expression": "mai materia:Inglese@12",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Classe: Inglese mai alla 12a ora.",
+      "weight": 75
+    },
+    {
+      "id": "big_x_010",
+      "kind": "logical_curriculum",
+      "scope": "curriculum",
+      "owner_pattern": "LinguisticoFRA_TED",
+      "level": "hard",
+      "expression": "(mar8 OR sab8 OR mer8)",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Curriculum LinguisticoFRA_TED: preferenza per inizio mattina in giorni intermedi."
+    },
+    {
+      "id": "big_x_011",
+      "kind": "logical_class",
+      "scope": "class",
+      "owner_pattern": "first_class_year_5",
+      "level": "hard",
+      "expression": "mai materia:Disegno@11",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Classe: Disegno mai alla 11a ora."
+    },
+    {
+      "id": "big_x_012",
+      "kind": "logical_curriculum",
+      "scope": "curriculum",
+      "owner_pattern": "EconomicoSociale",
+      "level": "soft",
+      "expression": "(ven8 OR mar8 OR lun8)",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Curriculum EconomicoSociale: preferenza per inizio mattina in giorni intermedi.",
+      "weight": 45
+    },
+    {
+      "id": "big_x_013",
+      "kind": "logical_classroom",
+      "scope": "classroom",
+      "owner_pattern": "first_lab",
+      "level": "soft",
+      "expression": "materia:Disegno@lun10",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Aula: ospita Disegno lun ora 10.",
+      "weight": 65
+    },
+    {
+      "id": "big_x_014",
+      "kind": "logical_class",
+      "scope": "class",
+      "owner_pattern": "first_class_year_5",
+      "level": "hard",
+      "expression": "mai materia:Greco@12",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Classe: Greco mai alla 12a ora."
+    },
+    {
+      "id": "big_x_015",
+      "kind": "logical_class",
+      "scope": "class",
+      "owner_pattern": "third_class_year_5",
+      "level": "soft",
+      "expression": "mai materia:Latino@11",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Classe: Latino mai alla 11a ora.",
+      "weight": 53
+    },
+    {
+      "id": "big_x_016",
+      "kind": "logical_curriculum",
+      "scope": "curriculum",
+      "owner_pattern": "ScienzeUmane",
+      "level": "hard",
+      "expression": "(mar8 OR mer8 OR gio8)",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Curriculum ScienzeUmane: preferenza per inizio mattina in giorni intermedi."
+    },
+    {
+      "id": "big_x_017",
+      "kind": "logical_classroom",
+      "scope": "classroom",
+      "owner_pattern": "first_lab",
+      "level": "hard",
+      "expression": "mai mar9",
+      "intentionally_conflicting": true,
+      "conflict_with": [
+        "big_x_007"
+      ],
+      "description": "[CONFLITTO INTENZIONALE] mai mar9 contro enforce stesso slot (big_x_007)."
+    }
+  ]
+}

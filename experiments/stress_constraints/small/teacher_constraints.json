@@ -1,0 +1,100 @@
+{
+  "profile": "small",
+  "category": "teacher",
+  "schema_version": 1,
+  "description": "Stress dataset di vincoli sui docenti per il profilo small. Combina indisponibilita' DNF, vincoli su pattern di slot, preferenze giorno libero. Le coppie 'intentionally_conflicting' formano conflitti deliberati con record dell'altro file teacher/classroom/relational dello stesso profilo.",
+  "constraints": [
+    {
+      "id": "small_t_001",
+      "kind": "logical_teacher",
+      "scope": "teacher",
+      "owner_pattern": "first_teacher",
+      "level": "hard",
+      "expression": "mai mar1 AND mai mar2",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Primo docente: martedi' 1a-2a ora indisponibili (riunione fissa)."
+    },
+    {
+      "id": "small_t_002",
+      "kind": "logical_teacher",
+      "scope": "teacher",
+      "owner_pattern": "first_teacher",
+      "level": "enforced",
+      "expression": "mar1 OR mar2",
+      "intentionally_conflicting": true,
+      "conflict_with": ["small_t_001"],
+      "description": "[CONFLITTO INTENZIONALE] Lo stesso docente forzato a essere presente il martedi' 1a O 2a ora. In conflitto diretto con small_t_001."
+    },
+    {
+      "id": "small_t_003",
+      "kind": "logical_teacher",
+      "scope": "teacher",
+      "owner_pattern": "second_teacher",
+      "level": "soft",
+      "weight": 80,
+      "expression": "mai sab",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Secondo docente: preferisce non lavorare il sabato (peso 80)."
+    },
+    {
+      "id": "small_t_004",
+      "kind": "logical_teacher",
+      "scope": "teacher",
+      "owner_pattern": "second_teacher",
+      "level": "preferred",
+      "weight": 50,
+      "expression": "lun8 OR lun9 OR mar8 OR mar9",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Secondo docente: preferenza positiva per lavorare nelle prime 2 ore di lun o mar."
+    },
+    {
+      "id": "small_t_005",
+      "kind": "logical_teacher",
+      "scope": "teacher",
+      "owner_pattern": "third_teacher",
+      "level": "hard",
+      "expression": "(lun8 AND lun9) OR (mar8 AND mar9)",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Terzo docente: deve avere una doppia ora consecutiva nei primi 2 slot di lun o mar."
+    },
+    {
+      "id": "small_t_006",
+      "kind": "logical_teacher",
+      "scope": "teacher",
+      "owner_pattern": "third_teacher",
+      "level": "hard",
+      "expression": "mai lun AND mai mar",
+      "intentionally_conflicting": true,
+      "conflict_with": ["small_t_005"],
+      "description": "[CONFLITTO INTENZIONALE] Lo stesso docente non puo' lavorare ne' lunedi' ne' martedi'. In conflitto diretto con small_t_005."
+    },
+    {
+      "id": "small_t_007",
+      "kind": "logical_teacher",
+      "scope": "teacher",
+      "owner_pattern": "fourth_teacher",
+      "level": "preferred",
+      "weight": 100,
+      "expression": "gio8 OR gio9 OR gio10",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Quarto docente: preferisce concentrarsi nelle prime 3 ore del giovedi'."
+    },
+    {
+      "id": "small_t_008",
+      "kind": "logical_teacher",
+      "scope": "teacher",
+      "owner_pattern": "fifth_teacher",
+      "level": "soft",
+      "weight": 60,
+      "expression": "mai ven13",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Quinto docente: vuole evitare la 6a ora del venerdi' (peso 60)."
+    }
+  ]
+}

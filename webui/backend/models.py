@@ -1197,3 +1197,49 @@ class GroupSubjectHours(Base):
     __table_args__ = (
         UniqueConstraint("group_id", "subject", name="uq_group_subj"),
     )
+
+
+class ConstraintIntervention(Base):
+    """Audit trail for the interventions applied via the
+    FeasibilityPanel "Applica suggerimento" / "Modifica" buttons.
+
+    Each row records: who/what was modified, the action taken
+    (remove / soften / disable / restore), the value before and
+    after, and a timestamp. This lets the user revert a wrong
+    intervention without losing the original constraint, and lets
+    the system show an "audit history" panel.
+    """
+    __tablename__ = "constraint_interventions"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    timestamp: Mapped[dt.datetime] = mapped_column(
+        DateTime, default=utcnow, index=True)
+    action: Mapped[str] = mapped_column(
+        String(24), index=True,
+        comment="remove | soften | disable | enable | edit | restore")
+    target_kind: Mapped[str] = mapped_column(
+        String(48),
+        comment=("logical_teacher | logical_class | logical_classroom |"
+                 " logical_curriculum | teacher_cell | class_cell |"
+                 " room_cell | coteach"))
+    target_id: Mapped[int] = mapped_column(Integer, index=True)
+    target_owner_label: Mapped[str | None] = mapped_column(
+        String(128), nullable=True,
+        comment="human-readable owner label captured at intervention time")
+    before_json: Mapped[str | None] = mapped_column(
+        Text, nullable=True,
+        comment="JSON-serialised before-state (level, expression, weight)")
+    after_json: Mapped[str | None] = mapped_column(
+        Text, nullable=True,
+        comment="JSON-serialised after-state; null for hard removals")
+    reverted: Mapped[bool] = mapped_column(
+        Boolean, default=False, index=True,
+        comment="True after a successful 'restore' action")
+    reverted_by_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("constraint_interventions.id"),
+        nullable=True,
+        comment="when this intervention has been reverted, the id of "
+                "the restore intervention that did it")
+    note: Mapped[str | None] = mapped_column(
+        Text, nullable=True,
+        comment="optional free-form note (e.g. 'applied from "
+                "FeasibilityPanel suggestion')")

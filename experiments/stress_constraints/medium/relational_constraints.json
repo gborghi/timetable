@@ -1,0 +1,100 @@
+{
+  "profile": "medium",
+  "category": "relational",
+  "schema_version": 1,
+  "description": "Stress dataset di vincoli relazionali per medium. ~10 vincoli, ~2 conflitti deliberati con altri dataset.",
+  "constraints": [
+    {
+      "id": "medium_x_001",
+      "kind": "logical_class",
+      "scope": "class",
+      "owner_pattern": "first_class_year_1",
+      "level": "hard",
+      "expression": "mai materia:Matematica@13",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "1a classe del 1o anno: matematica mai 6a ora."
+    },
+    {
+      "id": "medium_x_002",
+      "kind": "logical_curriculum",
+      "scope": "curriculum",
+      "owner_pattern": "Scientifico",
+      "level": "preferred",
+      "weight": 80,
+      "expression": "(lun8 OR lun9 OR mar8 OR mar9 OR mer8 OR mer9)",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Curriculum Scientifico: preferenza per lezioni mattutine in lun/mar/mer."
+    },
+    {
+      "id": "medium_x_003",
+      "kind": "logical_class",
+      "scope": "class",
+      "owner_pattern": "first_class_year_5",
+      "level": "soft",
+      "weight": 60,
+      "expression": "mai materia:Filosofia@8",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "5a classe: filosofia mai come prima ora."
+    },
+    {
+      "id": "medium_x_004",
+      "kind": "logical_classroom",
+      "scope": "classroom",
+      "owner_pattern": "first_lab",
+      "level": "enforced",
+      "expression": "materia:Fisica@mer8",
+      "intentionally_conflicting": true,
+      "conflict_with": ["medium_r_001"],
+      "description": "[CONFLITTO INTENZIONALE] Lab di fisica deve ospitare lezione di fisica mer 1a ora. In conflitto con medium_r_001 (manutenzione mer 8-10)."
+    },
+    {
+      "id": "medium_x_005",
+      "kind": "logical_class",
+      "scope": "class",
+      "owner_pattern": "second_class_year_2",
+      "level": "hard",
+      "expression": "(mer8 AND mer9) OR (gio8 AND gio9)",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "2a classe del 2o anno: deve avere doppia mate matt nei primi 2 slot di mer o gio."
+    },
+    {
+      "id": "medium_x_006",
+      "kind": "logical_curriculum",
+      "scope": "curriculum",
+      "owner_pattern": "ScienzeApplicate",
+      "level": "preferred",
+      "weight": 60,
+      "expression": "aula:lab_informatica",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Curriculum Scienze Applicate: preferenza per uso del lab informatica."
+    },
+    {
+      "id": "medium_x_007",
+      "kind": "logical_class",
+      "scope": "class",
+      "owner_pattern": "third_class_year_3",
+      "level": "soft",
+      "weight": 50,
+      "expression": "(lun OR mar OR mer)",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "3a classe del 3o anno: preferenza per concentrazione su prima meta' settimana."
+    },
+    {
+      "id": "medium_x_008",
+      "kind": "logical_classroom",
+      "scope": "classroom",
+      "owner_pattern": "main_room",
+      "level": "enforced",
+      "expression": "ven13",
+      "intentionally_conflicting": true,
+      "conflict_with": ["medium_r_005"],
+      "description": "[CONFLITTO INTENZIONALE] Aula magna deve essere usata ven 6a ora. In conflitto con medium_r_005 (gio/ven pomeriggio collegio docenti)."
+    }
+  ]
+}

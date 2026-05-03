@@ -1,0 +1,99 @@
+{
+  "profile": "medium",
+  "category": "classroom",
+  "schema_version": 1,
+  "description": "Stress dataset di vincoli aule per medium. ~10 vincoli, 1-2 conflitti deliberati con relational.",
+  "constraints": [
+    {
+      "id": "medium_r_001",
+      "kind": "logical_classroom",
+      "scope": "classroom",
+      "owner_pattern": "first_lab",
+      "level": "hard",
+      "expression": "mai mer8 AND mai mer9 AND mai mer10",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Lab di fisica: chiusura per manutenzione mer 8-10."
+    },
+    {
+      "id": "medium_r_002",
+      "kind": "logical_classroom",
+      "scope": "classroom",
+      "owner_pattern": "second_lab",
+      "level": "hard",
+      "expression": "mai gio AND mai ven",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Lab informatica: occupato gio/ven da corsi serali esterni."
+    },
+    {
+      "id": "medium_r_003",
+      "kind": "logical_classroom",
+      "scope": "classroom",
+      "owner_pattern": "gym",
+      "level": "soft",
+      "weight": 80,
+      "expression": "mai sab",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Palestra: preferibilmente chiusa il sabato."
+    },
+    {
+      "id": "medium_r_004",
+      "kind": "logical_classroom",
+      "scope": "classroom",
+      "owner_pattern": "gym",
+      "level": "preferred",
+      "weight": 70,
+      "expression": "(lun8 AND lun9) OR (mer8 AND mer9) OR (ven8 AND ven9)",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Palestra: preferenza per coppie mattutine."
+    },
+    {
+      "id": "medium_r_005",
+      "kind": "logical_classroom",
+      "scope": "classroom",
+      "owner_pattern": "main_room",
+      "level": "hard",
+      "expression": "mai gio12 AND mai gio13 AND mai ven12 AND mai ven13",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Aula magna: gio/ven pomeriggio occupata dal collegio docenti."
+    },
+    {
+      "id": "medium_r_006",
+      "kind": "logical_classroom",
+      "scope": "classroom",
+      "owner_pattern": "third_lab",
+      "level": "hard",
+      "expression": "mai gio13",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Lab chimica: chiuso gio 6a ora (manutenzione cappe)."
+    },
+    {
+      "id": "medium_r_007",
+      "kind": "logical_classroom",
+      "scope": "classroom",
+      "owner_pattern": "second_lab",
+      "level": "enforced",
+      "expression": "gio8",
+      "intentionally_conflicting": true,
+      "conflict_with": ["medium_r_002"],
+      "description": "[CONFLITTO INTENZIONALE] Lab informatica forzato in uso gio 1a ora. In conflitto con medium_r_002 che lo dichiara mai disponibile gio."
+    },
+    {
+      "id": "medium_r_008",
+      "kind": "logical_classroom",
+      "scope": "classroom",
+      "owner_pattern": "first_lab",
+      "level": "preferred",
+      "weight": 50,
+      "expression": "lun OR mar OR gio OR ven",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Lab fisica: preferito 4 giorni feriali (per non saturare l'utenza)."
+    }
+  ]
+}

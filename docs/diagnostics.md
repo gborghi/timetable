@@ -111,6 +111,87 @@ goodness-of-fit:
 UI: due grafici principali (istogramma carichi docenti, heatmap
 materia x slot) + lista test con interpretazione.
 
+## Stress test + gestione infeasibility
+
+Il pannello "Avvia check" (tab Vincoli) e' progettato per essere
+tirato a fondo: un dataset di vincoli reali completo, includendo
+combinazioni intenzionalmente infeasibili, deve essere risolvibile
+in poche azioni dall'utente senza dover guardare il database o
+toccare il DSL.
+
+**Dataset di stress.** In `experiments/stress_constraints/<profilo>/`
+si trovano sei profili (small/medium/big/huge/superhuge/mega) con
+tre file ciascuno: `teacher_constraints.json`,
+`classroom_constraints.json`, `relational_constraints.json`. Ogni
+record ha id stabile, scope, owner_pattern (es. `first_teacher`,
+`first_lab`, `gym`, `main_room`, `first_class_year_1`),
+livello/peso, espressione DSL, e un flag
+`intentionally_conflicting` con la lista dei record con cui
+collide. I conflitti sono pensati per produrre core minimali
+classici: enforce di slot esplicito vs hard "mai" sullo stesso
+slot, vincoli incrociati teacher x classroom su orari sovrapposti,
+preferenze contraddittorie sulla stessa risorsa.
+
+**Loader.** `experiments/load_stress_constraints.py` risolve gli
+owner_pattern contro il DB live (per ordine crescente di id) e
+posta ciascun record su `/api/constraints` (lo stesso dispatcher
+unificato che usa la UI). Il mapping `dataset_id -> db_id` viene
+salvato in `loaded_<timestamp>.json`, cosi' un'esecuzione
+successiva del feasibility-check sa quali righe DB corrispondono
+ai conflitti dichiarati.
+
+```
+cd experiments
+python load_stress_constraints.py --profile small --dry-run
+python load_stress_constraints.py --profile small
+```
+
+**Workflow di risoluzione.** Una volta caricati i vincoli e
+rilevata l'infeasibility, il pannello Vincoli espande in
+automatico la sezione "Diagnosi infeasibility" con la lista dei
+core, il grafo di Cytoscape e, per ogni membro, quattro bottoni:
+
+1. **Rimuovi** -- elimina il vincolo dal DB (reversibile dallo
+   Storico tramite re-creazione, anche se con id nuovo).
+2. **Soften** -- chiede una penalty e trasforma HARD/ENFORCED in
+   SOFT con quel peso. Il vincolo continua a essere considerato in
+   Phase B, ma come termine dell'objective invece che come
+   constraint hard.
+3. **Disabilita temporaneamente** -- imposta `enabled=False` (o,
+   se il modello non ha quel campo, abbassa il livello a
+   ALLOWED). Il vincolo resta visibile nel DB ma e' inerte
+   finche' non viene ri-abilitato.
+4. **Modifica espressione** -- prompt con l'espressione corrente,
+   permette di patcharla in-place (utile per typo o per restringere
+   un "mai gio" a "mai gio8 AND mai gio9").
+
+**Audit trail e revert.** Ogni azione scrive una riga in
+`constraint_interventions` con before_json/after_json,
+target_owner_label leggibile e timestamp. Lo Storico mostra
+l'elenco in ordine cronologico inverso e per ciascun intervento
+non revertito espone un bottone "Revert" che, in funzione
+dell'azione originale, ricrea la riga (per remove) o ripristina i
+campi (per soften/disable/edit). Il revert produce a sua volta una
+riga di tipo "restore" linkata al record annullato via
+`reverted_by_id`.
+
+API rilevanti:
+
+- `POST /api/constraints/feasibility-check` -- estrazione MUS
+- `POST /api/constraints/apply-suggestion` -- batch atomico di
+  remove/soften/disable/enable/edit
+- `POST /api/constraints/revert` -- annulla per intervention_id
+- `GET /api/constraints/interventions?limit=N` -- storico
+
+Tutto cio' e' progettato per essere usato in tre modi: (a)
+esplorazione interattiva da parte dell'utente, (b) suite di test
+automatica che carica un profilo, fa partire `apply-suggestion`
+con la rimozione suggerita e verifica che il modello diventi
+feasible, (c) regressione su una serie di scenari di conflitto
+classici per assicurarsi che l'estrattore di core continui a
+identificare gli stessi minimal unsat cores attraverso le
+versioni.
+
 ## Run telemetry
 
 Ogni run produce una serie temporale in `run_telemetry`

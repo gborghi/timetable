@@ -1,0 +1,65 @@
+{
+  "profile": "small",
+  "category": "classroom",
+  "schema_version": 1,
+  "description": "Stress dataset di vincoli sulle aule per il profilo small. Manutenzioni, multi-class condizionata, vicinanze. Include una coppia di conflitti deliberati con i vincoli relazionali (vedi relational_constraints.json).",
+  "constraints": [
+    {
+      "id": "small_r_001",
+      "kind": "logical_classroom",
+      "scope": "classroom",
+      "owner_pattern": "first_lab",
+      "level": "hard",
+      "expression": "mai mer8 AND mai mer9 AND mai mer10",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Primo laboratorio: chiusura per manutenzione mercoledi' mattina (8-10)."
+    },
+    {
+      "id": "small_r_002",
+      "kind": "logical_classroom",
+      "scope": "classroom",
+      "owner_pattern": "first_lab",
+      "level": "enforced",
+      "expression": "mer8 AND mer9 AND mer10",
+      "intentionally_conflicting": true,
+      "conflict_with": ["small_r_001"],
+      "description": "[CONFLITTO INTENZIONALE] Lo stesso laboratorio forzato ad essere usato il mercoledi' mattina. In conflitto con la manutenzione di small_r_001."
+    },
+    {
+      "id": "small_r_003",
+      "kind": "logical_classroom",
+      "scope": "classroom",
+      "owner_pattern": "gym",
+      "level": "soft",
+      "weight": 70,
+      "expression": "mai sab",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Palestra: preferibilmente chiusa il sabato per pulizie."
+    },
+    {
+      "id": "small_r_004",
+      "kind": "logical_classroom",
+      "scope": "classroom",
+      "owner_pattern": "second_lab",
+      "level": "hard",
+      "expression": "mai gio13",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Secondo laboratorio: chiuso giovedi' 6a ora (corsi serali esterni)."
+    },
+    {
+      "id": "small_r_005",
+      "kind": "logical_classroom",
+      "scope": "classroom",
+      "owner_pattern": "main_room",
+      "level": "preferred",
+      "weight": 80,
+      "expression": "lun OR mar OR mer",
+      "intentionally_conflicting": false,
+      "conflict_with": null,
+      "description": "Aula magna: preferenza positiva per uso lun/mar/mer (ospita riunioni programmate giov/ven)."
+    }
+  ]
+}
