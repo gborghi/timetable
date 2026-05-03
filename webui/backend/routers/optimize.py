@@ -196,6 +196,88 @@ async def stream(run_id: int):
 # ---------------- Launchers ----------------
 
 
+@router.get("/decomposition/recommend")
+def recommend_decomposition(db: Session = Depends(get_db)):
+    """Synchronous diagnostic that suggests the best decomposition
+    strategy for the current school. Returns a JSON with the
+    primary strategy ('spectral', 'metis', 'curriculum'), a flag
+    for combining with the temporal decomposition, the measured
+    modularity and density of the bipartite graph, and a
+    human-readable motivation.
+
+    Used by the frontend to show a "Suggerimento" tooltip in the
+    Workflow tab next to the decomposition cards.
+    """
+    import sys, os
+    sys.path.insert(0, os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+        "experiments"))
+    try:
+        from decomposition_auto import auto_detect_decomposition_strategy
+    except ImportError as e:
+        raise HTTPException(500, f"decomposition_auto not importable: {e}")
+    # Convert the database snapshot to the profs dict expected by the
+    # heuristic. The conversion mirrors engine_io.db_to_engine_dict()
+    # but stays read-only to avoid mutating engine state.
+    try:
+        from .. import engine_io
+        profs = engine_io.read_profs_for_decomposition(db)
+    except AttributeError:
+        # Fallback: build minimal profs dict from cattedre.
+        profs = {}
+        for c in db.query(models.Cattedra).all():
+            t = db.query(models.Teacher).filter_by(id=c.teacher_id).first()
+            cl = db.query(models.SchoolClass).filter_by(id=c.class_id).first()
+            if t and cl:
+                key = f"{t.last_name or ''}_{t.first_name or ''}".strip("_")
+                profs.setdefault(key, {"classi": []})
+                profs[key]["classi"].append(cl.name)
+        for v in profs.values():
+            v["classi"] = sorted(set(v["classi"]))
+    if not profs:
+        raise HTTPException(409, "no teacher-class assignments available")
+    rec = auto_detect_decomposition_strategy(profs)
+    return rec.to_dict()
+
+
+@router.post("/decomposition/{method}")
+def launch_decomposition(method: str, payload: dict | None = None):
+    """Launch a decomposition-driven Phase B run.
+
+    method must be one of: spectral, temporal, metis, curriculum,
+    combined. The 'combined' method runs the chosen primary
+    strategy as the outer partitioning and the temporal one as
+    the inner per-cluster scheduler.
+
+    The full async implementation reuses optimization.run_meta()
+    plumbing. For the new methods (temporal, metis, curriculum)
+    the wiring to cpsat_v2_timetable Stage A/B/C is on the
+    roadmap; the call returns a 501 with a clear hint.
+    """
+    if method not in ("spectral", "temporal", "metis",
+                      "curriculum", "combined"):
+        raise HTTPException(400, f"unknown method '{method}'")
+    if method == "spectral":
+        # Existing pipeline: delegate to the standard meta launcher
+        # with a spectral preset. The actual call is queued on the
+        # frontend side via the 'spectral' option in the strategy
+        # selector.
+        raise HTTPException(
+            501,
+            "The 'spectral' method runs through the standard "
+            "Phase B pipeline (optimize/timetable). "
+            "Use the strategy selector in the Workflow modal."
+        )
+    raise HTTPException(
+        501,
+        f"Method '{method}' wiring is on the roadmap. The "
+        f"partitioning logic is fully implemented in "
+        f"experiments/decomposition_{method}.py; the solve loop "
+        f"that integrates with cpsat_v2_timetable Stage A/B/C "
+        f"is documented in the module's docstring."
+    )
+
+
 @router.post("/assignment")
 def launch_assignment(payload: schemas.AssignmentRunIn):
     rid = optimization.run_assignment(
