@@ -1238,3 +1238,152 @@ curl -X POST http://127.0.0.1:8000/api/optimize/meta/alns \
      -d '{"budget_s": 60}'
 # Poi visita /runs/<id> per il grafico objective vs tempo.
 ```
+
+
+## 16. Profilo MEGA (100 classi, 178 docenti) -- 2026-05-03
+
+Profilo introdotto come banco di prova per la decomposizione
+temporale. La taglia (100 classi) sta circa il 25% sopra
+SUPERHUGE (80 classi) e mira a stressare la pipeline al
+livello dove il monolitico CP-SAT diventa impraticabile.
+
+### 16.1 Composizione mock
+
+Mix scelto in `experiments/big_mock_school.py::PROFILES['mega']`:
+
+| Indirizzo                | Sezioni | Classi | Note                          |
+|--------------------------|--------:|-------:|-------------------------------|
+| Scientifico              |   6     |   30   | tradizionale                  |
+| ScienzeApplicate         |   4     |   20   | scientifico opzione applicate |
+| ScienzeUmane             |   3     |   15   | umanistico                    |
+| Linguistico FRA+TED      |   2     |   10   | francese + tedesco            |
+| Linguistico FRA+SPA      |   2     |   10   | francese + spagnolo           |
+| Economico-sociale FRA    |   1     |    5   |                               |
+| Economico-sociale SPA    |   1     |    5   |                               |
+| Economico-sociale TED    |   1     |    5   |                               |
+| **Totale**               | **20**  | **100**| 5 anni per ogni sezione       |
+
+Output del generator (seed deterministico):
+
+- 100 classi, 178 docenti (pool aggregato, margin 5%)
+- 1134 coppie (classe, materia)
+- fabbisogno totale: 2976 ore/settimana
+- pool docenti: 3130 ore disponibili (slack 4.9%)
+- pickle `experiments/data/mega/school_mega.pkl` (22 KB)
+
+### 16.2 Phase A -- assegnazione distribuita
+
+Comando di riferimento:
+
+```
+python cpsat_v2_assignment.py --school school_mega.pkl \
+    --time 600 --workers 8 --out profs_mega.pkl
+```
+
+| Metrica                      | Valore       |
+|------------------------------|-------------:|
+| Tempo wall                   |     600.3 s  |
+| Status                       | FEASIBLE     |
+| Objective totale             |    443\,715 |
+| ore non utilizzate           |       154    |
+| copertura HARD (cl,subj)     | 1134 / 1134  |
+| copertura HARD ore-classe    | 2976 / 2976  |
+| docenti idle                 |       0 / 178|
+| cattedra distribution        |              |
+|   < 10 h                     |    4 (2.2%)  |
+|   10-17 h                    |   25 (14.0%) |
+|   >= 18 h                    |  149 (83.7%) |
+
+**Vincolo A** (>= 90% docenti a >= 18 ore): violato di 6.3 punti
+percentuali (83.7% contro 90%). La strada per chiuderlo a
+norma sarebbe regolare il `margin` del generator e/o
+rilassare alcuni docenti part-time -- non perseguito in
+questa run, considerato accettabile per il test di pipeline.
+
+**Vincolo B** (<= 3% docenti < 10 ore): rispettato (2.2%).
+
+L'assegnazione viene salvata come
+`experiments/data/mega/profs_mega.pkl` (28 KB).
+
+### 16.3 Phase B -- decomposizione temporale (BLOCCATO)
+
+La pipeline richiesta da Giovanni per il profilo MEGA prevede:
+
+1. master CP-SAT di pre-distribuzione settimanale (decide
+   `hours_assigned[event, day]`)
+2. sei sotto-problemi giornalieri risolti in parallelo via
+   `concurrent.futures.ProcessPoolExecutor` con
+   `min(6, os.cpu_count())` workers
+3. ricucitura settimanale, eventualmente con feedback al master
+4. ALNS sulla soluzione ricucita per il rifinimento SOFT
+
+Il modulo `experiments/decomposition_temporal.py` contiene la
+**logica di partitioning** documentata, ma le quattro funzioni
+di solve sollevano `NotImplementedError`:
+`pre_distribute_hours`, `solve_day`, `feedback_to_master`,
+`run_temporal_pipeline`. Il wiring con `cpsat_v2_timetable`
+Stage A/B/C non e' ancora stato fatto (commit `c112070`,
+sezione "roadmap" del docstring). La parallelizzazione via
+ProcessPoolExecutor e l'orchestrazione master/slave sono
+parte dello stesso lavoro non ancora intrapreso.
+
+Conseguenze:
+
+- Phase B sul profilo MEGA non e' attualmente eseguibile
+  attraverso la pipeline temporale.
+- Lo stage ALNS finale dipende dall'output di Phase B e
+  resta a sua volta bloccato.
+- L'export xlsx delle viste classi/docenti e' bloccato per
+  lo stesso motivo.
+- I confronti "1-worker vs 6-worker" e "monolitico vs
+  decomposto temporale" sono per ora un dato non disponibile,
+  non una stima.
+
+L'opzione di parallelismo (`Workers paralleli`) e' gia'
+esposta nell'UI Workflow (card "10) Strategie di
+decomposizione" -> sezione Temporale, default 6); il
+campo viene salvato nello stato della pagina ma alimenta
+l'endpoint `POST /api/optimize/decomposition/temporal` che
+oggi risponde 501 con un messaggio esplicito di roadmap.
+
+### 16.4 Cosa rimane da fare per chiudere il punto
+
+1. Implementare il master CP-SAT di pre-distribuzione in
+   `decomposition_temporal.pre_distribute_hours`. Variabili
+   `h[event, day] in [0, max_hours_event]`, vincoli sulla
+   somma settimanale per evento, sui tetti giornalieri per
+   classe e per docente, sul max-day-hours per classe (5 o
+   6), sulla doppia mate / italiano (almeno una coppia di
+   ore in due giorni).
+2. Implementare `solve_day` come adapter di
+   `cpsat_v2_timetable._solve_one_day` con il dataset gia'
+   filtrato su un singolo giorno e le ore pre-distribuite
+   come dato di input.
+3. Implementare `run_temporal_pipeline` con
+   `ProcessPoolExecutor`, `as_completed`, timeout per worker
+   e logica di ricucitura (feedback al master con greedy
+   move-events-from-failed-day-to-day-with-margin).
+4. Wirare `POST /api/optimize/decomposition/temporal` al
+   nuovo `run_temporal_pipeline` invece di restituire 501.
+5. Aggiungere ALNS finale come stage sequenziale dopo la
+   ricucitura, riusando l'esistente
+   `optimization.run_meta('alns', ...)`.
+
+Stima realistica: 2-3 giorni di lavoro full-time per chiudere
+i punti 1-3 con test, mezza giornata per i punti 4-5. Da
+pianificare come task dedicato.
+
+### 16.5 Esecuzione attuale (riproducibilita')
+
+```
+cd experiments
+python big_mock_school.py --profile mega
+python cpsat_v2_assignment.py --school school_mega.pkl \
+    --time 600 --workers 8 --out profs_mega.pkl
+# Phase B: bloccato, vedi 16.3
+```
+
+Pickle di riferimento per i prossimi run, gia' nel repo:
+
+- `experiments/data/mega/school_mega.pkl`
+- `experiments/data/mega/profs_mega.pkl`

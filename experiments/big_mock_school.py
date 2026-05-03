@@ -70,6 +70,25 @@ PROFILES = {
         "EconomicoSociale_TED": 1,
         "Linguistico_FRA_TED": 2, "Linguistico_FRA_SPA": 2,
     },
+    # 100 classi (20 sezioni x 5 anni). Mix scelto come segue:
+    #   Scientifico             6 sezioni x 5 = 30 classi
+    #   ScienzeApplicate        4 sezioni x 5 = 20 classi
+    #   ScienzeUmane            3 sezioni x 5 = 15 classi
+    #   Linguistico_FRA_TED     2 sezioni x 5 = 10 classi
+    #   Linguistico_FRA_SPA     2 sezioni x 5 = 10 classi
+    #   EconomicoSociale_FRA    1 sezione  x 5 =  5 classi
+    #   EconomicoSociale_SPA    1 sezione  x 5 =  5 classi
+    #   EconomicoSociale_TED    1 sezione  x 5 =  5 classi
+    # Totale 20 sezioni, 100 classi, ~2500 studenti. Pensato come
+    # banco di prova per la decomposizione temporale (6 sotto-problemi
+    # giornalieri) -- la spettrale e la monolitica CP-SAT su questa
+    # taglia sono entrambe attese in difficolta'.
+    "mega": {
+        "Scientifico": 6, "ScienzeApplicate": 4, "ScienzeUmane": 3,
+        "EconomicoSociale_FRA": 1, "EconomicoSociale_SPA": 1,
+        "EconomicoSociale_TED": 1,
+        "Linguistico_FRA_TED": 2, "Linguistico_FRA_SPA": 2,
+    },
 }
 
 
