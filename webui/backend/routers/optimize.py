@@ -42,6 +42,7 @@ def _serialize_run(r):
         "status": r.status, "progress": r.progress,
         "obj_value": r.obj_value, "metrics": metrics,
         "error": r.error,
+        "current_step": getattr(r, "current_step", None),
         "started_at": _iso_utc(r.started_at),
         "finished_at": _iso_utc(r.finished_at),
         "created_at": _iso_utc(r.created_at),

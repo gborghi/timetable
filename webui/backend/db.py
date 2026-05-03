@@ -285,6 +285,15 @@ def _apply_lightweight_migrations() -> None:
         # for fresh tables. We only have to handle ALTER COLUMN
         # additions in this lightweight migration helper.
 
+        # runs.current_step: short label of the activity the run is
+        # currently executing (full pipeline writes the step name
+        # before each step starts). Used by the Runs tab to show
+        # "in corso: phase_a" under the progress bar.
+        if insp.has_table("runs") and not has_column("runs", "current_step"):
+            conn.execute(text(
+                "ALTER TABLE runs ADD COLUMN current_step VARCHAR(48)"
+            ))
+
         # tenant_id on user-facing entities (Section 2.5 P3).
         # Defaults everything to tenant 1 -- the existing single school.
         for tbl in timestamped:

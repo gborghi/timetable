@@ -1256,7 +1256,7 @@ def run_full_pipeline(profile: str,
                 state["rooms_metrics"]["rooms_error"] = str(e)
 
         for i, step in enumerate(seq):
-            update_run(rid, progress=i / n_steps)
+            update_run(rid, progress=i / n_steps, current_step=step)
             if step == "phase_a":
                 print("[full] === STEP phase_a: assignment ===")
                 with SessionLocal() as db:
@@ -1741,7 +1741,7 @@ def run_full_pipeline(profile: str,
 
         update_run(rid, solution_id=state["sid"], obj_value=state["obj"],
                    metrics={**state["metrics"], **state["rooms_metrics"]},
-                   progress=1.0)
+                   progress=1.0, current_step=None)
         print(f"[full] DONE id={state['sid']} obj={state['obj']} "
               f"metrics={state['metrics']} rooms={state['rooms_metrics']}")
 

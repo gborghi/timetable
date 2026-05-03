@@ -7,6 +7,7 @@
   import PhaseACard from '$lib/components/optimize/PhaseACard.svelte';
   import AdvancedTechniquesCard from
     '$lib/components/optimize/AdvancedTechniquesCard.svelte';
+  import { PIPELINE_LABEL } from '$lib/pipeline_labels';
 
   let runId = null;
   let runs = [];
@@ -79,24 +80,6 @@
   // Drag a row to reorder; tick to include/exclude. Each phase_b/meta
   // step honours its OWN optimize_rooms toggle on cards 3 / 4-7 -- the
   // pipeline itself does not have a separate rooms toggle.
-  const PIPELINE_LABEL = {
-    hall_check: 'Pre-check Hall (diagnostico)',
-    phase_a: '2) Assegnazione (Phase A)',
-    decomp_spectral:   '3a) Decomposizione spettrale',
-    decomp_temporal:   '3b) Decomposizione temporale (per giorno)',
-    decomp_metis:      '3c) Decomposizione METIS (k-way)',
-    decomp_curriculum: '3d) Decomposizione per curriculum',
-    phase_b: '3) Schedulazione orario (Phase B)',
-    cg:      'Column Generation (alternativo a Phase B)',
-    lagrangian: 'Lagrangian Relaxation (subgradient)',
-    lns:     '4) LNS',
-    alns:    '4-bis) ALNS (Adaptive LNS)',
-    sa:      '5) SA',
-    ts:      '6) TS',
-    vns:     '6-bis) VNS (Variable Neighbourhood Search)',
-    ils:     '7) ILS',
-    rooms:   '8) Assegna aule (indipendente)',
-  };
   // Default pipeline. Order:
   //   - Hall pre-check (ON, optional structural diagnostic)
   //   - phase_a, phase_b (ON)

@@ -24,6 +24,7 @@
   import { api } from '$lib/api';
   import { flash } from '$lib/stores';
   import RunLogPanel from '$lib/components/RunLogPanel.svelte';
+  import { pipelineStepLabel } from '$lib/pipeline_labels';
 
   let runs = [];
   let busy = false;
@@ -74,6 +75,7 @@
       && a.solution_id === b.solution_id
       && a.error === b.error
       && a.finished_at === b.finished_at
+      && a.current_step === b.current_step
       && JSON.stringify(a.metrics || null)
          === JSON.stringify(b.metrics || null)
     );
@@ -458,6 +460,21 @@
                 <span class="text-[10px] text-ink-500 tabular-nums">
                   {Math.round((r.progress || 0) * 100)}%
                 </span>
+                {#if r.current_step
+                      && (r.status === 'running' || r.status === 'pending')}
+                  <div class="text-[10px] text-accent-700 italic mt-0.5
+                              max-w-[180px] truncate"
+                       title={pipelineStepLabel(r.current_step)}>
+                    in corso: {pipelineStepLabel(r.current_step)}
+                  </div>
+                {:else if r.current_step && r.status === 'failed'}
+                  <div class="text-[10px] text-red-700 italic mt-0.5
+                              max-w-[180px] truncate"
+                       title={'Fallito durante: '
+                               + pipelineStepLabel(r.current_step)}>
+                    fallito su: {pipelineStepLabel(r.current_step)}
+                  </div>
+                {/if}
               {/if}
             </td>
             <td class="text-[10px]">{fmtTime(r.started_at)}</td>

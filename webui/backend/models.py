@@ -510,6 +510,12 @@ class Run(Base):
     obj_value: Mapped[float | None] = mapped_column(Float, nullable=True)
     metrics_json: Mapped[str] = mapped_column(Text, default="{}")
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Free-form short label of the current activity. The full pipeline
+    # writes here the step it's about to execute (e.g. "phase_a", "lns",
+    # "decomp_temporal") so the runs tab can display "in corso: phase_a"
+    # under the progress bar. Cleared (NULL) on terminal status.
+    current_step: Mapped[str | None] = mapped_column(
+        String(48), nullable=True)
     started_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
     finished_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=utcnow)

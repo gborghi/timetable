@@ -19,6 +19,7 @@
   import { flash } from '$lib/stores';
   import EChart from '$lib/components/EChart.svelte';
   import RunLogPanel from '$lib/components/RunLogPanel.svelte';
+  import { pipelineStepLabel } from '$lib/pipeline_labels';
   import DiagnosticResult from
     '$lib/components/diagnostics/DiagnosticResult.svelte';
 
@@ -196,6 +197,22 @@
           <div class="text-ink-500 text-xs">Profilo</div>
           <div>{run.profile ?? '—'}</div>
         </div>
+        {#if run.current_step
+              && (run.status === 'running' || run.status === 'pending')}
+          <div>
+            <div class="text-ink-500 text-xs">In corso</div>
+            <div class="text-sm text-accent-700 italic">
+              {pipelineStepLabel(run.current_step)}
+            </div>
+          </div>
+        {:else if run.current_step && run.status === 'failed'}
+          <div>
+            <div class="text-ink-500 text-xs">Fallito su</div>
+            <div class="text-sm text-red-700 italic">
+              {pipelineStepLabel(run.current_step)}
+            </div>
+          </div>
+        {/if}
       </div>
       {#if run.error}
         <pre class="bg-rose-50 border border-rose-200 rounded p-2 text-xs text-rose-800 mt-2 whitespace-pre-wrap">{run.error}</pre>
