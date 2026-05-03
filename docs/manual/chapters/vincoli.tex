@@ -156,4 +156,71 @@ Il tab \emph{Vincoli} ha un bottone "Cerca conflitti"
         degli HARD slot dell'owner.
 \end{itemize}
 
+\section{Tag aule -- etichette libere}
+
+Per esprimere ``questa aula ha il proiettore'', ``questa aula
+\`e adatta alla matematica perch\'e ha la lavagna grande'',
+``questa aula \`e una sala riunioni'', il sistema offre i
+\textbf{tag delle aule}: etichette libere che il coordinatore
+attacca dalla scheda Aule. Ogni aula pu\`o avere quanti tag
+vuoi; ogni tag pu\`o essere riutilizzato su pi\`u aule.
+
+I tag sono utilissimi nei vincoli: invece di scrivere ``solo
+queste tre aule precise'' (lista che andrebbe aggiornata ogni
+volta che le aule cambiano), scrivi ``aule taggate
+matematica'' e il vincolo segue automaticamente le etichettature
+correnti.
+
+Esempio: vogliamo che la matematica si tenga solo in aule
+taggate \texttt{matematica}. Una volta etichettate le aule
+giuste dalla scheda Aule, il vincolo nel DSL generico \`e:
+
+\begin{lstlisting}
+forall l in lessons where l.subject == Matematica:
+    "matematica" in l.classroom.tags
+\end{lstlisting}
+
+Il sistema ha anche una serie di tag automatici prodotti dalla
+generazione mock (per esempio le aule home class ricevono il
+tag dell'indirizzo della classe assegnata). Per dettagli vedi
+il modulo \texttt{webui/backend/mock\_classrooms.py}.
+
+\section{Preferenze di giorno libero del docente}
+
+I docenti hanno diritto contrattuale a un certo numero di
+giorni liberi a settimana (tipicamente uno per il CCNL
+italiano). $\pi$Tantum gestisce questo aspetto in modo
+flessibile attraverso tre slot di preferenza ordinati:
+
+\begin{itemize}
+\item \textbf{1\textsuperscript{a} preferenza} -- il giorno
+  libero ideale del docente (es. ``sabato'').
+\item \textbf{2\textsuperscript{a} preferenza} -- il giorno di
+  ripiego se il primo non \`e possibile (es. ``mercoledi'').
+\item \textbf{3\textsuperscript{a} preferenza} -- l'ultima
+  alternativa (es. ``luned\`i'').
+\end{itemize}
+
+Per ciascuna preferenza il docente (o il coordinatore) sceglie
+se \`e \textbf{HARD} (assoluta) o \textbf{SOFT} con un peso. Pi\`u un campo
+\textbf{required\_free\_days\_count} indica \emph{quanti} giorni
+liberi servono in totale (di default 1 per CCNL).
+
+Esempio: un docente con preferenze [sabato HARD, mercoledi SOFT
+peso 50] e count=1 vorr\`a sicuramente sabato libero, e in
+secondo ordine il mercoledi se il sabato non \`e fattibile.
+
+\section{Preferenze di giorno libero della classe}
+
+Anche le classi possono avere giorni preferiti di non-attivit\`a.
+La struttura \`e analoga a quella dei docenti: tre slot
+ordinati con flag HARD/SOFT, pi\`u un \textbf{required\_free\_days\_count}.
+
+In aggiunta le classi hanno il campo
+\textbf{max\_hours\_per\_day} (default 5) che impone un tetto
+HARD al numero di ore in un giorno. Riducendolo (a 4 per
+esempio) si ottengono giornate pi\`u leggere — ma se il monte
+ore della classe \`e alto bisogner\`a estendere il calendario
+settimanale al sabato.
+
 % =========== Cap 5: Workflow ===========

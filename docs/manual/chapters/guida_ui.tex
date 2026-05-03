@@ -178,7 +178,16 @@ supplenti.
 \subsection*{Monitor}
 Lista \emph{eventi} (uno per Assignment). Espansione lezione-per-lezione
 con bottone Giorno/Ora che apre slot picker matriciale (vedere
-\S5.6).
+\S5.6). In cima alla pagina un \emph{segmented control} con quattro
+tab per filtrare velocemente:
+\textbf{Tutti}, \textbf{Incompleti} (eventi con
+\texttt{n\_assigned\_hours < n\_expected\_hours}),
+\textbf{Senza orario} (eventi senza alcuna lezione piazzata) e
+\textbf{Lockati} (eventi con almeno una lezione marcata
+\texttt{lesson.locked == true}). Per ogni riga, le azioni
+disponibili sono \emph{Dissocia}, \emph{Blocca/Sblocca} e
+\emph{Piazza} (eseguito singolarmente o in massa via
+multi-selezione + toolbar bulk).
 
 \subsection*{Vincoli}
 Lista flat di tutti i vincoli editabili con pill colorate per livello.

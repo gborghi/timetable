@@ -145,4 +145,32 @@ ci sono conflitti, apre un secondo Modal con 3 opzioni:
 \textbf{Annulla}, \textbf{Disassegna le lezioni in conflitto},
 \textbf{Disassegna e ottimizza dopo}.
 
+\section{Punteggio di graduatoria e criterio Anzianita}
+
+Ciascun docente nell'anagrafica ha un campo
+\textbf{graduatoria\_score} (numerico). Il valore esprime il
+punteggio di graduatoria utile a discriminare i docenti quando
+si tratta di assegnare cattedre o supplenze: pi\`u alto =
+maggiore precedenza.
+
+Il campo \`e usato in due punti:
+
+\begin{enumerate}
+\item \textbf{Modulo supplenze}: quando il sistema cerca un
+  candidato per coprire un'assenza, ordina la rosa per
+  \texttt{graduatoria\_score} decrescente.
+\item \textbf{Phase A, criterio ``Anzianita''}: il DSL della
+  funzione obiettivo della Phase A include un preset
+  \textbf{Anzianita} che, oltre ai criteri standard di bilancio
+  (capacit\`a non utilizzata, n. di indirizzi, ecc.),
+  privilegia le assegnazioni che fanno coincidere docenti con
+  alto \texttt{graduatoria\_score} con classi del triennio
+  finale (a parit\`a di altre condizioni).
+\end{enumerate}
+
+Il preset \`e selezionabile dalla card \textbf{Phase A
+(assegnazione)} del tab Workflow, dropdown ``Criterio''. Il DSL
+completo della funzione obiettivo \`e visibile nel modal
+``Mostra DSL attivo'' della stessa card.
+
 % =========== Cap 6: UI guide ===========
