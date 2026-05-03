@@ -1,86 +1,110 @@
-\chapter{Panoramica di $\pi$Tantum}
+\chapter{Una panoramica di $\pi$Tantum}
 \label{ch:panoramica_pitantum}
 
 \epigraph{``A program does what you tell it to do, not what you
-want it to do.''}{Maxim popolare attribuita a vari}
+want it to do.''}{adagio popolare della programmazione}
 
-\lettrine[lines=3]{P}{}rima di entrare nei dettagli di
-ciascun metodo \`e utile guardare $\pi$Tantum dall'alto: che
-cosa fa, com'\`e organizzato, da quali pezzi \`e composto, e
-con quale flusso un coordinatore d'orario lo usa per
-costruire l'orario annuale di una scuola.
+\lettrine[lines=3]{P}{rima} di entrare nei dettagli delle
+singole tecniche algoritmiche e nelle pieghe dell'interfaccia
+utente, conviene osservare $\pi$Tantum dall'alto: che cosa
+fa, come \`e organizzato, da quali pezzi \`e composto, e con
+quale flusso un coordinatore d'orario lo utilizza per
+costruire o per manutenere l'orario annuale di una scuola.
+Una panoramica di questo tipo \`e utile per due ragioni. In
+primo luogo, permette al lettore di costruirsi una mappa
+mentale del sistema, dentro la quale potr\`a poi collocare le
+informazioni pi\`u tecniche dei capitoli successivi. In secondo
+luogo, fornisce un riferimento al quale tornare quando si
+vorr\`a verificare se un certo concetto appartiene al solver,
+al backend, al frontend o alla pipeline complessiva.
 
-\section{Cosa fa $\pi$Tantum (in tre frasi)}
+\section{Cosa fa il sistema, in tre frasi}
 
 $\pi$Tantum \`e un sistema software che, ricevuti in input
 l'anagrafica di una scuola (docenti, classi, materie, aule,
-indirizzi, gruppi, studenti), i monte ore per indirizzo, le
-preferenze e le indisponibilit\`a, produce in output un
-\emph{orario settimanale completo} che soddisfa tutti i
-vincoli rigidi (HARD) e minimizza la somma pesata delle
-violazioni dei vincoli morbidi (SOFT). Una volta prodotto
-l'orario, lo stesso sistema lo gestisce in corso d'anno:
-modifiche manuali con controllo di fattibilit\`a in tempo
-reale, gestione delle assenze e delle supplenze quotidiane,
-visualizzazione per docente / per classe / per aula, export
-in Excel/PDF.
+indirizzi di studio, gruppi articolati, studenti), il monte
+ore richiesto per ciascun indirizzo e per ciascuna materia,
+le preferenze e le indisponibilit\`a, produce in output un
+orario settimanale completo che soddisfa tutti i vincoli
+rigidi e minimizza la somma pesata delle violazioni dei
+vincoli morbidi. Una volta prodotto l'orario, lo stesso
+sistema lo gestisce in corso d'anno: consente modifiche
+manuali con controllo di fattibilit\`a in tempo reale,
+supporta la gestione delle assenze e delle supplenze
+quotidiane, e offre viste alternative per docente, per
+classe, per aula, per slot. Tutte le operazioni avvengono
+attraverso un'interfaccia web a sedici tab, e tutti i dati
+sono persistiti in un singolo file SQLite che pu\`o essere
+esportato, importato, e versionato come qualunque altro file.
 
 \section{Tre layer in un unico repository}
 
-\sidenote{Il repository \texttt{gborghi/timetable} \`e
-organizzato in tre directory principali, una per ogni layer.}
-
 Il sistema \`e organizzato in tre strati distinti, ciascuno
-con il proprio dominio di responsabilit\`a.
+con il proprio dominio di responsabilit\`a, e tutti contenuti
+in un unico repository Git per semplicit\`a di sviluppo e di
+distribuzione. Questa scelta architetturale \`e meditata: se
+i tre layer fossero in repository separati, il loro
+co-versionamento richiederebbe attenzioni che, per un
+progetto di questa scala, non aggiungono valore. Mantenere
+tutto in un solo repository semplifica anche la pipeline di
+integrazione continua e l'esperienza dello sviluppatore, che
+pu\`o navigare l'intero codice da un'unica radice.
 
-\subsection{Solver layer (\texttt{experiments/})}
+Il primo layer, denominato \emph{solver layer}, risiede nella
+cartella \texttt{experiments/} e contiene tutto il codice
+algoritmico in Python puro. \`E uno strato deliberatamente
+ignaro del database e dell'interfaccia utente: legge un
+dizionario di input e produce un dizionario di output,
+secondo un'interfaccia ben definita. Le sue componenti
+principali sono il modulo \texttt{cpsat\_v2\_assignment.py}
+per la fase di assegnamento, il modulo
+\texttt{cpsat\_v2\_timetable.py} per la fase di timetabling
+vero e proprio, il modulo
+\texttt{decomposition\_spectral\_v2.py} per il clustering
+spettrale, il modulo \texttt{metaheuristics.py} che
+raggruppa le quattro varianti classiche (LNS, SA, TS, ILS),
+e i moduli \texttt{alns.py}, \texttt{vns.py},
+\texttt{hall\_check.py}, \texttt{lagrangian.py},
+\texttt{column\_generation.py}, \texttt{classroom\_assignment.py}
+che implementano le tecniche aggiuntive descritte nei
+capitoli successivi.
 
-Codice Python puro che implementa la pipeline di
-ottimizzazione. Non sa nulla di database, n\'e di interfacce
-utente: legge un dizionario di input (docenti, classi,
-vincoli) e produce un dizionario di output (orario). Le
-componenti principali sono:
-\begin{itemize}
-\item \texttt{cpsat\_v2\_assignment.py} (Phase A): matching
-  docente $\to$ classe $\to$ ore.
-\item \texttt{cpsat\_v2\_timetable.py} (Phase B): timetabling
-  CP-SAT su singolo cluster.
-\item \texttt{decomposition\_spectral\_v2.py}: clustering
-  spettrale del grafo bipartito classe--docente.
-\item \texttt{metaheuristics.py}: LNS, SA, TS, ILS che
-  raffinano la soluzione di Phase B.
-\item \texttt{alns.py}, \texttt{vns.py}: varianti adattive e
-  a vicinato variabile.
-\item \texttt{hall\_check.py}, \texttt{lagrangian.py},
-  \texttt{column\_generation.py}: tecniche aggiuntive.
-\item \texttt{classroom\_assignment.py} (Phase D): assegnazione
-  delle aule alle (classe, slot).
-\end{itemize}
-
-\subsection{Web UI layer (\texttt{webui/})}
-
-Backend FastAPI + frontend SvelteKit. Espone tutte le
-operazioni del solver come API REST e fornisce un'interfaccia
+Il secondo layer, denominato \emph{web UI layer}, risiede
+nella cartella \texttt{webui/} e contiene il backend FastAPI
+e il frontend SvelteKit. Il backend espone tutte le
+operazioni del solver come API REST e gestisce la
+persistenza in SQLite; il frontend fornisce l'interfaccia
 web a sedici tab che copre l'intero ciclo di vita di un
-orario: dall'inserimento dei dati anagrafici (Docenti,
-Classi, Aule, Materie, Indirizzi, Studenti, Gruppi) alla
-configurazione dei vincoli (matrici 5-stati, vincoli logici
-DSL), alla generazione (Workflow), all'editing (Orario), alla
-gestione operativa (Assenze e supplenze, Monitor).
+orario, dall'inserimento dei dati anagrafici alla generazione
+finale, all'editing manuale, alla gestione operativa delle
+assenze e delle supplenze. La comunicazione fra frontend e
+backend avviene via HTTP/JSON; lo storage \`e un singolo file
+\texttt{webui/data/timetable.db}; le migrazioni del database
+sono idempotenti ed eseguite automaticamente a ogni avvio
+del backend.
 
-Il frontend e il backend comunicano via HTTP/JSON. Lo storage
-\`e SQLite (un singolo file
-\texttt{webui/data/timetable.db}); le migrazioni sono
-idempotenti, eseguite a ogni avvio del backend.
+Il terzo layer, denominato \emph{legacy layer}, risiede nella
+cartella \texttt{schedule/} e contiene gli script monolitici
+che hanno fatto da prototipo per il solver attuale. Sono
+mantenuti per riferimento storico e per la riproducibilit\`a
+dei benchmark contro le versioni precedenti, ma non fanno pi\`u
+parte del flusso operativo. Un nuovo utente del sistema pu\`o
+ignorarli completamente.
 
-\subsection{Legacy layer (\texttt{schedule/})}
+\section{Diagramma a blocchi del sistema}
 
-Script monolitici che hanno fatto da prototipo per il solver
-attuale. Sono mantenuti per riferimento storico e per
-benchmark riproducibili contro le versioni precedenti, ma non
-sono pi\`u parte del flusso operativo.
-
-\section{Diagramma a blocchi}
+Il diagramma in figura~\ref{fig:arch_panoramica} riassume in
+forma grafica le relazioni fra i tre layer. Il frontend
+SvelteKit, in cima, parla al backend FastAPI attraverso
+chiamate REST sotto il path \texttt{/api/}, instradate dal
+proxy Vite in modalit\`a di sviluppo o dal server di
+produzione in modalit\`a di rilascio. Il backend, a sua volta,
+persiste i dati su SQLite via SQLAlchemy 2.0 e invoca il
+solver layer attraverso un convertitore esplicito
+(\texttt{engine\_io.py}) che traduce le entit\`a relazionali
+del database in dizionari Python adatti al solver, e
+viceversa. Il solver, infine, usa la libreria OR-Tools di
+Google per le risoluzioni CP-SAT.
 
 \begin{figure}[h]
 \centering
@@ -102,148 +126,258 @@ sono pi\`u parte del flusso operativo.
   \draw[arr] (en) -- (or);
 \end{tikzpicture}
 \caption{Architettura a blocchi di $\pi$Tantum: il frontend
-parla al backend via REST, il backend persiste su SQLite e
-chiama il solver via pickle, il solver invoca OR-Tools per
-CP-SAT.}
+parla al backend tramite REST, il backend persiste su SQLite
+e dialoga con il solver attraverso un convertitore esplicito
+basato su pickle, il solver invoca OR-Tools per le
+risoluzioni CP-SAT.}
 \label{fig:arch_panoramica}
 \end{figure}
 
-\section{Flusso d'uso tipico}
+Si noti che non vi \`e alcuna connessione diretta fra
+frontend e solver: ogni richiesta dell'utente attraversa
+sempre il backend, che la valida, la persiste, ed
+eventualmente la inoltra al solver. Questa scelta garantisce
+che lo stato del sistema sia sempre coerente e che ogni
+operazione lasci una traccia nel database, utile sia per
+l'audit sia per la possibilit\`a di rieseguire le pipeline su
+dati storici.
 
-Un coordinatore d'orario, alla prima esecuzione, segue
-tipicamente questo flusso:
+\section{Il flusso d'uso quotidiano}
 
-\begin{enumerate}
-\item \textbf{Importa l'anagrafica}: pu\`o partire da template
-  Excel/CSV (un foglio per entit\`a: docenti, classi, materie,
-  aule, indirizzi, studenti, gruppi). Oppure usa la dashboard
-  ``Importa profilo'' per partire da un dataset mock di
-  taglia \texttt{small}/\texttt{medium}/\texttt{big}.
-\item \textbf{Verifica e completa i dati}: tab Docenti,
-  Classi, etc., per controllare che tutto sia coerente. Le
-  matrici 5-stati permettono di esprimere indisponibilit\`a
-  (HARD) e preferenze (SOFT/PREF) per ogni cella
-  (giorno, ora). Le matrici delle aule vincolano quali
-  materie possono andare in quali aule.
-\item \textbf{Aggiunge vincoli logici}: il DSL generico
-  (cap.~\ref{ch:metodo_dsl}) permette di esprimere vincoli
-  su qualunque combinazione di entit\`a. Esempio:
-  ``\texttt{forall t in teachers where t.subject == "Fisica":
-  count l in lessons where l.teacher == t and
-  l.classroom.type == "lab\_fisica": l == 1}''.
-\item \textbf{Lancia il pre-check di Hall}: bottone in tre
-  punti dell'UI. Se Hall fallisce, il sistema mostra il
-  sotto-insieme di classi che ha pi\`u domanda che offerta;
-  l'utente capisce \emph{quale} vincolo va rilassato.
-\item \textbf{Lancia la pipeline}: tab Workflow, bottone
-  ``Pipeline completa''. Phase A (assignment) + Phase B
-  (decomposizione spettrale + CP-SAT) + Phase C (LNS+SA+TS+ILS)
-  + Phase D (aule). Output: orario completo, log dettagliato,
-  telemetria runtime.
-\item \textbf{Editor manuale}: tab Orario. Drag-and-drop di
-  lezioni; il sistema controlla in tempo reale che la mossa
-  sia HARD-fattibile e mostra come cambia la funzione
-  obiettivo (delta SOFT).
-\item \textbf{Gestione corso d'anno}: tab Assenze e
-  supplenze. Marca i docenti assenti, vede le classi
-  scoperte, drag-drop dei docenti disponibili come
-  supplenti.
-\end{enumerate}
+Un coordinatore d'orario alla prima esecuzione del sistema
+segue tipicamente il flusso che ora descriviamo. Si tratta
+di una sequenza ricorrente, che si ripete grosso modo
+identica all'inizio di ogni anno scolastico, e che diventa
+familiare dopo le prime due o tre esperienze. Le variazioni
+nascono soprattutto dalla quantit\`a e dal tipo di vincoli
+particolari che la scuola desidera esprimere; il flusso di
+base resta lo stesso.
+
+Il primo passo \`e l'\emph{importazione dell'anagrafica}.
+L'utente pu\`o partire da un template Excel o CSV (un foglio
+per ogni entit\`a: docenti, classi, materie, aule, indirizzi,
+studenti, gruppi articolati), che il sistema fornisce come
+download dalla pagina \emph{Importa}. Pu\`o anche partire,
+soprattutto per fini di prova, da un dataset mock generato
+deterministicamente da $\pi$Tantum stesso, in una delle
+cinque taglie predefinite (small, medium, big, huge,
+superhuge). Una volta importati i dati, l'utente li
+verifica e li completa nei tab specifici (Docenti, Classi,
+Materie, eccetera), correggendo errori, aggiungendo
+indisponibilit\`a tramite le matrici 5-stati, settando
+preferenze, eccetera.
+
+Il secondo passo \`e l'\emph{aggiunta dei vincoli logici}
+specifici. Mentre i vincoli di base (non sovrapposizione,
+copertura, classi di concorso) sono codificati nel sistema e
+non richiedono intervento dell'utente, i vincoli particolari
+della singola scuola (``il prof Bianchi non lavora sabato'',
+``la palestra \`e occupata dall'altro istituto il marted\`i
+mattina'', ``in 1A alternativa religione cattolica una volta
+al mese al gioved\`i'') vengono espressi tramite il DSL generico,
+descritto in dettaglio nel cap.~\ref{ch:metodo_dsl}. La
+documentazione \`e accessibile dall'interfaccia stessa con un
+bottone di aiuto, e ogni vincolo \`e validato in tempo reale
+prima di essere salvato.
+
+Il terzo passo \`e il \emph{pre-controllo di Hall}. Prima di
+lanciare la pipeline vera e propria, conviene verificare che
+il problema sia almeno formalmente fattibile: la copertura
+delle ore \`e sostenuta dalla disponibilit\`a dei docenti? In
+caso contrario, il sistema mostra il sotto-insieme di classi
+o materie che presentano un deficit, e l'utente pu\`o
+intervenire prima di consumare tempo di calcolo. Il
+pre-controllo \`e accessibile da tre punti distinti
+dell'interfaccia (un bottone inline nella card di Phase~A,
+una riga nel pannello \emph{tecniche avanzate}, e una sezione
+del tab Diagnostica), tutti che invocano lo stesso modulo
+\texttt{hall\_check.py} e che producono lo stesso output,
+descritto nel cap.~\ref{ch:metodo_hall}.
+
+Il quarto passo \`e il \emph{lancio della pipeline}. Dal tab
+Workflow, l'utente preme il bottone ``Pipeline completa'' e il
+sistema esegue in sequenza Phase A (assegnazione), Phase B
+(decomposizione + CP-SAT), Phase C (metaeuristiche) e Phase D
+(aule). Il log di esecuzione viene mostrato in tempo reale
+attraverso un canale Server-Sent Events; l'utente pu\`o
+seguire l'avanzamento, leggere i messaggi del solver, ed
+eventualmente fermare la pipeline se decide di intervenire.
+Al termine, il sistema mostra il valore della funzione
+obiettivo, le eventuali violazioni dei vincoli morbidi, e una
+panoramica dei tempi di esecuzione.
+
+Il quinto passo \`e l'\emph{editing manuale}. Dal tab Orario,
+l'utente pu\`o trascinare le lezioni da uno slot all'altro per
+correggere a mano dettagli che il solver non aveva considerato
+o che non corrispondono ai desideri ultimi del coordinatore.
+Mentre l'utente trascina, il sistema verifica in tempo reale
+se la mossa \`e fattibile dal punto di vista dei vincoli
+rigidi, e mostra come cambia la funzione obiettivo morbida.
+Tutto questo avviene senza dover rilanciare il solver: \`e una
+valutazione differenziale (\emph{delta-evaluation}) che
+sfrutta la struttura della funzione obiettivo per ricalcolare
+solo le componenti che cambiano, in tempo costante.
+
+Il sesto e ultimo passo, ricorrente nel corso dell'anno, \`e
+la \emph{gestione delle assenze e delle supplenze}. Dal tab
+omonimo, l'utente segna i docenti assenti per ogni giornata,
+vede in tempo reale quali classi rimangono scoperte, e
+trascina i docenti disponibili come supplenti. Il sistema
+calcola automaticamente le compatibilit\`a (chi pu\`o sostituire
+chi, considerando classi di concorso e disponibilit\`a) e
+mostra le opzioni con un'evidenziazione cromatica. Una cella
+rossa significa ``ancora scoperta''; una cella verde
+significa ``coperta''.
 
 \begin{casostudiobox}
-\textbf{Liceo ``Galileo'', 32 classi, settembre}. Il
-vicepreside parte da un import Excel con 67 docenti,
-32 classi, 11 indirizzi (4 scientifico, 3 classico, 2
-linguistico, 2 scienze applicate). Aggiunge 4 vincoli
-logici (es. ``il prof Bianchi non lavora sabato'', ``il lab
-di fisica solo nel triennio'') e lancia la pipeline. In
-9~minuti $\pi$Tantum produce un orario completo che
-soddisfa tutti i vincoli HARD e minimizza una funzione
-obiettivo composta da 7 termini SOFT pesati.
-
-Un'occhiata al log mostra che Phase~A ha impiegato 12
-secondi (assignment trovato facilmente), Phase~B 4~minuti
-(la scuola \`e stata spezzata in 5 cluster da 6--8 classi
-ciascuno), Phase~C 3~minuti di LNS + 1~minuto di SA, Phase~D
-40~secondi (aule). L'obiettivo finale \`e a 11.2 punti, con
-0 violazioni HARD e 23 violazioni SOFT (di cui 14 sono ``ore
-isolate'' che il vicepreside decide di accettare).
+\textbf{Liceo ``Galileo'', 32 classi, settembre.} Il
+vicepreside parte da un import Excel con sessantasette
+docenti, trentadue classi, undici indirizzi (quattro
+scientifico, tre classico, due linguistico, due scienze
+applicate). Aggiunge quattro vincoli logici specifici (un
+docente che non lavora sabato, il laboratorio di fisica
+disponibile solo nel triennio, due compresenze fisse, una
+classe quinta che il marted\`i mattina ha attivit\`a esterna)
+e lancia la pipeline. In nove minuti $\pi$Tantum produce un
+orario completo che soddisfa tutti i vincoli rigidi e
+minimizza una funzione obiettivo composta da sette termini
+SOFT pesati. Un'occhiata al log mostra che Phase A ha
+impiegato dodici secondi, Phase B quattro minuti (la scuola
+\`e stata spezzata in cinque cluster da sei--otto classi),
+Phase C tre minuti di LNS pi\`u un minuto di simulated
+annealing, Phase D quaranta secondi. L'obiettivo finale \`e
+a 11.2 punti, con zero violazioni rigide e ventitr\'e
+violazioni morbide, di cui quattordici sono ``ore isolate'' di
+docente che il vicepreside decide di accettare consapevolmente.
 \end{casostudiobox}
 
-\section{Quando $\pi$Tantum non basta da solo}
+\section{Quando il sistema non basta da solo}
 
-\begin{erroricomunibox}
-\begin{itemize}
-\item \textbf{Dati di input incompleti o contraddittori}.
-  Se un docente \`e abilitato ad A027 ma il suo monte ore
-  supera la somma delle ore di matematica disponibili, il
-  pre-check di Hall fallisce. \`E un \emph{problema dei dati},
-  non del solver: $\pi$Tantum non pu\`o ``inventare'' classi.
-\item \textbf{Vincoli sociali impliciti}. ``La prof Rossi
-  vorrebbe avere tutte le sue ore al mattino'' richiede
-  \emph{esplicitazione}: matrice di preferenza con celle
-  pomeridiane in SOFT. Se la richiesta non \`e codificata,
-  il solver non la conosce.
-\item \textbf{Iterazione mancante con il committente}. Una
-  prima soluzione produce sempre richieste di modifica.
-  $\pi$Tantum ha un editor manuale e un sistema di vincoli
-  logici incrementale apposta: la pipeline non \`e da
-  rilanciare ogni volta da zero.
-\end{itemize}
-\end{erroricomunibox}
+Sarebbe disonesto presentare $\pi$Tantum come una soluzione
+completa che risolve tutti i casi senza intervento umano. Vi
+sono almeno tre situazioni ricorrenti in cui il sistema da
+solo non basta, e nelle quali la collaborazione fra software
+e coordinatore diventa indispensabile.
 
-\section{Tecnologie scelte (e perch\'e)}
+La prima situazione \`e quella dei \emph{dati di input
+incompleti o contraddittori}. Se un docente \`e abilitato
+alla classe di concorso A027 ma il suo monte ore residuo
+totale supera la somma delle ore di matematica disponibili,
+il pre-controllo di Hall fallisce, e nessun algoritmo del
+mondo pu\`o costruire un orario fattibile a partire da quel
+dato. \`E un problema dei dati, non del solver: $\pi$Tantum
+non pu\`o ``inventare'' classi che non esistono o ore che non
+ci sono. La soluzione richiede l'intervento del coordinatore,
+che dovr\`a o assumere un docente in pi\`u, o ridurre il monte
+ore, o convocare delle supplenze straordinarie.
 
-\sidenote{Tutte le tecnologie scelte sono \emph{open source}
-e prive di lock-in commerciali. SQLite, FastAPI, SvelteKit,
-OR-Tools sono progetti maturi e attivamente mantenuti.}
+La seconda situazione \`e quella dei \emph{vincoli sociali
+impliciti}. ``La professoressa Rossi vorrebbe avere tutte le
+sue ore al mattino'' non \`e un dato che il sistema possa
+indovinare: deve essere esplicitato come matrice di
+preferenza con celle pomeridiane in SOFT. Se la richiesta non
+viene codificata, il solver non la conosce, e produrr\`a una
+soluzione che la ignora completamente. La regola pratica \`e:
+ogni richiesta personale o sociale deve essere tradotta in un
+vincolo prima di essere considerata.
 
-\begin{itemize}
-\item \textbf{Python 3.11+}: linguaggio dominante per il
-  scientific computing e per la modellazione constraint.
-  Performance accettabili su questo dominio (la parte
-  hot \`e il solver C++ di OR-Tools, non il codice Python
-  che lo guida).
-\item \textbf{OR-Tools} (Google): solver CP-SAT
-  \emph{state-of-the-art}, gratuito, con API Python pulite.
-\item \textbf{FastAPI}: backend async-friendly, validazione
-  automatica via Pydantic, documentazione OpenAPI/Swagger
-  generata automaticamente.
-\item \textbf{SQLite}: zero-config, single-file, perfetto
-  per un sistema mono-utente o piccolo-team.
-\item \textbf{SvelteKit + Tailwind}: stack frontend leggero,
-  hot-reload veloce, bundle finale piccolo. Svelte~5 in
-  legacy mode.
-\item \textbf{Vite}: dev server velocissimo, proxy nativo
-  verso il backend.
-\end{itemize}
+La terza situazione \`e quella dell'\emph{iterazione
+mancante con il committente}. La prima soluzione prodotta
+dal sistema produce sempre, in pratica, almeno qualche
+richiesta di modifica da parte del collegio dei docenti. Per
+questo $\pi$Tantum dispone di un editor manuale e di un
+sistema di vincoli logici incrementale: la pipeline non va
+rilanciata da zero ogni volta. Una richiesta del tipo
+``spostare l'inglese di 2B dal venerd\`i al gioved\`i'' si
+gestisce con un drag-and-drop, e il sistema verifica in
+tempo reale che la mossa sia fattibile e ne calcola il delta
+sull'obiettivo. Ignorare questa modalit\`a iterativa porta a
+un'esperienza frustrante per tutti.
 
-Le alternative considerate (Django, Flask, React, Next.js,
-Gurobi commerciale, MiniZinc) sono state scartate per
-ragioni di leggerezza, costo (zero), facilit\`a di
-deployment in scuole italiane (un solo file binario, niente
-licenze).
+\section{Le tecnologie scelte e perch\'e}
 
-\section{Roadmap del libro}
+L'ultima sezione di questa panoramica documenta le tecnologie
+sulle quali $\pi$Tantum \`e costruito e le ragioni della loro
+scelta. Tutte le tecnologie selezionate sono \emph{open
+source} e prive di vincoli di licenza commerciale: nessuna
+scuola dovrebbe rinunciare al sistema per motivi economici, e
+nessun coordinatore dovrebbe trovarsi nella posizione di
+dover convincere il dirigente ad acquistare una licenza.
 
-I prossimi capitoli ripercorrono in dettaglio gli aspetti
-toccati qui in panoramica.
+Il linguaggio principale \`e Python 3.11 o superiore. Si tratta
+del linguaggio dominante per il calcolo scientifico e per la
+modellazione a vincoli, e dispone di librerie mature per
+ogni esigenza che il progetto pu\`o avere. Le sue performance
+sono accettabili per questo dominio applicativo, perch\'e la
+parte computazionalmente pesante (la risoluzione CP-SAT) \`e
+implementata in C++ all'interno della libreria OR-Tools,
+mentre il codice Python si limita a guidarla.
 
-La parte~II descrive le entit\`a (cap.~\ref{ch:vincoli}, cap.~\ref{ch:guida_ui})
-e i casi d'uso reali. La parte~III \`e il cuore tecnico:
-CP-SAT (cap.~\ref{ch:metodo_cpsat}), decomposizione spettrale
-(cap.~\ref{ch:metodo_spettrale}), metaeuristiche
-(cap.~\ref{ch:metodo_metaeuristiche}), Hall pre-check
-(cap.~\ref{ch:metodo_hall}), Lagrangian + Column Generation
-(cap.~\ref{ch:metodo_lagrangian}), Monte Carlo
-(cap.~\ref{ch:metodo_montecarlo}), analisi del grafo
-bipartito (cap.~\ref{ch:metodo_grafo}), statistica applicata
-(cap.~\ref{ch:metodo_statistica}), DSL
-(cap.~\ref{ch:metodo_dsl}). La parte~IV documenta
-l'architettura, il modello dati, le API REST, l'estensione.
-La parte~V riporta i benchmark sui cinque profili e una
-sezione di \emph{lessons learned}.
+Il solver \`e OR-Tools di Google, in particolare il modulo
+CP-SAT. Si tratta di uno dei migliori solver al mondo per
+problemi combinatori di medie e grandi dimensioni, gratuito,
+con API Python pulite e documentate, e con prestazioni
+allineate ai prodotti commerciali pi\`u costosi. Ha vinto le
+edizioni 2018, 2019, 2020 e 2021 della MiniZinc Challenge, la
+competizione internazionale fra constraint solver. La sua
+maturit\`a e la sua diffusione lo rendono una scelta
+naturale per chiunque voglia costruire un sistema di
+scheduling oggi.
 
-\pullquote{Un sistema di scheduling \`e tanto buono quanto la
-sua capacit\`a di accettare modifiche dopo la prima
-esecuzione.}{prassi consolidata fra i coordinatori d'orario}
+Il backend \`e FastAPI, che fornisce un framework HTTP
+asincrono moderno con validazione automatica via Pydantic,
+generazione automatica della documentazione OpenAPI/Swagger,
+e ottime performance senza sacrificare la chiarezza del
+codice. La sua adozione semplifica drasticamente la scrittura
+e il mantenimento delle API REST.
+
+Lo storage \`e SQLite, scelto per la sua zero-configuration:
+\`e un singolo file, non richiede un servizio dedicato, ed \`e
+pi\`u che sufficiente per i carichi di lavoro tipici di una
+scuola, anche grande. Le migrazioni sono scritte come funzioni
+Python idempotenti che vengono eseguite a ogni avvio del
+backend, evitando la necessit\`a di un sistema di migration
+esterno come Alembic. Si tratta di una scelta consapevole che
+privilegia la semplicit\`a operativa rispetto alla pulizia
+formale.
+
+Il frontend \`e SvelteKit con Tailwind CSS, una combinazione
+che produce bundle finali piccoli, hot-reload veloce in
+sviluppo, e codice leggibile. La scelta di Svelte rispetto a
+React o Vue \`e legata alla sua filosofia ``compiler-first'':
+il codice scritto viene tradotto in JavaScript vanilla
+ottimizzato, riducendo l'overhead a runtime. Vite, infine,
+fornisce il dev-server con proxy nativo verso il backend e un
+ciclo di compilazione di pochi millisecondi.
+
+Le alternative considerate sono state numerose: Django o
+Flask invece di FastAPI, React o Vue invece di Svelte,
+PostgreSQL invece di SQLite, Gurobi commerciale invece di
+OR-Tools, MiniZinc come linguaggio di modellazione invece di
+Python diretto. Tutte sono state scartate per ragioni di
+leggerezza, costo, facilit\`a di deployment in scuole italiane
+con infrastruttura modesta. La regola implicita \`e stata:
+ridurre al minimo le dipendenze e i punti di fallimento,
+preferire sempre la soluzione pi\`u semplice se sufficiente al
+caso d'uso.
+
+\section*{Cosa abbiamo visto in questo capitolo}
+
+Abbiamo guardato $\pi$Tantum dall'alto, individuando i suoi
+tre layer (solver, web UI, prototipi legacy), descrivendo
+come comunicano fra loro, e tracciando il flusso d'uso
+quotidiano di un coordinatore d'orario, dall'importazione
+dell'anagrafica alla gestione delle supplenze. Abbiamo anche
+documentato le situazioni in cui il sistema da solo non basta
+e l'intervento umano resta indispensabile, e abbiamo
+elencato le tecnologie sulle quali il progetto \`e costruito,
+con le ragioni della loro scelta. Da qui in poi, i capitoli
+successivi entrano nei dettagli: il prossimo descrive
+l'orario come oggetto strutturale, le entit\`a coinvolte e le
+relazioni che le legano; quelli successivi descrivono
+l'interfaccia utente e i casi d'uso ricorrenti; i capitoli
+della parte centrale del libro descrivono ognuno dei metodi
+algoritmici che fanno funzionare il sistema; gli ultimi
+capitoli affrontano l'architettura software, il modello dati,
+le API REST, i benchmark misurati, e una sezione di lessons
+learned.
