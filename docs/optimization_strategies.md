@@ -1,15 +1,48 @@
-# Tecniche di ottimizzazione
+# Tecniche di ottimizzazione: cosa sono, quando servono
 
-Questo file descrive le strategie post-Phase-A disponibili in
-piTantum, oltre alle metaeuristiche classiche LNS / SA / TS / ILS
-gia' presenti.
+Quando piTantum produce un orario, non lo fa in un solo passo.
+Il programma ha a disposizione una piccola "cassetta degli
+attrezzi" di strategie diverse: alcune costruiscono la prima
+soluzione da zero, altre la migliorano dopo, altre ancora
+servono solo per controllare a tavolino se il problema \`e
+risolvibile prima di partire. Questa pagina ti spiega ciascuno
+strumento attraverso un'analogia concreta, e ti dice quando
+conviene attivarlo.
 
-Tutti i moduli vivono in `experiments/` e sono esposti via
-endpoint REST nel router `webui/backend/routers/optimize.py`. La
-UI principale e' la card "Tecniche avanzate" nel tab `/optimize`,
-che rispecchia gli stessi parametri configurabili.
+Sei nel posto giusto se sei un coordinatore d'orario o un
+amministratore di sistema che si chiede: "che cos'\`e questa
+'ALNS' che vedo nel tab Workflow? Devo lasciarla accesa? E il
+'pre-check Hall' a cosa serve?"
 
-## 1. Adaptive Large Neighborhood Search (ALNS)
+Tutte le tecniche descritte qui sono attivabili dal tab
+**Workflow** (`/optimize`) della web app, nella card "Tecniche
+avanzate". Per ognuna trovi la stessa configurazione anche
+nella pipeline integrata, dove decidi quali stage eseguire e
+in quale ordine.
+
+> **Per gli sviluppatori**: i moduli vivono in `experiments/`
+> e sono esposti via REST in `webui/backend/routers/optimize.py`.
+> La sezione finale "Per chi sviluppa" elenca file e endpoint.
+
+## 1. ALNS — il LNS che impara da solo cosa funziona
+
+**Analogia**: immagina di scolpire una statua. Il LNS classico
+\`e come avere uno scalpello e darti regole fisse: "ogni volta,
+togli un pezzo grosso da una zona a caso e ricostruiscilo".
+L'**ALNS** \`e lo stesso processo, ma con sei scalpelli diversi
+(uno taglia righe orizzontali, uno verticali, uno cluster di
+classi vicine, ecc.) e tre modi di ricostruire. Dopo qualche
+iterazione lo scultore impara: "quando uso lo scalpello a
+righe orizzontali, dieci volte su dieci la statua viene
+peggio; quando uso quello a cluster, sette volte su dieci
+viene meglio". Da quel momento in poi tende a usare lo
+scalpello buono.
+
+**Quando usarla**: appena hai una soluzione iniziale (dopo Phase
+B) e hai 1-2 minuti di tempo per migliorarla. Sostituisce o
+segue il LNS classico. Default ON.
+
+### Dettaglio tecnico
 
 `experiments/alns.py`. Evoluzione del LNS classico:
 
@@ -36,7 +69,22 @@ API: `POST /api/optimize/meta/alns` con `budget_s`, `alns_T0`,
 `alns_alpha`, opzionali `alns_destroy[]` / `alns_repair[]` per
 limitare il pool di operator.
 
-## 2. Variable Neighborhood Search (VNS)
+## 2. VNS — la rifinitura che ti porta sull'ottimo locale
+
+**Analogia**: dopo che hai scolpito grossolanamente la statua
+con LNS/ALNS, vuoi rifinirla. Il VNS prende in mano una serie
+di lime di precisione sempre pi\`u fini: prima prova a scambiare
+due lezioni vicine; se non basta, scambia due paia; poi tre in
+catena; poi quattro o cinque. Quando ha finito tutto il giro
+senza riuscire a migliorare, si ferma — significa che sei arrivato
+a un ottimo locale.
+
+**Quando usarla**: alla fine del ciclo di metaeuristiche, dopo
+TS o ILS. Non sostituisce LNS/SA/TS: \`e una rifinitura
+finale. Default OFF (la accendi quando vuoi spremere il
+massimo a costo di pi\`u tempo).
+
+### Dettaglio tecnico
 
 `experiments/vns.py`. Strategia di intensificazione fine:
 
@@ -57,7 +105,28 @@ massima quando il budget lo permette.
 API: `POST /api/optimize/meta/vns` con `budget_s`, opzionale
 `vns_neighbourhoods[]`.
 
-## 3. Hall's theorem pre-check
+## 3. Hall pre-check — capire SUBITO se il problema \`e
+> risolvibile
+
+**Analogia**: prima di partire per un viaggio in macchina ti
+fermi a controllare il livello della benzina. Se vedi che il
+serbatoio \`e vuoto, non parti — eviti di restare a piedi a met\`a
+strada. Il **Hall pre-check** \`e l'equivalente per piTantum:
+controlla in pochi millisecondi se i docenti che hai a
+disposizione hanno *abbastanza ore complessive* per coprire
+tutte le ore richieste dalle classi. Se non bastano, te lo
+dice subito invece di lasciarti aspettare 10 minuti per scoprire
+che il modello \`e infeasible.
+
+\`E un controllo strutturale, non risolve nulla: solo ti
+risparmia tempo quando il modello \`e gi\`a perso in partenza.
+
+**Quando usarla**: sempre prima di Phase A, soprattutto in
+mezzo all'anno scolastico quando hai modificato cattedre o
+aggiunto vincoli che potrebbero aver reso il problema
+impossibile. Default ON nel pipeline.
+
+### Dettaglio tecnico
 
 `experiments/diagnostics/hall_check.py`. Diagnostico
 SINCRONO eseguibile prima di Phase A. Tre controlli:
@@ -87,7 +156,26 @@ Nella pipeline integrata e' uno step **tickable (default ON)**
 che, se trova violazioni, **interrompe** la pipeline prima di
 buttare tempo su un solver infeasible.
 
-## 4. Column Generation (Dantzig-Wolfe)
+## 4. Column Generation — per scuole grandi-grandi
+
+**Analogia**: invece di pianificare l'orario di tutta la scuola
+in un colpo solo, costruisci un "catalogo di settimane-tipo"
+per ciascun docente (es. tre o quattro varianti che mostrano
+come potrebbe andare la settimana di prof Rossi). Poi un
+secondo programma sceglie quale settimana-tipo prendere per
+ogni docente in modo che tutti i pezzi si incastrino. Se la
+combinazione non basta, generi nuove settimane-tipo e ripeti.
+
+\`E come scegliere un appartamento dal catalogo dell'agenzia
+immobiliare: invece di cercare in tutte le case esistenti,
+guardi solo quelle in catalogo, e se nessuna va bene chiedi
+all'agente di tirare fuori altri annunci.
+
+**Quando usarla**: solo per scuole molto grandi (>200 classi).
+Per istanze normali la pipeline standard \`e pi\`u veloce.
+Default OFF.
+
+### Dettaglio tecnico
 
 `experiments/column_generation.py`. Decomposizione per scuole
 molto grandi (>200 classi):
@@ -111,7 +199,26 @@ Default OFF nella pipeline (utile solo per istanze grandi).
 API: `POST /api/optimize/column-generation` (asincrono, crea un
 run con `kind='cg'`).
 
-## 5. Lagrangian Relaxation con subgradient ascent
+## 5. Lagrangian Relaxation — divide e impacca
+
+**Analogia**: la scuola \`e divisa in piccoli gruppi di classi che
+hanno pochi docenti in comune (i "cluster" prodotti dalla
+decomposizione spettrale). Per la maggior parte dei docenti,
+ognuno lavora dentro un solo cluster e si pu\`o pianificare il
+suo orario senza guardare cosa fa il resto della scuola. Per i
+"docenti-ponte" (che insegnano in pi\`u cluster) c'\`e per\`o un
+problema di coordinamento: non possono essere in due cluster
+diversi nello stesso slot. Il **Lagrangian** affronta proprio
+questo: introduce un costo "fittizio" sui ponti, lo aggiusta
+iterativamente per spingere il modello a rispettare il vincolo
+naturale, e finch\'e i ponti restano coerenti la pianificazione
+parallela dei cluster funziona.
+
+**Quando usarla**: scuole medio-grandi con molti cluster ben
+separati. Default OFF (avanzato; per la maggior parte dei casi
+LNS+ALNS+SA+TS sono sufficienti).
+
+### Dettaglio tecnico
 
 `experiments/lagrangian.py`. Decomposizione per cluster + duale
 sui ponti inter-cluster:
@@ -130,6 +237,32 @@ Lo skeleton converge in `max_iter` iterazioni o quando
 API: `POST /api/optimize/meta/lagrangian` con `budget_s`,
 `lagrangian_max_iter`, `lagrangian_tolerance`,
 `lagrangian_alpha_0`.
+
+## Le altre metaeuristiche (LNS classico, SA, TS, ILS)
+
+Le quattro metaeuristiche "storiche" del solver sono sempre
+disponibili, attive di default nel pipeline e si combinano bene
+fra loro.
+
+- **LNS (Large Neighborhood Search)**. Il padre dell'ALNS:
+  distrugge una porzione della soluzione e la ricostruisce con
+  CP-SAT. Pi\`u "rigido" dell'ALNS perch\'e non sceglie da solo
+  quale zona attaccare.
+
+- **SA (Simulated Annealing)**. Analogia: una palla di acciaio
+  fusa che si raffredda. Quando \`e calda, si muove molto e
+  accetta anche peggioramenti (per scappare da minimi locali);
+  raffreddandosi diventa sempre pi\`u selettiva e finisce per
+  posarsi nel pozzo pi\`u profondo che ha trovato.
+
+- **TS (Tabu Search)**. Analogia: un esploratore che tiene un
+  taccuino delle ultime mosse fatte e si vieta di ripeterle per
+  un po'. Cos\`i esce dai loop in cui altrimenti gli capiterebbe
+  di fare A->B->A->B in continuazione.
+
+- **ILS (Iterated Local Search)**. Alterna fasi di "ricerca
+  locale tranquilla" con scossoni periodici (perturbazioni)
+  per esplorare zone diverse dello spazio.
 
 ## Pipeline integrata: ordine consigliato
 
