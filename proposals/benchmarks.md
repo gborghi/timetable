@@ -1342,16 +1342,79 @@ log streaming SSE; accetta `time_a`, `time_day`, `n_workers`,
 `run_alns`, `alns_budget_s`, `alns_T0`, `alns_alpha`. La card
 del Workflow (commit `d02575d`) espone questi parametri in UI.
 
-### 16.4 Pipeline MEGA end-to-end (temporal + ALNS)
+### 16.4 Pipeline MEGA end-to-end (temporal + ALNS) -- numeri reali
 
-Driver `experiments/run_mega_pipeline.py` che lancia il
-temporale (`time_a=300, time_day=120, parallel=True, n_workers=6`)
-e poi ALNS (budget 1200s, 4 worker CP-SAT) sopra il risultato.
+Driver: `experiments/run_mega_pipeline.py`. Configurazione:
+`time_a=300, time_day=120, parallel=True, n_workers=6,
+cpsat_workers_per_day=2, alns_budget_s=1200, alns_workers=4`.
 
-I risultati misurati sono in `experiments/mega_run.log` e nel
-file `experiments/solution_mega_temporal_alns.pkl` prodotto dal
-driver. Il commit che chiude il run con i numeri reali e
-l'export xlsx aggiornera' questa sezione.
+Risultati misurati (run del 2026-05-03):
+
+| Stadio                      | Wall time | Esito        | SOFT obj |
+|-----------------------------|----------:|--------------|---------:|
+| Master CP-SAT pre-distrib.  |    301.4s | FEASIBLE     |  103.508 (Phase A interno) |
+| 6 day-solver paralleli      |    122.8s | 6/6 ok       |     -    |
+| (serial-equivalent days)    |    721.9s | -            |     -    |
+| (observed parallel speedup) |     5.9x  | -            |     -    |
+| **Temporale totale**        |    424.3s | HARD=True    |  6070.0  |
+| ALNS finishing (1200s budget) | 1204.0s | HARD=True    |  6050.0  |
+| **End-to-end totale**       |   1628s   | HARD=100%    |  **6050.0** |
+|                             | (27.1 min)|              |  (-0.3%) |
+
+Output:
+
+- `experiments/solution_mega_temporal_alns.pkl` -- soluzione
+  pickle con 15.816 celle attive
+- `experiments/output/mega/orario_classi_mega.xlsx` -- 100 tab
+  classe, 0 conflitti rilevati (123 KB)
+- `experiments/output/mega/orario_docenti_mega.xlsx` -- 178 tab
+  docente, 0 conflitti rilevati (207 KB)
+
+Note interpretative:
+
+- L'ALNS migliora di 20 punti SOFT (0.3%), modesto: il temporale
+  con master+days saturati produce gia' una soluzione
+  qualitativamente buona. Per spremere di piu' il SOFT
+  servirebbe budget ALNS piu' lungo (es. 2-3 ore) o un
+  raffreddamento piu' aggressivo dello SA-acceptance.
+- I 6 day-solver hanno tutti saturato il loro budget di 120s
+  (ognuno completa il proprio sotto-problema in esattamente
+  120s wall, dato che l'osservato e' 120.2-120.5s); aumentare
+  `time_day` ridurrebbe la pressione sul SOFT giornaliero.
+- Lo speedup di 5.9x e' near-perfetto (limite teorico 6x con
+  6 day-solver ortogonali); dimostra che la parallelizzazione
+  via ProcessPoolExecutor non introduce overhead significativo.
+- HARD-feasibility 100% sia dopo temporale che dopo ALNS:
+  nessuna violazione di copertura, sovrapposizione, o vincolo
+  contrattuale.
+
+### 16.4a La "ricucitura settimanale" -- nota di implementazione
+
+Lo step 3 dichiarato come "weekly recombination + check" nel
+docstring di `run_temporal_pipeline` non e' un check esplicito
+ma il check e' incorporato nei due stadi precedenti:
+
+1. **I vincoli settimanali sono dentro il master** (`solve_phase_a`):
+   somma ore/settimana per evento, motorie a coppie nello stesso
+   giorno, doppia mate/ita, max ore/giorno per docente e per
+   classe. Quando il master converge FEASIBLE, `dc_value`
+   rispetta gia' tutti questi vincoli.
+2. **I day-solver sono vincolati a `dc_value`**: il modello
+   CP-SAT giornaliero impone `sum_h slot[(p,cl,subj,d,h)] ==
+   dc_value[(p,cl,subj,d)]`. Quindi la combinazione dei 6 days
+   soddisfa per costruzione i vincoli settimanali.
+
+L'unico modo in cui un'iterazione puo' mancare e' se UN day-solver
+ritorna infeasible (`out=None`). In quel caso lo status diventa
+`'partial'` e il driver non lancia ALNS. Il loop "max 3 retries
+con feedback al master" (riallocazione greedy delle ore dal
+day infeasible verso days con margine) e' nella roadmap del
+docstring di `decomposition_temporal.py` ma non implementato
+in questa versione iniziale.
+
+Per la run MEGA descritta sopra: tutti i 6 days hanno chiuso ok,
+quindi `status='ok'`, ricucitura banale, ALNS lanciato su input
+HARD-feasible.
 
 ### 16.5 Esecuzione attuale (riproducibilita')
 

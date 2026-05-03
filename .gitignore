@@ -37,6 +37,11 @@ output/
 experiments/output/
 proofs/
 
+# Exception: MEGA benchmark xlsx outputs are tracked so reviewers
+# can inspect the final orario without re-running the pipeline.
+!experiments/output/mega/
+!experiments/output/mega/*.xlsx
+
 # Pickled snapshots / experiment artifacts
 experiments/*.pkl
 schedule/*.pkl
