@@ -223,18 +223,91 @@ master ne usa solo qualche decina. Il sotto-problema \`e
 relativamente piccolo (un docente alla volta) e CP-SAT lo
 risolve in pochi millisecondi.
 
-\subsection{Limiti pratici}
+\subsection{Granularit\`a configurabile del sotto-problema}
+
+Lo schema di Dantzig-Wolfe non impone che il pattern sia
+\emph{per docente}. La granularit\`a -- ovvero l'unit\`a di
+decomposizione su cui il sotto-problema CP-SAT genera nuovi
+pattern -- \`e una scelta di modellazione che $\pi$Tantum
+espone come opzione. Quattro granularit\`a sono previste,
+ognuna adatta a una taglia o a una struttura diversa della
+scuola.
+
+La granularit\`a \emph{per docente} (\texttt{teacher}) \`e quella
+gi\`a descritta sopra: un pattern \`e una proposta di
+settimana per un singolo docente, e si genera un sub per
+ogni docente. Funziona meglio nelle scuole piccole, dove il
+numero di docenti \`e dominante e i loro cataloghi
+settimanali coprono bene lo spazio.
+
+La granularit\`a \emph{per classe} (\texttt{class}) inverte
+la prospettiva: un pattern \`e la settimana di lezioni di una
+classe, con i suoi docenti gi\`a assegnati. Si genera un sub
+per ogni classe. Scala meglio della prima quando il numero
+di classi \`e moderato (30-80) ma i cataloghi per docente
+esplodono.
+
+La granularit\`a \emph{per giorno} (\texttt{day}) \`e una
+proiezione orizzontale: un pattern \`e una giornata intera
+della scuola, con tutti i suoi vincoli intra-day. Il sub
+\`e quindi un per giorno della settimana. Raramente \`e la
+scelta migliore in BnP puro -- la decomposizione temporale
+del cap.~\ref{ch:metodo_spettrale} la sfrutta in modo pi\`u
+diretto -- ma resta selezionabile per esperimenti.
+
+La granularit\`a \emph{per indirizzo} (\texttt{curriculum})
+\`e quella naturalmente adatta alle scuole italiane di
+medie-grandi dimensioni. Un pattern \`e la settimana di
+tutte le classi di un certo indirizzo (Scientifico,
+Classico, Linguistico, ITIS Informatica, eccetera), con i
+docenti che principalmente vi insegnano. Il sub \`e quindi
+un per ciascun indirizzo. I docenti-ponte (chi insegna in
+pi\`u indirizzi: tipicamente inglese, scienze motorie,
+religione) sono modellati come constraint del master che
+coordinano tra patterns di indirizzi diversi attraverso i
+duali. \`E lo schema classico di
+Vanderbeck~\parencite{vanderbeck2010} per Dantzig-Wolfe
+applicato a problemi con \emph{struttura bloccata}
+(\emph{block-angular}): il problema globale si decompone in
+blocchi quasi-indipendenti (gli indirizzi) collegati da
+poche variabili globali (i ponti).
+
+L'interfaccia espone una opzione \emph{Auto} che il backend
+risolve in base al numero di classi della scuola attiva:
+sotto le trenta classi suggerisce \texttt{teacher},
+fra trenta e ottanta \texttt{class}, sopra le ottanta con
+indirizzi ben definiti \texttt{curriculum}. Per il profilo
+MEGA (cento classi) l'auto-detect propone proprio
+\texttt{curriculum}, dato che gli otto indirizzi della
+scuola hanno pool di docenti largamente disgiunti.
+
+\subsection{Stato attuale e limiti pratici}
 
 \begin{avvertenzabox}
-$\pi$Tantum offre column generation come \emph{skeleton
-single-iteration} per scuole oltre 200 classi: una sola
-generazione di colonne, poi master LP, poi
-branch-and-bound. Non \`e l'implementazione completa di un
-branch-and-price moderno (richiederebbe gestione delle
-strategie di branching, gestione dei tagli, etc.). \`E
-considerato un \emph{pre-totale} che produce un upper bound
-per l'obiettivo prima di lanciare la pipeline standard.
-Default: \texttt{enable\_cg=False}.
+La versione attuale di $\pi$Tantum esegue una variante
+\emph{iterative-diversified} della column generation: master
+LP iterativo (\texttt{scipy.linprog} con backend HiGHS),
+arricchimento del catalogo con varianti casuali ad ogni
+iterazione, recupero intero per docente con il pattern di
+peso LP massimo, e \emph{completion solver} day-by-day che
+riempie eventuali gap residui invocando direttamente
+\texttt{cpsat\_v2\_timetable}. Il risultato \`e
+HARD-feasibile in tutti i casi misurati su \texttt{small}.
+
+Il vero \emph{branch-and-price} con sub-CP-SAT guidato dai
+duali per ciascuna delle quattro granularit\`a, e con
+branching di Ryan-Foster per la ricerca dell'integer feasible,
+\`e progettato e documentato in
+\texttt{docs/optimization\_strategies.md} ma non \`e ancora
+implementato. La stima realistica \`e di cinque-dieci
+giorni di engineering OR focalizzato. La struttura del
+modulo \texttt{experiments/column\_generation.py} \`e
+pronta per ospitare un secondo percorso
+(\texttt{mode="branch-and-price"}) accanto all'attuale
+\texttt{mode="iterative-diversified"}, ma il refactor del
+constraint del master e' la parte invasiva.
+
+Default: \texttt{enable\_cg=False} nella pipeline.
 \end{avvertenzabox}
 
 \section{Connessioni}
@@ -265,6 +338,12 @@ Default: \texttt{enable\_cg=False}.
   colonne.
 \item \cite{desrosiers2005}: \emph{A Primer in Column
   Generation}, manuale moderno e accessibile.
+\item \cite{vanderbeck2010}: trattamento sistematico delle
+  decomposizioni \emph{block-angular} per programmazione
+  intera, su cui poggia la granularit\`a per indirizzo.
+\item \cite{ryanfoster1981}: lo schema di branching che
+  porta il loro nome, riferimento standard nei moderni
+  branch-and-price.
 \item \cite{wolsey1998}: capp.~10--11 sui rilassamenti
   e le decomposizioni in IP.
 \end{itemize}

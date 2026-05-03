@@ -29,7 +29,7 @@
   let busyCg = false;
   let cgBudget = 60;
   let cgPatternsPerTeacher = 3;
-  let cgGranularity = 'teacher';   // 'teacher' | 'class' | 'day'
+  let cgGranularity = 'auto';      // 'auto' | 'teacher' | 'class' | 'day' | 'curriculum'
   let cgBranching = 'ryan_foster'; // 'variable' | 'ryan_foster'
   let cgMaxIterations = 100;
   let cgParallel = true;
@@ -269,21 +269,29 @@
     </div>
     <p class="text-[11px] text-ink-500 mb-2">
       Decomposizione Dantzig-Wolfe: master LP + sottoproblema CP-SAT.
-      Granularita' del sub-problema configurabile (per docente / per
-      classe / per giorno) e branching scegliendo tra variable
-      branching e Ryan-Foster. La pipeline corrente esegue la
-      variante <em>iterative-diversified</em> (master LP + pattern
-      enrichment + completion fallback day-by-day). Le altre due
-      granularita' e Ryan-Foster sono in roadmap; vedi
-      <code>experiments/column_generation.py</code> per lo stato.
+      Granularita' del sub-problema configurabile (4 opzioni: per
+      docente / per classe / per giorno / per indirizzo) e
+      branching tra variable e Ryan-Foster.
+      <em>Auto</em> suggerisce la granularita' in base alla taglia
+      della scuola (&lt;30 classi -&gt; per docente; 30-80 -&gt; per
+      classe; &gt;80 con curricula ben definiti -&gt; per indirizzo;
+      per giorno raramente la migliore).
+      La pipeline corrente esegue la variante
+      <em>iterative-diversified</em> (master LP + pattern enrichment
+      + completion fallback day-by-day, HARD=100% garantito).
+      Le altre granularita', Ryan-Foster e branch-and-bound vero
+      sono in roadmap; vedi
+      <code>docs/optimization_strategies.md &sect;4</code>.
     </p>
     <div class="grid grid-cols-2 gap-2 mb-2">
       <div class="field !mb-0">
         <label class="!text-[11px]">Granularita' sub-problema</label>
         <select bind:value={cgGranularity} class="w-full">
-          <option value="teacher">Per docente (default)</option>
+          <option value="auto">Auto (suggerita dalla taglia)</option>
+          <option value="teacher">Per docente</option>
           <option value="class">Per classe (roadmap)</option>
           <option value="day">Per giorno (roadmap)</option>
+          <option value="curriculum">Per indirizzo / curriculum (roadmap)</option>
         </select>
       </div>
       <div class="field !mb-0">

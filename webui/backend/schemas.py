@@ -512,9 +512,11 @@ class ColumnGenerationIn(BaseModel):
     """Inputs for the async Column Generation run.
 
     `granularity` selects the sub-problem unit: 'teacher' is the
-    only fully-implemented choice today; 'class' and 'day' are
-    accepted but the backend currently maps them to 'teacher' with
-    a log warning, until the full BnP refactor lands.
+    only fully-implemented choice today; 'class', 'day' and
+    'curriculum' (per-indirizzo) are accepted but the backend
+    currently maps them to 'teacher' with a log warning, until
+    the full BnP refactor lands. 'auto' picks one based on the
+    number of classes in the active school (see backend logic).
 
     `branching_strategy` is accepted but the current implementation
     does not perform integer branching: it relies on the iterative
@@ -524,7 +526,7 @@ class ColumnGenerationIn(BaseModel):
     """
     time_budget_s: float = 60.0
     patterns_per_teacher: int = 3
-    granularity: str = "teacher"           # 'teacher' | 'class' | 'day'
+    granularity: str = "auto"  # 'auto' | 'teacher' | 'class' | 'day' | 'curriculum'
     branching_strategy: str = "ryan_foster"  # 'ryan_foster' | 'variable'
     max_iterations: int = 5
     parallel: bool = True

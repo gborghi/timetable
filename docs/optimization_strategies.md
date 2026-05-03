@@ -226,6 +226,26 @@ La specifica completa data da Giovanni richiede:
      vincoli di copertura monte ore.
    - `day`: variabili per il giorno, vincoli di non-overlap
      classe e docente, obiettivo guidato dai duali.
+   - `curriculum` (per indirizzo): un sub-CP-SAT per ciascun
+     indirizzo della scuola (Scientifico, Classico, Linguistico,
+     ITIS Informatica, ...). Il sub copre internamente le
+     ore-cattedra dei docenti che insegnano principalmente in
+     quell'indirizzo e di tutte le sue classi. I docenti-ponte
+     (chi insegna in piu' indirizzi -- inglese, motorie, religione
+     tipicamente) sono modellati come constraint del master che
+     coordinano tra patterns di indirizzi diversi via duali. E'
+     la granularita' naturale per scuole italiane medio-grandi,
+     dove la disgiunzione fra i pool di docenti per materie
+     d'indirizzo (greco/latino solo nel classico, scienze
+     applicate solo nello scientifico-applicate, ecc.) rende i
+     sub-problemi piccoli e le interazioni bridge-only.
+
+   La granularita' `curriculum` segue lo schema classico di
+   Vanderbeck per Dantzig-Wolfe applicato a problemi di
+   scheduling con **struttura bloccata** (block-angular): il
+   problema globale si decompone in blocchi indipendenti
+   (gli indirizzi) collegati da poche variabili globali (i
+   docenti-ponte).
 3. **Iterative pricing loop**: master -> duali -> sub-CP-SAT
    in parallelo -> nuovi pattern con reduced cost negativo ->
    master, fino a convergenza.
@@ -245,9 +265,36 @@ e' pronta a essere estesa con un secondo path
 (`mode="branch-and-price"`), ma il refactor del master e' la
 parte invasiva.
 
-Riferimenti: Dantzig & Wolfe 1960; Desrosiers & Lubbecke 2005,
-*A Primer in Column Generation*; Ryan & Foster 1981;
-Vanderbeck & Wolsey 2010.
+### Auto-detect della granularita' (nella UI)
+
+L'UI espone una opzione `auto` (default) che il backend
+risolve in base al numero di classi della scuola attiva:
+
+- **< 30 classi** -> `teacher`. Il catalogo settimanale per
+  docente e' piccolo abbastanza da coprire bene lo spazio.
+- **30-80 classi** -> `class`. Il catalogo per-classe scala
+  meglio mentre quelli per-docente esplodono.
+- **> 80 classi** con curricula ben definiti -> `curriculum`.
+  Sfrutta la struttura bloccata della scuola.
+- **`day`** non e' mai default ma resta selezionabile per
+  esperimenti.
+
+Per il MEGA (100 classi) l'auto-detect propone `curriculum`,
+che e' la scelta naturale dato che gli 8 indirizzi della
+scuola hanno pool di docenti largamente disgiunti.
+
+### Riferimenti
+
+- Dantzig & Wolfe 1960, *Decomposition principle for linear
+  programs*. L'articolo che inaugura la decomposizione
+  Dantzig-Wolfe.
+- Desrosiers & Lubbecke 2005, *A Primer in Column Generation*.
+  Riferimento moderno e accessibile.
+- Ryan & Foster 1981, *An integer programming approach to
+  scheduling*. Lo schema di branching che porta il loro nome.
+- Vanderbeck & Wolsey 2010, *Reformulation and decomposition of
+  integer programs*. Trattamento sistematico della decomposizione
+  block-angular su cui si basa la granularita' per curriculum.
 
 Default OFF nella pipeline (utile solo per istanze grandi).
 

@@ -991,9 +991,30 @@ def run_diag_distributions(*, spec: dict | None = None) -> int:
     )
 
 
+def _suggest_cg_granularity(n_classes: int) -> str:
+    """Heuristic for the 'auto' granularity option.
+
+    < 30 classes  -> 'teacher' (small schools, the catalog is
+                     small enough that per-teacher patterns
+                     enumerate the search effectively).
+    30-80 classes -> 'class' (medium schools, per-class patterns
+                     scale better while teacher catalogs explode).
+    > 80 classes  -> 'curriculum' (large schools with structured
+                     indirizzi: most teachers stay within an
+                     indirizzo, the bridge teachers are few).
+    The 'day' granularity is rarely the best option for BnP, but
+    remains selectable for experimentation.
+    """
+    if n_classes < 30:
+        return "teacher"
+    if n_classes <= 80:
+        return "class"
+    return "curriculum"
+
+
 def run_column_generation(*, time_budget_s: float = 60.0,
                           patterns_per_teacher: int = 3,
-                          granularity: str = "teacher",
+                          granularity: str = "auto",
                           branching_strategy: str = "ryan_foster",
                           max_iterations: int = 5,
                           parallel: bool = True,
@@ -1005,11 +1026,12 @@ def run_column_generation(*, time_budget_s: float = 60.0,
     a new Solution with kind='cg'.
 
     The `granularity`, `branching_strategy`, `max_iterations` and
-    `parallel` parameters are accepted from the UI but only
-    granularity='teacher' is fully wired today (the others map to
-    'teacher' with a log warning). Full branch-and-price with
-    multi-granularity sub-CP-SAT and Ryan-Foster branching is on
-    the roadmap; see docs/optimization_strategies.md.
+    `parallel` parameters are accepted from the UI. Today the
+    only fully-wired path corresponds to granularity='teacher';
+    'class', 'day' and 'curriculum' (per-indirizzo) are accepted
+    but mapped to 'teacher' with a log warning until the full BnP
+    refactor lands. 'auto' is resolved server-side from the
+    number of classes in the active school.
     """
     params = dict(time_budget_s=time_budget_s,
                   patterns_per_teacher=patterns_per_teacher,
@@ -1018,9 +1040,27 @@ def run_column_generation(*, time_budget_s: float = 60.0,
                   max_iterations=max_iterations,
                   parallel=parallel,
                   log=log)
-    if granularity not in ("teacher",):
-        print(f"[cg] WARNING: granularity={granularity!r} non e' "
-              f"ancora wirata; uso 'teacher' (vedi roadmap)")
+    # Resolve 'auto' immediately so the run row records the
+    # concrete decision.
+    if granularity == "auto":
+        with SessionLocal() as db:
+            n_cls = db.query(models.SchoolClass).count()
+        suggested = _suggest_cg_granularity(n_cls)
+        print(f"[cg] granularity='auto' resolved to "
+              f"'{suggested}' (n_classes={n_cls})")
+        params["granularity_resolved"] = suggested
+        granularity = suggested
+    if granularity not in (
+            "teacher", "class", "day", "curriculum"):
+        print(f"[cg] WARNING: granularity={granularity!r} non "
+              f"riconosciuta; uso 'teacher'")
+        granularity = "teacher"
+    if granularity != "teacher":
+        print(f"[cg] WARNING: granularity={granularity!r} accetta "
+              f"il run ma il sub-CP-SAT corrispondente non e' "
+              f"ancora implementato (vedi roadmap in "
+              f"docs/optimization_strategies.md). Eseguo la "
+              f"variante iterative-diversified per docente.")
     if branching_strategy not in ("variable", "ryan_foster"):
         print(f"[cg] WARNING: branching_strategy={branching_strategy!r} "
               f"non riconosciuta")
