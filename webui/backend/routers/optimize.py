@@ -216,26 +216,33 @@ def recommend_decomposition(db: Session = Depends(get_db)):
         from decomposition_auto import auto_detect_decomposition_strategy
     except ImportError as e:
         raise HTTPException(500, f"decomposition_auto not importable: {e}")
-    # Convert the database snapshot to the profs dict expected by the
-    # heuristic. The conversion mirrors engine_io.db_to_engine_dict()
-    # but stays read-only to avoid mutating engine state.
-    try:
-        from .. import engine_io
-        profs = engine_io.read_profs_for_decomposition(db)
-    except AttributeError:
-        # Fallback: build minimal profs dict from cattedre.
-        profs = {}
-        for c in db.query(models.Cattedra).all():
-            t = db.query(models.Teacher).filter_by(id=c.teacher_id).first()
-            cl = db.query(models.SchoolClass).filter_by(id=c.class_id).first()
-            if t and cl:
-                key = f"{t.last_name or ''}_{t.first_name or ''}".strip("_")
-                profs.setdefault(key, {"classi": []})
-                profs[key]["classi"].append(cl.name)
-        for v in profs.values():
-            v["classi"] = sorted(set(v["classi"]))
+    # Build the profs dict from Assignment rows (one row per teacher-
+    # class-subject triple). The decomposition heuristic only needs
+    # the per-teacher class membership, so we collapse over subjects.
+    profs = {}
+    rows = (db.query(models.Assignment, models.Teacher, models.SchoolClass)
+              .join(models.Teacher,
+                    models.Teacher.id == models.Assignment.teacher_id)
+              .join(models.SchoolClass,
+                    models.SchoolClass.id == models.Assignment.class_id)
+              .all())
+    for _a, t, cl in rows:
+        # Stable, human-readable key. Falls back to the teacher id
+        # so two homonyms cannot collapse onto the same node.
+        last = (t.last_name or "").strip()
+        first = (t.first_name or "").strip()
+        if last or first:
+            key = f"{last}_{first}".strip("_")
+        else:
+            key = f"teacher_{t.id}"
+        profs.setdefault(key, {"classi": []})
+        profs[key]["classi"].append(cl.name)
+    for v in profs.values():
+        v["classi"] = sorted(set(v["classi"]))
     if not profs:
-        raise HTTPException(409, "no teacher-class assignments available")
+        raise HTTPException(
+            409,
+            "no teacher-class assignments yet -- run Phase A first")
     rec = auto_detect_decomposition_strategy(profs)
     return rec.to_dict()
 

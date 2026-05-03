@@ -31,6 +31,50 @@
                 rooms_time_limit_s: 30,
                 rooms_prefer_home: true };
   let stepRooms = { time_limit_s: 30, workers: 4, log: true, prefer_home: true };
+
+  // Decomposition strategies (card 10).
+  let decompTemporal = {
+    pre_distribution_time: 30, day_time: 30,
+    parallel_workers: 6, max_iterations: 3,
+  };
+  let decompMetis = {
+    k: 0,                    // 0 means auto (sqrt(n_classes))
+    imbalance: 1.05,
+    time_per_cluster: 60, time_bridges: 60,
+  };
+  let decompCurriculum = {
+    min_cluster_size: 3,
+    time_per_cluster: 60, time_bridges: 60,
+    manual_groupings: '',  // user-provided JSON like {"linguistico":"_misto"}
+  };
+  let decompRecommendation = null;
+  let decompRecommendationLoading = false;
+  let decompRecommendationError = '';
+  async function fetchDecompRecommendation() {
+    decompRecommendationLoading = true;
+    decompRecommendationError = '';
+    try {
+      decompRecommendation = await api.get(
+        '/api/optimize/decomposition/recommend');
+    } catch (e) {
+      decompRecommendationError = e.message || String(e);
+    } finally {
+      decompRecommendationLoading = false;
+    }
+  }
+  async function launchDecomposition(method, params) {
+    try {
+      const r = await api.post(
+        '/api/optimize/decomposition/' + method, params || {});
+      runId = r.run_id;
+      flash('Run #' + runId + ' avviato', 'success');
+      reloadRuns();
+    } catch (e) {
+      // Backend returns 501 for methods whose solve-loop wiring is on
+      // the roadmap; surface that as a clear, non-scary toast.
+      flash('Decomposizione ' + method + ': ' + (e.message || e), 'error');
+    }
+  }
   // Pipeline (card 9): user-defined ordered list of {key,label,enabled}.
   // Drag a row to reorder; tick to include/exclude. Each phase_b/meta
   // step honours its OWN optimize_rooms toggle on cards 3 / 4-7 -- the
@@ -38,6 +82,10 @@
   const PIPELINE_LABEL = {
     hall_check: 'Pre-check Hall (diagnostico)',
     phase_a: '2) Assegnazione (Phase A)',
+    decomp_spectral:   '3a) Decomposizione spettrale',
+    decomp_temporal:   '3b) Decomposizione temporale (per giorno)',
+    decomp_metis:      '3c) Decomposizione METIS (k-way)',
+    decomp_curriculum: '3d) Decomposizione per curriculum',
     phase_b: '3) Schedulazione orario (Phase B)',
     cg:      'Column Generation (alternativo a Phase B)',
     lagrangian: 'Lagrangian Relaxation (subgradient)',
@@ -58,18 +106,22 @@
   //   - ils (ON)
   //   - cg, rooms (OFF; specialised stages)
   let pipelineList = [
-    { key: 'hall_check', enabled: true  },
-    { key: 'phase_a',    enabled: true  },
-    { key: 'phase_b',    enabled: true  },
-    { key: 'cg',         enabled: false },
-    { key: 'lns',        enabled: true  },
-    { key: 'alns',       enabled: true  },
-    { key: 'sa',         enabled: true  },
-    { key: 'ts',         enabled: true  },
-    { key: 'vns',        enabled: false },
-    { key: 'lagrangian', enabled: false },
-    { key: 'ils',        enabled: true  },
-    { key: 'rooms',      enabled: false },
+    { key: 'hall_check',        enabled: true  },
+    { key: 'phase_a',           enabled: true  },
+    { key: 'decomp_spectral',   enabled: true  },
+    { key: 'decomp_temporal',   enabled: false },
+    { key: 'decomp_metis',      enabled: false },
+    { key: 'decomp_curriculum', enabled: false },
+    { key: 'phase_b',           enabled: true  },
+    { key: 'cg',                enabled: false },
+    { key: 'lns',               enabled: true  },
+    { key: 'alns',              enabled: true  },
+    { key: 'sa',                enabled: true  },
+    { key: 'ts',                enabled: true  },
+    { key: 'vns',               enabled: false },
+    { key: 'lagrangian',        enabled: false },
+    { key: 'ils',               enabled: true  },
+    { key: 'rooms',             enabled: false },
   ];
   let stepFull = {
     profile: '', workers: 8, time_assign: 30,
@@ -102,6 +154,10 @@
 
   onMount(async () => {
     await Promise.all([reloadRuns(), reloadActiveProfile()]);
+    // Fire-and-forget: best-effort recommendation fetch. If the
+    // school has no Phase A yet the endpoint returns 409 and we
+    // surface that gracefully in the card.
+    fetchDecompRecommendation();
   });
   async function reloadRuns() {
     try { runs = (await api.get('/api/optimize/runs?limit=15')); }
@@ -328,6 +384,155 @@
       <button class="btn-primary mt-3" on:click={launchRooms}>Avvia</button>
     </div>
 
+    <!-- Card 10: Decomposition strategies -->
+    <div class="card p-5">
+      <h2 class="mb-1">10) Strategie di decomposizione</h2>
+      <p class="text-xs text-ink-500 mb-3">
+        Quattro strategie ortogonali per spezzare il problema di
+        Phase B in sotto-problemi piu' piccoli. Ognuna restituisce
+        cluster di classi e una lista di docenti-ponte. Si possono
+        combinare nella pipeline: prima la primaria (spettrale,
+        METIS o per curriculum), poi la temporale per parallelizzare
+        sui sei giorni.
+      </p>
+
+      <!-- Suggerimento: auto-detect -->
+      <div class="rounded border border-ink-200 bg-ink-50/40 p-3 mb-3">
+        <div class="flex items-baseline justify-between gap-2 mb-1">
+          <strong class="text-sm">Suggerimento (auto-detect)</strong>
+          <button class="btn !text-xs !px-2 !py-1"
+                  on:click={fetchDecompRecommendation}
+                  disabled={decompRecommendationLoading}>
+            {decompRecommendationLoading ? '...' : 'Ricalcola'}
+          </button>
+        </div>
+        {#if decompRecommendationError}
+          <p class="text-xs text-red-600">{decompRecommendationError}</p>
+        {:else if !decompRecommendation && !decompRecommendationLoading}
+          <p class="text-xs text-ink-500">
+            Nessun dato ancora. Esegui Phase A oppure premi
+            <em>Ricalcola</em>.
+          </p>
+        {:else if decompRecommendation}
+          <p class="text-xs">
+            <strong>Strategia primaria consigliata:</strong>
+            <code class="pill pill-blue">{decompRecommendation.primary_strategy}</code>
+            {#if decompRecommendation.combine_with_temporal}
+              + temporale
+            {/if}
+            <span class="text-ink-500 ml-2">
+              modularita {decompRecommendation.modularity}, densita {decompRecommendation.density}
+            </span>
+          </p>
+          <p class="text-xs text-ink-500 mt-1">
+            {decompRecommendation.motivation}
+          </p>
+        {/if}
+      </div>
+
+      <!-- Spectral (already wired through Phase B) -->
+      <div class="rounded border border-ink-200 p-3 mb-3">
+        <div class="flex items-baseline justify-between mb-1">
+          <strong class="text-sm">3a) Decomposizione spettrale</strong>
+          <span class="text-[10px] text-ink-500">grafo bipartito + Laplaciano</span>
+        </div>
+        <p class="text-xs text-ink-500 mb-2">
+          Identifica cluster naturali nel grafo classe-docente
+          attraverso il vettore di Fiedler. Brilla quando la
+          modularita' e' alta (sopra 0.30). I parametri sono
+          quelli della card 3 (Phase B).
+        </p>
+        <p class="text-[11px] text-ink-500">
+          Avvio: dalla card 3 con
+          <code>Decomposizione spettrale</code> ticked.
+        </p>
+      </div>
+
+      <!-- Temporal -->
+      <div class="rounded border border-ink-200 p-3 mb-3">
+        <div class="flex items-baseline justify-between mb-1">
+          <strong class="text-sm">3b) Decomposizione temporale (per giorno)</strong>
+          <span class="text-[10px] text-ink-500">parallelizza sui 6 giorni</span>
+        </div>
+        <p class="text-xs text-ink-500 mb-2">
+          Spezza il problema lungo l'asse del tempo: ciascun giorno
+          della settimana diventa un sotto-problema separato,
+          risolvibile in parallelo. Sempre applicabile, ortogonale
+          alle altre strategie.
+        </p>
+        <div class="grid grid-cols-2 gap-3">
+          <div class="field"><label>time pre-distribuzione (s)</label>
+            <input type="number" bind:value={decompTemporal.pre_distribution_time}/></div>
+          <div class="field"><label>time per giorno (s)</label>
+            <input type="number" bind:value={decompTemporal.day_time}/></div>
+          <div class="field"><label>workers paralleli</label>
+            <input type="number" bind:value={decompTemporal.parallel_workers}/></div>
+          <div class="field"><label>max iterazioni</label>
+            <input type="number" bind:value={decompTemporal.max_iterations}/></div>
+        </div>
+        <button class="btn-primary !text-xs mt-2"
+                on:click={() => launchDecomposition('temporal', decompTemporal)}>
+          Avvia stage standalone
+        </button>
+      </div>
+
+      <!-- METIS -->
+      <div class="rounded border border-ink-200 p-3 mb-3">
+        <div class="flex items-baseline justify-between mb-1">
+          <strong class="text-sm">3c) Decomposizione METIS (k-way)</strong>
+          <span class="text-[10px] text-ink-500">richiede pymetis</span>
+        </div>
+        <p class="text-xs text-ink-500 mb-2">
+          Partitioning bilanciato attraverso multilevel matching.
+          Funziona bene su grafi densi privi di cluster naturali,
+          dove la spettrale fatica.
+        </p>
+        <div class="grid grid-cols-2 gap-3">
+          <div class="field"><label>k (0 = auto sqrt(n))</label>
+            <input type="number" bind:value={decompMetis.k}/></div>
+          <div class="field"><label>tolleranza sbilanciamento</label>
+            <input type="number" step="0.01" bind:value={decompMetis.imbalance}/></div>
+          <div class="field"><label>time per cluster (s)</label>
+            <input type="number" bind:value={decompMetis.time_per_cluster}/></div>
+          <div class="field"><label>time bridges (s)</label>
+            <input type="number" bind:value={decompMetis.time_bridges}/></div>
+        </div>
+        <button class="btn-primary !text-xs mt-2"
+                on:click={() => launchDecomposition('metis', decompMetis)}>
+          Avvia stage standalone
+        </button>
+      </div>
+
+      <!-- Curriculum -->
+      <div class="rounded border border-ink-200 p-3">
+        <div class="flex items-baseline justify-between mb-1">
+          <strong class="text-sm">3d) Decomposizione per curriculum</strong>
+          <span class="text-[10px] text-ink-500">un cluster per indirizzo</span>
+        </div>
+        <p class="text-xs text-ink-500 mb-2">
+          Partiziona le classi per indirizzo di studio
+          (curriculum_id). Cluster prevedibili e interpretabili.
+          I curricula con poche classi vengono accorpati in
+          <code>_misto</code>.
+        </p>
+        <div class="grid grid-cols-2 gap-3">
+          <div class="field"><label>min classi per cluster</label>
+            <input type="number" bind:value={decompCurriculum.min_cluster_size}/></div>
+          <div class="field"><label>time per cluster (s)</label>
+            <input type="number" bind:value={decompCurriculum.time_per_cluster}/></div>
+          <div class="field"><label>time bridges (s)</label>
+            <input type="number" bind:value={decompCurriculum.time_bridges}/></div>
+          <div class="field"><label>raggruppamenti manuali (JSON)</label>
+            <input type="text" placeholder='{"linguistico":"_misto"}'
+                   bind:value={decompCurriculum.manual_groupings}/></div>
+        </div>
+        <button class="btn-primary !text-xs mt-2"
+                on:click={() => launchDecomposition('curriculum', decompCurriculum)}>
+          Avvia stage standalone
+        </button>
+      </div>
+    </div>
+
     <!-- Step 9: pipeline (draggable + tickable) -->
     <div class="card p-5">
       <h2 class="mb-3">9) Pipeline completa</h2>
@@ -335,6 +540,11 @@
         Trascina le righe per riordinare gli step e usa la spunta per
         includere o escludere uno step dalla pipeline. La pipeline esegue
         gli step abilitati nell'ordine indicato.
+        Le quattro decomposizioni (3a-3d) sono mutuamente
+        combinabili: tipicamente si abilita una primaria fra
+        <em>spettrale</em>, <em>METIS</em> e <em>per curriculum</em>,
+        eventualmente affiancata dalla <em>temporale</em> per
+        parallelizzare sui sei giorni.
         <strong>Assegna aule (step 8)</strong> e' presente nella lista
         come step opzionale: se ticked viene eseguito come elemento
         indipendente nel punto in cui appare nell'ordine. In
