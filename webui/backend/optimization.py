@@ -1093,10 +1093,49 @@ def run_full_pipeline(profile: str,
 
         # Sanitize the steps list. Unknown keys are silently dropped;
         # an empty list is a no-op (still creates a 'done' run).
+        # decomp_* keys are alternatives to plain phase_b: each runs
+        # its own scheduler. If multiple decomp_* are ticked plus
+        # phase_b, the first in order wins; later occurrences become
+        # no-ops with a log warning (we never run two competing
+        # schedulers in a row).
         valid = {"hall_check", "phase_a", "phase_b", "cg",
+                  "decomp_spectral", "decomp_temporal",
+                  "decomp_metis", "decomp_curriculum",
                   "lns", "alns", "sa", "ts", "vns", "ils",
                   "lagrangian", "rooms"}
         seq = [s for s in (steps or []) if s in valid]
+        # decomp_spectral is shorthand for "phase_b with
+        # use_decomposition=true" -- the existing phase_b handler
+        # already does spectral when that flag is set. Substitute
+        # in-place so the rest of the dispatcher never sees the
+        # alias.
+        seq = ["phase_b" if s == "decomp_spectral" else s for s in seq]
+        if phase_b_kwargs is not None:
+            phase_b_kwargs = dict(phase_b_kwargs)
+            if any(s == "phase_b" for s in seq):
+                # If the user ticked decomp_spectral (now mapped to
+                # phase_b), force use_decomposition=true; otherwise
+                # leave the existing flag (already true by default).
+                phase_b_kwargs.setdefault("use_decomposition", True)
+        # De-conflict scheduler steps. Keep the first scheduler
+        # token; later ones are dropped from the run with a notice.
+        scheduler_tokens = ("phase_b", "decomp_temporal",
+                             "decomp_metis", "decomp_curriculum")
+        seen_scheduler = False
+        deconflicted = []
+        dropped_schedulers = []
+        for s in seq:
+            if s in scheduler_tokens:
+                if seen_scheduler:
+                    dropped_schedulers.append(s)
+                    continue
+                seen_scheduler = True
+            deconflicted.append(s)
+        seq = deconflicted
+        if dropped_schedulers:
+            print(f"[full] WARNING: piu' scheduler ticked nella "
+                  f"pipeline; eseguo solo il primo, scarto "
+                  f"{dropped_schedulers}")
         n_steps = max(1, len(seq))
         with SessionLocal() as db:
             n_cl = db.query(models.SchoolClass).count()
@@ -1267,6 +1306,150 @@ def run_full_pipeline(profile: str,
                         "rooms_time_limit_s", 30.0)),
                     prefer_home=bool(phase_b_kwargs.get(
                         "rooms_prefer_home", True)),
+                )
+                continue
+
+            # ---- Decomposition steps (alternative schedulers) ----
+            # decomp_spectral is normalized to "phase_b" earlier in
+            # the dispatcher (the phase_b handler already runs
+            # spectral when use_decomposition=true). Only the three
+            # genuinely-new methods land here.
+            if step in ("decomp_temporal", "decomp_metis",
+                        "decomp_curriculum"):
+                method = step.replace("decomp_", "")
+                print(f"[full] === STEP decomp_{method} ===")
+                if state["profs"] is None:
+                    with SessionLocal() as db:
+                        state["profs"] = engine_io.profs_dict_from_db(db)
+                profs = state["profs"]
+                if not profs:
+                    raise RuntimeError(
+                        f"decomp_{method}: nessuna assegnazione; "
+                        f"metti 'phase_a' prima nella pipeline."
+                    )
+                # Lazy import the experiments modules
+                exp_dir = os.path.join(os.path.dirname(__file__),
+                                        "..", "..", "experiments")
+                if exp_dir not in sys.path:
+                    sys.path.insert(0, exp_dir)
+                pb = phase_b_kwargs or {}
+                t_a = float(pb.get("time_a", 60))
+                t_day = float(pb.get("time_day", 30))
+                t_bridges = float(pb.get("time_bridges", 30))
+                t_cluster = float(pb.get("time_cluster", 30))
+                t_ric = float(pb.get("time_ricucitura", 60))
+                t_mono = float(pb.get("time_mono", 120))
+
+                if method == "temporal":
+                    import decomposition_temporal as dec_t  # type: ignore
+                    # Persist profs to a temp pickle so the
+                    # ProcessPoolExecutor workers can read it.
+                    import tempfile, pickle as _pk
+                    ws = _run_workspace(rid)
+                    profs_pkl = os.path.join(ws, "profs_decomp.pkl")
+                    with open(profs_pkl, "wb") as f:
+                        _pk.dump(profs, f)
+                    res = dec_t.run_temporal_pipeline(
+                        profs_pkl,
+                        parallel=True,
+                        n_workers=int(pb.get("n_workers") or
+                                       min(6, os.cpu_count() or 1)),
+                        time_a=t_a, time_day=t_day,
+                        day_timeout=t_day * 6,
+                        cpsat_workers_per_day=int(
+                            pb.get("cpsat_workers_per_day", 2)),
+                        enforce_no_holes=bool(
+                            pb.get("enforce_no_holes", True)),
+                        log_progress=False,
+                    )
+                    state["full_solution"] = res["full_solution"]
+                    state["dc_value"] = res["dc_value"]
+                    state["metrics"] = {
+                        **state.get("metrics", {}),
+                        "decomp_method": "temporal",
+                        "decomp_master_s": round(
+                            res["timings"]["master"], 1),
+                        "decomp_days_total_s": round(
+                            res["timings"]["days_total"], 1),
+                        "decomp_failed_days": res["failed_days"],
+                    }
+                elif method in ("metis", "curriculum"):
+                    if method == "metis":
+                        import decomposition_metis as dec_x  # type: ignore
+                        kwargs = dict(
+                            k=pb.get("k"),
+                            imbalance=float(pb.get("imbalance", 1.05)),
+                        )
+                        solver_fn = dec_x.solve_with_metis_decomposition
+                    else:
+                        import decomposition_curriculum as dec_x  # type: ignore
+                        # Need the class -> curriculum mapping
+                        with SessionLocal() as db:
+                            cls_to_curr = {}
+                            for c in db.query(models.SchoolClass).all():
+                                if c.curriculum_id is not None:
+                                    cur = db.query(models.Curriculum).filter_by(
+                                        id=c.curriculum_id).first()
+                                    cls_to_curr[c.name] = (
+                                        cur.name if cur
+                                        else "cur_" + str(c.curriculum_id))
+                                else:
+                                    cls_to_curr[c.name] = "_unknown"
+                        auto = dec_x.auto_group_small_curricula(
+                            cls_to_curr, min_classes=int(
+                                pb.get("min_cluster_size", 3)))
+                        kwargs = dict(
+                            classroom_to_curriculum=cls_to_curr,
+                            manual_groupings=auto,
+                        )
+                        solver_fn = dec_x.solve_with_curriculum_decomposition
+                    res = solver_fn(
+                        profs,
+                        time_a=t_a, time_bridges=t_bridges,
+                        time_per_cluster=t_cluster,
+                        time_ricucitura=t_ric, time_mono=t_mono,
+                        workers=workers, log=False,
+                        **kwargs,
+                    )
+                    state["full_solution"] = res["full_solution"]
+                    state["dc_value"] = res["dc_value"]
+                    state["metrics"] = {
+                        **state.get("metrics", {}),
+                        "decomp_method": method,
+                        "decomp_master_s": round(
+                            res["timings"]["master"], 1),
+                        "decomp_days_total_s": round(
+                            res["timings"]["days_total"], 1),
+                        "decomp_cluster_sizes": res["cluster_sizes"],
+                        "decomp_bridges_count": res["bridges_count"],
+                        "decomp_failed_days": res["failed_days"],
+                    }
+                # Persist the solution from the temporal/metis/
+                # curriculum scheduler and continue with the
+                # metaheuristics that follow in the pipeline list.
+                full_solution = state["full_solution"] or {}
+                v, m = meta.compute_soft(full_solution, profs)
+                feasible = meta.is_hard_feasible(
+                    full_solution, profs, verbose=False)
+                with SessionLocal() as db:
+                    sid = engine_io.import_solution_into_db(
+                        db, full_solution,
+                        name=f"Pipeline {rid} decomp_{method}",
+                        kind=f"phase_b_{method}",
+                        obj_value=float(v),
+                        metrics={**m, "feasible": feasible,
+                                 **state.get("metrics", {})},
+                        make_active=True,
+                    )
+                state["sid"] = sid
+                state["obj"] = float(v)
+                print(f"[full] decomp_{method} done: feasible="
+                      f"{feasible}, obj={v:.1f}")
+                _maybe_rooms_for(
+                    f"decomp_{method}",
+                    enabled=bool(pb.get("optimize_rooms", False)),
+                    tlim=float(pb.get("rooms_time_limit_s", 30.0)),
+                    prefer_home=bool(pb.get("rooms_prefer_home", True)),
                 )
                 continue
 

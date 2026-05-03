@@ -361,12 +361,20 @@
           </label>
         </div>
       </div>
-      <div class="flex gap-2 mt-3">
+      <div class="flex gap-2 mt-3 flex-wrap">
         <button class="btn-primary" on:click={() => launchMeta('lns')}>4) LNS</button>
+        <button class="btn-primary" on:click={() => launchMeta('alns')}>4-bis) ALNS</button>
         <button class="btn-primary" on:click={() => launchMeta('sa')}>5) SA</button>
         <button class="btn-primary" on:click={() => launchMeta('ts')}>6) TS</button>
+        <button class="btn-primary" on:click={() => launchMeta('vns')}>6-bis) VNS</button>
         <button class="btn-primary" on:click={() => launchMeta('ils')}>7) ILS</button>
       </div>
+      <p class="text-[11px] text-ink-500 mt-2">
+        ALNS e VNS sono pienamente parte del set metaeuristiche.
+        Per i parametri specifici (T0, alpha, vicinati, destroy/repair
+        operators) vedi anche la card <em>Tecniche avanzate</em>
+        sotto, che espone tutti gli iperparametri.
+      </p>
     </div>
 
     <!-- Step 4-bis: advanced techniques -->
