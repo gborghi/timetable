@@ -1,10 +1,24 @@
-# API REST reference
+# API REST: come dialogare con piTantum dall'esterno
 
-Tutti gli endpoint sono sotto `/api/`. Il backend espone ~118 route
-totali. Questo documento elenca i piu' rilevanti, raggruppati per
-modulo. Per la specifica completa di request/response vedere le
-Pydantic schemas in `webui/backend/schemas.py` e i singoli router in
-`webui/backend/routers/`.
+Tutto quello che la web app fa (creare un docente, lanciare il
+solver, scaricare l'orario in xlsx) passa attraverso una serie di
+indirizzi web — gli "endpoint" REST. Questa pagina elenca i piu'
+importanti raggruppati per area, ed e' utile se vuoi:
+
+- integrare piTantum con un altro sistema (per esempio importare
+  automaticamente le anagrafiche dal registro elettronico);
+- scrivere uno script per esportare i dati a fine anno;
+- capire come la web app comunica con il backend.
+
+Se invece vuoi solo usare piTantum dall'interfaccia web, puoi
+ignorare questa pagina: la UI fa gi\`a tutte queste chiamate per
+te.
+
+> **Per chi sviluppa**: tutti gli endpoint sono sotto `/api/`. Il
+> backend espone ~118 route totali. Per la specifica completa di
+> request/response vedere le Pydantic schemas in
+> `webui/backend/schemas.py` e i singoli router in
+> `webui/backend/routers/`.
 
 ## Pattern generale
 

@@ -1,4 +1,23 @@
-# Architettura
+# Architettura: i tre piani del sistema piTantum
+
+Per dare un'idea di insieme di com'e' fatto piTantum, si puo'
+pensare al sistema come a un edificio a tre piani:
+
+- al **piano terra** c'e' il "motore" matematico (CP-SAT, le
+  metaeuristiche, le decomposizioni). E' la parte che, dato un
+  problema d'orario, lo risolve;
+- al **primo piano** c'e' il backend (FastAPI + SQLite) che traduce
+  i dati della scuola nel linguaggio del motore, conserva tutto in
+  un database, e offre un'API REST con cui dialogare;
+- al **secondo piano** c'e' il frontend (SvelteKit) che mostra
+  tutto in una web app navigabile dal browser.
+
+Questa pagina descrive in dettaglio ognuno dei piani, le
+tecnologie usate, come si parlano fra loro, e dove cercare i
+sorgenti se vuoi mettere mano al codice.
+
+> **Per chi sviluppa**: i tre layer corrispondono alle cartelle
+> `experiments/`, `webui/backend/`, `webui/frontend/` del repo.
 
 ## Panoramica
 

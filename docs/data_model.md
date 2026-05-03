@@ -1,8 +1,23 @@
-# Modello dati
+# Modello dati: come piTantum rappresenta la scuola
 
-Tutto vive in `webui/backend/models.py` (SQLAlchemy 2.0). La persistenza
-e' SQLite (`webui/data/timetable.db`). Le migrazioni idempotenti sono
-in `webui/backend/db.py::_apply_lightweight_migrations`.
+Per fare il suo lavoro, piTantum ha bisogno di "vedere" la scuola
+come una collezione di tabelle: le materie, i docenti, le classi,
+le aule, le cattedre, le lezioni concrete dell'orario, i vincoli
+di disponibilita', e cosi' via. Questa pagina descrive ognuna di
+queste tabelle: che cosa contiene, come si collega alle altre, e
+quale parte dell'interfaccia la mostra.
+
+E' utile se sei uno sviluppatore che vuole capire le relazioni
+fra i pezzi del sistema, oppure un amministratore IT che deve
+fare backup/migrazioni manuali, oppure semplicemente curioso di
+sapere "che forma ha" un orario quando lo si guarda dall'interno.
+
+> **Per chi sviluppa**: tutto vive in `webui/backend/models.py`
+> (SQLAlchemy 2.0). La persistenza e' SQLite
+> (`webui/data/timetable.db`). Le migrazioni idempotenti sono in
+> `webui/backend/db.py::_apply_lightweight_migrations` (eseguite a
+> ogni boot del backend) + le migration formali di Alembic in
+> `webui/backend/alembic/versions/`.
 
 ## Tabelle principali
 
