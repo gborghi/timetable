@@ -5,192 +5,346 @@
 code.''}{John Johnson}
 
 \lettrine[lines=3]{P}{rima} di descrivere come $\pi$Tantum
-\emph{costruisce} un orario, vale la pena descrivere
-\emph{cosa \`e} un orario --- visto come oggetto strutturato.
-Le entit\`a coinvolte, le relazioni che le legano, i
-vincoli ricorrenti che intervengono. Questa lente
-``strutturale'' \`e quella che ha guidato la progettazione
-del modello dati di $\pi$Tantum (cap.~\ref{ch:modello_dati}).
+\emph{costruisce} un orario, conviene fermarsi a riflettere
+su \emph{che cosa sia} un orario, visto come oggetto
+strutturato. Un orario non \`e infatti una semplice tabella
+di celle riempite, ma un sistema di entit\`a interconnesse
+da relazioni precise, ciascuna con i propri attributi e i
+propri vincoli. Comprendere questa struttura prima di
+affrontare gli algoritmi che la trattano consente di seguire
+con maggiore agio i capitoli successivi e di apprezzare le
+ragioni che hanno guidato la progettazione del modello dati.
 
-\section{Le entit\`a}
+Le entit\`a coinvolte sono fondamentalmente sette: docenti,
+classi, materie, aule, indirizzi di studio, studenti e
+gruppi articolati. Ognuna di esse possiede una propria
+anagrafica, una serie di attributi che la caratterizzano, e
+una collezione di relazioni con le altre entit\`a. Le pagine
+che seguono descrivono ciascuna di queste entit\`a e le
+relazioni principali che le legano, soffermandosi sulle
+peculiarit\`a del sistema scolastico italiano che il modello
+dati di $\pi$Tantum codifica esplicitamente.
 
-Una scuola italiana, ai fini del timetabling, si descrive
-con sette entit\`a principali.
+\section{I docenti}
 
-\subsection{Docente}
+Il docente \`e l'entit\`a forse pi\`u ricca di attributi del
+sistema, perch\'e su di esso convergono numerose costrizioni
+contrattuali e organizzative. La sua anagrafica include il
+cognome, il nome, ed eventualmente un nickname per le
+visualizzazioni compatte. A ogni docente sono associate una
+o pi\`u \emph{classi di concorso}, codificate con sigle
+alfanumeriche del tipo A027 o A019, che determinano quali
+materie egli sia abilitato a insegnare. Il monte ore
+massimo settimanale, tipicamente diciotto per il ruolo
+ordinario, costituisce un vincolo HARD invalicabile dal
+solver. Un giorno libero contrattuale, di norma sabato o
+luned\`i a seconda della scuola, va parimenti rispettato in
+modo inderogabile.
 
-Il \emph{docente} ha un'anagrafica (cognome, nome, eventuale
-nickname), una o pi\`u \emph{classi di concorso} (es. A027
-matematica e fisica, A019 storia e filosofia), un \emph{monte
-ore massimo} settimanale (tipicamente 18 per il ruolo
-ordinario), un \emph{giorno libero contrattuale}, e una
-\emph{matrice di disponibilit\`a} 6$\times$6 in cui ogni cella
-ha uno dei cinque stati (allowed, soft, hard, preferred,
-enforced).
+Accanto a questi attributi obbligatori, il docente possiede
+una \emph{matrice di disponibilit\`a} di sei righe per sei
+colonne (sei giorni della settimana per sei ore al giorno),
+in cui ogni cella esprime uno dei cinque stati della palette
+di vincoli: ALLOWED per la disponibilit\`a normale, SOFT per
+una preferenza negativa (``preferirei non lavorare in questo
+slot''), HARD per un'indisponibilit\`a assoluta, PREFERRED
+per una preferenza positiva (``vorrei lavorare in questo
+slot''), ENFORCED per un'obbligazione (``devo lavorare in
+questo slot''). La matrice viene compilata dall'utente
+nell'interfaccia del tab Docenti, e ogni cella si modifica
+con un singolo click.
 
-Pu\`o avere preferenze aggiuntive: una \emph{matrice di
-preferenza per le aule} (in quali aule vorrebbe insegnare,
-con i 5 stati), un \emph{punteggio di graduatoria} per il
-criterio Anzianit\`a, un elenco di \emph{tre giorni preferiti
-per essere libero}.
+Il docente possiede anche una \emph{matrice di preferenza
+per le aule}, sempre a cinque stati, che indica in quali
+aule egli preferisca insegnare; un \emph{punteggio di
+graduatoria} usato dal solver per ordinare le scelte secondo
+il criterio dell'anzianit\`a; e un'eventuale lista di
+\emph{tre giorni preferiti per essere libero}, ordinati per
+priorit\`a, che il sistema cerca di soddisfare in ordine.
+Ogni informazione di questo elenco si traduce in un
+contributo specifico alla funzione obiettivo o in un
+vincolo HARD per il solver.
 
-\subsection{Classe}
+\section{Le classi}
 
-La \emph{classe} ha un nome (es. ``3A scientifico''), un
-\emph{anno di corso} (1--5), un \emph{indirizzo} (rimanda
-all'entit\`a Indirizzo), un \emph{numero di studenti}, una
-\emph{home class} (l'aula di norma), e una propria matrice
-di disponibilit\`a 6$\times$6 (es. la 3A non fa lezione il
-sabato perch\'e in gita una volta al mese).
+La classe rappresenta l'unit\`a didattica di base. Ogni
+classe ha un nome (per esempio ``3A scientifico''), un anno
+di corso da uno a cinque, un indirizzo di studio (che
+rimanda all'entit\`a Indirizzo descritta pi\`u avanti), un
+numero di studenti attesi, e una \emph{home class},
+ovvero l'aula in cui di norma le sue lezioni si svolgono.
+Anche la classe possiede una propria matrice di
+disponibilit\`a a cinque stati e a sei per sei celle, che
+codifica eventuali indisponibilit\`a (per esempio l'attivit\`a
+di gita una volta al mese) o preferenze.
 
-Pu\`o avere un \emph{max\_hours\_per\_day} (limite di ore
-giornaliere, tipicamente 6 ma talora 5 o 7 per casi
-speciali), un \emph{peso SOFT sulla 6\textsuperscript{a} ora}
-(quanto si vuole evitarla), e tre \emph{giorni preferiti
-liberi}.
+Sulla classe \`e possibile impostare un attributo
+\texttt{max\_hours\_per\_day}, che specifica quante ore al
+giorno la classe possa al massimo svolgere. Il valore di
+default \`e sei, ma alcune scuole adottano cinque o, in casi
+particolari, sette ore al giorno; il vincolo \`e HARD se
+specificato. Un peso SOFT separato controlla quanto si
+voglia evitare la sesta ora come ultima ora del giorno: alcuni
+istituti privilegiano la quinta ora come termine canonico,
+relegando la sesta a slot da usare solo se necessario. Anche
+per le classi sono ammessi tre giorni preferiti per essere
+libere, con la stessa semantica usata per i docenti.
 
-\subsection{Materia}
+\section{Le materie}
 
-La \emph{materia} ha un nome (Matematica, Italiano, Storia,
-Religione, ...), una \emph{matrice di compatibilit\`a con le
-aule} (es. fisica deve stare in lab\_fisica, religione pu\`o
-stare ovunque), un peso che indica quanto la materia \`e
-``concettualmente pesante'' (per il vincolo di ``no due ore
-pesanti consecutive''), e una \emph{matrice subject-group-weight}
-che dice quali classi di concorso possono insegnarla.
+La materia \`e descritta dal suo nome (Matematica, Italiano,
+Storia, Religione, Scienze Motorie, e cos\`i via) e da una
+\emph{matrice di compatibilit\`a con le aule}. Questa
+matrice, anch'essa a cinque stati, esprime per ogni coppia
+materia-aula il livello di adeguatezza: alcune materie
+richiedono aule specializzate (la fisica deve stare nel
+laboratorio di fisica, la chimica nel laboratorio di
+chimica, le scienze motorie in palestra), e per esse
+l'incompatibilit\`a con le aule normali \`e un vincolo HARD;
+altre materie sono pi\`u flessibili e ammettono qualsiasi
+aula con preferenze sfumate.
 
-\subsection{Aula}
+A ogni materia \`e associato un peso che ne quantifica il
+``carico cognitivo'', usato dal solver per evitare di
+mettere in sequenza due materie particolarmente impegnative.
+Una matrice ulteriore, denominata \emph{subject-group-weight
+matrix}, codifica quali classi di concorso siano abilitate
+a insegnare la materia in questione, raffinando la
+corrispondenza grezza nome-materia. \`E un'informazione
+necessaria perch\'e nel sistema scolastico italiano la
+relazione fra materia e classe di concorso non \`e biunivoca:
+``Matematica'' pu\`o essere insegnata da docenti di A026
+(matematica nel biennio scientifico) o di A027 (matematica e
+fisica nel triennio scientifico) a seconda dell'anno di
+corso e dell'indirizzo.
 
-L'\emph{aula} ha un nome (es. ``Aula 12'' o ``Lab Fisica 1''),
-un \emph{tipo} (\texttt{aula\_normale}, \texttt{lab\_fisica},
-\texttt{lab\_chimica}, \texttt{lab\_informatica},
-\texttt{palestra}, \texttt{aula\_magna}, ecc.), una
-\emph{capienza}, un flag \emph{multi\_class} (se pu\`o
-ospitare pi\`u classi contemporaneamente, es. l'aula magna),
-una \emph{matrice di disponibilit\`a} 6$\times$6 (per
-indisponibilit\`a tipo manutenzione), una \emph{matrice di
-preferenze classe-by-classe}, e una lista di \emph{tag}
-(stringhe libere come \texttt{matematica}, \texttt{piano\_terra},
-\texttt{accessibile\_disabili}).
+\section{Le aule}
 
-\subsection{Indirizzo}
+L'aula \`e descritta dal proprio nome (per esempio ``Aula
+12'' o ``Lab Fisica 1''), dal proprio \emph{tipo} (aula
+normale, laboratorio di fisica, laboratorio di chimica,
+laboratorio di informatica, palestra, aula magna, e cos\`i
+via), dalla propria capienza, e da un flag \emph{multi-class}
+che indica se l'aula possa ospitare pi\`u classi
+contemporaneamente, come accade tipicamente per l'aula magna
+o per i laboratori molto grandi. Anche per le aule esiste
+una matrice di disponibilit\`a a cinque stati, che codifica
+eventuali periodi di manutenzione o di occupazione da parte
+di altre attivit\`a.
 
-L'\emph{indirizzo} (curriculum) corrisponde all'``ordinamento''
-italiano (Liceo Classico, Scientifico, Linguistico, ITIS,
-IPSIA, IPS, ITER, ITT, ...). Per ogni anno e per ogni
-materia, l'indirizzo specifica il \emph{numero di ore
-settimanali}. Un'eventuale lista di \emph{vincoli logici
-indirizzo-specifici} (es. ``in 1\textsuperscript{o} anno
-scientifico la matematica non sta dopo la 4\textsuperscript{a}
-ora'').
+Ogni aula ha inoltre una propria \emph{matrice di
+preferenze per le classi}, che indica quanto sia preferibile
+ospitare ciascuna classe specifica. \`E lo strumento con cui
+si codifica, per esempio, ``l'aula 17 \`e la home della 3A''
+(preferenza alta per la 3A) o ``l'aula 12 \`e troppo lontana
+dal laboratorio di chimica per le classi del triennio
+scientifico'' (preferenza bassa per quelle classi). Si
+aggiunge infine una lista di \emph{tag} liberi che il
+coordinatore pu\`o associare all'aula: stringhe come
+``matematica'', ``piano\_terra'', ``accessibile\_disabili''
+che servono come metadato per filtri e per vincoli logici
+DSL espressi in modo compatto.
 
-\subsection{Studente}
+\section{Gli indirizzi di studio}
 
-Lo \emph{studente} ha un'anagrafica, appartiene a una classe
-di base, pu\`o appartenere a uno o pi\`u \emph{gruppi
-articolati} (es. seconda lingua, IRC vs alternativa,
-recupero), ha eventuali \emph{tag} (\texttt{BES},
-\texttt{DSA}, \texttt{debito\_matematica\_4}). I tag sono
-metadato passivo per filtri e raggruppamenti, non sostituiscono
-i gruppi.
+L'indirizzo, che gli ordinamenti italiani designano anche
+con i sinonimi ``curriculum'' o ``ordinamento'', rappresenta
+il programma di studi di una particolare articolazione
+scolastica: Liceo Classico, Liceo Scientifico, Liceo
+Linguistico, Istituto Tecnico Industriale (con le sue varie
+specializzazioni), Istituto Professionale per i Servizi, e
+cos\`i via. Per ogni anno di corso (dal primo al quinto) e
+per ogni materia, l'indirizzo specifica il \emph{numero di
+ore settimanali} che la classe di quell'anno deve dedicare
+alla materia in questione. Sono questi monte ore che, sommati
+sulle classi che adottano l'indirizzo, generano il volume
+totale di lezioni che la pipeline deve collocare.
 
-\subsection{Gruppo articolato}
+L'indirizzo pu\`o avere associati propri vincoli logici
+specifici, espressi nel DSL generico, che si applicano a
+tutte le classi dell'indirizzo. Esempi tipici sono ``in
+prima classico la matematica non si tiene mai dopo la quarta
+ora'' o ``nel triennio scientifico le ore di laboratorio
+devono essere consecutive''. Questi vincoli si combinano con
+quelli specifici delle singole classi e con quelli generali
+della scuola, formando il livello pi\`u esterno della
+gerarchia di vincoli che il solver rispetta.
 
-Il \emph{gruppo articolato} \`e un insieme di studenti che si
-incontrano in slot comuni per un'attivit\`a specifica (es.
-``IRC della 1A+1B'', ``Recupero matematica del biennio'',
-``Spagnolo seconda lingua del triennio''). I membri possono
-provenire da qualunque combinazione di classi (semantica
-``Tipo C''). Un gruppo richiede slot dedicati e un'aula
-specifica.
+\section{Gli studenti}
 
-\section{Le relazioni}
+Lo studente \`e un'entit\`a anagrafica che appartiene di
+norma a una classe di base, ma che pu\`o anche essere
+membro di uno o pi\`u \emph{gruppi articolati}, come la
+seconda lingua straniera del linguistico, la lezione di
+religione cattolica con l'alternativa per chi non si avvale,
+o un corso di recupero pomeridiano. A ogni studente possono
+essere associati dei \emph{tag} liberi, stringhe come
+\texttt{BES} (Bisogni Educativi Speciali), \texttt{DSA}
+(Disturbi Specifici dell'Apprendimento),
+\texttt{debito\_matematica\_4} per indicare un debito
+formativo specifico, o \texttt{studente\_atleta} per
+segnalare un percorso scolastico-sportivo. I tag sono
+metadato passivo che il sistema usa per filtri e per
+costruire vincoli logici espressi in modo conciso, senza
+modificare la struttura dei gruppi.
 
-Le entit\`a sopra sono collegate da una rete di relazioni che
-sono il ``substrato'' del timetabling.
+\section{I gruppi articolati}
 
-\begin{itemize}
-\item \textbf{Cattedra} (Docente $\to$ Classe $\to$ Materia
-  $\to$ ore): l'unit\`a fondamentale. Indica che il docente $D$
-  insegna $h$ ore della materia $M$ alla classe $C$ in
-  un anno.
-\item \textbf{Compresenza}: due (o pi\`u) docenti che devono
-  essere nello stesso slot stessa classe stessa materia.
-  Tipicamente teoria + laboratorio nei tecnici.
-\item \textbf{Lezione}: un'istanza concreta in un certo
-  slot, con un'aula assegnata. \`E ci\`o che la pipeline
-  produce.
-\item \textbf{Indisponibilit\`a (HARD)}: la matrice 6$\times$6
-  con celle rosse del docente/classe/aula.
-\item \textbf{Vincolo logico DSL}: un'espressione del DSL
-  generico (cap.~\ref{ch:metodo_dsl}) che lega entit\`a in
-  qualunque combinazione.
-\end{itemize}
+Il gruppo articolato \`e l'entit\`a che permette di
+rappresentare attivit\`a didattiche che attraversano i
+confini delle classi di base. Si tratta di insiemi di
+studenti, anche provenienti da classi diverse, che si
+incontrano in slot dedicati per un'attivit\`a comune. Esempi
+tipici sono il gruppo della seconda lingua straniera nel
+liceo linguistico, in cui gli studenti delle classi 4A e 4B
+si dividono fra francese, tedesco e spagnolo; oppure il
+gruppo IRC nei licei, in cui gli studenti che si avvalgono
+dell'insegnamento di religione cattolica si riuniscono in
+un'aula mentre quelli che hanno scelto l'alternativa vanno
+in un'altra; oppure ancora i corsi di recupero in itinere
+che il collegio docenti decide di attivare a met\`a anno
+per gli studenti con difficolt\`a in una particolare materia.
 
-\section{I vincoli ricorrenti}
+I gruppi articolati richiedono uno slot dedicato e un'aula
+specifica, e il loro funzionamento deve essere coordinato
+con l'orario delle classi di base dei loro membri: nessuno
+studente pu\`o essere richiesto in due luoghi
+contemporaneamente, e il sistema verifica questa
+coerenza come vincolo HARD. La semantica \`e quella che
+$\pi$Tantum chiama \emph{Tipo C}, dal nome interno della
+prima implementazione: i membri possono provenire da
+qualunque combinazione di classi, e il gruppo non \`e mai
+un sottoinsieme rigido di una sola classe.
 
-Alcuni vincoli ritornano in ogni scuola italiana, anche se
-con sfumature diverse.
+\section{Le relazioni fra le entit\`a}
 
-\begin{itemize}
-\item \textbf{Copertura}: ogni materia deve ricevere il suo
-  monte ore in ogni classe. HARD.
-\item \textbf{Non sovrapposizione}: docente, classe, aula
-  in al pi\`u una lezione per slot. HARD.
-\item \textbf{Compatibilit\`a classe di concorso}: solo
-  docenti della classe giusta possono insegnare una
-  materia. HARD.
-\item \textbf{Compatibilit\`a aula--materia}: fisica solo in
-  lab\_fisica, ginnastica solo in palestra, etc. HARD o
-  PREFERRED a seconda della scuola.
-\item \textbf{Giorno libero contrattuale}: un giorno di
-  riposo settimanale per ogni docente. HARD per CCNL.
-\item \textbf{Compresenze}: due lezioni esattamente
-  nello stesso slot stessa classe. HARD.
-\item \textbf{No buchi nelle classi}: nessuna ora vuota nel
-  mezzo della giornata della classe. HARD nelle scuole
-  pi\`u rigide, SOFT in quelle pi\`u flessibili.
-\item \textbf{Sesta ora}: si vorrebbe evitare la sesta ora,
-  o renderla solo per certe materie. SOFT.
-\item \textbf{No buchi docenti}: simile, ma per i docenti.
-  SOFT.
-\item \textbf{Distribuzione settimanale}: una stessa
-  materia non concentrata in due giorni consecutivi. SOFT.
-\item \textbf{Coppie di ore consecutive}: certe materie
-  (es. ginnastica, lab) richiedono blocchi di 2 ore.
-  PREFERRED o HARD.
-\end{itemize}
+Le entit\`a sopra descritte sono collegate da una rete di
+relazioni che costituisce il vero substrato del timetabling.
+La relazione fondamentale \`e la \emph{cattedra}, che
+collega un docente a una classe e a una materia con
+l'indicazione del numero di ore settimanali. \`E l'unit\`a
+elementare con cui si esprime ``il professor Borghi insegna
+quattro ore di matematica alla 3A''. Una cattedra esiste
+soltanto se le classi di concorso del docente sono compatibili
+con la materia, e se il monte ore della classe per quella
+materia richiede effettivamente la copertura.
 
-\section{Il caso italiano: peculiarit\`a}
+La \emph{compresenza} \`e una relazione che lega due o pi\`u
+docenti alla stessa classe, alla stessa materia, e allo
+stesso slot. \`E un vincolo tipico delle materie tecnico-
+pratiche degli istituti tecnici, dove un insegnante teorico
+e un insegnante tecnico-pratico devono essere
+contemporaneamente in classe. La compresenza \`e un vincolo
+HARD non banale, perch\'e non si limita a chiedere ``due
+docenti'' ma chiede ``proprio quei due docenti, contemporaneamente,
+nella stessa aula''.
 
-\begin{casostudiobox}
-\textbf{IIS ``Galileo Ferraris''}, Torino, 28 classi
-distribuite su tre indirizzi (ITIS Informatica, ITIS
-Elettronica, IPS Servizi Commerciali). Le tre articolazioni
-hanno monte ore diversi anche per materie ``comuni'' come
-matematica e italiano. I docenti di matematica (A026 e
-A027) coprono tutte e tre le articolazioni; i docenti
-specifici (es. Sistemi e Reti per Informatica) sono
-limitati a un solo indirizzo. Compresenze numerose
-(matematica + lab\_inf in Informatica, fisica + lab\_fisica
-in Elettronica). Giorni di stage in azienda concentrati
-nelle ultime settimane: $\pi$Tantum gestisce attraverso un
-\emph{vincolo logico DSL} che svuota i pomeriggi di marted\`i
-e gioved\`i delle classi quinte nel periodo aprile--maggio.
-\end{casostudiobox}
+La \emph{lezione} \`e l'istanza concreta che la pipeline
+produce: una specifica cattedra (o compresenza) collocata in
+uno slot specifico della settimana, con un'aula assegnata.
+Una soluzione completa di $\pi$Tantum non \`e altro che
+l'insieme delle lezioni che ricoprono interamente le ore
+richieste dalle cattedre, rispettando tutti i vincoli HARD
+e minimizzando il valore della funzione obiettivo SOFT.
+
+L'\emph{indisponibilit\`a HARD} non \`e una relazione fra
+entit\`a in senso stretto, ma una propriet\`a delle matrici
+sei per sei dei docenti, delle classi e delle aule.
+Tecnicamente \`e implementata come una collezione di celle
+marcate, e i vincoli che ne derivano vengono iniettati
+direttamente nel modello CP-SAT al momento della
+risoluzione. Il \emph{vincolo logico DSL}, infine, \`e
+un'espressione del DSL generico (descritto nel
+cap.~\ref{ch:metodo_dsl}) che lega entit\`a in qualunque
+combinazione, ed \`e il meccanismo principale con cui
+l'utente esprime regole specifiche della sua scuola che il
+modello dati pre-confezionato non cattura.
+
+\section{I vincoli ricorrenti del caso italiano}
+
+Alcuni vincoli ritornano in tutte le scuole italiane, anche
+se con sfumature diverse, e meritano di essere descritti
+come categoria. Il vincolo di \emph{copertura} richiede che
+ogni materia riceva il proprio monte ore in ogni classe, e
+costituisce la finalit\`a stessa della pipeline: senza
+copertura completa non c'\`e neppure un orario. Il vincolo
+di \emph{non sovrapposizione} richiede che docente, classe e
+aula siano impegnati in al pi\`u una lezione per slot, ed \`e
+naturalmente HARD. Il vincolo di \emph{compatibilit\`a per
+classe di concorso} richiede che soltanto i docenti
+abilitati possano insegnare una determinata materia.
+
+I vincoli di \emph{compatibilit\`a aula-materia} sono per lo
+piuttosto rigidi quando l'attivit\`a richiede strumentazione
+specifica (la fisica nel laboratorio di fisica, le scienze
+motorie in palestra, il disegno tecnico nell'aula da disegno),
+ma diventano preferenze morbide nei casi pi\`u flessibili. Il
+\emph{giorno libero contrattuale} \`e un vincolo HARD per
+contratto collettivo nazionale, che ogni docente ha diritto
+di vedere rispettato in uno specifico giorno della settimana.
+
+I vincoli sull'\emph{evitamento dei buchi} (le ore vuote
+nel mezzo della giornata di una classe o di un docente) sono
+HARD nelle scuole pi\`u rigide e SOFT in quelle pi\`u
+flessibili, e $\pi$Tantum li configura per default come HARD
+per le classi (perch\'e una classe con buchi crea problemi
+organizzativi reali) e SOFT per i docenti (perch\'e i buchi
+nei docenti sono fastidiosi ma non impediscono il
+funzionamento della scuola). I vincoli sulla
+\emph{sesta ora}, sulla \emph{distribuzione settimanale di
+una stessa materia}, e sulle \emph{coppie di ore consecutive}
+per le materie che lo richiedono completano il quadro dei
+vincoli ricorrenti.
+
+\section{Cosa rende peculiare il sistema italiano}
 
 Il caso italiano si distingue dai benchmark accademici
-internazionali (ITC, XHSTT~\parencite{mccollum2010}) per:
-\begin{itemize}
-\item Indirizzi (curricula) come entit\`a di prim'ordine,
-  con monte ore variabile.
-\item Classi di concorso esplicite e gerarchiche.
-\item Compresenze come vincolo HARD ricorrente.
-\item Gruppi articolati cross-class.
-\item Vincoli sindacali (giorno libero CCNL, max ore).
-\end{itemize}
+internazionali, codificati in formati standard come
+ITC-2007, ITC-2011 e XHSTT, per l'esistenza degli
+indirizzi di studio come entit\`a di prim'ordine e la loro
+diversificazione di monte ore anche per materie nominalmente
+identiche. Si distingue anche per l'esistenza delle classi
+di concorso esplicite e gerarchiche, che vincolano in modo
+fine la corrispondenza fra docenti e materie. Si distingue
+ancora per la presenza diffusa di compresenze come vincoli
+HARD ricorrenti, per i gruppi articolati che attraversano
+le classi di base, e per i vincoli sindacali derivanti dal
+contratto collettivo nazionale.
 
-Tutte queste peculiarit\`a sono codificate nel modello dati
-di $\pi$Tantum (cap.~\ref{ch:modello_dati}); $\pi$Tantum
-\`e progettato \emph{a partire} da queste, non come
-generalizzazione di un sistema accademico.
+\begin{casostudiobox}
+\textbf{IIS ``Galileo Ferraris'' di Torino}, ventotto classi
+distribuite su tre indirizzi (ITIS Informatica, ITIS
+Elettronica, IPS Servizi Commerciali). Le tre articolazioni
+hanno monte ore diversi anche per materie comuni come
+matematica e italiano. I docenti di matematica delle classi
+di concorso A026 e A027 coprono tutte e tre le articolazioni;
+i docenti specifici, come quello di Sistemi e Reti per
+l'indirizzo Informatica, sono limitati a una sola
+articolazione. Le compresenze sono numerose, in particolare
+fra matematica e laboratorio di informatica nell'indirizzo
+Informatica e fra fisica e laboratorio di fisica
+nell'indirizzo Elettronica. Le settimane di stage in azienda
+si concentrano nelle ultime settimane dell'anno scolastico,
+e per esse $\pi$Tantum gestisce la situazione attraverso un
+vincolo logico DSL che svuota i pomeriggi di marted\`i e
+gioved\`i delle classi quinte nel periodo aprile-maggio.
+\end{casostudiobox}
+
+Tutte queste peculiarit\`a sono codificate come entit\`a di
+prima classe o come vincoli espliciti nel modello dati di
+$\pi$Tantum, descritto in dettaglio nel
+cap.~\ref{ch:modello_dati}. Il progetto \`e stato disegnato
+a partire da queste specificit\`a, e non come adattamento
+postumo di un sistema accademico generico. \`E forse il
+contributo pi\`u distintivo della filosofia su cui il
+software \`e costruito: non un solver pi\`u veloce in
+assoluto, ma un solver che parla la lingua del sistema
+scolastico italiano e che si lascia istruire con il
+vocabolario di chi quel sistema lo conosce.
+
+Detto tutto questo, abbiamo descritto l'orario come oggetto
+strutturato. Nei capitoli successivi vedremo come il
+sistema rappresenta queste entit\`a internamente, come
+l'utente le manipola attraverso l'interfaccia web, come la
+pipeline le elabora, e come i vari metodi algoritmici si
+combinano per produrre l'orario finito.
