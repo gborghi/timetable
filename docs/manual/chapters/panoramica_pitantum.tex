@@ -1,24 +1,7 @@
 \chapter{Una panoramica di $\pi$Tantum}
 \label{ch:panoramica_pitantum}
 
-\epigraph{``A program does what you tell it to do, not what you
-want it to do.''}{adagio popolare della programmazione}
-
-\lettrine[lines=3]{P}{rima} di entrare nei dettagli delle
-singole tecniche algoritmiche e nelle pieghe dell'interfaccia
-utente, conviene osservare $\pi$Tantum dall'alto: che cosa
-fa, come \`e organizzato, da quali pezzi \`e composto, e con
-quale flusso un coordinatore d'orario lo utilizza per
-costruire o per manutenere l'orario annuale di una scuola.
-Una panoramica di questo tipo \`e utile per due ragioni. In
-primo luogo, permette al lettore di costruirsi una mappa
-mentale del sistema, dentro la quale potr\`a poi collocare le
-informazioni pi\`u tecniche dei capitoli successivi. In secondo
-luogo, fornisce un riferimento al quale tornare quando si
-vorr\`a verificare se un certo concetto appartiene al solver,
-al backend, al frontend o alla pipeline complessiva.
-
-\section{Cosa fa il sistema, in tre frasi}
+\section{Cosa fa il sistema}
 
 $\pi$Tantum \`e un sistema software che, ricevuti in input
 l'anagrafica di una scuola (docenti, classi, materie, aule,
@@ -361,23 +344,3 @@ ridurre al minimo le dipendenze e i punti di fallimento,
 preferire sempre la soluzione pi\`u semplice se sufficiente al
 caso d'uso.
 
-\section*{Cosa abbiamo visto in questo capitolo}
-
-Abbiamo guardato $\pi$Tantum dall'alto, individuando i suoi
-tre layer (solver, web UI, prototipi legacy), descrivendo
-come comunicano fra loro, e tracciando il flusso d'uso
-quotidiano di un coordinatore d'orario, dall'importazione
-dell'anagrafica alla gestione delle supplenze. Abbiamo anche
-documentato le situazioni in cui il sistema da solo non basta
-e l'intervento umano resta indispensabile, e abbiamo
-elencato le tecnologie sulle quali il progetto \`e costruito,
-con le ragioni della loro scelta. Da qui in poi, i capitoli
-successivi entrano nei dettagli: il prossimo descrive
-l'orario come oggetto strutturale, le entit\`a coinvolte e le
-relazioni che le legano; quelli successivi descrivono
-l'interfaccia utente e i casi d'uso ricorrenti; i capitoli
-della parte centrale del libro descrivono ognuno dei metodi
-algoritmici che fanno funzionare il sistema; gli ultimi
-capitoli affrontano l'architettura software, il modello dati,
-le API REST, i benchmark misurati, e una sezione di lessons
-learned.

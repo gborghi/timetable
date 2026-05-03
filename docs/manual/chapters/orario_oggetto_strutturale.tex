@@ -1,29 +1,13 @@
 \chapter{L'orario come oggetto strutturale}
 \label{ch:orario_oggetto_strutturale}
 
-\epigraph{``First, solve the problem. Then, write the
-code.''}{John Johnson}
-
-\lettrine[lines=3]{P}{rima} di descrivere come $\pi$Tantum
-\emph{costruisce} un orario, conviene fermarsi a riflettere
-su \emph{che cosa sia} un orario, visto come oggetto
-strutturato. Un orario non \`e infatti una semplice tabella
-di celle riempite, ma un sistema di entit\`a interconnesse
-da relazioni precise, ciascuna con i propri attributi e i
-propri vincoli. Comprendere questa struttura prima di
-affrontare gli algoritmi che la trattano consente di seguire
-con maggiore agio i capitoli successivi e di apprezzare le
-ragioni che hanno guidato la progettazione del modello dati.
-
-Le entit\`a coinvolte sono fondamentalmente sette: docenti,
-classi, materie, aule, indirizzi di studio, studenti e
-gruppi articolati. Ognuna di esse possiede una propria
-anagrafica, una serie di attributi che la caratterizzano, e
-una collezione di relazioni con le altre entit\`a. Le pagine
-che seguono descrivono ciascuna di queste entit\`a e le
-relazioni principali che le legano, soffermandosi sulle
-peculiarit\`a del sistema scolastico italiano che il modello
-dati di $\pi$Tantum codifica esplicitamente.
+Le entit\`a coinvolte nella composizione di un orario
+scolastico sono sette: docenti, classi, materie, aule,
+indirizzi di studio, studenti e gruppi articolati. Ognuna
+possiede una propria anagrafica, una serie di attributi che
+la caratterizzano, e una collezione di relazioni con le
+altre entit\`a. Le sezioni che seguono descrivono ciascuna
+entit\`a e le relazioni principali che le legano.
 
 \section{I docenti}
 
@@ -342,9 +326,3 @@ assoluto, ma un solver che parla la lingua del sistema
 scolastico italiano e che si lascia istruire con il
 vocabolario di chi quel sistema lo conosce.
 
-Detto tutto questo, abbiamo descritto l'orario come oggetto
-strutturato. Nei capitoli successivi vedremo come il
-sistema rappresenta queste entit\`a internamente, come
-l'utente le manipola attraverso l'interfaccia web, come la
-pipeline le elabora, e come i vari metodi algoritmici si
-combinano per produrre l'orario finito.

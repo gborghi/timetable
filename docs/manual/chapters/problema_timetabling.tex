@@ -6,40 +6,16 @@ problems in operations research, yet remains one of the
 hardest in practice.''}{Andrea Schaerf,
 \emph{A survey of automated timetabling}~\parencite{schaerf1999}}
 
-\lettrine[lines=3]{P}{rima} di entrare nel merito di come
-$\pi$Tantum costruisce un orario, conviene fermarsi a guardare
-con attenzione il problema che si sta affrontando. Lo si pu\`o
-descrivere a parole in poche righe, ma chi ci ha provato sa
-che quella semplicit\`a \`e ingannevole: si tratta di assegnare a
-ogni lezione settimanale uno slot di tempo e un'aula, in modo
-che nessun docente, nessuna classe e nessuna aula si trovino
-impegnati in due luoghi nello stesso istante, e che il monte
-ore di ogni materia in ogni classe sia rispettato. Detto cos\`i
-sembra una pratica routinaria, di quelle che si fanno con un
-foglio di calcolo in mezza giornata. Nella realt\`a, una scuola
-di dimensioni medie produce un'esplosione combinatoria di
-possibilit\`a che renderebbe impraticabile qualunque tentativo
-di enumerazione esaustiva, e le richieste personali dei
-docenti, le incompatibilit\`a delle aule, le esigenze
-didattiche delle classi, i vincoli sindacali e le delibere
-collegiali si stratificano gli uni sugli altri fino a rendere
-il problema, in linea di principio, intrattabile. Vale dunque
-la pena dedicare un capitolo intero a comprenderne la natura
-prima di affrontarlo, perch\'e una cattiva comprensione del
-problema porta inevitabilmente a una cattiva soluzione.
-
-Lo scopo di queste pagine \`e dunque triplice. In primo luogo,
-si vuole dare un'idea quantitativa della dimensione del
-problema, perch\'e i numeri aiutano a capire perch\'e
-``provarci'' non \`e una strategia praticabile. In secondo
-luogo, si vogliono distinguere con cura i diversi tipi di
-vincolo (rigidi, morbidi, preferenze, obbligazioni), perch\'e
-\`e proprio questa distinzione che rende possibile costruire
-un sistema utilizzabile. In terzo luogo, si vuole tracciare
-una piccola storia dei metodi che la comunit\`a di ricerca
-operativa ha sviluppato negli ultimi cinquant'anni, in modo
-che il lettore possa collocare $\pi$Tantum in una tradizione
-e capire quali idee gli sono state ereditate dai predecessori.
+Il problema consiste nell'assegnare a ogni lezione settimanale
+uno slot di tempo e un'aula, in modo che nessun docente,
+nessuna classe e nessuna aula si trovino impegnati in due
+luoghi nello stesso istante, e che il monte ore di ogni
+materia in ogni classe sia rispettato. Una scuola di
+dimensioni medie produce un'esplosione combinatoria di
+possibilit\`a che rende impraticabile l'enumerazione
+esaustiva, e le richieste personali dei docenti, le
+incompatibilit\`a delle aule, i vincoli sindacali e le
+delibere collegiali si sommano gli uni agli altri.
 
 \section{Quante combinazioni possibili}
 
@@ -368,19 +344,4 @@ aggiungono i vincoli logici espressi via DSL dall'utente.
 
 Tutte queste peculiarit\`a sono codificate come entit\`a o
 vincoli di prima classe nel modello dati di $\pi$Tantum
-(cap.~\ref{ch:modello_dati}), che \`e stato progettato a
-partire da esse e non come adattamento di un modello
-accademico generico. \`E forse il contributo pi\`u distintivo
-del progetto: non un solver pi\`u veloce, ma un solver che
-parla la lingua del sistema scolastico italiano.
-
-Detto questo, abbiamo dato uno sguardo d'insieme al problema.
-Nel prossimo capitolo descriveremo $\pi$Tantum dall'alto:
-quali sono i suoi tre layer (solver, web UI, prototipi
-legacy), come comunicano fra loro, e quale flusso di lavoro
-quotidiano un coordinatore d'orario segue per usarlo.
-Affronteremo poi, nei capitoli successivi, l'orario visto
-come oggetto strutturale (le entit\`a e le relazioni che
-codifica), l'interfaccia utente, i casi d'uso ricorrenti, e
-infine ciascuno dei metodi algoritmici che fanno funzionare
-il sistema.
+(cap.~\ref{ch:modello_dati}).

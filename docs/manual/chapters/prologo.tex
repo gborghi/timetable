@@ -1,310 +1,54 @@
-\chapter*{Prologo: come nasce questo libro}
-\addcontentsline{toc}{chapter}{Prologo: come nasce questo libro}
-\markboth{Prologo}{Prologo}
+\chapter*{Introduzione}
+\addcontentsline{toc}{chapter}{Introduzione}
+\markboth{Introduzione}{Introduzione}
 \label{ch:prologo}
 
-\epigraph{``Tutto, Lucilio, ci viene da altri; soltanto il tempo
-\`e nostro.''}{Lucio Anneo Seneca, \emph{Epistulae morales ad
+\epigraph{``Omnia, Lucili, aliena sunt, tempus tantum nostrum
+est.''}{Lucio Anneo Seneca, \emph{Epistulae morales ad
 Lucilium}, I, 1}
 
-\lettrine[lines=3]{Q}{}uando un dirigente scolastico entra in
-carica, una delle prime preoccupazioni che lo aspettano \`e
-l'orario delle lezioni. Comporlo non \`e un compito secondario,
-e nemmeno una pratica burocratica da delegare alla segreteria
-con un sospiro: significa decidere chi insegna a chi, in
-quale aula, in quale momento della giornata, conciliando le
-esigenze di centinaia di docenti, le ore curricolari di
-ciascuna disciplina, le incompatibilit\`a logistiche delle
-aule, le richieste personali (un professore che chiede un
-giorno libero per motivi familiari, una classe che ha
-attivit\`a fissate al mercoled\`i mattina) e le costrizioni del
-contratto nazionale di lavoro. Il problema sembra subito
-complicato, e in effetti lo \`e: i matematici l'hanno
-classificato come NP-difficile, una sigla che vuole dire che
-non esiste un algoritmo veloce in grado di trovare la
-soluzione ottimale al crescere delle dimensioni della scuola.
-Eppure le scuole un orario lo producono, ogni anno, e per
-molti decenni questo \`e stato fatto a mano da segretari
-pazienti che dedicavano settimane a incastrare ore e
-cattedre. Il sistema software che descriviamo in queste
-pagine, \emph{$\pi$Tantum}, \`e nato per dare loro uno
-strumento moderno, scritto pensando proprio alle scuole
-italiane e alle loro convenzioni; nelle pagine che seguono
-cercheremo di raccontare il metodo che vi sta dietro, gli
-algoritmi che lo rendono possibile, e l'interfaccia che
-permette di usarlo senza dover essere informatici.
+$\pi$Tantum \`e un'applicazione web che assiste nella
+composizione dell'orario delle scuole italiane. Nasce da idee
+discusse e sviluppate da Fernando Gargiulo, Giovanni Borghi,
+Matteo Mariani e Stefano Bertozzi.
 
-Il nome \`e una piccola ammissione di affetto per la lettera
-greca $\pi$, le cui due gambe verticali ricordano le due
-``T'' di \emph{T}empus \emph{T}antum, che a loro volta vengono
-dal verso senechiano riportato in epigrafe. Il senso del
-verso \`e tutto in quella parola: \emph{tantum}, ``soltanto'',
-``nient'altro che''. Il tempo \`e l'unica cosa che davvero ci
-appartiene, e in una scuola italiana il tempo \`e un bene
-quotidiano sempre scarso. Lo scarso bene comune che $\pi$Tantum
-prova a organizzare \`e proprio questo: i 1800 minuti
-settimanali che ogni classe ha a disposizione, e che vanno
-spesi nel modo migliore per chi insegna e per chi impara. Da
-qui anche la scelta editoriale di accompagnare il logo del
-software con un richiamo classico, e di intitolare i capitoli
-con qualche citazione presa dalla letteratura tecnica e
-divulgativa che ne ha ispirato lo sviluppo.
+Il problema dell'orario scolastico consiste nell'assegnare a
+ogni cattedra, vale a dire alla coppia formata da un docente
+e da una classe per una determinata materia, un insieme di
+ore settimanali distribuite nei giorni e negli slot orari, in
+modo che siano rispettati i vincoli di disponibilit\`a dei
+docenti, di copertura delle ore curricolari, di compatibilit\`a
+delle aule e delle attrezzature, e i vincoli derivanti dal
+contratto collettivo nazionale del settore scolastico. Si
+tratta di un problema combinatorio classificato come
+NP-difficile, il che significa che all'aumentare delle
+dimensioni della scuola non esiste un algoritmo veloce in
+grado di trovare una soluzione ottimale in modo esatto.
 
-Questo libro \`e a sua volta nato in modo simile a un orario
-scolastico: per piccoli incrementi, in periodi diversi
-dell'anno, e con la convinzione che alcune cose meritino
-di essere scritte in forma di volume e non di README di
-poche righe. Quando il software ha cominciato a essere usato
-sul serio in qualche scuola, mi sono accorto che mancava un
-testo che mettesse insieme tre cose che fino ad allora
-viaggiavano separate: il contesto del problema (perch\'e gli
-orari sono difficili da fare), il metodo che $\pi$Tantum
-adotta per affrontarlo (le tecniche algoritmiche che usa) e
-le indicazioni operative per chi lo deve usare ogni giorno
-(le tab dell'interfaccia, i casi d'uso ricorrenti, le insidie
-da evitare). Non era un volume da scrivere in un weekend, ma
-mi sono detto che valeva la pena: di libri che spiegano \`a la
-fois la teoria del scheduling e la pratica della scuola
-italiana ce ne sono pochi, e probabilmente nessuno scritto in
-italiano. Le pagine che seguono sono il tentativo di
-colmare quella lacuna, con tutta l'imperfezione che un
-tentativo di questo tipo comporta.
+$\pi$Tantum si appoggia, per la risoluzione del problema, sul
+solver CP-SAT della libreria Google OR-Tools, scelto per la
+sua maturit\`a nel constraint programming applicato a
+problemi di scheduling. Per scalare oltre le dimensioni che
+il solver gestirebbe direttamente, il sistema decompone il
+problema in sotto-problemi pi\`u piccoli, attraverso quattro
+strategie alternative: la decomposizione spettrale del grafo
+bipartito classe-docente, la decomposizione temporale per
+giorno della settimana, la decomposizione per curriculum, e
+il partizionamento METIS $k$-bilanciato. A queste si affianca
+una cascata di metaeuristiche --- Large Neighborhood Search,
+Adaptive LNS, Simulated Annealing, Tabu Search, Iterated
+Local Search e Variable Neighborhood Search --- che migliora
+la qualit\`a della soluzione trovata.
 
-\section*{A chi \`e rivolto}
+Il backend dell'applicazione \`e scritto in Python con il
+framework FastAPI; la persistenza dei dati \`e affidata a
+SQLite. L'interfaccia utente \`e basata su SvelteKit, in
+italiano, organizzata in sedici tab che coprono l'intero
+ciclo di vita di un orario: importazione dell'anagrafica,
+configurazione dei vincoli, generazione, editing manuale con
+controllo di fattibilit\`a in tempo reale, gestione delle
+assenze e delle supplenze quotidiane.
 
-Mi sono accorto, scrivendo, che le persone che potrebbero
-prendere in mano questo libro non sono di un solo tipo. La
-prima categoria \`e quella di chi $\pi$Tantum lo dovrebbe
-usare per davvero: il coordinatore d'orario di un liceo o di
-un istituto tecnico, il vicepreside che sta valutando se
-adottare il software per il prossimo anno scolastico,
-l'animatore digitale di una scuola che vuole capire se vale
-la pena suggerirlo al collegio. A loro le parti~I e~II del
-libro dovrebbero parlare in un italiano leggibile, senza
-formule, e con casi d'uso che assomigliano a quelli che
-incontrano davvero a settembre o in corso d'anno. Per loro
-ho cercato, dove possibile, di ridurre il jargon tecnico al
-minimo necessario, e quando proprio non si poteva evitare ho
-provato a spiegare il termine appena introdotto in una nota
-in linea o in un riquadro a margine.
-
-C'\`e poi una seconda categoria: gli studenti universitari di
-informatica, di ricerca operativa, o di tecnologie
-dell'educazione che possono trovare nel timetabling un
-campo di applicazione interessante perch\'e tocca temi che
-nei loro corsi vedono in modo astratto. Per loro le parti~III
-e~IV sono pensate come un corso semestrale informale: ogni
-tecnica algoritmica viene introdotta partendo dal problema
-concreto, accompagnata dalla sua storia (il paper seminale,
-l'idea originaria, l'autore), spiegata con un esempio
-giocattolo che si pu\`o seguire mentalmente, e poi
-generalizzata al caso reale. Mi sono sforzato di non saltare
-i passaggi intermedi, perch\'e \`e proprio l\`i che la maggior
-parte dei manuali tecnici perde i lettori meno esperti.
-
-Una terza categoria \`e quella dei ricercatori di scheduling
-che cercano i dettagli implementativi specifici: quali
-heuristic, quali parametri, quali decomposizioni, quali
-benchmark sui profili di dimensioni reali. Per loro, oltre
-alle parti~III e~IV, la parte~V raccoglie i risultati
-misurati sui cinque profili di test in cui $\pi$Tantum suddivide
-l'universo delle scuole italiane (small, medium, big, huge,
-superhuge), e gli appendici tecnici spiegano le scelte
-architetturali. Un'ultima categoria, infine, \`e quella degli
-sviluppatori che vogliono estendere il sistema, aggiungere
-un nuovo tipo di vincolo, un nuovo metodo metaeuristico, o
-una nuova vista nel frontend: per loro la parte~IV documenta
-il modello dati, le API REST, i punti di estensione del
-codice e l'organizzazione del repository.
-
-Quattro categorie diverse, dunque, con bisogni diversi. Una
-delle scommesse di questo libro \`e che si possa servire tutte
-e quattro \emph{con lo stesso registro narrativo}, cambiando
-ci\`o di cui si parla ma non il modo in cui se ne parla.
-Vediamo se la scommessa regge.
-
-\section*{Perch\'e un libro, oggi}
-
-In un'epoca in cui la documentazione tecnica si \`e ridotta a
-issue tracker, README di poche righe e tutorial di YouTube,
-scrivere un volume di qualche centinaio di pagine pu\`o
-sembrare un'impresa anacronistica. Lo faccio per tre ragioni
-distinte, ognuna delle quali pesa abbastanza da giustificare
-la fatica.
-
-La prima ragione \`e che il timetabling scolastico \`e
-sotto-documentato in italiano. Esistono ottimi libri di
-constraint programming generale, come il \emph{Handbook of
-Constraint Programming} di Rossi, Van Beek e
-Walsh~\parencite{rossi2006}; esistono ottimi libri di
-metaeuristiche, come l'\emph{Handbook of Metaheuristics} di
-Glover e Kochenberger~\parencite{glover2003}; esistono
-ottimi articoli di review specifici sul timetabling
-scolastico, come la \emph{Survey of Automated Timetabling}
-di Schaerf~\parencite{schaerf1999} o l'aggiornamento di
-Burke e Petrovic~\parencite{burke2007}. Manca, per\`o, un
-volume in lingua italiana che ti accompagni dal problema
-concreto di una scuola del nostro paese fino alla riga di
-codice del solver, spiegando \emph{perch\'e} si fanno certe
-scelte e \emph{come} si modellano vincoli che non appaiono
-nei benchmark accademici: gli indirizzi di studio italiani,
-la divisione delle classi di concorso, le compresenze
-obbligatorie nei tecnici, i gruppi articolati che
-attraversano le classi di base. Questo libro vorrebbe essere
-quel volume.
-
-La seconda ragione \`e che i metodi sotto il cofano di
-$\pi$Tantum sono idee belle che meritano di essere
-raccontate. Il teorema di Hall del 1935~\parencite{hall1935},
-scritto su poche pagine eleganti del \emph{Journal of the
-London Mathematical Society}, \`e ancora oggi il fondamento
-matematico del nostro controllo di fattibilit\`a. Il vettore
-di Fiedler del 1973~\parencite{fiedler1973} permette di
-spezzare scuole enormi in cluster ben separati semplicemente
-guardando l'algebra del grafo bipartito che lega classi e
-docenti. Il \emph{simulated annealing} di Kirkpatrick del
-1983~\parencite{kirkpatrick1983} importa nella combinatoria
-un'idea presa in prestito dalla metallurgia: il metallo che
-si raffredda lentamente trova una configurazione cristallina
-ordinata, e il software che ``si raffredda lentamente''
-trova soluzioni di alta qualit\`a in un mare combinatorio
-altrimenti intrattabile. Sono storie che si possono
-raccontare bene, e raccontarle in italiano, con la giusta
-dose di dettaglio tecnico ma senza pretese
-specialistiche, mi sembra una piccola operazione culturale
-che vale la pena tentare.
-
-La terza ragione \`e personale. Dietro questo software c'\`e
-una storia di frustrazioni vissute e di soddisfazioni
-guadagnate poco a poco. C'\`e l'esperienza di vedere
-coordinatori d'orario di scuole vicine passare le notti di
-agosto a sistemare matrici in Excel; c'\`e la frustrazione di
-non riuscire a spiegare loro, in un linguaggio semplice,
-\emph{perch\'e} certe combinazioni che chiedevano di provare
-non potevano funzionare (Hall, ancora una volta); c'\`e il
-piacere di vedere apparire la prima soluzione completa dopo
-qualche minuto di simulated annealing su un istituto di
-novanta classi che fino a quel momento non aveva mai
-chiuso un orario in tempo. Non posso raccontare quelle
-storie nel dettaglio dei nomi e delle scuole, per discrezione
-di chi mi ha aiutato, ma il libro ne \`e impregnato in tutte
-le sue pagine.
-
-\section*{Come leggere questo libro}
-
-Il volume \`e diviso in sei parti che si possono affrontare
-in ordine o saltando avanti, a seconda dell'interesse del
-lettore. La prima parte contiene questo prologo, una
-descrizione formale del problema del timetabling
-scolastico e una panoramica di alto livello del sistema
-$\pi$Tantum: chi non si \`e mai occupato di scheduling pu\`o
-leggerla per intero in due o tre ore di lettura tranquilla,
-e arrivare alla fine con un'idea chiara di che cosa si
-parler\`a. La seconda parte descrive l'orario reale visto dal
-lato organizzativo, la struttura dei dati, i casi d'uso, e
-fa il tour dell'interfaccia utente: \`e quella che il
-coordinatore d'orario consulter\`a pi\`u spesso quando
-inizier\`a ad usare il sistema.
-
-La terza parte \`e il cuore tecnico. Un capitolo per ogni
-metodo algoritmico, con la stessa struttura narrativa
-costante: si parte da un problema concreto, si racconta la
-storia dell'idea (l'autore, il paper seminale, il contesto
-in cui \`e nata), si costruisce il metodo passo dopo passo
-spiegando ogni concetto prima di usarlo, si lavora un
-esempio in miniatura che si pu\`o seguire mentalmente, si
-generalizza al caso reale, si discutono i limiti e i casi
-in cui il metodo non funziona, si suggeriscono i due o tre
-riferimenti bibliografici essenziali per chi voglia
-approfondire. \`E un'organizzazione ripetitiva di proposito:
-una volta capito lo schema sul primo capitolo (CP-SAT), gli
-altri si leggono pi\`u in scioltezza.
-
-La quarta parte raccoglie gli approfondimenti tecnici
-strutturali: l'architettura del software, il modello dati
-con tutte le sue tabelle e relazioni, il riferimento delle
-API REST, i punti di estensione per chi voglia modificare
-$\pi$Tantum. La quinta parte raccoglie i benchmark misurati
-sui cinque profili di test, le tabelle e i grafici dei tempi
-di esecuzione, e una sezione di \emph{lessons learned} in cui
-provo a fare un bilancio onesto di quello che ha funzionato
-e di quello che non ha funzionato. La sesta e ultima parte
-contiene un glossario discorsivo di tutti i termini tecnici
-introdotti nel libro, gli indici (analitico e dei nomi), la
-bibliografia completa e un'appendice di sviluppo con FAQ,
-comandi utili e troubleshooting.
-
-Una nota sui rimandi incrociati: ho cercato di metterne
-abbastanza da rendere la lettura non lineare possibile (si
-trovano in tutti i punti del tipo ``come abbiamo visto al
-cap.~\ref{ch:metodo_cpsat}'') ma senza esagerare al punto
-da costringere il lettore a navigare avanti e indietro per
-seguire il filo. Se incontrate un termine tecnico che non
-ricordate dove era stato definito, l'indice analitico in
-fondo dovrebbe rimandarvi alla pagina giusta.
-
-\section*{Convenzioni tipografiche}
-
-Trovate sparsi nel testo dei piccoli riquadri colorati con
-funzioni diverse, che servono a sospendere temporaneamente
-il filo del discorso per dare una definizione precisa,
-proporre un esempio numerico, o avvertire di un errore
-comune. Sono pensati come momenti di pausa: il lettore pu\`o
-leggerli o saltarli senza perdere il filo principale del
-capitolo. I principali tipi sono il riquadro
-\emph{Intuizione} (azzurro), che propone la spiegazione
-informale di un'idea prima della definizione formale; il
-riquadro \emph{Definizione} (verde scuro), che enuncia in
-modo preciso un termine tecnico; il riquadro \emph{Esempio}
-(oro caldo), che svolge un caso numerico concreto, di
-solito su una scuola in miniatura; il riquadro
-\emph{Attenzione} (rosso), che segnala limiti, errori
-comuni e cose da non fare; il riquadro \emph{Nota storica}
-(terra di Siena), che racconta l'origine di un'idea, le
-persone che l'hanno proposta, l'anno in cui \`e stata
-pubblicata; il riquadro \emph{Per approfondire} (indaco
-profondo), che suggerisce due o tre riferimenti
-bibliografici essenziali a fine sezione; il riquadro
-\emph{Caso di studio} (oro su Siena), che ricostruisce una
-situazione realistica anche se fittizia per discrezione.
-
-Le citazioni bibliografiche usano lo stile autore-anno alla
-\parencite{schaerf1999}: la lista completa dei riferimenti
-si trova in fondo al volume, in ordine alfabetico per autore.
-I termini tecnici principali entrano nell'indice analitico
-in coda al libro, anch'esso ordinato alfabeticamente. Le
-formule matematiche, quando appaiono, sono sempre
-accompagnate da una frase che le introduce e da una frase
-che le commenta, come consigliato dalla buona didattica
-matematica: nessuna formula deve apparire ``nuda'' davanti
-al lettore.
-
-\section*{Ringraziamenti}
-
-Il metodo descritto in queste pagine, e l'applicazione che lo
-realizza, nascono dal confronto e dal lavoro comune di quattro
-persone che, in tempi e modi diversi, hanno riflettuto sul
-problema dell'orario scolastico. A Fernando Gargiulo, Giovanni
-Borghi, Matteo Mariani e Stefano Bertozzi va il riconoscimento
-delle idee originali su cui il progetto si fonda: senza le
-loro intuizioni, le loro discussioni e la loro pazienza nello
-scendere nei dettagli concreti delle scuole italiane,
-$\pi$Tantum non sarebbe quello che \`e.
-
-A chi mi ha mostrato Excel pieni di colori e di celle gialle
-nelle calde mattine di agosto, a chi mi ha chiesto perch\'e
-il sabato pomeriggio non si pu\`o fare educazione fisica
-quando le palestre sarebbero libere, a chi mi ha aiutato a
-capire la differenza fra un curriculum e un indirizzo, a chi
-mi ha prestato un manuale degli anni '90 sulla teoria dei
-matrimoni di Hall che mi ha riacceso l'interesse: grazie.
-Anche solo per avermi raccontato la storia di un orario
-particolarmente difficile da chiudere, o per avermi
-mostrato come la matrice 5-stati pu\`o essere
-controintuitiva fin che non si capisce la differenza fra
-PREFERRED ed ENFORCED. Senza quelle conversazioni questo
-libro sarebbe stato molto pi\`u astratto, e probabilmente
-inutile.
-
-\medskip
-\hfill\emph{G.\,B., maggio 2026}
+I capitoli seguenti descrivono il problema in modo formale, le
+entit\`a coinvolte, l'interfaccia utente, e ciascuno dei
+metodi algoritmici impiegati.
