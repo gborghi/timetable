@@ -1305,85 +1305,72 @@ questa run, considerato accettabile per il test di pipeline.
 L'assegnazione viene salvata come
 `experiments/data/mega/profs_mega.pkl` (28 KB).
 
-### 16.3 Phase B -- decomposizione temporale (BLOCCATO)
+### 16.3 Phase B -- decomposizione temporale (chiusa)
 
-La pipeline richiesta da Giovanni per il profilo MEGA prevede:
+Pipeline `experiments/decomposition_temporal.py::run_temporal_pipeline`:
 
-1. master CP-SAT di pre-distribuzione settimanale (decide
-   `hours_assigned[event, day]`)
+1. master CP-SAT (`cv2.solve_phase_a`) per la pre-distribuzione
+   settimanale; produce `dc_value[(prof, cl, subj, day)]`
 2. sei sotto-problemi giornalieri risolti in parallelo via
-   `concurrent.futures.ProcessPoolExecutor` con
+   `concurrent.futures.ProcessPoolExecutor` con default
    `min(6, os.cpu_count())` workers
-3. ricucitura settimanale, eventualmente con feedback al master
-4. ALNS sulla soluzione ricucita per il rifinimento SOFT
+3. ricucitura settimanale (no auto-iter del master in questa
+   versione iniziale; documentato nel docstring del modulo)
+4. ALNS sulla soluzione ricucita -- stage opzionale, attivabile
+   da CLI / endpoint REST
 
-Il modulo `experiments/decomposition_temporal.py` contiene la
-**logica di partitioning** documentata, ma le quattro funzioni
-di solve sollevano `NotImplementedError`:
-`pre_distribute_hours`, `solve_day`, `feedback_to_master`,
-`run_temporal_pipeline`. Il wiring con `cpsat_v2_timetable`
-Stage A/B/C non e' ancora stato fatto (commit `c112070`,
-sezione "roadmap" del docstring). La parallelizzazione via
-ProcessPoolExecutor e l'orchestrazione master/slave sono
-parte dello stesso lavoro non ancora intrapreso.
+Smoke test misurati su quattro profili (commit `88bd76c`):
 
-Conseguenze:
+| Profilo    | classi | docenti | master (s) | days wall (s) | serial-eq (s) | speedup | failed days | celle |
+|------------|-------:|--------:|-----------:|--------------:|--------------:|--------:|:------------|------:|
+| small      |     10 |      19 |       30.2 |          17.6 |          53.7 |   3.1x  | nessuno     |  1728 |
+| medium     |     28 |      47 |       60.4 |          34.0 |         180.5 |   5.3x  | nessuno     |  4002 |
+| big        |     40 |      75 |       60.7 |          39.8 |         181.7 |   4.6x  | nessuno     |  5496 |
+| MEGA       |    100 |     178 |      301.5 |         123.1 |         721.9 |   5.9x  | nessuno     | 15618 |
 
-- Phase B sul profilo MEGA non e' attualmente eseguibile
-  attraverso la pipeline temporale.
-- Lo stage ALNS finale dipende dall'output di Phase B e
-  resta a sua volta bloccato.
-- L'export xlsx delle viste classi/docenti e' bloccato per
-  lo stesso motivo.
-- I confronti "1-worker vs 6-worker" e "monolitico vs
-  decomposto temporale" sono per ora un dato non disponibile,
-  non una stima.
+Lo speedup misurato cresce con la dimensione: i 6 day-solver
+paralleli hanno il loro picco di efficienza quando ogni giorno
+satura il proprio budget di tempo (su small i giorni finiscono
+in pochi secondi e l'overhead di processo si nota; su MEGA ogni
+giorno satura i 120s di budget, quindi il parallelismo copre
+per intero il loro carico).
 
-L'opzione di parallelismo (`Workers paralleli`) e' gia'
-esposta nell'UI Workflow (card "10) Strategie di
-decomposizione" -> sezione Temporale, default 6); il
-campo viene salvato nello stato della pagina ma alimenta
-l'endpoint `POST /api/optimize/decomposition/temporal` che
-oggi risponde 501 con un messaggio esplicito di roadmap.
+Il REST endpoint `POST /api/optimize/decomposition/temporal`
+(commit `88bd76c`) wira la pipeline come run asincrono con
+log streaming SSE; accetta `time_a`, `time_day`, `n_workers`,
+`cpsat_workers_per_day`, `parallel`, `enforce_no_holes`,
+`run_alns`, `alns_budget_s`, `alns_T0`, `alns_alpha`. La card
+del Workflow (commit `d02575d`) espone questi parametri in UI.
 
-### 16.4 Cosa rimane da fare per chiudere il punto
+### 16.4 Pipeline MEGA end-to-end (temporal + ALNS)
 
-1. Implementare il master CP-SAT di pre-distribuzione in
-   `decomposition_temporal.pre_distribute_hours`. Variabili
-   `h[event, day] in [0, max_hours_event]`, vincoli sulla
-   somma settimanale per evento, sui tetti giornalieri per
-   classe e per docente, sul max-day-hours per classe (5 o
-   6), sulla doppia mate / italiano (almeno una coppia di
-   ore in due giorni).
-2. Implementare `solve_day` come adapter di
-   `cpsat_v2_timetable._solve_one_day` con il dataset gia'
-   filtrato su un singolo giorno e le ore pre-distribuite
-   come dato di input.
-3. Implementare `run_temporal_pipeline` con
-   `ProcessPoolExecutor`, `as_completed`, timeout per worker
-   e logica di ricucitura (feedback al master con greedy
-   move-events-from-failed-day-to-day-with-margin).
-4. Wirare `POST /api/optimize/decomposition/temporal` al
-   nuovo `run_temporal_pipeline` invece di restituire 501.
-5. Aggiungere ALNS finale come stage sequenziale dopo la
-   ricucitura, riusando l'esistente
-   `optimization.run_meta('alns', ...)`.
+Driver `experiments/run_mega_pipeline.py` che lancia il
+temporale (`time_a=300, time_day=120, parallel=True, n_workers=6`)
+e poi ALNS (budget 1200s, 4 worker CP-SAT) sopra il risultato.
 
-Stima realistica: 2-3 giorni di lavoro full-time per chiudere
-i punti 1-3 con test, mezza giornata per i punti 4-5. Da
-pianificare come task dedicato.
+I risultati misurati sono in `experiments/mega_run.log` e nel
+file `experiments/solution_mega_temporal_alns.pkl` prodotto dal
+driver. Il commit che chiude il run con i numeri reali e
+l'export xlsx aggiornera' questa sezione.
 
 ### 16.5 Esecuzione attuale (riproducibilita')
 
 ```
 cd experiments
+# 1) Generazione mock (deterministico)
 python big_mock_school.py --profile mega
+# 2) Phase A (assegnazione distribuita per indirizzo)
 python cpsat_v2_assignment.py --school school_mega.pkl \
     --time 600 --workers 8 --out profs_mega.pkl
-# Phase B: bloccato, vedi 16.3
+# 3) Pipeline completa: temporale + ALNS
+python run_mega_pipeline.py
+# 4) Export xlsx (classi + docenti)
+python -m exporters --solution solution_mega_temporal_alns.pkl \
+    --school school_mega.pkl --profs profs_mega.pkl \
+    --out output/mega/
 ```
 
-Pickle di riferimento per i prossimi run, gia' nel repo:
+Pickle di riferimento, gia' nel repo:
 
 - `experiments/data/mega/school_mega.pkl`
 - `experiments/data/mega/profs_mega.pkl`
