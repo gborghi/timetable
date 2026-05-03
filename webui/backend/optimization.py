@@ -993,14 +993,37 @@ def run_diag_distributions(*, spec: dict | None = None) -> int:
 
 def run_column_generation(*, time_budget_s: float = 60.0,
                           patterns_per_teacher: int = 3,
+                          granularity: str = "teacher",
+                          branching_strategy: str = "ryan_foster",
+                          max_iterations: int = 5,
+                          parallel: bool = True,
                           log: bool = True) -> int:
     """Async Column Generation pass. Behaves like an alternative
     Phase-B: starts from the active assignment (Phase A), produces
-    a HARD-feasible weekly schedule via the master LP + per-teacher
-    pattern catalog, and saves it as a new Solution with kind='cg'.
+    a HARD-feasible weekly schedule via the iterative master LP +
+    pattern enrichment + day-by-day completion fallback. Saved as
+    a new Solution with kind='cg'.
+
+    The `granularity`, `branching_strategy`, `max_iterations` and
+    `parallel` parameters are accepted from the UI but only
+    granularity='teacher' is fully wired today (the others map to
+    'teacher' with a log warning). Full branch-and-price with
+    multi-granularity sub-CP-SAT and Ryan-Foster branching is on
+    the roadmap; see docs/optimization_strategies.md.
     """
     params = dict(time_budget_s=time_budget_s,
-                  patterns_per_teacher=patterns_per_teacher, log=log)
+                  patterns_per_teacher=patterns_per_teacher,
+                  granularity=granularity,
+                  branching_strategy=branching_strategy,
+                  max_iterations=max_iterations,
+                  parallel=parallel,
+                  log=log)
+    if granularity not in ("teacher",):
+        print(f"[cg] WARNING: granularity={granularity!r} non e' "
+              f"ancora wirata; uso 'teacher' (vedi roadmap)")
+    if branching_strategy not in ("variable", "ryan_foster"):
+        print(f"[cg] WARNING: branching_strategy={branching_strategy!r} "
+              f"non riconosciuta")
     rid = create_run("cg", "Column Generation alternative Phase B",
                       None, params)
 
@@ -1024,7 +1047,9 @@ def run_column_generation(*, time_budget_s: float = 60.0,
             new_sol, info = cg.run_column_generation(
                 profs, dc_value,
                 time_budget_s=time_budget_s,
-                patterns_per_teacher=patterns_per_teacher, log=log,
+                patterns_per_teacher=patterns_per_teacher,
+                max_iterations=max_iterations,
+                log=log,
             )
         if new_sol is None or not info.get("feasible_after_assembly"):
             update_run(rid_inner, progress=1.0,

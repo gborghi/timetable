@@ -175,29 +175,81 @@ all'agente di tirare fuori altri annunci.
 Per istanze normali la pipeline standard \`e pi\`u veloce.
 Default OFF.
 
-### Dettaglio tecnico
+### Dettaglio tecnico (stato attuale, commit `b7bb776`)
 
-`experiments/column_generation.py`. Decomposizione per scuole
-molto grandi (>200 classi):
+`experiments/column_generation.py`. Versione attuale --
+**iterative-diversified**, che e' un pre-passo verso il vero
+Branch-and-Price ma non ne ha ancora la completezza:
 
-- **Master LP** (scipy.linprog HiGHS): seleziona patterns
-  pre-computati di "settimana docente" per coprire la domanda di
-  Phase A.
-- **Sotto-problema per docente**: genera nuovi pattern in
-  funzione delle variabili duali del master.
-- **Iterazione**: master -> duali -> nuovi pattern -> master,
-  fino a convergenza (nessun pattern con reduced cost negativo).
+- **Master LP** (scipy.linprog HiGHS): seleziona pattern di
+  settimana-docente per coprire la domanda di Phase A.
+- **Pattern enrichment iterativo**: ogni iterazione aggiunge
+  `patterns_per_teacher` nuove varianti per docente (random
+  shuffles + hour offsets), rilancia il master, accetta se
+  l'obiettivo migliora. Default 5 iterazioni, time budget
+  120s.
+- **Integer recovery**: per ogni docente, il pattern con peso
+  LP piu' alto viene scelto.
+- **Completion fallback**: se l'unione dei pattern scelti non
+  copre interamente la demand, viene eseguito un Phase B
+  giorno-per-giorno from scratch sullo stesso `dc_value`.
+  Cosi' la CG e' una **strict superset** di Phase B: se
+  converge, vince la sua soluzione (tipicamente migliore SOFT);
+  se non converge, degrada a Phase B standard invece di
+  ritornare `None`.
 
-Lo skeleton attuale fa 1 iterazione e usa un seed-pattern
-generator deterministico (rotazione di start hour per produrre
-`patterns_per_teacher` varianti). Il master LP risolve un
-program di selezione binaria rilassata; la soluzione integrale
-si ottiene per arrotondamento per docente.
+Smoke test su `small` (10 classi, 19 docenti): 4 iter, 114
+pattern finali, master obj=60, completion ha riempito i gap,
+1662 celle, HARD-feasible al 100%, 25.8s wall.
+
+API: `POST /api/optimize/column-generation`. Accetta
+`granularity` ('teacher'|'class'|'day'), `branching_strategy`
+('ryan_foster'|'variable'), `max_iterations`, `parallel` --
+ma oggi solo `granularity='teacher'` corrisponde a un percorso
+implementato; gli altri valori vengono accettati con un
+warning di log e mappati a 'teacher'.
+
+### Cosa serve per il vero Branch-and-Price (roadmap)
+
+La specifica completa data da Giovanni richiede:
+
+1. **Master LP** ristrutturato: invece dell'attuale
+   "ogni pattern di docente t copre tutta la domanda di t"
+   (che rende i duali su (t, cl, subj, d) invarianti per i
+   pattern dello stesso docente), il master deve permettere
+   pattern parziali e accumulare la copertura via somma.
+2. **Sub-problema CP-SAT con duali** per ciascuna granularita':
+   - `teacher`: variabili `x[(cl, subj, d, h)]`, obiettivo
+     `cost_pattern - lambda_t - sum_(cl,subj,d) mu * coverage`,
+     vincoli di no-overlap docente.
+   - `class`: variabili per ciascuna lezione della classe,
+     vincoli di copertura monte ore.
+   - `day`: variabili per il giorno, vincoli di non-overlap
+     classe e docente, obiettivo guidato dai duali.
+3. **Iterative pricing loop**: master -> duali -> sub-CP-SAT
+   in parallelo -> nuovi pattern con reduced cost negativo ->
+   master, fino a convergenza.
+4. **Variable branching**: scegli `x_p` con `0 < x_p < 1`,
+   crea due rami (`x_p = 0` e `x_p = 1`), ricorri.
+5. **Ryan-Foster branching**: scegli (i, j) elementi tali che
+   `sum_{p covers both} x_p` sia frazionario; due rami "i e j
+   sempre insieme" / "i e j mai insieme". Stato di branching
+   da gestire con merge/separate hash maps.
+6. **Branch-and-bound tree**: ricorsione con bound tracking,
+   pruning quando il bound del nodo e' peggiore della miglior
+   intera trovata.
+
+Stima realistica: 5-10 giorni di engineering OR focalizzato per
+chiudere correttamente. La struttura di `experiments/column_generation.py`
+e' pronta a essere estesa con un secondo path
+(`mode="branch-and-price"`), ma il refactor del master e' la
+parte invasiva.
+
+Riferimenti: Dantzig & Wolfe 1960; Desrosiers & Lubbecke 2005,
+*A Primer in Column Generation*; Ryan & Foster 1981;
+Vanderbeck & Wolsey 2010.
 
 Default OFF nella pipeline (utile solo per istanze grandi).
-
-API: `POST /api/optimize/column-generation` (asincrono, crea un
-run con `kind='cg'`).
 
 ## 5. Lagrangian Relaxation — divide e impacca
 

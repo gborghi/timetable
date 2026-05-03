@@ -23,7 +23,7 @@ Convenzioni:
 | 5 | ALNS | `experiments/alns.py` | `run_alns` | `POST /api/optimize/meta/alns` | V | 6+ destroy operators e 3 repair operators reali. Selector adattivo via roulette wheel. Wirato in `optimization.run_meta('alns')`. |
 | 6 | VNS | `experiments/vns.py` | `run_vns` | `POST /api/optimize/meta/vns` | V | 4 vicinati di dimensione crescente. Wirato in `run_meta('vns')`. |
 | 7 | Lagrangian Relaxation | `experiments/lagrangian.py` | `run_lagrangian` | `POST /api/optimize/meta/lagrangian` | V | Subgradient ascent con SA refinement. Wirato in `run_meta('lagrangian')`. |
-| 8 | Column Generation | `experiments/column_generation.py` | `run_column_generation` | `POST /api/optimize/column-generation` | V | Aggiornato in `b7bb776`: pipeline iterativa con master LP + diversified pattern enrichment + integer recovery + completion fallback day-by-day. Smoke test small: 4 iterazioni, 114 patterns, master obj=60, completion riempie i gap, 1662 celle, HARD=100%, 25.8s. La variante full branch-and-price con per-teacher CP-SAT sub-problems guidati dai duali resta in roadmap (esplicitato in `info["mode"] = "iterative-diversified"`). |
+| 8 | Column Generation | `experiments/column_generation.py` | `run_column_generation` | `POST /api/optimize/column-generation` | G | Variante **iterative-diversified** (commit `b7bb776`): master LP iterativo + diversified pattern enrichment + integer recovery + completion fallback day-by-day. Smoke test small: 4 iter, 114 patterns, completion fa il resto, 1662 celle, HARD=100%, 25.8s. **Stato pieno**: il vero **Branch-and-Price** con sub-CP-SAT guidato dai duali per le 3 granularita' (teacher/class/day) + Ryan-Foster branching e' progettato e documentato in `docs/optimization_strategies.md` ma richiede ~5-10 giorni di engineering OR; non chiuso. UI: la card "Tecniche avanzate" espone gia' i selettori `granularity`, `branching_strategy`, `max_iterations`, `parallel` (commit successivo a `73b132d`); oggi solo `granularity='teacher'` corrisponde al percorso reale, gli altri valori vengono accettati con warning di log e mappati a 'teacher'. |
 | 9 | Hall pre-check | `experiments/diagnostics/hall_check.py` (CLI) + `optimization.run_hall_check`/`run_diag_hall_check` | -- | `POST /api/optimize/hall-check` + `POST /api/diagnostics/hall-check` | V | Tre punti UI come da specifica (Phase A card, AdvancedTechniques, tab Diagnostica). Sync e async modes. |
 | 10 | Monte Carlo Sensitivity | (interno a `optimization.py`) | `run_diag_montecarlo` | `POST /api/diagnostics/montecarlo` | V | Run async kind `diag_montecarlo`. Catalogo + parametri esposti dal frontend. Cronologia DB-backed (commit `06a78af`). |
 | 11 | Bipartite analysis (modularity, betweenness, density) | (interno) | `run_diag_bipartite` | `POST /api/diagnostics/bipartite` | V | Run async kind `diag_bipartite`. |
@@ -49,10 +49,9 @@ Convenzioni:
 
 ## Aggiornamento post-audit
 
-Tutti i Rossi (3) e il Giallo (1) sono stati chiusi nei commit
-`14aea9a` (METIS + curriculum + combined hint) e `b7bb776` (CG
-iterativo). Nessun endpoint 501 e nessun `NotImplementedError`
-restano nel codice di progetto:
+I 3 Rossi sono stati chiusi nei commit `14aea9a` (METIS +
+curriculum + combined hint) e nessun endpoint 501 e nessun
+`NotImplementedError` restano nel codice di progetto:
 
 ```
 $ grep -rn "HTTPException(\s*501" webui/backend/ --include="*.py" \
@@ -64,15 +63,21 @@ $ grep -rn "NotImplementedError" webui/backend/ experiments/ \
 (no output)
 ```
 
-Stato finale (30/30 V):
+Stato finale: 29 V + 1 G (Column Generation):
 - 26 stage gia' V dall'audit iniziale (CP-SAT + spectral + LNS +
   SA + TS + ILS + ALNS + VNS + Lagrangian + Hall + MC + bipartite
   + correlations + distributions + telemetry + DSL + tag + free-
   day prefs + graduatoria + Phase A class/curriculum prefs +
   Monitor + DNF + Import/Export DB + xlsx/csv export + navbar +
   5-stati + diagnostics + branding + auto-detect + Workflow card)
-- 4 stage chiusi in questa sessione: METIS, per curriculum,
-  Combined (hint), Column Generation (iterative + completion).
+- 3 stage chiusi in questa sessione (R -> V): METIS, per
+  curriculum, Combined (hint).
+- Column Generation rimane G: la variante "iterative-diversified"
+  e' funzionante e produce HARD=100% via completion fallback;
+  il vero Branch-and-Price con sub-CP-SAT dual-driven per le 3
+  granularita' (teacher/class/day) e Ryan-Foster branching e'
+  documentato in docs/optimization_strategies.md ma richiede
+  5-10 giorni di engineering, non chiuso in questa sessione.
 
 ## Pendenze del working tree
 

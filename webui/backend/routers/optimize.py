@@ -464,10 +464,20 @@ def launch_hall_check(payload: schemas.HallCheckIn):
 
 @router.post("/column-generation")
 def launch_column_generation(payload: schemas.ColumnGenerationIn):
-    """Async: starts a Column Generation alternative-Phase-B run."""
+    """Async: starts a Column Generation alternative-Phase-B run.
+
+    granularity, branching_strategy, max_iterations and parallel
+    are accepted in the payload; only granularity='teacher' takes
+    effect today, the others are reserved for the full branch-and-
+    price refactor (see docs/optimization_strategies.md).
+    """
     rid = optimization.run_column_generation(
         time_budget_s=payload.time_budget_s,
         patterns_per_teacher=payload.patterns_per_teacher,
+        granularity=payload.granularity,
+        branching_strategy=payload.branching_strategy,
+        max_iterations=payload.max_iterations,
+        parallel=payload.parallel,
         log=payload.log,
     )
     return {"run_id": rid}

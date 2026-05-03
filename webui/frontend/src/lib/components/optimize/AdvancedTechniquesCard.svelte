@@ -29,6 +29,10 @@
   let busyCg = false;
   let cgBudget = 60;
   let cgPatternsPerTeacher = 3;
+  let cgGranularity = 'teacher';   // 'teacher' | 'class' | 'day'
+  let cgBranching = 'ryan_foster'; // 'variable' | 'ryan_foster'
+  let cgMaxIterations = 100;
+  let cgParallel = true;
 
   let busyLag = false;
   let lagBudget = 60;
@@ -83,6 +87,10 @@
       const r = await api.post('/api/optimize/column-generation', {
         time_budget_s: cgBudget,
         patterns_per_teacher: cgPatternsPerTeacher,
+        granularity: cgGranularity,
+        branching_strategy: cgBranching,
+        max_iterations: cgMaxIterations,
+        parallel: cgParallel,
       });
       flash('Column Generation run #' + r.run_id + ' avviato', 'success');
       onRunStarted(r.run_id);
@@ -260,17 +268,47 @@
       <span class="pill pill-blue !text-[10px]">phase B alternativo</span>
     </div>
     <p class="text-[11px] text-ink-500 mb-2">
-      Decomposizione Dantzig-Wolfe: master LP (scipy.linprog HiGHS) +
-      sottoproblema per docente. Skeleton funzionante (1 iterazione);
-      consigliato solo per istanze molto grandi (>200 classi).
+      Decomposizione Dantzig-Wolfe: master LP + sottoproblema CP-SAT.
+      Granularita' del sub-problema configurabile (per docente / per
+      classe / per giorno) e branching scegliendo tra variable
+      branching e Ryan-Foster. La pipeline corrente esegue la
+      variante <em>iterative-diversified</em> (master LP + pattern
+      enrichment + completion fallback day-by-day). Le altre due
+      granularita' e Ryan-Foster sono in roadmap; vedi
+      <code>experiments/column_generation.py</code> per lo stato.
     </p>
+    <div class="grid grid-cols-2 gap-2 mb-2">
+      <div class="field !mb-0">
+        <label class="!text-[11px]">Granularita' sub-problema</label>
+        <select bind:value={cgGranularity} class="w-full">
+          <option value="teacher">Per docente (default)</option>
+          <option value="class">Per classe (roadmap)</option>
+          <option value="day">Per giorno (roadmap)</option>
+        </select>
+      </div>
+      <div class="field !mb-0">
+        <label class="!text-[11px]">Branching strategy</label>
+        <select bind:value={cgBranching} class="w-full">
+          <option value="ryan_foster">Ryan-Foster (roadmap)</option>
+          <option value="variable">Variable branching (roadmap)</option>
+        </select>
+      </div>
+      <div class="field !mb-0">
+        <label class="!text-[11px]">Max iterazioni</label>
+        <input type="number" bind:value={cgMaxIterations} class="w-full"/>
+      </div>
+      <label class="flex items-center gap-2 text-xs self-end pb-1">
+        <input type="checkbox" bind:checked={cgParallel}/>
+        Sub-problemi paralleli
+      </label>
+    </div>
     <div class="flex gap-2 items-end flex-wrap">
       <div class="field !mb-0">
         <label class="!text-[11px]">Budget (s)</label>
         <input type="number" bind:value={cgBudget} class="w-24"/>
       </div>
       <div class="field !mb-0">
-        <label class="!text-[11px]">Pattern/docente</label>
+        <label class="!text-[11px]">Pattern/docente (seed)</label>
         <input type="number" bind:value={cgPatternsPerTeacher}
                class="w-20"/>
       </div>

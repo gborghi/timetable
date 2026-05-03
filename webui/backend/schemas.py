@@ -509,9 +509,25 @@ class HallCheckIn(BaseModel):
 
 
 class ColumnGenerationIn(BaseModel):
-    """Inputs for the async Column Generation skeleton."""
+    """Inputs for the async Column Generation run.
+
+    `granularity` selects the sub-problem unit: 'teacher' is the
+    only fully-implemented choice today; 'class' and 'day' are
+    accepted but the backend currently maps them to 'teacher' with
+    a log warning, until the full BnP refactor lands.
+
+    `branching_strategy` is accepted but the current implementation
+    does not perform integer branching: it relies on the iterative
+    master + completion fallback to recover a HARD-feasible integer
+    solution. Branch-and-price with Ryan-Foster / variable branching
+    is on the roadmap.
+    """
     time_budget_s: float = 60.0
     patterns_per_teacher: int = 3
+    granularity: str = "teacher"           # 'teacher' | 'class' | 'day'
+    branching_strategy: str = "ryan_foster"  # 'ryan_foster' | 'variable'
+    max_iterations: int = 5
+    parallel: bool = True
     log: bool = True
 
 
