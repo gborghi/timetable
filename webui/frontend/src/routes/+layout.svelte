@@ -22,25 +22,34 @@
   const SENECA_LATIN = 'Omnia, Lucili, aliena sunt, tempus tantum nostrum est.';
   const SENECA_IT = 'Tutto, Lucilio, ci viene da altri; soltanto il tempo e\' nostro.';
 
-  const links = [
-    { href: '/',           label: 'Dashboard',   exact: true  },
-    { href: '/teachers',   label: 'Docenti'                  },
-    { href: '/classes',    label: 'Classi'                   },
-    { href: '/curricula',  label: 'Indirizzi'                },
-    { href: '/students',   label: 'Studenti'                 },
-    { href: '/groups',     label: 'Gruppi'                   },
-    { href: '/subjects',   label: 'Materie'                  },
-    { href: '/classrooms', label: 'Aule'                     },
-    { href: '/coteaching', label: 'Compresenze'              },
-    { href: '/assignments',label: 'Cattedre'                 },
-    { href: '/schedule',   label: 'Orario'                   },
-    { href: '/assenze-supplenze', label: 'Assenze e supplenze' },
-    { href: '/monitor',    label: 'Monitor'                  },
-    { href: '/constraints',label: 'Vincoli'                  },
-    { href: '/optimize',     label: 'Workflow'                 },
-    { href: '/runs',         label: 'Runs'                     },
-    { href: '/diagnostics',  label: 'Statistiche'              },
-    { href: '/import',       label: 'Import bulk'              },
+  // Top-level nav: 6 entries. Three of them ("Anagrafica",
+  // "Pianificazione", "Esecuzione") are dropdowns that group
+  // related sub-pages; the others are direct links.
+  const navGroups = [
+    { kind: 'link', href: '/', label: 'Dashboard', exact: true },
+    { kind: 'menu', label: 'Anagrafica', children: [
+      { href: '/teachers',   label: 'Docenti'   },
+      { href: '/classes',    label: 'Classi'    },
+      { href: '/curricula',  label: 'Indirizzi' },
+      { href: '/students',   label: 'Studenti'  },
+      { href: '/groups',     label: 'Gruppi'    },
+      { href: '/subjects',   label: 'Materie'   },
+      { href: '/classrooms', label: 'Aule'      },
+    ] },
+    { kind: 'menu', label: 'Pianificazione', children: [
+      { href: '/coteaching',        label: 'Compresenze'         },
+      { href: '/assignments',       label: 'Cattedre'            },
+      { href: '/schedule',          label: 'Orario'              },
+      { href: '/assenze-supplenze', label: 'Assenze e supplenze' },
+    ] },
+    { kind: 'link', href: '/constraints', label: 'Vincoli' },
+    { kind: 'menu', label: 'Esecuzione', children: [
+      { href: '/optimize',    label: 'Workflow'     },
+      { href: '/runs',        label: 'Runs'         },
+      { href: '/monitor',     label: 'Monitor'      },
+      { href: '/diagnostics', label: 'Statistiche'  },
+    ] },
+    { kind: 'link', href: '/import', label: 'Import bulk' },
   ];
 
   onMount(() => {
@@ -49,6 +58,26 @@
   });
 
   $: cur = $page.url.pathname;
+
+  // Track which menu is open (only one at a time, click-driven).
+  let openMenu = null;
+  function toggleMenu(name) {
+    openMenu = openMenu === name ? null : name;
+  }
+  function closeMenu() { openMenu = null; }
+  // Close any open dropdown when the route changes.
+  $: if (cur !== undefined) openMenu = null;
+  function isLinkActive(href, exact) {
+    if (exact) return cur === href;
+    return cur === href || cur.startsWith(href + '/');
+  }
+  function isMenuActive(menu) {
+    return menu.children.some((c) => isLinkActive(c.href, false));
+  }
+  function onMenuKeydown(ev, name) {
+    if (ev.key === 'Escape') closeMenu();
+    if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); toggleMenu(name); }
+  }
 </script>
 
 <QueryClientProvider client={queryClient}>
@@ -81,17 +110,66 @@
           </span>
         </span>
       </a>
-      <nav class="flex flex-wrap gap-1 ml-4" aria-label="Navigazione principale">
-        {#each links as l}
-          {@const active = l.exact ? cur === l.href
-                                    : cur.startsWith(l.href) && l.href !== '/'}
-          <a href={l.href}
-             class="px-3 py-1.5 text-sm rounded-md hover:bg-ink-100 focus-ring"
-             class:bg-ink-100={active}
-             class:font-medium={active}
-             aria-current={active ? 'page' : undefined}>{l.label}</a>
+      <nav class="flex flex-wrap gap-1 ml-4 relative"
+           aria-label="Navigazione principale">
+        {#each navGroups as g}
+          {#if g.kind === 'link'}
+            {@const active = isLinkActive(g.href, g.exact)}
+            <a href={g.href}
+               class="px-3 py-1.5 text-sm rounded-md hover:bg-ink-100 focus-ring"
+               class:bg-ink-100={active}
+               class:font-medium={active}
+               aria-current={active ? 'page' : undefined}>{g.label}</a>
+          {:else}
+            {@const active = isMenuActive(g)}
+            {@const open = openMenu === g.label}
+            <div class="relative">
+              <button type="button"
+                      class="px-3 py-1.5 text-sm rounded-md hover:bg-ink-100
+                             focus-ring inline-flex items-center gap-1"
+                      class:bg-ink-100={active || open}
+                      class:font-medium={active}
+                      aria-haspopup="true"
+                      aria-expanded={open}
+                      on:click={() => toggleMenu(g.label)}
+                      on:keydown={(e) => onMenuKeydown(e, g.label)}>
+                {g.label}
+                <svg class="w-3 h-3 opacity-60" viewBox="0 0 12 12"
+                     fill="none" stroke="currentColor" stroke-width="1.5"
+                     aria-hidden="true">
+                  <path d="M3 4.5 L6 7.5 L9 4.5"/>
+                </svg>
+              </button>
+              {#if open}
+                <div class="absolute left-0 top-full mt-1 z-30
+                            min-w-[10rem] bg-white border border-ink-200
+                            rounded-md shadow-lg py-1"
+                     role="menu"
+                     on:mouseleave={closeMenu}>
+                  {#each g.children as c}
+                    {@const childActive = isLinkActive(c.href, false)}
+                    <a href={c.href}
+                       class="block px-3 py-1.5 text-sm hover:bg-ink-100
+                              focus-ring"
+                       class:bg-ink-100={childActive}
+                       class:font-medium={childActive}
+                       role="menuitem"
+                       aria-current={childActive ? 'page' : undefined}
+                       on:click={closeMenu}>{c.label}</a>
+                  {/each}
+                </div>
+              {/if}
+            </div>
+          {/if}
         {/each}
       </nav>
+      <!-- Click-outside catcher for open dropdowns -->
+      {#if openMenu}
+        <button type="button" tabindex="-1"
+                class="fixed inset-0 z-20 cursor-default"
+                aria-hidden="true"
+                on:click={closeMenu}></button>
+      {/if}
       <div class="ml-auto flex items-center gap-2 text-xs text-ink-500">
         <span class="pill">classi: {$datasetState.classes}</span>
         <span class="pill">docenti: {$datasetState.teachers}</span>
