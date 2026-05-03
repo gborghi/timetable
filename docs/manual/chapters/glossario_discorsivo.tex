@@ -1,0 +1,601 @@
+\chapter{Glossario discorsivo dei metodi}
+\label{ch:glossario_discorsivo}
+
+Questo capitolo spiega \emph{cos'\`e} ogni metodo che $\pi$Tantum
+usa internamente, con un linguaggio che si possa leggere
+``dal divano''. Per ogni metodo trovi quattro cose in
+sequenza: l'idea, come funziona, quando usarlo, un esempio
+legato al timetabling. Niente formule a meno che non aggiungano
+chiarezza.
+
+\section{CP-SAT (Constraint Programming over SAT)}
+
+\textbf{Cos'\`e e perch\'e esiste.} CP-SAT \`e il motore con cui
+$\pi$Tantum trova le soluzioni. \`E un \emph{constraint
+solver}: gli dai un mucchio di variabili (per esempio: ``in
+quale slot va la lezione di mate della 1A?''), un mucchio di
+vincoli (``due lezioni della stessa classe non possono stare
+nello stesso slot''; ``il prof Borghi non insegna sabato''),
+e gli chiedi di trovare un assegnamento di valori che li
+rispetti tutti, possibilmente ottimizzando un criterio.
+
+A differenza dei solver \emph{lineari} (LP/MIP) che lavorano
+su disuguaglianze numeriche, CP-SAT lavora su variabili
+booleane e intere, e sa esprimere vincoli "logici" complessi
+(disgiunzioni, implicazioni, conteggi) in modo nativo. Questo
+lo rende particolarmente adatto al timetabling, dove la
+maggior parte dei vincoli sono di natura combinatoria, non
+geometrica.
+
+\textbf{Come funziona.} CP-SAT alterna due fasi:
+\begin{itemize}
+\item \textbf{Propagazione}: data una scelta parziale (es. ``ho
+  deciso che mate-3A va in luned\`i 8\textsuperscript{a}''),
+  il solver \emph{deduce} automaticamente quello che ne
+  consegue (``allora ita-3A non pu\`o andare in luned\`i
+  8\textsuperscript{a}''; ``allora il prof Borghi \`e occupato
+  in quello slot'', ecc.). Questo restringe lo spazio delle
+  scelte rimanenti senza dover provare tutte le combinazioni.
+\item \textbf{Ricerca}: quando la propagazione esaurisce le
+  conseguenze automatiche, il solver fa un \emph{salto
+  d'azzardo} (es. ``provo a mettere ita-3B in marted\`i 9'')
+  e si rimette a propagare. Se a un certo punto trova una
+  contraddizione, fa \emph{backtracking}: torna indietro,
+  marca quella scelta come ``no'', e prova un'alternativa.
+  Impara dai fallimenti aggiungendo \emph{clausole imparate}
+  che evitano di ripetere lo stesso errore.
+\end{itemize}
+
+\textbf{Quando usarlo.} CP-SAT \`e il default di $\pi$Tantum
+per le Phase A e B. Per scuole di dimensioni normali (fino a
+$\sim$80 classi) basta da solo. Per istanze pi\`u grandi
+serve combinarlo con la decomposizione spettrale o con
+metaeuristiche.
+
+\textbf{Esempio.} Tipica iterazione: dopo aver propagato per
+qualche secondo, il solver ha gi\`a piazzato il 70\% delle
+lezioni del triennio (perch\'e sono molto vincolate dai lab e
+dalle compresenze) ed esplora le combinazioni rimanenti per
+le classi del biennio (pi\`u flessibili). Trova una
+contraddizione (un docente avrebbe due classi nello stesso
+slot), backtracking, ne prova un'altra. Tipicamente in 1-3
+minuti chiude su una soluzione feasible.
+
+\section{Decomposizione spettrale}
+
+\textbf{Cos'\`e e perch\'e esiste.} Quando la scuola \`e grande
+(>120 classi), il problema diventa troppo grosso perch\'e
+CP-SAT lo digerisca in tempi ragionevoli. La decomposizione
+spettrale risolve questo dividendo la scuola in piccoli
+``cluster'' di classi che condividono pochi docenti. Ogni
+cluster diventa un sotto-problema piccolo, risolvibile in
+parallelo.
+
+L'idea \`e: i conflitti veri (due docenti che competono per
+lo stesso slot) avvengono fra classi che condividono lo
+stesso docente. Se due classi non hanno docenti in comune,
+si possono pianificare totalmente in parallelo.
+
+\textbf{Come funziona.} Si costruisce il grafo delle classi:
+nodi = classi, peso dell'arco fra due classi = numero di
+docenti condivisi. Si calcolano gli autovettori del
+\emph{Laplaciano} di quel grafo (una matrice che misura,
+per ogni nodo, quanto si ``differenzia'' dai vicini). Gli
+autovettori associati ai pi\`u piccoli autovalori
+diversi da zero indicano \emph{direzioni di separazione}
+naturali: progettando i nodi su quelle direzioni, si vedono
+chiaramente i cluster.
+
+Un colpo di k-means su questa proiezione restituisce la
+partizione finale.
+
+\textbf{Quando usarlo.} Default ON in $\pi$Tantum quando la
+scuola ha $\geq 120$ classi. Per scuole pi\`u piccole non
+porta vantaggi e aggiunge overhead.
+
+\textbf{Esempio.} Per una scuola di 250 classi, una
+decomposizione in 4 cluster produce sotto-problemi di 60-70
+classi ciascuno, risolvibili in parallelo. I docenti-ponte
+(quelli che insegnano in classi di pi\`u cluster) sono il
+``vincolo di ricucitura'' che la fase finale risolve come
+problema piccolo a se' stante.
+
+\section{LNS (Large Neighborhood Search)}
+
+\textbf{Cos'\`e e perch\'e esiste.} Quando hai gi\`a una
+soluzione (anche sub-ottima), spesso \`e pi\`u rapido
+\emph{aggiustarla} che ricominciare. LNS prende la soluzione
+attuale, ne ``distrugge'' una porzione (es. tutte le lezioni
+di un certo giorno) e la ricostruisce con CP-SAT cercando un
+miglioramento. Iterando, esplora tante varianti vicine alla
+soluzione corrente.
+
+\textbf{Come funziona.} A ogni iterazione: scegli un
+``vicinato'' (es. day = marted\`i), libera tutte le variabili
+in quel vicinato, lancia CP-SAT con un piccolo budget di
+tempo per re-piazzarle ottimizzando lo SOFT score. Se il
+risultato \`e migliore, lo accetti.
+
+\textbf{Quando usarlo.} Default ON nella pipeline integrata,
+dopo Phase B. Adatto al ``polishing'' di una soluzione
+gi\`a feasible.
+
+\textbf{Esempio.} Dopo Phase B la soluzione ha 22 buchi nei
+docenti. LNS cicla: prova a re-fare luned\`i (scende a 20
+buchi), marted\`i (scende a 19), mercoled\`i (resta 19),
+\dots, dopo qualche minuto si stabilizza intorno a 14-15.
+
+\section{ALNS (Adaptive LNS)}
+
+\textbf{Cos'\`e e perch\'e esiste.} LNS classico ha un
+problema: usa sempre lo stesso tipo di vicinato (es. ``un
+giorno''). Su alcune istanze \`e perfetto, su altre \`e
+sterile. ALNS lo evolve: invece di una sola scelta di
+vicinato, ne ha sei (un giorno intero, un cluster di classi,
+le ore peggiori della settimana, una giornata di un docente,
+una giornata di un'aula, una settimana di una sola classe) e
+tre modi di ricostruire (CP-SAT mini-window, greedy SOFT,
+BFS riempimento). A ogni iterazione sceglie quale combinazione
+usare con probabilit\`a proporzionale a un \emph{punteggio}
+che cresce per le combinazioni storicamente vincenti e
+decresce per le altre.
+
+\textbf{Come funziona.} \`E un \emph{roulette wheel selector}
+sopra punteggi esponenzialmente decadenti. Ogni operatore
+parte con punteggio neutro; ogni volta che produce un
+miglioramento, il punteggio sale; ogni volta che fallisce,
+scende. Aggiunge anche un'accettazione \emph{simulated
+annealing}-like: occasionalmente accetta peggioramenti per
+sfuggire ai minimi locali.
+
+\textbf{Quando usarlo.} Sostituisce o segue il LNS classico
+nella pipeline. Default ON.
+
+\textbf{Esempio.} Su una scuola con cluster ben separati,
+l'ALNS impara dopo poche iterazioni che ``cluster di classi''
+porta i miglioramenti pi\`u grossi e ``giornata di un'aula''
+quasi mai funziona. Lo dice nei log finali con i punteggi.
+
+\section{SA (Simulated Annealing)}
+
+\textbf{Cos'\`e e perch\'e esiste.} Il nome viene dalla
+metallurgia: come un metallo riscaldato e poi raffreddato
+lentamente forma una struttura cristallina pi\`u stabile,
+l'algoritmo accetta inizialmente anche peggioramenti per
+esplorare lo spazio delle soluzioni, e con il tempo (la
+``temperatura'' che scende) diventa pi\`u selettivo,
+accettando solo miglioramenti.
+
+\textbf{Come funziona.} A ogni iterazione genera una mossa
+random (es. scambia due lezioni). Se migliora lo SOFT, accetta;
+se peggiora di $\Delta$, accetta con probabilit\`a
+$e^{-\Delta/T}$ dove $T$ \`e la temperatura corrente. La
+temperatura inizia alta (es. $T_0 = 10$) e si moltiplica per
+$\alpha < 1$ (es. $\alpha = 0.995$) a ogni iterazione, quindi
+decresce esponenzialmente.
+
+\textbf{Quando usarlo.} \`E perfetto quando si sospetta di
+essere in un minimo locale. Default ON dopo LNS/ALNS.
+
+\textbf{Esempio.} Dopo LNS ti sei stabilizzato a SOFT=420.
+Lanci SA con T0=10, alpha=0.995, budget 60s. Nei primi
+secondi, $T$ \`e alto e accetta peggioramenti fino a 460-470;
+poi $T$ scende e SA si concentra su miglioramenti, finendo
+per esempio a 405.
+
+\section{TS (Tabu Search)}
+
+\textbf{Cos'\`e e perch\'e esiste.} Risolve un problema della
+ricerca locale: i loop. Se l'unica mossa migliorante
+\`e ``A $\to$ B'' e poi l'unica migliorante da B \`e ``B
+$\to$ A'', sei intrappolato. TS evita questo tenendo una
+\emph{lista tabu} delle ultime mosse fatte: per un certo
+numero di iterazioni, quelle mosse sono vietate. L'algoritmo
+\`e cos\`i forzato a esplorare zone diverse.
+
+\textbf{Come funziona.} A ogni iterazione, valuta tutte le
+mosse possibili \emph{tranne} quelle in tabu. Sceglie la
+migliore, la fa, aggiunge l'inversa alla lista tabu (con un
+``tempo di scadenza''). La lista \`e di dimensione fissa
+(parametro \texttt{tabu\_size}, default 80).
+
+\textbf{Quando usarlo.} Default ON dopo SA. Particolarmente
+efficace su istanze con plateau (zone dove molti vicini hanno
+lo stesso valore).
+
+\textbf{Esempio.} Senza TS, scambiare due lezioni $L_1$ e
+$L_2$ produce SOFT=400; ri-scambiarle riproduce SOFT=405.
+SA potrebbe oscillare. TS dopo lo scambio mette ``inverso di
+$L_1 \leftrightarrow L_2$'' in tabu, quindi al passo
+successivo prover\`a $L_3 \leftrightarrow L_4$, esplorando
+una direzione nuova.
+
+\section{ILS (Iterated Local Search)}
+
+\textbf{Cos'\`e e perch\'e esiste.} Combina ricerca locale
+con perturbazioni periodiche. Idea: dopo che la ricerca
+locale si \`e stabilizzata su un minimo locale, scuoti la
+soluzione (perturbazione: tante mosse random) e fai ricerca
+locale da capo. Iterando, esplori bacini di attrazione
+diversi.
+
+\textbf{Come funziona.} Loop di ``cycles'' (default 3): in
+ognuno fai ricerca locale (TS) per un budget; se sei migliorato,
+salvi; poi perturba (rimuovi e ri-piazza un cluster random
+di classi); ricomincia.
+
+\textbf{Quando usarlo.} Default ON come ultima fase prima
+del rooms assignment. \`E il \emph{closer} della pipeline
+metaeuristica.
+
+\textbf{Esempio.} Cycle 1 chiude su SOFT=400; perturba e
+ricomincia da SOFT=480; cycle 2 chiude su SOFT=395; perturba
+e ricomincia da SOFT=470; cycle 3 chiude su SOFT=392.
+
+\section{VNS (Variable Neighborhood Search)}
+
+\textbf{Cos'\`e e perch\'e esiste.} VNS \`e una rifinitura
+sistematica. Cicla attraverso vicinati di dimensione
+crescente: prima prova 1-swap (scambia due lezioni), poi
+2-swap (due paia), poi 3-chain (catena di 3 mosse), poi k-opt
+(catena di 4-6). Ogni volta che trova un miglioramento riparte
+dal vicinato 1; quando un intero ciclo passa senza
+miglioramenti, si ferma -- significa che ha raggiunto un
+ottimo locale rispetto a tutti i vicinati.
+
+\textbf{Come funziona.} For ogni vicinato, esplora fino a un
+budget di iterazioni; al primo miglioramento accetta e torna
+al vicinato 1. Quando il giro $1 \to 4$ produce zero
+miglioramenti, esce.
+
+\textbf{Quando usarlo.} Come rifinitura finale, dopo
+LNS/ALNS/SA/TS. Default OFF (lo accendi quando vuoi spremere
+il massimo).
+
+\textbf{Esempio.} Hai SOFT=395 dopo ILS. VNS cicla: 1-swap
+trova un miglioramento a 392; riparte. 1-swap trova ancora a
+389; riparte. 1-swap zero; 2-swap trova a 385; riparte. Dopo
+qualche minuto chiude a 378.
+
+\section{Hall's theorem pre-check}
+
+\textbf{Cos'\`e e perch\'e esiste.} Prima di lanciare un
+solver lungo, conviene controllare se il problema \`e
+\emph{strutturalmente} risolvibile. Il teorema di Hall (1935)
+dice: in un \emph{matching bipartito} (assegnare ognuno di N
+elementi a uno di M elementi compatibili), una soluzione
+esiste sse per ogni sottoinsieme $S$ degli N elementi, il
+loro vicinato (gli M compatibili con almeno uno) ha
+cardinalit\`a $|N(S)| \geq |S|$.
+
+Nel timetabling l'analogo pesato \`e: per ogni sottoinsieme di
+docenti, la loro capacit\`a totale di ore deve coprire la
+domanda totale di ore delle materie che insegnano. Se una
+materia richiede 40 ore/settimana ma i docenti qualificati ne
+hanno solo 30 totali, il modello \`e gi\`a infeasible: non
+c'\`e bisogno di lanciare CP-SAT.
+
+\textbf{Come funziona.} Tre controlli in cascata: per ogni
+materia controlla che esista almeno un docente qualificato;
+per ogni materia controlla che la capacit\`a totale dei
+docenti qualificati copra la domanda; campiona N sottoinsiemi
+random di docenti e verifica che la domanda delle materie
+\emph{esclusive} a ciascun sottoinsieme sia coperta dalla
+capacit\`a del sottoinsieme.
+
+\textbf{Quando usarlo.} Sempre prima di Phase A. Default ON
+nella pipeline integrata; se trova violazioni, interrompe
+immediatamente con un report.
+
+\textbf{Esempio.} Hai aggiunto in mezzo all'anno una nuova
+materia ``Diritto'' al triennio (3 ore/settimana per 9 classi
+= 27 ore) ma hai un solo docente abilitato a Diritto con
+massimo 18 ore. Hall te lo dice in 100 millisecondi: ``Diritto:
+domanda 27h > capacit\`a docenti 18h''. Risparmi 10 minuti di
+solver lungo.
+
+\section{Lagrangian Relaxation con sub-gradient}
+
+\textbf{Cos'\`e e perch\'e esiste.} Quando un problema ha
+``vincoli scomodi'' (vincoli che spezzano una struttura
+altrimenti separabile), una tecnica classica \`e
+\emph{rilassarli}: li rimuovi dal modello e li reintroduci
+come penalit\`a moltiplicate per coefficienti chiamati
+\emph{moltiplicatori di Lagrange} ($\lambda$). Iterando, i
+$\lambda$ si aggiustano per spingere la soluzione del modello
+rilassato a rispettare comunque i vincoli originari. \`E un
+modo di trasformare un problema ``a blocchi accoppiati'' in
+una sequenza di sotto-problemi indipendenti.
+
+Nel timetabling questo \`e utile dopo la decomposizione
+spettrale: i cluster sarebbero indipendenti se non fosse per
+i \emph{docenti-ponte} (docenti che insegnano in pi\`u
+cluster). Lagrangian relaxation rilassa la non-sovrapposizione
+dei docenti-ponte, e itera per riconciliare le scelte dei
+cluster.
+
+\textbf{Come funziona.} Il \emph{subgradient method} aggiorna
+$\lambda$ a ogni iterazione: $\lambda_{k+1} = \max(0, \lambda_k +
+\alpha_k g_k)$, dove $g_k$ \`e la violazione del vincolo
+rilassato e $\alpha_k = \alpha_0/(1+k)$ \`e una sequenza di
+``passi'' che diminuisce a passi piccoli, garantendo
+convergenza al limite (in teoria) ma in pratica producendo
+soluzioni utili in poche iterazioni.
+
+\textbf{Quando usarlo.} Scuole con cluster ben separati ma
+con docenti-ponte fastidiosi. Default OFF (avanzato).
+
+\textbf{Esempio.} Cluster A (40 classi), Cluster B (40
+classi), 5 docenti-ponte. Senza Lagrangian, A e B vanno
+risolti insieme: 80 classi. Con Lagrangian, vengono
+risolti separatamente in $\sim$3 iterazioni: ogni cluster
+diventa 40 classi (molto pi\`u veloce), e $\lambda$ converge
+a valori che impediscono ai docenti-ponte di sovrapporsi.
+
+\section{Column Generation (Dantzig-Wolfe)}
+
+\textbf{Cos'\`e e perch\'e esiste.} Quando un problema \`e
+enorme, conviene non enumerarlo tutto: ne generi solo le
+parti che servono, on-demand. Column Generation \`e questa
+filosofia applicata alla programmazione lineare: hai un
+problema ``master'' che sceglie da un catalogo di colonne
+(soluzioni candidate); a ogni iterazione un sotto-problema
+genera nuove colonne ``promettenti'' (con \emph{reduced cost}
+negativo) e le aggiunge al catalogo.
+
+Nel timetabling: ogni docente ha un catalogo di possibili
+``settimane-tipo'' (orari completi per quel docente, gi\`a
+feasible localmente). Il master sceglie quale settimana-tipo
+prendere per ognuno; il sotto-problema (uno per docente) genera
+nuove settimane-tipo guidate dal duale del master.
+
+\textbf{Come funziona.} Loop: (1) il master sceglie una
+combinazione corrente di colonne; (2) calcola i prezzi duali
+sui vincoli di copertura; (3) ogni sotto-problema produce la
+nuova colonna pi\`u attraente data quei prezzi; (4) se ce
+n'\`e una con reduced cost negativo, aggiungila e ripeti;
+altrimenti hai trovato l'ottimo del rilassamento LP.
+
+\textbf{Quando usarlo.} Solo per scuole molto grandi
+(>200 classi). Default OFF.
+
+\textbf{Esempio.} 250 classi, 180 docenti. Enumerare tutte
+le settimane-tipo possibili sarebbe astronomicamente troppo;
+Column Generation parte con 3 settimane-tipo per docente
+(540 colonne), ne aggiunge $\sim$50 per iterazione, e
+converge in 5-10 iterazioni a un orario ottimale rilassato.
+
+\section{Monte Carlo Sensitivity}
+
+\textbf{Cos'\`e e perch\'e esiste.} Quando hai una soluzione,
+ti chiedi: \emph{\`e gi\`a vicina al meglio possibile, o c'\`e
+ancora margine}? La sensitivity analysis Monte Carlo risponde
+generando N varianti random della soluzione (ognuna ottenuta
+applicando 30 mosse atomiche random feasible) e misurando il
+loro SOFT score. Se la varianza \`e piccola, sei vicino a un
+minimo locale; se \`e grande, hai ancora margine.
+
+\textbf{Come funziona.} Genera N (default 100) walk random
+di 30 mosse ciascuno, accettando solo quelle che restano
+HARD-feasible. Per ognuno calcola SOFT. Riporta media,
+deviazione standard, percentili, coefficiente di variazione
+$CV = \sigma/\mu$.
+
+\textbf{Quando usarlo.} Dopo aver lanciato la pipeline, per
+decidere se vale la pena spendere altro tempo in metaeuristiche.
+$CV < 0.05$ = stai gi\`a sull'ottimo locale; $CV > 0.15$ =
+c'\`e potenziale di miglioramento.
+
+\textbf{Esempio.} La tua soluzione corrente ha SOFT=400. Monte
+Carlo restituisce media=402, std=8, $CV \approx 0.02$. Conclusione:
+la pipeline ha gi\`a trovato un buon minimo locale; nuovi
+giri non porteranno miglioramenti significativi.
+
+\section{Modularit\`a, betweenness, densit\`a (analisi del bipartito)}
+
+\textbf{Cos'\`e e perch\'e esiste.} Tre metriche dalla teoria
+dei grafi che ti dicono quanto la struttura della tua scuola
+sia ``decomponibile''. Sono interessanti perch\'e predicono
+quanto certe tecniche (decomposizione spettrale, parallelismo)
+funzioneranno bene.
+
+\textbf{Cosa significano in pratica.}
+\begin{itemize}
+\item \textbf{Modularit\`a (Newman-Girvan)}: misura quanto
+  una partizione \emph{gi\`a calcolata} \`e ``naturale''.
+  Valore in $[-1, 1]$. $> 0.4$ = cluster molto netti, la
+  decomposizione spettrale \`e perfetta. $< 0.2$ = la scuola
+  \`e troppo intrecciata, la decomposizione produrr\`a
+  cluster artificiosi.
+\item \textbf{Betweenness centrality}: per ogni nodo, conta
+  in quanti percorsi minimi del grafo passa. I nodi ad alta
+  betweenness sono i ``ponti'': se hanno SOFT alto, fanno
+  collassare la qualit\`a globale.
+\item \textbf{Densit\`a}: $\frac{2 |E|}{|V|(|V|-1)}$, frazione
+  di archi presenti rispetto al massimo. Bassa densit\`a
+  ($< 0.1$) = scuola sparsa, decomposizione ottima. Alta
+  densit\`a ($> 0.5$) = quasi cricca, decomposizione
+  inutile.
+\end{itemize}
+
+\textbf{Quando usarli.} Diagnostici da consultare prima di
+investire in metaeuristiche pesanti: ti dicono che strategia
+ha senso.
+
+\textbf{Esempio.} Liceo medio: modularit\`a 0.43, betweenness
+top = ``Lingua straniera'' (5 prof condivisi su tutti gli
+indirizzi), densit\`a 0.18. Diagnosi: la decomposizione
+spettrale produrr\`a 4 cluster netti (Liceo Classico, Liceo
+Scientifico, Liceo Linguistico, ITIS); i prof di lingua sono
+i ``ponti'' da gestire con cura (Lagrangian relaxation aiuta).
+
+\section{Distribuzioni e istogrammi}
+
+\textbf{Cosa misurano.} 5 viste statistiche dell'orario
+prodotto: distribuzione del carico orario dei docenti,
+distribuzione del carico delle classi per giorno, heatmap
+materia $\times$ slot, occupazione per slot, test di
+goodness-of-fit (KS contro uniforme, chi-quadro per
+giornate).
+
+\textbf{Cosa significano in pratica.}
+\begin{itemize}
+\item \emph{Carico docenti}: se la distribuzione \`e
+  schiacciata su un numero (es. tutti 18) il sistema sta
+  rispettando i tetti di cattedra. Se ha una coda lunga (un
+  prof con 22, un altro con 12), c'\`e sbilanciamento.
+\item \emph{Heatmap materia $\times$ slot}: zone scure dove
+  cadono troppe ore di una stessa materia in slot adiacenti.
+\item \emph{KS-test contro uniforme}: $p > 0.05$ = i carichi
+  sono compatibili con una distribuzione uniforme (giusto);
+  $p < 0.05$ = c'\`e una distribuzione non casuale (alcuni
+  prof troppo carichi).
+\end{itemize}
+
+\textbf{Quando usarli.} Per dare un giudizio qualitativo
+sull'orario prodotto, oltre al solo SOFT score numerico.
+
+\section{Correlazioni e regressioni}
+
+\textbf{Cosa misurano.} Tre regressioni statistiche
+sull'orario corrente:
+\begin{enumerate}
+\item OLS: ore di carico docente $\to$ numero di buchi.
+\item OLS: numero di materie diverse del docente $\to$
+  contribuzione SOFT.
+\item Logit: saturazione classe $\to$ probabilit\`a di sesta
+  ora.
+\end{enumerate}
+
+Per ognuna ottieni coefficienti, p-value, R$^2$.
+
+\textbf{Cosa significano in pratica.} ``I docenti con carico
+> 20 ore hanno in media 2 buchi in pi\`u ($p < 0.001$,
+$R^2 = 0.6$)'' = c'\`e un effetto sistematico documentabile.
+``La saturazione classe non predice la 6\textsuperscript{a}
+ora ($p = 0.4$)'' = il sistema sta distribuendo bene le ore
+e non concentra le classi sature in 6\textsuperscript{a}.
+
+\textbf{Quando usarle.} Per riportare al collegio docenti
+dati \emph{quantitativi} sulla qualit\`a dell'orario, anzich\'e
+solo affermazioni qualitative.
+
+\section{DSL generico}
+
+\textbf{Cos'\`e e perch\'e esiste.} I sub-DSL precedenti
+(query lista, logical DNF, objective Phase A, introspettivo)
+risolvevano ognuno un caso, ma erano grammatiche separate.
+Ogni fix andava replicato 4 volte. Il \emph{DSL generico}
+unifica: una grammatica sola, parser unico, quattro back-end di
+compilazione.
+
+\textbf{Come si rapporta al modello dati.} Le sorgenti
+iterabili (\texttt{lessons}, \texttt{teachers},
+\texttt{classes}, \texttt{classrooms}, \texttt{students},
+\texttt{groups}, \dots) sono viste pre-calcolate del modello
+SQLAlchemy: a ogni valutazione, il sistema ``materializza''
+queste viste in dict Python che il parser interroga.
+
+\textbf{Come si traduce.} Un \texttt{forall l in lessons
+where ...: predicate} si traduce, per il backend EVAL, in un
+ciclo Python su tutti gli elementi che soddisfano il filtro,
+applicando il predicato. Per il backend LOGIC (vincoli
+logical DNF) si traduce in clausole disgiuntive di
+letterali. Per il backend OBJECTIVE si traduce in una somma
+pesata aggiunta alla funzione obiettivo della Phase A. Stessa
+sintassi, traduzioni diverse.
+
+\textbf{Quando usarlo.} Per qualunque vincolo che non rientri
+nelle preferenze standard. Vedi capitolo dedicato per la
+gallery di 30+ esempi.
+
+\section{Stati 5-colori delle matrici}
+
+\textbf{Cos'\`e.} Le matrici di disponibilit\`a (docente,
+classe, aula) hanno 5 stati ortogonali per ogni cella, con
+colori distintivi per leggerli a colpo d'occhio:
+
+\begin{itemize}
+\item \textbf{HARD} (rosso): cella vietata in modo assoluto.
+\item \textbf{ENFORCED} (rosso scuro): cella che \emph{deve}
+  esserci occupata.
+\item \textbf{PREFERRED} (verde): preferenza positiva (bonus).
+\item \textbf{DISLIKED/SOFT} (giallo): preferenza negativa
+  (penalit\`a).
+\item \textbf{ALLOWED} (bianco): neutro.
+\end{itemize}
+
+\textbf{Scorciatoie tastiera.} Selezionata una cella o un
+range, premere \texttt{H/E/P/D/A} la imposta in HARD/ENFORCED/
+PREFERRED/DISLIKED/ALLOWED. \texttt{N} per ``neutro'' (alias
+ALLOWED). Click + drag per selezionare un range; doppio click
+sull'header di colonna o riga per applicare a tutta la
+colonna/riga.
+
+\section{Tag aule e tag studenti}
+
+\textbf{Cos'\`e.} Etichette libere che il coordinatore attacca
+a un'aula o a uno studente. Sono \emph{many-to-many}: un'aula
+pu\`o avere tanti tag, un tag pu\`o essere su tante aule.
+
+\textbf{Perch\'e esistono.} I tag rendono i vincoli pi\`u
+robusti al cambiamento dell'anagrafica. Invece di scrivere
+``solo queste tre aule precise'' (lista che andrebbe
+aggiornata a ogni modifica), scrivi ``aule taggate
+matematica'': se domani aggiungi una nuova aula taggata
+allo stesso modo, il vincolo la include automaticamente.
+
+\textbf{Casi d'uso tipici.}
+\begin{itemize}
+\item Tag aule: \texttt{matematica}, \texttt{proiettore},
+  \texttt{lab\_lingue}, \texttt{piano\_terra},
+  \texttt{accessibile\_disabili}.
+\item Tag studenti: \texttt{BES} (Bisogni Educativi Speciali),
+  \texttt{DSA}, \texttt{debito\_matematica\_4},
+  \texttt{pcto\_Acme}, \texttt{studente\_atleta}.
+\end{itemize}
+
+I tag NON sostituiscono i gruppi articolati (che sono unit\`a
+operative di scheduling); sono metadato passivo per filtrare
+e raggruppare nell'interfaccia.
+
+\section{Run telemetry e visualizzazione live}
+
+\textbf{Cos'\`e.} Ogni esecuzione del solver produce una
+\emph{serie temporale} di sample: ad ogni iterazione il
+sistema annota timestamp, fase corrente, valore obiettivo,
+mosse accettate/rifiutate, vincoli HARD violati. Tutto
+salvato in DB e accessibile dal detail page del run.
+
+\textbf{Cosa vedi.} Un grafico interattivo (Apache ECharts)
+con l'evoluzione del SOFT score nel tempo, una linea diversa
+per ogni stage (LNS in azzurro, SA in verde, TS in giallo,
+\dots), markers verticali sui cambi di stage. Statistiche
+aggregate per stage in tabella (n. iterazioni, durata, best
+obj). Esportazione in JSON per analisi esterne.
+
+\textbf{Live mode.} Per i run in corso, la pagina poll-a il
+backend ogni 2s e aggiorna il grafico man mano che arrivano
+nuovi sample. La pagina pausa il polling automaticamente
+quando la tab del browser \`e in background, per non sprecare
+banda.
+
+\section{Lockati: lezioni che non si toccano}
+
+\textbf{Cos'\`e.} Il flag \texttt{locked} sulla tabella
+\texttt{Lesson} indica che quella lezione \emph{non deve
+essere spostata} dal solver. Utile per fissare a mano una
+manciata di lezioni critiche e poi lanciare l'ottimizzazione
+su tutto il resto.
+
+\textbf{Come si usa.} Dal Monitor (e dalla griglia Schedule
+con click-destro), il bottone ``Blocca'' marca la lezione
+come locked. Il bottone ``Sblocca'' fa l'inverso. Le lezioni
+locked sopravvivono ai run successivi: vengono caricate come
+\emph{vincoli aggiuntivi HARD} dal solver, che dovr\`a
+incastrare il resto attorno a esse.
+
+Il filtro ``Lockati'' nella tab del Monitor mostra solo gli
+eventi che hanno almeno una lezione lockata, utile per
+visualizzare velocemente cosa hai gi\`a fissato e cosa \`e
+ancora libero.
