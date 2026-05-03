@@ -20,7 +20,7 @@
   const APP_VERSION = '0.1';
   // Brand: piTantum / Tempus Tantum, after Seneca, Ep. I, 1.
   const SENECA_LATIN = 'Omnia, Lucili, aliena sunt, tempus tantum nostrum est.';
-  const SENECA_IT = 'Tutto, Lucilio mio, ci appartiene di altri; soltanto il tempo e\' nostro.';
+  const SENECA_IT = 'Tutto, Lucilio, ci viene da altri; soltanto il tempo e\' nostro.';
 
   const links = [
     { href: '/',           label: 'Dashboard',   exact: true  },

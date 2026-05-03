@@ -14,8 +14,8 @@ finali sostituiscono in-place i placeholder.
 - **Tagline / epigrafe**:
   > *Omnia, Lucili, aliena sunt, tempus tantum nostrum est.*
   > -- Seneca, *Epistulae morales ad Lucilium*, I, 1
-- **Traduzione**: "Tutto, Lucilio mio, ci appartiene di altri;
-  soltanto il tempo e' nostro."
+- **Traduzione**: "Tutto, Lucilio, ci viene da altri; soltanto
+  il tempo e' nostro."
 - **Senso**: del tempo non si dispone, se non organizzandolo. Una
   app per costruire l'orario settimanale di una scuola e' lo
   strumento concreto di questa idea.

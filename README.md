@@ -3,8 +3,7 @@
 > *Omnia, Lucili, aliena sunt, tempus tantum nostrum est.*
 > &mdash; Seneca, *Epistulae morales ad Lucilium*, I, 1
 
-> "Tutto, Lucilio mio, ci appartiene di altri; soltanto il tempo e'
-> nostro."
+> "Tutto, Lucilio, ci viene da altri; soltanto il tempo e' nostro."
 
 **piTantum** (alias **Tempus Tantum**) e' un sistema di generazione
 e gestione dell'orario scolastico per un Liceo italiano:
@@ -35,6 +34,15 @@ Tre layer, in un unico repo:
 The full feature list is large; see `proposals/analysis.md` and
 `proposals/benchmarks.md` for the design rationale and the empirical
 performance numbers across school sizes.
+
+## Origini del progetto
+
+piTantum nasce da idee di **Fernando Gargiulo**, **Giovanni Borghi**,
+**Matteo Mariani** e **Stefano Bertozzi**. Il progetto deve a loro
+il disegno concettuale del metodo di scheduling implementato, la
+scelta dei vincoli rilevanti per la realta' delle scuole italiane
+e l'impostazione complessiva dell'architettura. L'implementazione
+tecnica e' stata sviluppata a partire da queste idee.
 
 ## Documentation
 
