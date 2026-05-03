@@ -2473,3 +2473,151 @@ def validate_and_apply_move(db: Session, src: tuple,
         "room_cleared": room_cleared,
         "cleared_room": cleared_room,
     }
+
+
+# ----------------------------------------------------------------------
+# DECOMPOSITION: temporal (per-day) parallel pipeline
+# ----------------------------------------------------------------------
+
+def run_decomposition_temporal(*, time_a: float = 60.0,
+                               time_day: float = 30.0,
+                               n_workers: int | None = None,
+                               cpsat_workers_per_day: int = 2,
+                               parallel: bool = True,
+                               enforce_no_holes: bool = True,
+                               run_alns: bool = False,
+                               alns_budget_s: float = 300.0,
+                               alns_T0: float = 5.0,
+                               alns_alpha: float = 0.995) -> int:
+    """Async run that orchestrates the temporal decomposition pipeline:
+
+      1) master CP-SAT pre-distribution (cv2.solve_phase_a)
+      2) ProcessPoolExecutor over the 6 days with cv2.solve_phase_b_for_day
+      3) (optional) ALNS finishing on top of the ricucitura
+
+    The work is delegated to experiments/decomposition_temporal.py
+    so the same code path is shared by the CLI and by the REST
+    endpoint.
+    """
+    params = dict(time_a=time_a, time_day=time_day, n_workers=n_workers,
+                  cpsat_workers_per_day=cpsat_workers_per_day,
+                  parallel=parallel, enforce_no_holes=enforce_no_holes,
+                  run_alns=run_alns, alns_budget_s=alns_budget_s,
+                  alns_T0=alns_T0, alns_alpha=alns_alpha)
+    run_id = create_run(
+        "decomposition_temporal",
+        "Decomposizione temporale (master + 6 day-solver paralleli)",
+        None, params)
+
+    def target(rid: int):
+        with SessionLocal() as db:
+            locked_snap = _snapshot_locked_lessons(db)
+            profs = engine_io.profs_dict_from_db(db)
+        if not profs:
+            raise RuntimeError(
+                "Nessun assegnamento prof->classe; esegui prima "
+                "Phase A (step 2)."
+            )
+        ws = _run_workspace(rid)
+        profs_pkl = os.path.join(ws, "profs.pkl")
+        with open(profs_pkl, "wb") as f:
+            pickle.dump(profs, f)
+
+        # Lazy import: experiments/ contains the orchestrator
+        import sys
+        exp_dir = os.path.join(
+            os.path.dirname(os.path.dirname(
+                os.path.dirname(os.path.abspath(__file__)))),
+            "experiments")
+        if exp_dir not in sys.path:
+            sys.path.insert(0, exp_dir)
+        import decomposition_temporal as dec_t  # type: ignore
+
+        update_run(rid, progress=0.05)
+        print("[temporal] starting pipeline")
+        result = dec_t.run_temporal_pipeline(
+            profs_pkl,
+            parallel=parallel,
+            n_workers=n_workers,
+            time_a=time_a,
+            time_day=time_day,
+            day_timeout=time_day * 6,   # generous wall cap
+            cpsat_workers_per_day=cpsat_workers_per_day,
+            enforce_no_holes=enforce_no_holes,
+            log_progress=True,
+            out_path=os.path.join(ws, "solution.pkl"),
+            dc_out_path=os.path.join(ws, "dc.pkl"),
+        )
+        update_run(rid, progress=0.85)
+
+        full_solution = result["full_solution"]
+        timings = result["timings"]
+        failed_days = result["failed_days"]
+        status = result["status"]
+
+        import metaheuristics as meta  # type: ignore
+        v0, m0 = meta.compute_soft(full_solution, profs)
+        feasible = meta.is_hard_feasible(full_solution, profs, verbose=False)
+        print(f"[temporal] HARD feasible: {feasible}, SOFT obj={v0:.1f}")
+
+        # Step 5: ALNS finishing stage (optional, sequential on the
+        # ricucita solution).
+        if run_alns and feasible:
+            print(f"[temporal] step 5: ALNS finishing for "
+                  f"{alns_budget_s:.0f}s")
+            try:
+                import alns as alns_mod  # type: ignore
+                dc_value = result["dc_value"]
+                refined, _hist = alns_mod.run_alns(
+                    full_solution, profs, dc_value, alns_budget_s,
+                    log=False, workers=cpsat_workers_per_day,
+                    T0=alns_T0, alpha=alns_alpha,
+                )
+                v1, m1 = meta.compute_soft(refined, profs)
+                if meta.is_hard_feasible(refined, profs, verbose=False) \
+                        and v1 <= v0:
+                    print(f"[temporal] ALNS improved {v0:.1f} -> {v1:.1f}")
+                    full_solution = refined
+                    v0, m0 = v1, m1
+                else:
+                    print(f"[temporal] ALNS dropped (no improvement or "
+                          f"infeasible)")
+            except Exception as e:
+                print(f"[temporal] ALNS stage failed: {e}")
+
+        # Persist the final solution
+        with SessionLocal() as db:
+            sid = engine_io.import_solution_into_db(
+                db, full_solution,
+                name=f"Temporal decomposition run {rid}",
+                kind="phase_b_temporal",
+                obj_value=float(v0),
+                metrics={**m0, "feasible": feasible,
+                         "master_s": round(timings["master"], 1),
+                         "days_total_s": round(timings["days_total"], 1),
+                         "days_max_s": round(timings["days_max"], 1),
+                         "n_workers": result["n_workers"],
+                         "parallel": result["parallel"],
+                         "failed_days": failed_days,
+                         "status": status},
+                make_active=True,
+            )
+            n_restored = _restore_locked_lessons(db, sid, locked_snap)
+            if n_restored:
+                db.commit()
+                print(f"[temporal] restored {n_restored} locked lessons")
+
+        update_run(rid, progress=1.0,
+                   metrics={"feasible": feasible,
+                            "obj": float(v0),
+                            "master_s": round(timings["master"], 1),
+                            "days_total_s": round(timings["days_total"], 1),
+                            "days_max_s": round(timings["days_max"], 1),
+                            "n_workers": result["n_workers"],
+                            "parallel": result["parallel"],
+                            "failed_days": failed_days,
+                            "status": status,
+                            "solution_id": sid})
+
+    start_thread(run_id, target)
+    return run_id

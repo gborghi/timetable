@@ -251,37 +251,49 @@ def recommend_decomposition(db: Session = Depends(get_db)):
 def launch_decomposition(method: str, payload: dict | None = None):
     """Launch a decomposition-driven Phase B run.
 
-    method must be one of: spectral, temporal, metis, curriculum,
-    combined. The 'combined' method runs the chosen primary
-    strategy as the outer partitioning and the temporal one as
-    the inner per-cluster scheduler.
-
-    The full async implementation reuses optimization.run_meta()
-    plumbing. For the new methods (temporal, metis, curriculum)
-    the wiring to cpsat_v2_timetable Stage A/B/C is on the
-    roadmap; the call returns a 501 with a clear hint.
+    method is one of: spectral, temporal, metis, curriculum,
+    combined.
+    - spectral: delegates to the standard Phase B pipeline (the
+      existing /optimize/phase-b endpoint already handles the
+      spectral path through `use_decomposition=True`).
+    - temporal: master CP-SAT (cv2.solve_phase_a) + 6 day-solvers
+      in ProcessPoolExecutor (cv2.solve_phase_b_for_day per day).
+      Optional ALNS finishing.
+    - metis, curriculum: partitioning logic implemented; solve
+      loop wiring to cpsat_v2_timetable still pending (501 with
+      explicit roadmap hint).
+    - combined: spectral + temporal pipeline (501 today).
     """
     if method not in ("spectral", "temporal", "metis",
                       "curriculum", "combined"):
         raise HTTPException(400, f"unknown method '{method}'")
+    body = payload or {}
     if method == "spectral":
-        # Existing pipeline: delegate to the standard meta launcher
-        # with a spectral preset. The actual call is queued on the
-        # frontend side via the 'spectral' option in the strategy
-        # selector.
         raise HTTPException(
             501,
-            "The 'spectral' method runs through the standard "
-            "Phase B pipeline (optimize/timetable). "
-            "Use the strategy selector in the Workflow modal."
+            "Use POST /api/optimize/phase-b with "
+            "use_decomposition=true.",
         )
+    if method == "temporal":
+        rid = optimization.run_decomposition_temporal(
+            time_a=float(body.get("time_a", 60.0)),
+            time_day=float(body.get("time_day", 30.0)),
+            n_workers=body.get("n_workers"),
+            cpsat_workers_per_day=int(body.get("cpsat_workers_per_day", 2)),
+            parallel=bool(body.get("parallel", True)),
+            enforce_no_holes=bool(body.get("enforce_no_holes", True)),
+            run_alns=bool(body.get("run_alns", False)),
+            alns_budget_s=float(body.get("alns_budget_s", 300.0)),
+            alns_T0=float(body.get("alns_T0", 5.0)),
+            alns_alpha=float(body.get("alns_alpha", 0.995)),
+        )
+        return {"run_id": rid}
     raise HTTPException(
         501,
-        f"Method '{method}' wiring is on the roadmap. The "
-        f"partitioning logic is fully implemented in "
-        f"experiments/decomposition_{method}.py; the solve loop "
-        f"that integrates with cpsat_v2_timetable Stage A/B/C "
-        f"is documented in the module's docstring."
+        f"Method '{method}' wiring is on the roadmap. "
+        f"experiments/decomposition_{method}.py contains the "
+        f"partitioning logic; the solve loop integration with "
+        f"cpsat_v2_timetable Stage A/B/C is queued.",
     )
 
 
