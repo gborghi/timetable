@@ -82,7 +82,11 @@
   export let log = true;
 
   let presets: Preset[] = [];
-  let selectedKey = "balance_curricula";
+  // The backend currently exposes max_clustering / balance_weight /
+  // seniority. balance_weight is the safest default (was previously
+  // 'balance_curricula' which had been renamed and stopped being a
+  // valid preset, causing Phase A to fail with HTTP 400).
+  let selectedKey = "balance_weight";
   let customExpression =
     "minimize 50 * total_unused_capacity\n" +
     "       + 100 * total_n_classes\n" +

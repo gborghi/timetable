@@ -558,7 +558,12 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
     slot = {}                                  # (p, cl, subj, h) -> Bool
     triples_active = []
     for (p, cl, subj, ore) in triples:
-        cnt = dc_value[(p, cl, subj, day)]
+        # Phase A output is dense (one entry per (p,cl,subj,day) over the
+        # 6 days), but partial / column-generation pipelines may pass a
+        # sparse dc_value that only carries non-zero hours. Treat a
+        # missing key as "0 ore quel giorno" so the day-solver can
+        # gracefully skip that triple instead of crashing with KeyError.
+        cnt = dc_value.get((p, cl, subj, day), 0)
         if cnt == 0:
             continue
         triples_active.append((p, cl, subj, cnt))

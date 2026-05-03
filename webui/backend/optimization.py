@@ -323,7 +323,7 @@ def import_experiments_profile(profile: str, use_optimized: bool,
 
 
 def run_assignment(time_limit_s: float, workers: int, log: bool,
-                   criterion: str = "balance_curricula",
+                   criterion: str = "balance_weight",
                    custom_expression: str | None = None) -> int:
     """Phase A. When `criterion="custom"` and `custom_expression` is
     set, the DSL-driven solver is used; otherwise we look up the
@@ -1191,13 +1191,18 @@ def run_full_pipeline(profile: str,
         # in-place so the rest of the dispatcher never sees the
         # alias.
         seq = ["phase_b" if s == "decomp_spectral" else s for s in seq]
-        if phase_b_kwargs is not None:
-            phase_b_kwargs = dict(phase_b_kwargs)
-            if any(s == "phase_b" for s in seq):
-                # If the user ticked decomp_spectral (now mapped to
-                # phase_b), force use_decomposition=true; otherwise
-                # leave the existing flag (already true by default).
-                phase_b_kwargs.setdefault("use_decomposition", True)
+        # Make a local copy of phase_b_kwargs under a different name:
+        # writing to `phase_b_kwargs` here would shadow the closure
+        # variable for the WHOLE function and trigger UnboundLocalError
+        # on the read that precedes the assignment (the bug fixed in
+        # commit deferred to here).
+        pb_kwargs = (dict(phase_b_kwargs)
+                     if phase_b_kwargs is not None else None)
+        if pb_kwargs is not None and any(s == "phase_b" for s in seq):
+            # If the user ticked decomp_spectral (now mapped to
+            # phase_b), force use_decomposition=true; otherwise
+            # leave the existing flag (already true by default).
+            pb_kwargs.setdefault("use_decomposition", True)
         # De-conflict scheduler steps. Keep the first scheduler
         # token; later ones are dropped from the run with a notice.
         scheduler_tokens = ("phase_b", "decomp_temporal",
@@ -1279,15 +1284,15 @@ def run_full_pipeline(profile: str,
                 classes, triples, class_profs = cv2.build_indices(profs)
                 dc_value = cv2.solve_phase_a(
                     profs, classes, triples, class_profs,
-                    time_limit=phase_b_kwargs.get("time_a", 60),
+                    time_limit=(pb_kwargs or {}).get("time_a", 60),
                     workers=workers, log=False,
                 )
                 state["dc_value"] = dc_value
                 full_solution: dict = {}
-                if (phase_b_kwargs.get("use_decomposition", True)
+                if ((pb_kwargs or {}).get("use_decomposition", True)
                         and len(classes) >= 8):
                     M, classes_v, _ = dec.build_adjacency(profs)
-                    k = phase_b_kwargs.get("k", 4)
+                    k = (pb_kwargs or {}).get("k", 4)
                     labels, _ = dec.spectral_cluster(M, k)
                     bridges, cl_to_label = dec.find_bridges(
                         profs, classes_v, labels,
@@ -1301,7 +1306,7 @@ def run_full_pipeline(profile: str,
                     for d in DAYS:
                         out, _st = dec.stage_a_bridges(
                             d, profs, bridges_set, triples, dc_value,
-                            phase_b_kwargs.get("time_bridges", 30), workers,
+                            (pb_kwargs or {}).get("time_bridges", 30), workers,
                         )
                         if out is None:
                             a_failed.append(d)
@@ -1320,7 +1325,7 @@ def run_full_pipeline(profile: str,
                                 classes_per_cluster[k_id], d, profs,
                                 bridges_set, triples, dc_value,
                                 bridge_solutions[d],
-                                phase_b_kwargs.get("time_cluster", 20),
+                                (pb_kwargs or {}).get("time_cluster", 20),
                                 workers,
                             )
                             if out is None:
@@ -1344,7 +1349,7 @@ def run_full_pipeline(profile: str,
                                 succ.update(cluster_solutions[(k_id, d)])
                         out, _st = dec.stage_c_ricucitura(
                             d, profs, bridges_set, triples, dc_value, succ,
-                            phase_b_kwargs.get("time_ricucitura", 60),
+                            (pb_kwargs or {}).get("time_ricucitura", 60),
                             workers,
                         )
                         if out is not None:
@@ -1358,7 +1363,7 @@ def run_full_pipeline(profile: str,
                         out, _st = cv2.solve_phase_b_for_day(
                             d, profs, classes, triples, class_profs,
                             dc_value,
-                            time_limit=phase_b_kwargs.get("time_mono", 120),
+                            time_limit=(pb_kwargs or {}).get("time_mono", 120),
                             workers=workers, log=False,
                         )
                         if out is not None:
@@ -1382,10 +1387,10 @@ def run_full_pipeline(profile: str,
                 print(f"[full] phase_b done: obj={v} metrics={m} sid={sid}")
                 _maybe_rooms_for(
                     "phase_b",
-                    enabled=bool(phase_b_kwargs.get("optimize_rooms", False)),
-                    tlim=float(phase_b_kwargs.get(
+                    enabled=bool((pb_kwargs or {}).get("optimize_rooms", False)),
+                    tlim=float((pb_kwargs or {}).get(
                         "rooms_time_limit_s", 30.0)),
-                    prefer_home=bool(phase_b_kwargs.get(
+                    prefer_home=bool((pb_kwargs or {}).get(
                         "rooms_prefer_home", True)),
                 )
                 continue
@@ -1413,7 +1418,7 @@ def run_full_pipeline(profile: str,
                                         "..", "..", "experiments")
                 if exp_dir not in sys.path:
                     sys.path.insert(0, exp_dir)
-                pb = phase_b_kwargs or {}
+                pb = pb_kwargs or {}
                 t_a = float(pb.get("time_a", 60))
                 t_day = float(pb.get("time_day", 30))
                 t_bridges = float(pb.get("time_bridges", 30))

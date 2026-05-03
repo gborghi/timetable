@@ -305,7 +305,7 @@ class AssignmentRunIn(BaseModel):
     # New: criterion / DSL controls. When `criterion="custom"` the
     # `custom_expression` is used; otherwise it must match a preset
     # key (see backend.utils.objective_dsl.PRESETS).
-    criterion: str = "balance_curricula"
+    criterion: str = "balance_weight"
     custom_expression: str | None = None
 
 
