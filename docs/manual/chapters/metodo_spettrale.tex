@@ -310,6 +310,101 @@ fornisce all'utente delle misure quantitative
 giudicare in anticipo se la decomposizione spettrale
 funzioner\`a bene per la propria scuola.
 
+\section{Tre alternative alla decomposizione spettrale}
+
+La decomposizione spettrale non \`e l'unica via per spezzare
+il problema. Nel corso dello sviluppo di $\pi$Tantum sono
+state implementate altre tre strategie, che convivono con
+quella spettrale e si selezionano dal tab Workflow a
+seconda delle caratteristiche della scuola. Le tre
+alternative non si escludono a vicenda; al contrario, si
+combinano molto bene fra loro in pipeline a pi\`u stadi.
+
+\subsection{Decomposizione temporale}
+
+La decomposizione temporale spezza il problema lungo l'asse
+del tempo invece che sulle entit\`a. Ciascuno dei sei
+giorni della settimana diventa un sotto-problema separato,
+risolvibile in parallelo su sei core distinti di una
+macchina moderna. Una piccola fase di pre-distribuzione,
+denominata Phase B-pre, decide quante ore di ciascuna
+cattedra vanno in ciascun giorno, in modo da rispettare i
+vincoli settimanali (la doppia ora di matematica, le
+motorie a coppie, il tetto di ore per classe per giorno).
+Una volta pre-distribuite le ore, sei istanze CP-SAT
+indipendenti, una per ciascun giorno, piazzano materialmente
+le ore nei sei slot del giorno.
+
+Il vantaggio principale della decomposizione temporale \`e
+che essa \`e \emph{sempre applicabile}: non richiede una
+struttura comunitaria nel grafo classe-docente, e
+parallelizza naturalmente sulla CPU. \`E pensata per scuole
+dense, dove la decomposizione spettrale fatica perch\'e i
+cluster non emergono dalla struttura del grafo.
+
+\subsection{Decomposizione METIS}
+
+METIS \`e una libreria classica per il partizionamento di
+grafi che produce partizioni $k$-bilanciate minimizzando il
+taglio attraverso un algoritmo \emph{multilevel}: il grafo
+viene prima collassato (matching pesato), poi partizionato
+sul grafo piccolo, poi raffinato risalendo i livelli. Il
+risultato \`e una partizione di cluster che minimizza il
+numero di archi inter-cluster, con il vincolo aggiuntivo
+che i cluster siano di taglia simile (la tolleranza di
+sbilanciamento \`e configurabile, di default cinque per
+cento).
+
+METIS funziona bene su grafi densi senza struttura
+comunitaria evidente, dove la decomposizione spettrale
+restituirebbe cluster artificiali. \`E configurabile dal
+numero di partizioni $K$ (di default scelto come radice
+quadrata del numero di classi) e dalla tolleranza di
+sbilanciamento. Richiede la libreria Python \texttt{pymetis},
+installabile con \texttt{pip install pymetis}; in mancanza,
+il sistema segnala chiaramente all'utente che deve
+installarla o scegliere un metodo alternativo.
+
+\subsection{Decomposizione per curriculum}
+
+La decomposizione per curriculum sfrutta direttamente
+l'informazione gi\`a codificata nel campo
+\texttt{curriculum\_id} delle classi: ogni indirizzo (Liceo
+Scientifico, ITIS Informatica, eccetera) diventa un cluster,
+e i docenti che insegnano in pi\`u indirizzi sono i ponti.
+\`E la decomposizione pi\`u prevedibile e interpretabile,
+perch\'e ogni cluster corrisponde a un'organizzazione che il
+coordinatore conosce bene. In compenso ignora la
+connettivit\`a effettiva del grafo e produce ponti pi\`u
+numerosi quando i docenti circolano molto fra indirizzi. \`E
+pensata per scuole con indirizzi ben definiti e con poca
+circolazione inter-indirizzo dei docenti, e l'utente pu\`o
+accorpare manualmente curricula con poche classi per evitare
+cluster troppo piccoli.
+
+\subsection{Auto-detect della strategia migliore}
+
+Per evitare che il coordinatore debba scegliere a tentativi,
+$\pi$Tantum espone una funzione di auto-detect che calcola
+due metriche descrittive del grafo bipartito classe-docente,
+la modularit\`a di Newman-Girvan e la densit\`a, e suggerisce
+la strategia di decomposizione migliore. Se la modularit\`a
+\`e alta (sopra zero virgola trenta) consiglia la
+decomposizione spettrale, perch\'e il grafo presenta cluster
+naturali ben separati. Se la densit\`a \`e alta (sopra zero
+virgola sessanta) consiglia METIS, perch\'e il grafo \`e
+denso e privo di cluster spontanei. In tutti gli altri casi
+consiglia la decomposizione per curriculum, che resta la
+scelta di compromesso pi\`u robusta. In ogni caso il sistema
+suggerisce di combinare la scelta primaria con la
+decomposizione temporale, che parallelizza ortogonalmente
+sui sei giorni della settimana e pu\`o essere applicata
+dopo qualunque altra. La raccomandazione \`e accessibile via
+l'endpoint REST \texttt{GET /api/optimize/decomposition/recommend}
+e viene mostrata dall'interfaccia come tooltip
+``Suggerimento'' nella card delle decomposizioni del tab
+Workflow.
+
 \begin{biblioparvabox}
 Per chi voglia approfondire i contenuti di questo capitolo
 in modo sistematico, segnalo i seguenti riferimenti.
