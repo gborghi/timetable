@@ -36,6 +36,78 @@
   let co = _emptyDiag();
   let ds = _emptyDiag();
 
+  // ---- Per-kind run history (DB-backed) ----
+  // Each completed diagnostic run lives in the `runs` table with
+  // its full `metrics_json` (the result dict). We fetch them on
+  // mount and re-fetch when a new run finishes, so the history
+  // travels with the SQLite database (export/import via Dashboard
+  // carries it along automatically).
+  const KIND_FOR = { mc: 'diag_montecarlo', bp: 'diag_bipartite',
+                     co: 'diag_correlations', ds: 'diag_distributions' };
+  let mcHistory = [];
+  let bpHistory = [];
+  let coHistory = [];
+  let dsHistory = [];
+
+  async function _fetchHistory(kind) {
+    const dbKind = KIND_FOR[kind];
+    if (!dbKind) return [];
+    try {
+      const q = `kind = ${dbKind} AND status = done`;
+      const rows = await api.get(
+        '/api/optimize/runs?limit=100&q=' + encodeURIComponent(q));
+      return (rows || [])
+        .filter((r) => r.metrics && Object.keys(r.metrics).length > 0)
+        .map((r) => ({
+          runId: r.id,
+          when: r.finished_at || r.started_at || r.created_at,
+          params: r.params || {},
+          result: r.metrics,
+        }));
+    } catch { return []; }
+  }
+
+  async function reloadHistory(kind) {
+    const list = await _fetchHistory(kind);
+    if (kind === 'mc') mcHistory = list;
+    else if (kind === 'bp') bpHistory = list;
+    else if (kind === 'co') coHistory = list;
+    else if (kind === 'ds') dsHistory = list;
+  }
+  async function clearHistory(kind) {
+    const lists = { mc: mcHistory, bp: bpHistory,
+                    co: coHistory, ds: dsHistory };
+    const ids = (lists[kind] || []).map((e) => e.runId);
+    if (ids.length === 0) return;
+    if (!confirm(`Eliminare ${ids.length} run dalla cronologia?
+Le righe verranno rimosse dalla tabella runs del database.`)) return;
+    try {
+      await api.post('/api/optimize/runs/delete-batch', { run_ids: ids });
+      await reloadHistory(kind);
+      flash(`Cronologia ${kind}: eliminati ${ids.length} run`, 'success');
+    } catch (e) {
+      flash('Errore: ' + (e.message || e), 'error');
+    }
+  }
+  async function deleteHistoryEntry(kind, runId) {
+    try {
+      await api.del('/api/optimize/runs/' + runId);
+      await reloadHistory(kind);
+    } catch (e) {
+      flash('Errore: ' + (e.message || e), 'error');
+    }
+  }
+  function _formatTime(iso) {
+    if (!iso) return '';
+    try {
+      const d = new Date(iso);
+      return d.toLocaleString('it-IT', {
+        day: '2-digit', month: '2-digit', hour: '2-digit',
+        minute: '2-digit',
+      });
+    } catch { return iso; }
+  }
+
   let mcN = 100;
   let mcSeed = 0;
   let bpMode = 'classes';
@@ -117,7 +189,15 @@
 
   // Eagerly load the variable + distribution menus so the user can
   // compose a model the moment they click on the section.
-  onMount(() => { loadCoVariables(); loadDsCatalog(); });
+  onMount(() => {
+    loadCoVariables();
+    loadDsCatalog();
+    // Fetch the per-kind run history from the database. Travels
+    // with the SQLite file: when Giovanni imports a different DB,
+    // the history switches with it.
+    Promise.all([reloadHistory('mc'), reloadHistory('bp'),
+                 reloadHistory('co'), reloadHistory('ds')]);
+  });
 
   async function _pollRun(runId, onUpdate) {
     try {
@@ -154,6 +234,16 @@
           target.busy = false;
           target.result = run.metrics || null;
           onUpdate?.(run);
+          // Refresh the per-kind history from the DB so the new
+          // run appears in the cronologia immediately. Hall is a
+          // structural diagnostic with no archived chart, so we
+          // skip it here.
+          let kind = null;
+          if (target === mc) kind = 'mc';
+          else if (target === bp) kind = 'bp';
+          else if (target === co) kind = 'co';
+          else if (target === ds) kind = 'ds';
+          if (kind) reloadHistory(kind);
         } else if (run.status === 'failed') {
           target.busy = false;
           target.error = run.error || 'run failed';
@@ -217,82 +307,80 @@
     return spawnRun('/api/diagnostics/distributions', body, ds);
   };
 
-  // ---- ECharts options ----
-  $: mcHistogramOption = mc.result && mc.result.ok ? {
-    title: { text: 'SOFT — distribuzione Monte Carlo' },
-    tooltip: { trigger: 'axis' },
-    xAxis: {
-      type: 'category',
-      data: mc.result.samples.map((_, i) => i + 1),
-      name: 'sample',
-    },
-    yAxis: { type: 'value', name: 'SOFT' },
-    series: [
-      {
+  // ---- ECharts option builders ----
+  // Pure functions: take a `result` and return the option dict.
+  // Allows us to render the same chart for both the live "current"
+  // result and for any past entry in the history (see below).
+  function mcHistogramOptionFor(result) {
+    if (!result || !result.ok) return {};
+    return {
+      title: { text: 'SOFT - distribuzione Monte Carlo' },
+      tooltip: { trigger: 'axis' },
+      xAxis: { type: 'category',
+               data: result.samples.map((_, i) => i + 1), name: 'sample' },
+      yAxis: { type: 'value', name: 'SOFT' },
+      series: [{
         type: 'bar',
-        data: mc.result.samples,
+        data: result.samples,
         markLine: {
           data: [
-            { yAxis: mc.result.mean, name: 'media',
+            { yAxis: result.mean, name: 'media',
               lineStyle: { color: '#3f3d8e' } },
-            { yAxis: mc.result.base_val, name: 'base',
+            { yAxis: result.base_val, name: 'base',
               lineStyle: { color: '#a04425', type: 'dashed' } },
           ],
         },
+      }],
+    };
+  }
+  $: mcHistogramOption = mcHistogramOptionFor(mc.result);
+
+  function dsTeacherOptionFor(result) {
+    if (!result || !result.ok || !result.teacher_loads) return {};
+    return {
+      title: { text: 'Carico orario docenti' },
+      tooltip: { trigger: 'axis' },
+      xAxis: {
+        type: 'category',
+        data: result.teacher_loads.bin_edges
+          .slice(0, -1)
+          .map((e, i) => `${e.toFixed(0)}-${result.teacher_loads.bin_edges[i + 1].toFixed(0)}`),
+        name: 'ore',
       },
-    ],
-  } : {};
+      yAxis: { type: 'value', name: '# docenti' },
+      series: [{ type: 'bar',
+                 data: result.teacher_loads.bin_counts }],
+    };
+  }
+  $: dsTeacherOption = dsTeacherOptionFor(ds.result);
 
-  $: dsTeacherOption = (ds.result && ds.result.ok
-                         && ds.result.teacher_loads) ? {
-    title: { text: 'Carico orario docenti' },
-    tooltip: { trigger: 'axis' },
-    xAxis: {
-      type: 'category',
-      data: ds.result.teacher_loads.bin_edges
-        .slice(0, -1)
-        .map((e, i) => `${e.toFixed(0)}-${ds.result.teacher_loads.bin_edges[i + 1].toFixed(0)}`),
-      name: 'ore',
-    },
-    yAxis: { type: 'value', name: '# docenti' },
-    series: [{ type: 'bar', data: ds.result.teacher_loads.bin_counts }],
-  } : {};
-
-  $: dsHeatmapOption = (ds.result && ds.result.ok
-                        && ds.result.subject_slot_heatmap) ? {
-    title: { text: 'Materia x slot' },
-    tooltip: { position: 'top' },
-    grid: { left: '12%', right: '5%', bottom: '14%', top: '12%' },
-    xAxis: {
-      type: 'category',
-      data: ds.result.subject_slot_heatmap.slots,
-      splitArea: { show: true },
-      axisLabel: { rotate: 60, fontSize: 8 },
-    },
-    yAxis: {
-      type: 'category',
-      data: ds.result.subject_slot_heatmap.matrix.map((m) => m.subject),
-      splitArea: { show: true },
-    },
-    visualMap: {
-      min: 0,
-      max: Math.max(
-        1,
-        ...ds.result.subject_slot_heatmap.matrix.flatMap((m) => m.row),
-      ),
-      calculable: true,
-      orient: 'horizontal',
-      left: 'center',
-      bottom: '0%',
-    },
-    series: [{
-      type: 'heatmap',
-      data: ds.result.subject_slot_heatmap.matrix.flatMap((m, i) =>
-        m.row.map((v, j) => [j, i, v]),
-      ),
-      label: { show: false },
-    }],
-  } : {};
+  function dsHeatmapOptionFor(result) {
+    if (!result || !result.ok || !result.subject_slot_heatmap) return {};
+    const m = result.subject_slot_heatmap;
+    return {
+      title: { text: 'Materia x slot' },
+      tooltip: { position: 'top' },
+      grid: { left: '12%', right: '5%', bottom: '14%', top: '12%' },
+      xAxis: { type: 'category', data: m.slots,
+               splitArea: { show: true },
+               axisLabel: { rotate: 60, fontSize: 8 } },
+      yAxis: { type: 'category',
+               data: m.matrix.map((r) => r.subject),
+               splitArea: { show: true } },
+      visualMap: {
+        min: 0,
+        max: Math.max(1, ...m.matrix.flatMap((r) => r.row)),
+        calculable: true, orient: 'horizontal',
+        left: 'center', bottom: '0%',
+      },
+      series: [{
+        type: 'heatmap',
+        data: m.matrix.flatMap((r, i) => r.row.map((v, j) => [j, i, v])),
+        label: { show: false },
+      }],
+    };
+  }
+  $: dsHeatmapOption = dsHeatmapOptionFor(ds.result);
 
   function scatterOption(model) {
     if (!model || !model.scatter) return {};
@@ -412,6 +500,48 @@
         <p class="text-xs text-rose-700">{mc.result.msg}</p>
       {/if}
     {/if}
+    {#if mcHistory.length > 0}
+      <div class="border-t border-ink-200 pt-2 mt-2">
+        <div class="flex items-baseline justify-between mb-1">
+          <strong class="text-xs">Cronologia ({mcHistory.length})</strong>
+          <button class="btn !text-[10px] !px-2 !py-0.5"
+                  on:click={() => clearHistory('mc')}>Pulisci</button>
+        </div>
+        {#each mcHistory as h (h.runId)}
+          <details class="border border-ink-200 rounded mb-1">
+            <summary class="cursor-pointer px-2 py-1 text-xs flex
+                            items-center gap-2 hover:bg-ink-50">
+              <span class="pill !text-[10px]">run #{h.runId}</span>
+              <span class="text-ink-500">{_formatTime(h.when)}</span>
+              {#if h.result?.ok}
+                <span class="text-ink-500">
+                  media {h.result.mean.toFixed(1)},
+                  std {h.result.std.toFixed(1)}
+                </span>
+              {:else}
+                <span class="text-rose-700">errore</span>
+              {/if}
+              <button class="ml-auto btn !text-[10px] !px-1 !py-0"
+                      title="Elimina dalla cronologia"
+                      on:click|stopPropagation|preventDefault={() => deleteHistoryEntry('mc', h.runId)}>
+                x
+              </button>
+            </summary>
+            <div class="p-2">
+              {#if h.result?.ok}
+                <EChart option={mcHistogramOptionFor(h.result)}
+                        height={260}
+                        exportName={`mc_run_${h.runId}`}/>
+              {:else}
+                <p class="text-xs text-rose-700">
+                  {h.result?.msg || 'risultato non disponibile'}
+                </p>
+              {/if}
+            </div>
+          </details>
+        {/each}
+      </div>
+    {/if}
   </section>
 
   <!-- 3) Bipartite (async run) -->
@@ -484,6 +614,38 @@
       <p class="text-[11px] text-ink-500">
         {bp.result.n_nodes} nodi, {bp.result.n_edges} archi.
       </p>
+    {/if}
+    {#if bpHistory.length > 0}
+      <div class="border-t border-ink-200 pt-2 mt-2">
+        <div class="flex items-baseline justify-between mb-1">
+          <strong class="text-xs">Cronologia ({bpHistory.length})</strong>
+          <button class="btn !text-[10px] !px-2 !py-0.5"
+                  on:click={() => clearHistory('bp')}>Pulisci</button>
+        </div>
+        {#each bpHistory as h (h.runId)}
+          <details class="border border-ink-200 rounded mb-1">
+            <summary class="cursor-pointer px-2 py-1 text-xs flex
+                            items-center gap-2 hover:bg-ink-50">
+              <span class="pill !text-[10px]">run #{h.runId}</span>
+              <span class="text-ink-500">{_formatTime(h.when)}</span>
+              <span class="text-ink-500">
+                mode {h.params?.mode || 'classes'}
+                {#if h.result?.modularity !== undefined}
+                  -- mod {h.result.modularity.toFixed(3)}
+                {/if}
+              </span>
+              <button class="ml-auto btn !text-[10px] !px-1 !py-0"
+                      title="Elimina dalla cronologia"
+                      on:click|stopPropagation|preventDefault={() => deleteHistoryEntry('bp', h.runId)}>
+                x
+              </button>
+            </summary>
+            <div class="p-2">
+              <DiagnosticResult kind="diag_bipartite" result={h.result}/>
+            </div>
+          </details>
+        {/each}
+      </div>
     {/if}
   </section>
 
@@ -602,6 +764,35 @@
     {#if co.result}
       <DiagnosticResult kind="diag_correlations" result={co.result}/>
     {/if}
+    {#if coHistory.length > 0}
+      <div class="border-t border-ink-200 pt-2 mt-2">
+        <div class="flex items-baseline justify-between mb-1">
+          <strong class="text-xs">Cronologia ({coHistory.length})</strong>
+          <button class="btn !text-[10px] !px-2 !py-0.5"
+                  on:click={() => clearHistory('co')}>Pulisci</button>
+        </div>
+        {#each coHistory as h (h.runId)}
+          <details class="border border-ink-200 rounded mb-1">
+            <summary class="cursor-pointer px-2 py-1 text-xs flex
+                            items-center gap-2 hover:bg-ink-50">
+              <span class="pill !text-[10px]">run #{h.runId}</span>
+              <span class="text-ink-500">{_formatTime(h.when)}</span>
+              <span class="text-ink-500">
+                {h.result?.models?.length || 0} modell{(h.result?.models?.length || 0) === 1 ? 'o' : 'i'}
+              </span>
+              <button class="ml-auto btn !text-[10px] !px-1 !py-0"
+                      title="Elimina dalla cronologia"
+                      on:click|stopPropagation|preventDefault={() => deleteHistoryEntry('co', h.runId)}>
+                x
+              </button>
+            </summary>
+            <div class="p-2">
+              <DiagnosticResult kind="diag_correlations" result={h.result}/>
+            </div>
+          </details>
+        {/each}
+      </div>
+    {/if}
   </section>
 
   <!-- 5) Distributions (async run, parametrizable) -->
@@ -717,6 +908,66 @@
           {/each}
         </div>
       {/if}
+    {/if}
+    {#if dsHistory.length > 0}
+      <div class="border-t border-ink-200 pt-2 mt-2">
+        <div class="flex items-baseline justify-between mb-1">
+          <strong class="text-xs">Cronologia ({dsHistory.length})</strong>
+          <button class="btn !text-[10px] !px-2 !py-0.5"
+                  on:click={() => clearHistory('ds')}>Pulisci</button>
+        </div>
+        {#each dsHistory as h (h.runId)}
+          <details class="border border-ink-200 rounded mb-1">
+            <summary class="cursor-pointer px-2 py-1 text-xs flex
+                            items-center gap-2 hover:bg-ink-50">
+              <span class="pill !text-[10px]">run #{h.runId}</span>
+              <span class="text-ink-500">{_formatTime(h.when)}</span>
+              <span class="text-ink-500">
+                {#if h.result?.teacher_loads}carico docenti{/if}
+                {#if h.result?.teacher_loads && h.result?.subject_slot_heatmap} + {/if}
+                {#if h.result?.subject_slot_heatmap}heatmap materia/slot{/if}
+              </span>
+              <button class="ml-auto btn !text-[10px] !px-1 !py-0"
+                      title="Elimina dalla cronologia"
+                      on:click|stopPropagation|preventDefault={() => deleteHistoryEntry('ds', h.runId)}>
+                x
+              </button>
+            </summary>
+            <div class="p-2">
+              {#if h.result?.ok}
+                <div class="grid md:grid-cols-2 gap-4">
+                  {#if h.result.teacher_loads}
+                    <EChart option={dsTeacherOptionFor(h.result)}
+                            height={260}
+                            exportName={`distrib_teacher_loads_run_${h.runId}`}/>
+                  {/if}
+                  {#if h.result.subject_slot_heatmap}
+                    <EChart option={dsHeatmapOptionFor(h.result)}
+                            height={260}
+                            exportName={`distrib_subject_slot_heatmap_run_${h.runId}`}/>
+                  {/if}
+                </div>
+                {#if h.result.tests}
+                  <div class="text-xs text-ink-600 space-y-1 mt-2">
+                    {#each Object.entries(h.result.tests) as [name, t]}
+                      <div>
+                        <strong>{name}:</strong>
+                        statistica = {t.statistic.toFixed(3)},
+                        p-value = {t.p_value.toFixed(3)} -
+                        <em>{t.interpretation}</em>
+                      </div>
+                    {/each}
+                  </div>
+                {/if}
+              {:else}
+                <p class="text-xs text-rose-700">
+                  {h.result?.msg || 'risultato non disponibile'}
+                </p>
+              {/if}
+            </div>
+          </details>
+        {/each}
+      </div>
     {/if}
   </section>
 </div>
