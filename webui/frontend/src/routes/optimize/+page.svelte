@@ -523,7 +523,8 @@
           <div class="field"><label>time bridges (s)</label>
             <input type="number" bind:value={decompCurriculum.time_bridges}/></div>
           <div class="field"><label>raggruppamenti manuali (JSON)</label>
-            <input type="text" placeholder='{"linguistico":"_misto"}'
+            <input type="text"
+                   placeholder={'{"linguistico":"_misto"}'}
                    bind:value={decompCurriculum.manual_groupings}/></div>
         </div>
         <button class="btn-primary !text-xs mt-2"
