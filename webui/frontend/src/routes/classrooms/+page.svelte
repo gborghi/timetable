@@ -254,10 +254,10 @@
       {#if (row.tags || []).length === 0}
         <span class="text-ink-400">-</span>
       {:else}
-        <div class="flex flex-wrap gap-1">
+        <div class="flex flex-wrap gap-0.5">
           {#each row.tags as t (t)}
-            <span class="inline-flex items-center px-1.5 py-0.5 rounded-full
-                         border text-[10px] font-medium {tagColor(t)}">#{t}</span>
+            <span class="inline-flex items-center px-1 py-px rounded-sm
+                         border text-[9px] leading-tight font-medium {tagColor(t)}">#{t}</span>
           {/each}
         </div>
       {/if}
