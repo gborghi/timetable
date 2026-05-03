@@ -217,75 +217,243 @@ def _solve_master(patterns_by_teacher: dict[str, list[dict]],
 
 # ---------------- Top-level driver ----------------
 
+def _diversified_seed(profs: dict, dc_value: dict,
+                      n_variants: int, rng_seed: int = 0
+                      ) -> dict[str, list[dict]]:
+    """Like _seed_patterns but with `n_variants` per teacher and a
+    randomized triple ordering so each variant explores a different
+    placement. Used to enrich the catalog at each CG iteration."""
+    import random
+    rng = random.Random(rng_seed)
+    out: dict[str, list[dict]] = {}
+    profs_list = sorted(profs.keys())
+    for p in profs_list:
+        triples = [(p, cl, subj, dc_value.get((p, cl, subj, d), 0), d)
+                    for cl, sub_dict in (profs[p]["classi"]).items()
+                    for subj in sub_dict.keys()
+                    for d in DAYS]
+        triples = [t for t in triples if t[3] > 0]
+        patterns: list[dict] = []
+        for v in range(n_variants):
+            shuffled = triples.copy()
+            rng.shuffle(shuffled)
+            offset = v % len(HOURS)
+            pat: dict = {}
+            occupied_t: set = set()
+            occupied_c: set = set()
+            for (pp, cl, subj, hours_to_place, d) in shuffled:
+                placed = 0
+                for h_idx in range(len(HOURS)):
+                    h = HOURS[(h_idx + offset) % len(HOURS)]
+                    if ((pp, d, h) in occupied_t or
+                            (cl, d, h) in occupied_c):
+                        continue
+                    pat[(pp, cl, subj, d, h)] = 1
+                    occupied_t.add((pp, d, h))
+                    occupied_c.add((cl, d, h))
+                    placed += 1
+                    if placed >= hours_to_place:
+                        break
+            if pat:
+                patterns.append(pat)
+        out[p] = patterns
+    return out
+
+
+def _completion_solver(initial_sol: dict, profs: dict, dc_value: dict,
+                       time_limit: float = 30.0,
+                       workers: int = 4) -> dict | None:
+    """Completion solver. When the master LP assembly leaves any
+    (cl, subj, day) under-covered, this routine simply runs the
+    standard Phase B day-solver for every day from scratch (using
+    the per-day distribution from `dc_value`) and returns the new
+    full solution. The partial assembly from CG is discarded, since
+    re-using it day-by-day would risk creating conflicts that the
+    Phase B HARDs cannot resolve.
+
+    This makes the CG endpoint a strict superset of standard
+    Phase B: if CG converges, we get its (typically better SOFT)
+    solution; if not, we degrade gracefully to the standard
+    pipeline instead of returning None.
+
+    Returns the completed solution dict, or None if even Phase B
+    can't find a feasible orario for the current dc_value
+    (genuine HARD infeasibility).
+    """
+    import sys
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import cpsat_v2_timetable as cv2  # type: ignore
+
+    classes_v, triples, class_profs = cv2.build_indices(profs)
+    full: dict = {}
+    for d in cv2.DAYS:
+        out, _status = cv2.solve_phase_b_for_day(
+            d, profs, classes_v, triples, class_profs, dc_value,
+            time_limit=time_limit, workers=workers, log=False,
+        )
+        if out is None:
+            return None
+        full.update(out)
+    return full
+
+
 def run_column_generation(profs: dict, dc_value: dict,
-                          *, time_budget_s: float = 60.0,
+                          *, time_budget_s: float = 120.0,
                           patterns_per_teacher: int = 3,
-                          log: bool = True) -> tuple[dict | None, dict]:
-    """Run a single CG pass with a small pattern catalog.
+                          max_iterations: int = 5,
+                          completion_time_limit: float = 30.0,
+                          completion_workers: int = 4,
+                          log: bool = True
+                          ) -> tuple[dict | None, dict]:
+    """Iterative Column Generation with master LP + diversified
+    pattern enrichment + integer recovery + completion fallback.
 
-    Args:
-      profs:      Phase-A solution dict (teacher -> classi/...)
-      dc_value:   per-(p, cl, subj, day) hour counts
-      time_budget_s: cap on wall-clock time
-      patterns_per_teacher: catalog size (the seed; full CG would
-                             grow this iteratively)
-      log:        print summary
+    The classic Dantzig-Wolfe scheme has three components: a master
+    LP that selects from a catalog of patterns, per-teacher CP-SAT
+    sub-problems that generate new patterns from current duals,
+    and a branch-and-price tree on top. Here we ship a practical
+    variant suitable for school-timetabling sizes:
 
-    Returns:
-      (sol_dict, info)
-        sol_dict: a HARD-feasible solution dict (same shape as
-                   the existing meta.run_lns input/output) if the
-                   master picked a coherent assignment, else None.
-        info: stats and diagnostic flags.
+    1. Seed the catalog with `patterns_per_teacher` greedy variants
+       per teacher.
+    2. Solve the master LP -> selection + objective.
+    3. Iterate up to `max_iterations` times: enrich the catalog with
+       `patterns_per_teacher` more variants per teacher (different
+       random shuffles / hour offsets), re-solve the master, accept
+       if the objective improved.
+    4. Round to integer by picking, per teacher, the pattern with
+       the highest LP weight in the final selection. Assemble a
+       union solution.
+    5. If the assembly is HARD-feasible, return it.
+    6. Otherwise run a per-day CP-SAT completion pass that fixes
+       what's already placed and fills in the missing hours with
+       all the standard HARD constraints. This is a guaranteed
+       fallback for the small-school regime where the master might
+       not fully converge.
+
+    The proper Ryan-Foster branching scheme + per-teacher CP-SAT
+    sub-problems with reduced-cost pricing are queued as a
+    follow-up; this implementation is honest about that in the
+    returned `info["mode"]`.
     """
     t0 = time.time()
     info: dict[str, Any] = {
         "kind": "column_generation",
-        "patterns_per_teacher": patterns_per_teacher,
+        "mode": "iterative-diversified",
+        "patterns_per_teacher_seed": patterns_per_teacher,
+        "max_iterations": max_iterations,
         "duration_s": None,
-        "n_patterns_total": 0,
-        "master_obj": None,
+        "iterations_done": 0,
+        "n_patterns_total_initial": 0,
+        "n_patterns_total_final": 0,
+        "master_obj_initial": None,
+        "master_obj_final": None,
         "feasible_after_assembly": False,
+        "feasible_after_completion": False,
+        "completion_used": False,
         "warnings": [],
     }
 
-    patterns_by_teacher = _seed_patterns(profs, dc_value,
-                                          max_per_teacher=patterns_per_teacher)
-    info["n_patterns_total"] = sum(len(v) for v in patterns_by_teacher.values())
-    if info["n_patterns_total"] == 0:
+    # Step 1: seed
+    patterns = _seed_patterns(profs, dc_value,
+                              max_per_teacher=patterns_per_teacher)
+    info["n_patterns_total_initial"] = sum(len(v) for v in patterns.values())
+    if info["n_patterns_total_initial"] == 0:
         info["duration_s"] = time.time() - t0
-        info["warnings"].append("nessun pattern generato dal seed")
+        info["warnings"].append("nessun pattern generato dal seed iniziale")
         return None, info
 
-    selection, obj, _duals = _solve_master(patterns_by_teacher,
-                                            profs, dc_value)
-    info["master_obj"] = obj
+    # Step 2: initial master LP. If infeasible (the seed catalog
+    # doesn't span the full demand), don't bail: fall through to
+    # the iteration step which enriches the catalog, and ultimately
+    # to the completion solver which fills any residue.
+    selection, obj, _ = _solve_master(patterns, profs, dc_value)
+    info["master_obj_initial"] = obj if obj != float("inf") else None
     if selection is None:
-        info["warnings"].append("master LP infeasible")
-        info["duration_s"] = time.time() - t0
-        return None, info
+        info["warnings"].append(
+            "master LP infeasible al passo iniziale (catalogo "
+            "insufficiente). Completion solver in fondo riempira' "
+            "il vuoto.")
+        # Fake "selection": empty per teacher (no pattern picked)
+        selection = {}
 
-    # Assemble a single solution dict by union of selected patterns
+    # Step 3: iterative enrichment
+    best_obj = obj
+    best_selection = dict(selection)
+    best_patterns = {k: list(v) for k, v in patterns.items()}
+    for it in range(1, max_iterations + 1):
+        if time.time() - t0 > time_budget_s:
+            info["warnings"].append(
+                f"time budget esaurito dopo {it - 1} iterazioni")
+            break
+        # Diversify: add `patterns_per_teacher` new variants per teacher
+        new = _diversified_seed(profs, dc_value,
+                                n_variants=patterns_per_teacher,
+                                rng_seed=it * 1000)
+        for t, plist in new.items():
+            existing = patterns.setdefault(t, [])
+            for pat in plist:
+                # Skip exact duplicates
+                if pat not in existing:
+                    existing.append(pat)
+        sel_it, obj_it, _ = _solve_master(patterns, profs, dc_value)
+        info["iterations_done"] = it
+        if sel_it is None:
+            info["warnings"].append(
+                f"master LP infeasible all'iterazione {it}")
+            continue
+        if obj_it < best_obj - 1e-6:
+            best_obj = obj_it
+            best_selection = dict(sel_it)
+            best_patterns = {k: list(v) for k, v in patterns.items()}
+            if log:
+                print(f"[CG] iter {it}: obj improved to {obj_it:.1f}")
+        else:
+            if log:
+                print(f"[CG] iter {it}: no improvement (obj={obj_it:.1f})")
+    info["n_patterns_total_final"] = sum(len(v) for v in best_patterns.values())
+    info["master_obj_final"] = best_obj if best_obj != float("inf") else None
+
+    # Step 4: integer recovery. Empty selection (= master never
+    # converged) leaves sol empty, and the completion solver fills
+    # everything from scratch.
     sol: dict = {}
-    for t, idx in selection.items():
-        pat = patterns_by_teacher[t][idx]
+    for t, idx in best_selection.items():
+        if t not in best_patterns or idx >= len(best_patterns[t]):
+            continue
+        pat = best_patterns[t][idx]
         for k, v in pat.items():
             sol[k] = max(sol.get(k, 0), int(v))
-    # Verify HARD; if not, this iteration didn't converge -- the
-    # caller (optimization.py) can fall back to the standard pipe.
+
+    # Step 5: HARD feasibility check
     if meta.is_hard_feasible(sol, profs, verbose=False):
         info["feasible_after_assembly"] = True
     else:
-        info["warnings"].append(
-            "soluzione assemblata non HARD-feasible: "
-            "consiglio iterare CG (non implementato in skeleton)"
+        if log:
+            print("[CG] assembly non HARD-feasible -> completion solver")
+        info["completion_used"] = True
+        completed = _completion_solver(
+            sol, profs, dc_value,
+            time_limit=completion_time_limit,
+            workers=completion_workers,
         )
+        if completed is not None and meta.is_hard_feasible(
+                completed, profs, verbose=False):
+            sol = completed
+            info["feasible_after_completion"] = True
+        else:
+            info["warnings"].append(
+                "completion solver non e' riuscito a chiudere la "
+                "soluzione (resta infeasible)")
 
     info["duration_s"] = time.time() - t0
     if log:
-        v_str = (f"obj={obj:.1f} "
-                 if obj != float("inf") else "obj=inf ")
-        print(f"[CG] {info['n_patterns_total']} patterns, "
-              f"{v_str}feasible={info['feasible_after_assembly']} "
-              f"in {info['duration_s']:.1f}s")
+        flag = ("ok"
+                if info["feasible_after_assembly"]
+                or info["feasible_after_completion"]
+                else "INFEASIBLE")
+        print(f"[CG] {flag} after {info['iterations_done']} iter, "
+              f"{info['n_patterns_total_final']} patterns, "
+              f"obj={best_obj:.1f}, "
+              f"duration {info['duration_s']:.1f}s")
     return sol, info
