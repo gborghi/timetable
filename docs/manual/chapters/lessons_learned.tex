@@ -1,0 +1,192 @@
+\chapter{Lessons learned}
+\label{ch:lessons_learned}
+
+\epigraph{``Experience is what you get when you didn't get
+what you wanted.''}{Randy Pausch, \emph{The Last Lecture}}
+
+\lettrine[lines=3]{D}{opo} un anno e mezzo di sviluppo,
+qualche centinaio di esperimenti e una manciata di migliaia
+di righe di codice, alcuni insegnamenti stanno emergendo. Li
+raccolgo qui per chi voglia costruire un sistema simile, o
+estendere $\pi$Tantum, o semplicemente capire dove le
+intuizioni iniziali sono state confermate e dove smentite.
+
+\section{Cosa ha funzionato}
+
+\subsection{Modellare HARD/SOFT separatamente}
+
+Gi\`a all'inizio era chiaro che mescolare i due tipi di
+vincoli sarebbe stato un disastro. La distinzione netta
+``HARD entra come vincolo nel solver, SOFT entra come
+penalit\`a nell'obiettivo'' \`e \emph{l'unica} che permette
+all'utente di leggere correttamente i risultati. Senza di
+essa l'utente non distingue ``il sistema non riesce a
+soddisfarlo'' da ``il sistema sta cercando di soddisfarlo
+ma trova un compromesso''. La palette 5-stati con codice
+colore \`e l'estensione naturale che permette di esprimere
+sfumature (preferred, enforced) senza aumentare la
+complessit\`a percepita.
+
+\subsection{Decomporre invece di scalare}
+
+L'illusione del primo periodo era che ``CP-SAT scali
+abbastanza''. Vero fino a $\sim$50 classi. Sopra, i tempi
+esplodono. La decomposizione spettrale (cap.~\ref{ch:metodo_spettrale})
+\`e stata l'introduzione che ha cambiato l'orizzonte di
+applicabilit\`a: con cluster naturali ben separati, lo
+speedup \`e di un ordine di grandezza.
+
+\subsection{DSL parser hand-rolled}
+
+La tentazione iniziale era usare PLY o Lark. Alla fine il
+parser hand-rolled \`e risultato pi\`u pulito: 250 righe di
+Python, niente dipendenze, controllo esatto degli errori.
+Quando aggiungi un built-in nuovo, sai dove toccare. Quando
+un utente sbaglia la sintassi, l'errore \`e in italiano e
+indica la posizione del token. Le librerie generiche
+sarebbero state pi\`u verbose nello stesso codice e meno
+``parlanti'' negli errori.
+
+\subsection{Frontend lazy: non fare polling per niente}
+
+Caricare ECharts solo on-demand, fare polling solo se la
+tab \`e visibile (\texttt{document.hidden} check), unmount
+delle pagine al cambio tab: piccoli accorgimenti che
+trasformano un'app ``pesantuccia'' in un'app ``snella'' su
+hardware modesto. La scuola che usa $\pi$Tantum ha
+tipicamente computer di 5--7 anni; la responsivit\`a percepita
+\`e cruciale.
+
+\subsection{Run asincroni con SSE log streaming}
+
+Trasformare ogni operazione lunga (Phase A, Phase B,
+Monte Carlo, Hall) in un \emph{run asincrono} con log
+streaming via SSE \`e stata una svolta UX. L'utente non aspetta
+con la barra di caricamento; legge il log in tempo reale,
+capisce cosa sta succedendo, pu\`o killare se serve. La
+metafora ``ogni operazione \`e un job che lascia traccia in
+\texttt{Run+RunLog+RunTelemetry}'' \`e diventata l'asse
+portante dell'architettura.
+
+\section{Cosa non ha funzionato (al primo tentativo)}
+
+\subsection{Pickle come engine I/O}
+
+\sidenote{Pickle \`e \emph{conveniente} ma fragile: cambia la
+classe Python e i pickle vecchi non si caricano pi\`u.}
+
+L'idea di scambiare dati fra backend e solver via pickle ha
+funzionato per il prototipo ma ha causato dolore quando si
+sono raffinate le strutture dati. Ogni cambio di campo nelle
+dataclass del solver invalidava i pickle. Soluzione
+adottata: \texttt{engine\_io.py} fa da convertitore esplicito
+fra DB e dict; il pickle \`e ancora usato come cache, ma con
+un campo \texttt{schema\_version} che permette di
+riconoscere i pickle vecchi e rigenerarli.
+
+\subsection{Migrazioni hand-rolled vs Alembic}
+
+La scelta consapevole di scrivere migrazioni idempotenti
+direttamente in \texttt{db.py} (\emph{senza} Alembic) ha
+pro e contro. Pro: zero file di migrazione separati, zero
+ambiente da configurare, deploy banale. Contro: con
+$\sim 30$ tabelle si comincia a sentire il peso (la funzione
+\texttt{\_apply\_lightweight\_migrations()} \`e ormai
+lunghissima). Probabile rifattorizzazione in vista per la
+versione successiva.
+
+\subsection{Promesse di ottimo globale con metaeuristiche}
+
+\begin{erroricomunibox}
+Le metaeuristiche \emph{non} garantiscono l'ottimo. Ho
+provato pi\`u volte a ``promettere'' all'utente che la
+soluzione finale fosse il meglio possibile. \`E falso, ed \`e
+controproducente: l'utente perde fiducia quando vede un
+piccolo manual fix migliorare l'obiettivo. La onest\`a
+intellettuale paga: ``questa \`e una soluzione di alta
+qualit\`a, non garantita ottima'' \`e meglio di ``ottima''.
+\end{erroricomunibox}
+
+\subsection{Drag-and-drop senza preview}
+
+Prima versione: drag-and-drop senza preview, conferma
+post-hoc se la mossa era HARD-fattibile. Era frustrante.
+Versione attuale: preview live con check HARD e delta SOFT
+mentre trascini. Adesso l'utente impara giocando: vede
+\emph{prima} che la mossa \`e infattibile e capisce
+\emph{perch\'e}. La differenza in usabilit\`a \`e enorme.
+
+\subsection{Sottostimare i tempi su \texttt{superhuge}}
+
+Il profilo \texttt{superhuge} (80 classi, 16 sezioni $\times$
+5 anni) era pensato come ``stress test estremo'', non come
+caso d'uso reale. Si \`e scoperto che esistono \emph{davvero}
+istituti italiani con queste taglie (poli scolastici, IIS).
+Phase A su \texttt{superhuge} consuma 5 minuti --- quasi
+accettabile, ma pi\`u del previsto. Le ottimizzazioni di
+Phase A (decomposizione di matching, MIP-based) sono in
+roadmap.
+
+\section{Quello che ancora si pu\`o migliorare}
+
+\subsection{DSL editor avanzato}
+
+\sidenote{Tutta la roadmap di DSL editor (squiggle, fuzzy,
+quick-fix, hover docs, NL preview) \`e descritta nel
+cap.~\ref{ch:metodo_dsl}.}
+Ad oggi il campo DSL \`e una semplice \texttt{textarea}
+senza assistenza. La specifica completa di un editor con
+live validation, suggerimenti fuzzy, quick-fix e hover docs
+esiste; manca il tempo di implementarla. \`E la priorit\`a
+numero uno per il prossimo ciclo.
+
+\subsection{Documentazione viewer in-app}
+
+Tutta questa documentazione esiste come PDF e markdown nel
+repository, ma non \`e accessibile dall'interno dell'app.
+Idealmente: una tab \texttt{/docs} con albero a sinistra
+(per categoria) e contenuto a destra (markdown reso live),
+con search globale.
+
+\subsection{Wizard per casi d'uso comuni}
+
+Casi ricorrenti come ``crea un corso di recupero'' o
+``aggiungi una compresenza'' richiedono al coordinatore di
+sapere quali campi compilare e in quale tab. Sarebbero un
+buon target per dei \emph{wizard} guidati che fanno tutto
+in pochi click.
+
+\subsection{Multi-tenant}
+
+Ad oggi $\pi$Tantum \`e mono-utente / mono-scuola: una
+istanza per scuola. Per un servizio cloud serve gestione
+utenti, isolamento dei dati, billing. \`E un'estensione
+significativa che richiede di ripensare il modello dati e
+l'autenticazione.
+
+\subsection{Mobile responsivo}
+
+L'interfaccia \`e desktop-first. Per gestire le supplenze
+quotidiane dal telefono servirebbe un layout responsive. Non
+\`e solo un fatto di CSS: la matrice 6$\times$6 della pagina
+``Assenze'' non ci sta su uno schermo da 5 pollici.
+
+\section{Una riflessione finale}
+
+Costruire $\pi$Tantum mi ha confermato un'intuizione che
+all'inizio era solo una sensazione: \emph{i sistemi
+complessi sopravvivono se sono onesti con l'utente}. Onesti
+nel dire ``questo non posso farlo'', onesti nel mostrare
+\emph{quanto} una scelta costa, onesti nel non promettere
+ottimi che non sono garantiti. L'utente perdona la lentezza
+se sa perch\'e. L'utente apprezza il pre-check di Hall che
+dice ``ferma, mancano 3 ore di matematica, prima sistemale''
+infinitamente di pi\`u del solver che dopo 10 minuti
+restituisce ``no soluzione''.
+
+In fondo \`e la stessa lezione che si impara ogni volta che
+si lavora con altri umani: la fiducia si costruisce un
+piccolo segnale alla volta. Anche un software \`e fatto di
+piccoli segnali.
+
+\pullquote{I sistemi complessi sopravvivono se sono onesti con l'utente.}{Lessons learned, $\pi$Tantum 2026}

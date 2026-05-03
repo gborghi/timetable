@@ -1,0 +1,172 @@
+\chapter{Monte Carlo: simulare per capire}
+\label{ch:metodo_montecarlo}
+
+\epigraph{``In any conflict between two ideas, lapse into
+random sampling and you'll learn surprising things.''}{adagio
+del calcolo statistico}
+
+\lettrine[lines=3]{D}{opo} aver prodotto un orario, una
+domanda naturale del coordinatore \`e: \emph{quanto \`e
+robusto rispetto a piccoli cambiamenti?} Cosa succede se un
+docente cambia indisponibilit\`a all'ultimo minuto? Cosa
+succede se una classe si sposta di sezione? Cosa succede se
+viene aggiunta una compresenza dell'ultim'ora?
+
+Una risposta secca \`e impossibile. Una risposta statistica,
+invece, si pu\`o ottenere con il metodo \emph{Monte
+Carlo}\index{Monte Carlo}: si \emph{perturba} l'input in
+modo casuale, si \emph{rilancia} il solver molte volte, e
+si \emph{guarda la distribuzione} dei risultati.
+
+\section{La storia del nome}
+
+\begin{storiabox}
+Il metodo Monte Carlo nasce a Los Alamos negli anni '40
+nel contesto del progetto Manhattan. Stanislaw Ulam, durante
+una convalescenza, ide\`o di simulare l'evoluzione dei
+neutroni in una bomba atomica con simulazioni stocastiche.
+Lo chiam\`o ``Monte Carlo'' come scherzo, perch\'e suo zio
+amava il casin\`o di Monte Carlo a Monaco. Metropolis e
+Ulam pubblicarono il primo articolo formale nel
+1949~\parencite{metropolis1949}.
+
+L'idea si \`e poi diffusa in fisica, finanza, biologia,
+statistica. Oggi \emph{Monte Carlo simulation} \`e un
+metodo trasversale: ogni volta che un sistema deterministico
+\`e troppo complesso per essere analizzato esattamente, si
+campiona stocasticamente e si lavora sulle distribuzioni.
+\end{storiabox}
+
+\section{Sensitivity analysis: cosa misurare}
+
+\begin{defbox}
+La \emph{sensitivity
+analysis}\index{sensitivity!analisi} consiste nel
+\emph{perturbare} un parametro di un modello e nel misurare
+quanto cambia l'output. Versione Monte Carlo: invece di
+perturbare un parametro alla volta, perturba molti parametri
+contemporaneamente con distribuzioni assegnate, e analizza
+la distribuzione dell'output.
+\end{defbox}
+
+In $\pi$Tantum si offrono diverse sensitivit\`a, attivabili
+dalla pagina Diagnostica:
+
+\begin{itemize}
+\item \textbf{Indisponibilit\`a docenti}: scegli $K$ scenari
+  in cui un docente casuale acquisisce un'indisponibilit\`a
+  in uno slot casuale. Per ognuno, rilancia la pipeline e
+  registra: ha trovato soluzione? quanto \`e cambiato
+  l'obiettivo? quante lezioni sono state spostate?
+\item \textbf{Aggiunta compresenze}: simula l'arrivo
+  dell'ultimo momento di una compresenza in una classe
+  random per una materia random.
+\item \textbf{Spostamento di una classe}: simula il cambio
+  di curriculum/indirizzo di una classe.
+\item \textbf{Generico}: l'utente passa una funzione di
+  perturbazione personalizzata via DSL.
+\end{itemize}
+
+\section{Schema operativo}
+
+\begin{enumerate}
+\item Fissa un seed iniziale e un numero $K$ di campioni
+  (default: 50).
+\item Per ogni $i = 1, \ldots, K$:
+  \begin{enumerate}
+  \item Applica una perturbazione casuale $\delta_i$
+    all'input.
+  \item Rilancia la pipeline (Phase~A + B + C + D).
+  \item Registra: feasibility, obiettivo finale, tempo,
+    numero di lezioni cambiate rispetto al baseline.
+  \end{enumerate}
+\item Calcola statistiche descrittive: media, deviazione
+  standard, mediana, percentili 5/95, frazione di scenari
+  infeasible.
+\item Visualizza la distribuzione (istogramma) del valore
+  obiettivo.
+\end{enumerate}
+
+\subsection{Esempio numerico}
+
+\begin{esempiobox}
+Scuola \texttt{medium}: 28 classi, 50 docenti, baseline con
+obiettivo $f_0 = 11.4$. Lanciamo Monte Carlo con $K = 50$
+scenari di tipo ``indisponibilit\`a docente''.
+
+Risultati: 47 scenari producono soluzione fattibile (3
+infeasible); fra i 47, $\bar{f} = 12.1$, $\sigma = 0.8$,
+mediana $= 12.0$, P5 $= 11.0$, P95 $= 13.6$. Il numero
+medio di lezioni spostate \`e 6.3.
+
+Lettura: il sistema \`e \emph{robusto in media} (l'obiettivo
+peggiora di solo $\sim 6\%$), ma il 6\% degli scenari
+diventa infeasible. Conviene investigare quali docenti sono
+``critici'' (la cui indisponibilit\`a aggiuntiva rende il
+problema infeasible).
+\end{esempiobox}
+
+\section{Quando \`e utile}
+
+\begin{ideabox}
+\begin{itemize}
+\item \textbf{Pianificazione preventiva}: a settembre il
+  coordinatore vuole sapere quali docenti sono ``critici''
+  prima che si manifestino le assenze. Monte Carlo li
+  identifica.
+\item \textbf{Stima dell'impatto di una nuova richiesta}:
+  un docente chiede di non lavorare il marted\`i. Monte
+  Carlo simula l'aggiunta del vincolo (anche su altri
+  docenti, per analogia) e dice quanto perde l'obiettivo
+  in media.
+\item \textbf{Validazione di una soluzione}: una soluzione
+  con basso $f_0$ ma alta varianza nel Monte Carlo \`e
+  \emph{fragile}; meglio cercarne una con $f_0$
+  leggermente pi\`u alto ma varianza minore.
+\end{itemize}
+\end{ideabox}
+
+\section{Quando non basta}
+
+\begin{avvertenzabox}
+\begin{itemize}
+\item Monte Carlo \`e \emph{costoso}: $K$ esecuzioni della
+  pipeline. Per scuole grandi $K = 50$ pu\`o richiedere
+  ore. $\pi$Tantum lo lancia come run asincrono e mostra
+  il progresso live.
+\item L'analisi \`e \emph{indicativa}, non garantita: se
+  $K$ \`e basso (es. 20), le statistiche hanno alta
+  varianza. Aumentare $K$ migliora ma costa.
+\item Monte Carlo \emph{non} dice perch\'e una perturbazione
+  rompe il sistema; dice solo che lo rompe. Per capire
+  perch\'e serve guardare i log dei singoli scenari
+  (CP-SAT mostra il sottoinsieme di vincoli incompatibili).
+\end{itemize}
+\end{avvertenzabox}
+
+\section{Connessioni}
+
+\begin{connessionebox}
+\begin{itemize}
+\item \textbf{Hall pre-check} (cap.~\ref{ch:metodo_hall}):
+  ogni scenario Monte Carlo passa prima per Hall; gli
+  scenari che falliscono Hall sono contati come
+  ``infeasible immediato'' senza dover lanciare CP-SAT.
+\item \textbf{Statistica applicata}
+  (cap.~\ref{ch:metodo_statistica}): le distribuzioni
+  prodotte da Monte Carlo si analizzano con KS-test,
+  istogrammi, percentili come qualsiasi altra
+  distribuzione.
+\end{itemize}
+\end{connessionebox}
+
+\begin{biblioparvabox}
+\begin{itemize}
+\item \cite{metropolis1949}: il primo paper formale.
+  Cinque pagine.
+\item \cite{robert2004}: \emph{Monte Carlo Statistical
+  Methods}, manuale di riferimento moderno.
+\item \cite{wasserman2004}: capp.~24--25 sull'inferenza
+  Monte Carlo, accessibile.
+\end{itemize}
+\end{biblioparvabox}

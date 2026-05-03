@@ -1,0 +1,215 @@
+\chapter{Statistica applicata: leggere i risultati}
+\label{ch:metodo_statistica}
+
+\epigraph{``Statistics is the grammar of science.''}{Karl Pearson,
+attribuito}
+
+\lettrine[lines=3]{D}{opo} aver eseguito una pipeline (o un
+batch Monte Carlo), il coordinatore vuole sapere: la
+soluzione \`e bilanciata? alcune classi sono
+sistematicamente svantaggiate? c'\`e una correlazione fra
+qualcosa che ho dato in input e la qualit\`a del risultato?
+
+Per rispondere $\pi$Tantum integra una piccola toolbox di
+statistica applicata, accessibile dalla pagina
+Diagnostica\index{diagnostica}. Le tre famiglie sono:
+\emph{distribuzioni e istogrammi},
+\emph{correlazioni e regressioni},
+\emph{test di ipotesi} (chi-quadro, Kolmogorov-Smirnov).
+
+\section{Distribuzioni: vedere la forma dei dati}
+
+\begin{defbox}
+Un \emph{istogramma}\index{istogramma} di una variabile
+$X$ \`e una funzione che, suddiviso il range di $X$ in $b$
+\emph{bin} di larghezza uguale, conta quanti valori cadono
+in ognuno. \`E una stima non parametrica della densit\`a di
+$X$.
+\end{defbox}
+
+In $\pi$Tantum si possono richiedere istogrammi di:
+\begin{itemize}
+\item Ore di lezione per docente (mostra se i carichi sono
+  distribuiti uniformemente o se ci sono outlier).
+\item ``Buchi'' per docente nella settimana (ore vuote fra
+  lezioni).
+\item Slot per materia per ora del giorno (mostra
+  l'effetto della preferenza ``mattutino'').
+\item Tempo di esecuzione per cluster nella decomposizione
+  spettrale.
+\end{itemize}
+
+\subsection{Bin sizing}
+
+\sidenote{La scelta del numero di bin \`e un piccolo
+problema in s\'e: troppi pochi $\to$ perdi struttura;
+troppi $\to$ rumore.}
+$\pi$Tantum usa la regola di Freedman-Diaconis come default:
+\[
+  h = 2 \cdot \mathrm{IQR}(X) \cdot n^{-1/3}
+\]
+dove IQR \`e l'\emph{interquartile range} ($Q_3 - Q_1$) e
+$n$ il numero di osservazioni. Il numero di bin \`e
+$\lceil (\max - \min) / h \rceil$. L'utente pu\`o sempre
+forzare un numero specifico.
+
+\subsection{Test di Kolmogorov-Smirnov}
+
+\begin{defbox}
+Il \emph{test KS}\index{Kolmogorov-Smirnov!test} confronta
+una distribuzione empirica con una distribuzione di
+riferimento (o due distribuzioni empiriche fra loro). La
+statistica del test \`e:
+\[
+  D = \sup_x |F_n(x) - F(x)|
+\]
+ovvero la massima distanza verticale fra la CDF empirica
+$F_n$ e la CDF di riferimento $F$.
+\end{defbox}
+
+In $\pi$Tantum il test KS \`e usato ad esempio per
+confrontare la distribuzione delle ore-per-docente fra
+``baseline'' e ``post-perturbazione Monte Carlo''. Un valore
+$D$ piccolo (con $p$-value alto) indica che la distribuzione
+\`e robusta; un $D$ grande indica che la perturbazione ha
+significativamente alterato il bilancio.
+
+\section{Correlazioni e regressioni}
+
+\subsection{Correlazione di Pearson}
+
+\begin{defbox}
+La \emph{correlazione di Pearson}\index{Pearson!correlazione}
+fra due variabili $X, Y$ \`e:
+\[
+  r_{XY} = \frac{\mathrm{Cov}(X, Y)}{\sigma_X \sigma_Y}
+\]
+con $\mathrm{Cov}(X, Y) = E[(X - \bar X)(Y - \bar Y)]$. Vale
+fra $-1$ e $+1$: $r > 0$ relazione positiva, $r < 0$
+negativa, $r \approx 0$ nessuna relazione lineare.
+\end{defbox}
+
+\textbf{Come si legge}: $r$ vicino a $\pm 1$ indica
+relazione \emph{lineare} forte; $r$ vicino a $0$ indica
+\emph{nessuna relazione lineare}, ma non esclude relazioni
+non lineari. Un valore di $r = 0.5$ significa: \emph{circa il
+25\% della varianza di $Y$ \`e spiegato linearmente da $X$}
+($r^2 = 0.25$).
+
+\begin{esempiobox}
+Calcoliamo la correlazione fra ``numero di indisponibilit\`a
+HARD del docente'' e ``numero di buchi nel suo orario
+finale''. Se $r = +0.6$, significa che pi\`u un docente ha
+indisponibilit\`a, pi\`u tende ad avere buchi. Insight per
+il coordinatore: i docenti con molte indisponibilit\`a si
+prendono comunque l'orario peggiore in termini di buchi;
+forse vale la pena rivedere le loro indisponibilit\`a o
+accettare di fare strappi sulle preferenze altrui.
+\end{esempiobox}
+
+\subsection{Regressione lineare (OLS)}
+
+\begin{defbox}
+Una \emph{regressione lineare}
+\emph{ordinaria}\index{regressione!OLS} (OLS) modella $Y$
+come funzione lineare di una o pi\`u $X$:
+\[
+  Y = \beta_0 + \beta_1 X_1 + \beta_2 X_2 + \cdots + \beta_p X_p + \epsilon
+\]
+e stima i $\beta$ minimizzando la somma dei quadrati dei
+residui: $\hat{\beta} = (X^\top X)^{-1} X^\top Y$.
+\end{defbox}
+
+\textbf{Come si legge}: ogni coefficiente $\beta_i$ dice di
+quanto cambia $Y$ se $X_i$ aumenta di $1$, tenendo le altre
+$X_j$ fisse. Il coefficiente $\beta_0$ \`e l'\emph{intercetta}.
+$\pi$Tantum riporta anche $R^2$ (frazione di varianza
+spiegata) e i $p$-value per ciascun $\beta_i$.
+
+In $\pi$Tantum la pagina ``Correlazioni e regressioni''
+permette di costruire interattivamente il modello (scegli
+le $X$, scegli la $Y$, scegli OLS o Logit) e mostra i
+coefficienti con intervalli di confidenza.
+
+\subsection{Regressione logistica (Logit)}
+
+\begin{defbox}
+La \emph{regressione logistica}\index{regressione!logistica}
+modella la probabilit\`a di un evento binario:
+\[
+  P(Y = 1 | X) = \frac{1}{1 + e^{-(\beta_0 + \beta_1 X_1 + \cdots)}}
+\]
+\end{defbox}
+
+Si usa quando la $Y$ \`e binaria. Esempio in $\pi$Tantum:
+``probabilit\`a che una classe abbia $\geq 3$ buchi
+settimanali in funzione del suo numero di indirizzi serviti
+e del numero di docenti coinvolti''.
+
+\section{Chi-quadro: indipendenza}
+
+\begin{defbox}
+Il \emph{test chi-quadro
+$\chi^2$}\index{chi-quadro!test} verifica se due variabili
+categoriali sono indipendenti. Si costruisce la tabella di
+contingenza, si calcola
+\[
+  \chi^2 = \sum_{i,j} \frac{(O_{ij} - E_{ij})^2}{E_{ij}}
+\]
+dove $O_{ij}$ \`e la frequenza osservata e $E_{ij}$ quella
+attesa sotto ipotesi di indipendenza. Si confronta con la
+distribuzione $\chi^2$ con $(r-1)(c-1)$ gradi di libert\`a.
+\end{defbox}
+
+Tipico uso: ``il giorno della settimana e la materia sono
+indipendenti?'' Se p-value basso, la materia \emph{influisce}
+su quale giorno si tiene (es. matematica concentrata al
+mattino). \`E un'indicazione che il sistema sta rispettando
+la preferenza ``mattutino''.
+
+\section{Visualizzazione interattiva}
+
+Tutti i grafici in $\pi$Tantum sono prodotti con
+ECharts~6\index{ECharts}, lazy-loaded sul frontend. Hanno
+sempre i bottoni:
+\begin{itemize}
+\item \textbf{Export PNG} (con pixel-ratio 2 e sfondo
+  bianco).
+\item \textbf{Clear graph}: per fare spazio in finestra.
+\item \textbf{Restore zoom}: per resettare lo zoom dopo
+  esplorazione.
+\end{itemize}
+
+I parametri (numero di bin, scelta delle $X$, etc.) sono
+modificabili dall'UI senza dover rilanciare il run; le
+visualizzazioni sono ricalcolate al volo dal browser.
+
+\section{Connessioni}
+
+\begin{connessionebox}
+\begin{itemize}
+\item \textbf{Monte Carlo} (cap.~\ref{ch:metodo_montecarlo}):
+  produce campioni che si analizzano con distribuzioni
+  e KS-test.
+\item \textbf{Analisi del grafo}
+  (cap.~\ref{ch:metodo_grafo}): la modularit\`a e la
+  betweenness sono input naturali per le regressioni
+  (es. ``il tempo di esecuzione del solver dipende dalla
+  modularit\`a del grafo?'').
+\item \textbf{Workflow}: dopo ogni esecuzione il sistema
+  popola automaticamente le tabelle delle statistiche
+  (lezioni, buchi, ore-isolate, etc.); il coordinatore le
+  pu\`o esplorare immediatamente.
+\end{itemize}
+\end{connessionebox}
+
+\begin{biblioparvabox}
+\begin{itemize}
+\item \cite{wasserman2004}: \emph{All of Statistics},
+  manuale conciso di statistica matematica accessibile
+  agli informatici.
+\item \cite{james2013}: \emph{An Introduction to
+  Statistical Learning}, gratuito online, ottimo per
+  regressioni e modelli predittivi.
+\end{itemize}
+\end{biblioparvabox}

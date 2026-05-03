@@ -1,0 +1,338 @@
+\chapter{Metaeuristiche: scolpire una soluzione}
+\label{ch:metodo_metaeuristiche}
+
+\epigraph{``Heuristics are mental shortcuts; meta-heuristics are
+shortcuts about how to take shortcuts.''}{Christian \&
+Griffiths, \emph{Algorithms to Live By}~\parencite{christian2016}}
+
+\lettrine[lines=3]{C}{P-SAT} \`e bravissimo a trovare
+soluzioni \emph{fattibili} (che rispettano i vincoli HARD) e
+sa anche ottimizzare la funzione obiettivo, ma su istanze
+grandi tendere a fermarsi su un \emph{plateau}: trova una
+soluzione decente in pochi minuti e poi continua a frugare
+senza migliorarla. Le metaeuristiche\index{metaeuristica}
+sono una famiglia di tecniche complementari: prendono una
+soluzione \emph{gi\`a esistente} e la \emph{migliorano
+iterativamente}, esplorando il \emph{vicinato} (lo spazio
+delle soluzioni ``simili'') in modo intelligente.
+
+In $\pi$Tantum la Phase~C \`e dedicata interamente alle
+metaeuristiche. Sono sei: LNS, ALNS, SA, TS, ILS, VNS.
+Hanno parecchio in comune (sono tutte forme di \emph{local
+search}\index{local search}) ma differiscono nel modo in cui
+\emph{esplorano} e nel modo in cui \emph{accettano} le mosse.
+
+\section{La radice comune: local search}
+
+\begin{defbox}
+La \emph{ricerca locale} \`e uno schema iterativo:
+\begin{enumerate}
+\item Parti da una soluzione iniziale $x_0$.
+\item Definisci un \emph{vicinato} $N(x)$: l'insieme delle
+  soluzioni ottenibili da $x$ con una singola mossa
+  (es. swap di due lezioni).
+\item Cerca dentro $N(x)$ una soluzione migliore $x'$.
+\item Se la trovi: $x \leftarrow x'$, ripeti. Altrimenti
+  ti fermi (sei in un \emph{ottimo locale}).
+\end{enumerate}
+\end{defbox}
+
+Il problema della local search pura \`e che \emph{si incastra
+nei minimi locali}. Le metaeuristiche sono varianti pi\`u
+sofisticate che provano ad evitarlo.
+
+\section{Simulated Annealing (SA): l'analogia con la metallurgia}
+
+\begin{storiabox}
+Nel 1983, Kirkpatrick, Gelatt e Vecchi pubblicarono su
+Science l'articolo \emph{Optimization by Simulated
+Annealing}~\parencite{kirkpatrick1983} che import\`o
+nell'ottimizzazione un'idea presa dalla metallurgia: per
+ottenere una struttura cristallina ordinata in un metallo,
+non basta raffreddarlo bruscamente (rimane in uno stato
+disordinato). Bisogna scaldarlo e raffreddarlo
+\emph{lentamente}, lasciandogli il tempo di trovare
+configurazioni a bassa energia. La temperatura agisce come
+un parametro di ``rumore'': alta temperatura permette
+movimenti che peggiorano la situazione, bassa temperatura
+ammette solo miglioramenti.
+\end{storiabox}
+
+\begin{ideabox}
+SA accetta sempre le mosse che migliorano l'obiettivo. Le
+mosse che lo peggiorano di $\Delta$ sono accettate con
+probabilit\`a $e^{-\Delta / T}$, dove $T$ \`e la temperatura
+corrente. All'inizio $T$ \`e alta: anche peggioramenti
+grossi passano. Man mano che $T$ scende, solo i piccoli
+peggioramenti passano. Alla fine si comporta come una local
+search greedy.
+\end{ideabox}
+
+\subsection{La regola di Metropolis}
+
+Il criterio di accettazione \`e dovuto a
+Metropolis~\parencite{metropolis1953}, che lo introdusse per
+simulare sistemi termodinamici:
+\[
+  P(\text{accetta }x') = \begin{cases}
+    1 & \text{se } f(x') \leq f(x) \\
+    e^{-(f(x') - f(x)) / T} & \text{altrimenti}
+  \end{cases}
+\]
+\textbf{Come si legge}: $f$ \`e la funzione obiettivo da
+minimizzare. Se la nuova soluzione $x'$ \`e migliore o
+uguale, la accetto sempre. Altrimenti la accetto con
+probabilit\`a esponenzialmente decrescente nella differenza
+$\Delta = f(x') - f(x)$ e nella temperatura $T$.
+
+\subsection{Schema di raffreddamento}
+
+In $\pi$Tantum lo schema di default \`e
+\emph{geometrico}: $T_{k+1} = \alpha T_k$ con $\alpha = 0.95$.
+Si parte da $T_0$ tale che le mosse iniziali abbiano una
+probabilit\`a di accettazione del 70--80\% e si scende fino
+a $T \sim 0.01$.
+
+\section{Tabu Search (TS): il taccuino delle mosse vietate}
+
+\begin{storiabox}
+Fred Glover propose Tabu Search nel 1986 con il celebre
+articolo \emph{Future paths for integer programming and
+links to artificial
+intelligence}~\parencite{glover1986}. La parola
+\emph{tabu} viene dal polinesiano \emph{tabu}, che significa
+``proibito''. L'idea: in local search, dopo aver visitato
+una soluzione, vietare di tornarci \emph{per un po'}, per
+forzare la ricerca a esplorare altrove.
+\end{storiabox}
+
+\begin{defbox}
+Tabu Search\index{Tabu Search} mantiene una \emph{lista
+tabu} delle ultime $k$ mosse fatte (es. ``ho spostato
+mate-1A da luned\`i-1 a marted\`i-3''). Le mosse nella lista
+tabu non possono essere usate finch\'e non escono dalla
+finestra. La lista \`e di lunghezza fissa: ogni nuova mossa
+spinge fuori la pi\`u vecchia. C'\`e un \emph{aspiration
+criterion}: se una mossa tabu produrrebbe la migliore
+soluzione mai vista, la facciamo lo stesso.
+\end{defbox}
+
+In $\pi$Tantum la lista tabu \`e tipicamente di 20--40 mosse;
+il valore \`e tarato sui benchmark.
+
+\section{Iterated Local Search (ILS): perturbare e ricominciare}
+
+\begin{ideabox}
+L'idea di ILS\index{ILS (Iterated Local Search)}: una local
+search semplice si ferma su un ottimo locale; rilanciandola
+da una soluzione \emph{simile ma perturbata} arrivi
+spesso a un ottimo locale diverso, eventualmente
+migliore. Iterando si esplorano molti bacini di attrazione.
+\end{ideabox}
+
+\begin{defbox}
+ILS alterna due operazioni:
+\begin{enumerate}
+\item \textbf{Local search}: arriva a un ottimo locale $x^*$.
+\item \textbf{Perturbazione}: applica un disturbo casuale a
+  $x^*$ producendo $x'$, di solito leggero (es. 5--10
+  swap casuali di lezioni).
+\end{enumerate}
+La local search ricomincia da $x'$. Si confronta il nuovo
+ottimo locale $x^{**}$ con $x^*$ e si tiene il migliore.
+\end{defbox}
+
+ILS \`e descritto formalmente da Loureno, Martin e
+Stuetzle~\parencite{lourenco2003}. \`E spesso il
+metaeuristico ``base'' che si combina con altri (es. ILS+TS,
+ILS+SA).
+
+\section{Variable Neighborhood Search (VNS): cambiare obiettivo}
+
+\begin{storiabox}
+VNS \`e dovuto a Mladenovi\'c e Hansen
+(1997)~\parencite{mladenovic1997}. L'idea \`e cambiare il
+\emph{tipo} di vicinato quando uno si esaurisce: invece di
+``perturbare e ricominciare'' come ILS, VNS \emph{cresce} il
+raggio della ricerca.
+\end{storiabox}
+
+In $\pi$Tantum sono definiti quattro vicinati di dimensione
+crescente:
+\begin{enumerate}
+\item \textbf{1-swap}: scambia due lezioni dello stesso
+  docente.
+\item \textbf{2-swap}: scambia due coppie indipendenti di
+  lezioni.
+\item \textbf{3-chain}: rotazione di 3 lezioni
+  (a$\to$b$\to$c$\to$a).
+\item \textbf{$k$-opt} con $k \in [4,6]$: rotazione lunga.
+\end{enumerate}
+
+VNS parte dal vicinato 1; quando trova un miglioramento,
+\emph{ricomincia} dal vicinato 1. Quando un'intera passata
+1$\to$4 non trova nulla, si ferma. Termina sempre in un
+ottimo locale rispetto a tutti e quattro i vicinati.
+
+\section{Large Neighborhood Search (LNS): distruggi e ricostruisci}
+
+\begin{storiabox}
+LNS\index{LNS (Large Neighborhood Search)} fu introdotto da
+Paul Shaw nel 1998~\parencite{shaw1998} per il problema del
+vehicle routing. L'idea: invece di esplorare un vicinato
+piccolo (1 o 2 swap), \emph{distruggi} una porzione
+significativa della soluzione (es. 20\% delle lezioni) e
+\emph{ricostruiscila} ottimamente con un solver esatto. Il
+vicinato \`e ``grande'' (l'insieme delle soluzioni ottenibili
+ricostruendo la parte distrutta) ma esplorato \emph{in modo
+intelligente} dal solver.
+\end{storiabox}
+
+\begin{defbox}
+LNS alterna due operatori:
+\begin{enumerate}
+\item \textbf{Destroy}: rimuove un sotto-insieme delle
+  variabili dalla soluzione corrente.
+\item \textbf{Repair}: re-ottimizza le variabili rimosse
+  (tipicamente con CP-SAT, mantenendo fisse tutte le altre).
+\end{enumerate}
+\end{defbox}
+
+In $\pi$Tantum gli operatori destroy includono:
+\texttt{random\_window} (rimuove un blocco di slot),
+\texttt{day\_cluster} (rimuove tutte le lezioni di un
+giorno), \texttt{worst\_fit\_day} (rimuove il giorno con
+peggior obiettivo), \texttt{teacher\_day} (rimuove tutte le
+lezioni di un docente in un giorno),
+\texttt{classroom\_day}, \texttt{single\_class\_week}.
+Operatori repair: \texttt{cp\_sat\_window} (re-risolve con
+CP-SAT in time-budget di pochi secondi),
+\texttt{greedy\_by\_soft}, \texttt{bfs\_fill\_back}.
+
+\section{Adaptive LNS (ALNS): scolpire con scalpelli adattivi}
+
+\begin{storiabox}
+ALNS\index{ALNS} fu proposto da Ropke e Pisinger nel
+2006~\parencite{ropke2006} estendendo LNS con un meccanismo di
+\emph{apprendimento}: invece di scegliere a caso fra gli
+operatori destroy/repair, ALNS impara quali funzionano
+meglio sull'istanza corrente e li sceglie pi\`u spesso.
+\end{storiabox}
+
+\begin{ideabox}
+\textbf{Analogia}: lo scultore davanti a un blocco di marmo
+non usa sempre lo stesso scalpello. Ne ha tanti, e impara
+quale serve per quale parte della statua. ALNS fa lo stesso:
+ha tanti operatori, ne misura il successo recente
+(\emph{exponentially-decayed score}), e li seleziona via
+\emph{roulette wheel} pesata sui punteggi.
+\end{ideabox}
+
+L'aggiornamento dei punteggi: dopo ogni iterazione,
+l'operatore usato riceve un premio
+$\sigma_1, \sigma_2, \sigma_3$ a seconda del risultato (mossa
+migliorativa globale, mossa migliorativa locale, mossa
+accettata via SA-like). Il suo score $w_i$ viene aggiornato
+come $w_i \leftarrow \rho w_i + (1 - \rho) \sigma$ con
+$\rho = 0.95$ (decay factor).
+
+\section{Quale scegliere?}
+
+\begin{ideabox}
+\textbf{Regola pratica}:
+\begin{itemize}
+\item Se hai \textbf{poco tempo} e vuoi un risultato
+  ``decente'': SA con schema di raffreddamento veloce.
+\item Se vuoi \textbf{esplorazione robusta}: ILS o VNS.
+\item Se hai \textbf{molto tempo} e vuoi un risultato
+  vicino all'ottimo: ALNS, perch\'e impara a fare le mosse
+  giuste.
+\item Se la soluzione iniziale \`e \textbf{molto strutturata}
+  e bisogna fare mosse grandi: LNS con CP-SAT come repair.
+\end{itemize}
+
+In Phase~C $\pi$Tantum di default esegue \emph{ALNS}, e
+opzionalmente le altre per chi vuole confrontare.
+\end{ideabox}
+
+\section{Esempio mini-completo: SA su 8 lezioni}
+
+\begin{esempiobox}
+Considera l'esempio del cap.~\ref{ch:metodo_cpsat}:
+3 docenti, 2 classi, 8 lezioni. Una soluzione fattibile
+\`e gi\`a stata trovata con CP-SAT, con costo $f(x_0) = 5$
+(es. somma pesata di ore-isolate).
+
+\textbf{Iter 1}: SA prova uno swap fra le ore 1 e 2 di
+mate-1A. Calcola $f(x_1) = 4$. Migliora! Accetta.
+
+\textbf{Iter 2}: SA prova uno swap fra ita-1A (mar-1) e
+sto-1A (lun-2). Calcola $f(x_2) = 6$.
+Peggiora di $\Delta = 2$. Con $T = 1.0$:
+$P = e^{-2/1.0} = 0.135$. Estrae un random
+$r = 0.4 > P$: rifiuta. Resta su $x_1$.
+
+\textbf{Iter 3}: SA prova lo swap mate-1A,1
+$\leftrightarrow$ mate-1B. Calcola $f = 3$. Migliora.
+Accetta.
+
+\textbf{Raffreddamento}: $T \leftarrow 0.95 T = 0.95$.
+
+E cos\`i via per migliaia di iterazioni. Dopo 5000 iter
+tipiche, $T < 0.01$ e il sistema converge a un ottimo
+locale globale rispetto al vicinato 1-swap.
+\end{esempiobox}
+
+\section{Limiti e parametri da tarare}
+
+\begin{avvertenzabox}
+\begin{itemize}
+\item Le metaeuristiche \emph{non} garantiscono l'ottimo. Su
+  problemi piccoli, possono trovare soluzioni peggiori di
+  CP-SAT esatto in poche iterazioni. Conviene quindi
+  \emph{combinare}: CP-SAT esatto fino al plateau, poi
+  metaeuristiche.
+\item I parametri (temperatura iniziale di SA, lunghezza
+  della lista tabu di TS, dimensione della perturbazione di
+  ILS) richiedono tuning. $\pi$Tantum ha valori di default
+  ragionevoli per ciascun profilo (small/medium/big/huge),
+  ma su istanze atipiche conviene fare uno sweep.
+\item Le mosse devono essere \emph{economiche da valutare}:
+  $\pi$Tantum implementa una \emph{delta-evaluation} della
+  funzione obiettivo per evitare di ricalcolare tutto da
+  zero ad ogni iterazione (costo $O(1)$ per swap invece di
+  $O(n)$).
+\end{itemize}
+\end{avvertenzabox}
+
+\section{Connessioni}
+
+\begin{connessionebox}
+\begin{itemize}
+\item \textbf{CP-SAT} (cap.~\ref{ch:metodo_cpsat}): usato
+  come solver di \emph{repair} in LNS/ALNS.
+\item \textbf{Decomposizione spettrale}
+  (cap.~\ref{ch:metodo_spettrale}): le metaeuristiche
+  girano \emph{sopra} la soluzione di Phase B; spesso
+  raffinano localmente i singoli cluster.
+\item \textbf{Editor manuale Orario}: gli swap dell'utente
+  sono \emph{1-mosse} dello stesso vicinato che usa SA;
+  l'editor mostra in tempo reale il delta della funzione
+  obiettivo, esattamente come fa SA internamente.
+\end{itemize}
+\end{connessionebox}
+
+\begin{biblioparvabox}
+\begin{itemize}
+\item \cite{kirkpatrick1983}: SA originale, su Science.
+  Tre pagine.
+\item \cite{glover1986}: TS originale, di Glover.
+\item \cite{shaw1998}: LNS originale, su CP'98.
+\item \cite{ropke2006}: ALNS originale, su Transportation
+  Science.
+\item \cite{glover2003}: \emph{Handbook of
+  Metaheuristics}, riferimento collettivo.
+\item \cite{vanhentenryck2005}: \emph{Constraint-Based Local
+  Search}, sintesi fra CP e local search.
+\end{itemize}
+\end{biblioparvabox}

@@ -1,0 +1,163 @@
+% =====================================================================
+% piTantum -- Manuale unico
+% Una monografia in unico volume, capitoli numerati progressivamente,
+% senza divisione in Parti. Stile narrativo discorsivo dall'inizio
+% alla fine, accessibile a chi non e' tecnico ma rigoroso quando il
+% contenuto lo richiede.
+%
+% Compilare con lualatex + biber + makeindex + lualatex (x2).
+% Helper: docs/build_manual.sh oppure docs/build_manual.bat
+% =====================================================================
+\input{manual/preamble}
+
+\begin{document}
+
+% =========== Frontespizio ===========
+\begin{titlepage}
+\thispagestyle{empty}
+\centering
+\vspace*{1.6cm}
+
+{\fontsize{56}{60}\selectfont\bfseries\color{cIndaco}$\pi$\,Tantum\par}
+\vspace{0.4cm}
+{\Large\itshape\color{cInk} alias \emph{Tempus Tantum}\par}
+\vspace{0.6cm}
+{\Large\sffamily\color{cInk}sistema di generazione orario scolastico\par}
+
+\vspace{1.2cm}
+\rule{0.5\textwidth}{1pt}
+
+\vspace{0.9cm}
+\begin{minipage}{0.85\textwidth}
+\centering
+\itshape\color{cSiena}
+``Omnia, Lucili, aliena sunt, tempus tantum nostrum est.''\\
+\upshape\small\color{cInk} Lucio Anneo Seneca,
+\emph{Epistulae morales ad Lucilium}, I, 1
+\end{minipage}
+
+\vspace{1.0cm}
+\rule{0.5\textwidth}{1pt}
+
+\vspace{1.6cm}
+{\LARGE\sffamily\color{cIndaco}\bfseries Manuale\par}
+\vspace{0.4cm}
+{\Large\itshape Un metodo per l'orario delle scuole italiane\par}
+
+\vspace{2cm}
+
+\begin{tikzpicture}[scale=0.9]
+  \node[draw=cIndaco, very thick, rounded corners=4pt, minimum width=3cm,
+        minimum height=1cm, fill=cIndaco!15] (a) at (0,0)
+        {\textbf{\sffamily CP-SAT}};
+  \node[draw=cIndaco, very thick, rounded corners=4pt, minimum width=3cm,
+        minimum height=1cm, fill=cIndaco!15, right=0.6cm of a] (b)
+        {\textbf{\sffamily spectral}};
+  \node[draw=cIndaco, very thick, rounded corners=4pt, minimum width=3cm,
+        minimum height=1cm, fill=cIndaco!15, right=0.6cm of b] (c)
+        {\textbf{\sffamily LNS+SA+TS+ILS}};
+  \draw[-{Stealth[length=3mm]}, thick, cSiena] (a) -- (b);
+  \draw[-{Stealth[length=3mm]}, thick, cSiena] (b) -- (c);
+\end{tikzpicture}
+
+\vfill
+
+{\large\sffamily Giovanni Borghi\par}
+\vspace{0.2cm}
+{\large\sffamily \today\par}
+
+\vspace{0.6cm}
+{\small\sffamily\color{cInk}
+Repository: \url{https://github.com/gborghi/timetable}\\
+Documentazione sorgente: \texttt{docs/}
+\par}
+\end{titlepage}
+
+% =========== Colophon ===========
+\thispagestyle{empty}
+\null\vfill
+\noindent\small
+\textbf{\sffamily Colophon}\\[0.3em]
+Questo volume \`e composto in EB Garamond per il corpo del testo
+e in Lato per i titoli, con Inconsolata per i blocchi di codice.
+La compilazione \`e stata eseguita con \texttt{lualatex} (TeX
+Live), \texttt{biber} per la bibliografia e \texttt{makeindex}
+per l'indice analitico. Il sorgente \LaTeX{} risiede in
+\texttt{docs/manual.tex} con i capitoli in
+\texttt{docs/manual/chapters/}; il bibliografico \`e in
+\texttt{docs/manual/bibliography.bib}. La pipeline di build \`e
+in \texttt{docs/build\_manual.sh} (Linux/macOS/Git Bash) e
+\texttt{docs/build\_manual.bat} (Windows).
+
+\bigskip
+\noindent\textbf{\sffamily Tipografia}: pacchetti
+\texttt{ebgaramond}, \texttt{lato}, \texttt{inconsolata},
+\texttt{microtype}.\\
+\textbf{\sffamily Layout}: \texttt{KOMA-Script scrbook},
+\texttt{geometry}, \texttt{scrlayer-scrpage}.\\
+\textbf{\sffamily Editoriale}: \texttt{tcolorbox},
+\texttt{lettrine}, \texttt{marginnote}, \texttt{epigraph},
+\texttt{tikz}, \texttt{pgfplots}.\\
+\textbf{\sffamily Bibliografia e indici}:
+\texttt{biblatex} backend \texttt{biber}, \texttt{imakeidx}.
+
+\bigskip
+\noindent
+Versione del repository corrispondente al commit visibile nel
+log \texttt{git log --oneline -- docs/}. Eventuali errori e
+suggerimenti possono essere segnalati come \emph{issue} sul
+repository GitHub all'indirizzo
+\url{https://github.com/gborghi/timetable}.
+
+\bigskip
+\noindent
+Tutti i diritti del progetto sono di Giovanni Borghi.
+Documento prodotto a maggio 2026.
+\vfill
+
+\cleardoublepage
+
+% =========== Indici ===========
+\tableofcontents
+\listoffigures
+\listoftables
+
+% =========== Capitoli (numerati progressivamente, niente Parti) ===========
+\input{manual/chapters/prologo}
+\input{manual/chapters/problema_timetabling}
+\input{manual/chapters/panoramica_pitantum}
+\input{manual/chapters/orario_oggetto_strutturale}
+\input{manual/chapters/installazione}
+\input{manual/chapters/vincoli}
+\input{manual/chapters/workflow_di_ottimizzazione}
+\input{manual/chapters/guida_ui}
+\input{manual/chapters/launcher}
+\input{manual/chapters/metodo_cpsat}
+\input{manual/chapters/metodo_spettrale}
+\input{manual/chapters/metodo_metaeuristiche}
+\input{manual/chapters/metodo_hall}
+\input{manual/chapters/metodo_lagrangian}
+\input{manual/chapters/metodo_montecarlo}
+\input{manual/chapters/metodo_grafo}
+\input{manual/chapters/metodo_statistica}
+\input{manual/chapters/metodo_dsl}
+\input{manual/chapters/architettura}
+\input{manual/chapters/modello_dati}
+\input{manual/chapters/dsl_generico_per_i_vincoli}
+\input{manual/chapters/tecniche_di_ottimizzazione_avanzate}
+\input{manual/chapters/diagnostica_statistica}
+\input{manual/chapters/api_rest}
+\input{manual/chapters/estendere_il_sistema}
+\input{manual/chapters/repository_github}
+\input{manual/chapters/benchmarks}
+\input{manual/chapters/lessons_learned}
+\input{manual/chapters/glossario_discorsivo}
+\input{manual/chapters/reference}
+
+% =========== Bibliografia ===========
+\printbibliography[heading=bibintoc, title={Bibliografia}]
+
+% =========== Indice analitico ===========
+\printindex
+
+\end{document}

@@ -1,0 +1,254 @@
+\chapter{Hall pre-check: il livello di benzina prima di partire}
+\label{ch:metodo_hall}
+
+\epigraph{``A necessary and sufficient condition that all the
+sets in the family $S$ have a system of distinct
+representatives is that for every $k$, the union of any
+$k$ sets of $S$ contains at least $k$ elements.''}{Philip
+Hall, 1935~\parencite{hall1935}}
+
+\lettrine[lines=3]{P}{rima} di accendere la macchina per un
+viaggio lungo, qualsiasi automobilista controlla se c'\`e
+abbastanza benzina. Sembra ovvio. Eppure quando si lancia un
+solver di timetabling \`e una pratica che spesso si salta:
+si parte, si aspetta dieci minuti, e si scopre che il
+problema era \emph{infeasibile dall'inizio}. Tutti i tentativi
+del solver erano destinati a fallire perch\'e i dati di input
+non potevano produrre nessun orario valido.
+
+Il pre-check di Hall \`e quel controllo del livello di
+benzina: in pochi millisecondi, prima di lanciare CP-SAT,
+verifica se le condizioni necessarie alla fattibilit\`a sono
+soddisfatte. Se Hall fallisce, $\pi$Tantum lo dice
+all'utente (e indica \emph{quale} sotto-insieme di entit\`a \`e
+il problema), evitando lunghe attese inutili.
+
+\section{Il teorema dei matrimoni}
+
+\begin{storiabox}
+Nel 1935 Philip Hall pubblic\`o sul \emph{Journal of the
+London Math. Society}~\parencite{hall1935} un teorema
+deliziosamente semplice. Considera un gruppo di $n$ ragazze
+e $m$ ragazzi; ogni ragazza ha una lista di ragazzi che
+sarebbe disposta a sposare. Quando \`e possibile sposare
+\emph{tutte} le ragazze in modo che ognuna abbia un suo
+ragazzo distinto?
+
+La risposta di Hall: \emph{quando per ogni sotto-insieme di
+$k$ ragazze, la lista combinata di candidati contiene
+almeno $k$ ragazzi}.
+
+\`E condizione necessaria e sufficiente. Da allora il
+risultato si chiama \emph{teorema dei matrimoni di Hall}, o
+\emph{Hall's marriage theorem}\index{Hall!teorema dei
+matrimoni}.
+\end{storiabox}
+
+\section{Dal teorema all'orario}
+
+L'analogia con il timetabling \`e diretta. Considera la
+versione semplificata in cui devi assegnare ad ogni
+\emph{lezione} (combinazione classe-materia-ora) un
+\emph{docente} compatibile (con la classe di concorso giusta
+e la disponibilit\`a sufficiente).
+
+\begin{defbox}
+Costruiamo un grafo bipartito\index{matching!bipartito}:
+\begin{itemize}
+\item A sinistra: le \emph{ore-cattedra} richieste (es.
+  ``2 ore di matematica per la 3A'').
+\item A destra: i \emph{docenti} disponibili.
+\item Un arco $\{l, d\}$ se il docente $d$ \`e compatibile
+  con la lezione $l$ (giusta classe di concorso, ore
+  residue sufficienti, etc.).
+\end{itemize}
+Una soluzione di Phase~A esiste se e solo se questo grafo
+ha un \emph{matching che copre tutte le ore-cattedra}.
+\end{defbox}
+
+\begin{ideabox}
+Per il teorema di Hall, il matching esiste \textbf{se e
+solo se} per ogni sotto-insieme $S$ di ore-cattedra, la
+lista combinata dei docenti compatibili con almeno una di
+esse contiene un \emph{numero di ore disponibili almeno
+pari} a $|S|$.
+
+In linguaggio operativo: \emph{ogni gruppo di lezioni che si
+contendono un pool di docenti compatibili deve avere
+abbastanza ore complessive nel pool}.
+\end{ideabox}
+
+\section{Tre controlli pratici}
+
+Verificare la condizione di Hall \emph{esattamente} richiede
+di esaminare \emph{tutti} i sottoinsiemi di lezioni:
+$2^n$ con $n$ ore-cattedra, infattibile per $n$ grande.
+$\pi$Tantum implementa allora tre controlli rapidi che,
+combinati, intercettano la stragrande maggioranza degli
+infeasibility che si vedono in pratica.
+
+\subsection{Controllo 1: per (classe, materia)}
+
+\begin{defbox}
+Per ogni coppia $(c, m)$ con $h_{cm}$ ore richieste,
+verifica che la somma delle ore disponibili dei docenti
+abilitati a $m$ \emph{nella classe di concorso pertinente
+per} $c$ sia $\geq h_{cm}$.
+\end{defbox}
+
+Tipico caso di fallimento: ``servono 5 ore di matematica nel
+liceo classico ma i due docenti di A027 hanno gi\`a
+saturato le loro ore in altri istituti''. $\pi$Tantum lo
+intercetta immediatamente e mostra il deficit.
+
+\subsection{Controllo 2: subject supply vs demand}
+
+\begin{defbox}
+Per ogni materia $m$, la \emph{domanda} \`e la somma di
+$h_{cm}$ su tutte le classi $c$. L'\emph{offerta} \`e la
+somma delle ore residue dei docenti abilitati a $m$.
+Verifica che offerta $\geq$ domanda.
+\end{defbox}
+
+Se questo fallisce, l'intera materia \`e in deficit
+strutturale: nessuna distribuzione potr\`a coprire tutte le
+classi. Soluzione: aggiungere docenti, ridurre il monte ore,
+o convocare supplenze.
+
+\subsection{Controllo 3: Hall sampling random-subset}
+
+\begin{defbox}
+Si campionano casualmente $K$ sotto-insiemi di lezioni
+(tipicamente $K = 200$, di taglie fra 5 e 50) e per ognuno
+si verifica direttamente la condizione di Hall.
+\end{defbox}
+
+Quando un'istanza ha un \emph{sottoinsieme cattivo} di
+lezioni che soddisfano i controlli 1 e 2 ma non Hall, il
+campionamento ha alta probabilit\`a di ``inciampare'' su di
+esso e segnalarlo. \`E un controllo \emph{euristico} (pu\`o
+non beccare casi rari) ma nella pratica $\pi$Tantum lo trova
+sufficiente.
+
+\section{Esempio mini-completo}
+
+\begin{esempiobox}
+Scuola: 3 classi (1A, 1B, 1C), tutte con 2 ore di
+matematica. Due docenti di A027 (Adami e Bruni), Adami con
+4 ore residue, Bruni con 3 ore residue. Totale offerta: 7.
+Totale domanda: 6. Controllo 2: \textbf{ok}.
+
+Controllo 1: per ogni (classe, mat), 2 ore richieste.
+Adami+Bruni hanno entrambi $\geq 2$ ore residue. \textbf{ok}.
+
+Aggiungiamo un vincolo: Bruni non pu\`o insegnare in 1C.
+Domanda di 1C-mat: 2 ore. Offerta di docenti compatibili
+con 1C-mat: solo Adami con 4 ore residue. \textbf{ok}.
+Ma se aggiungiamo un secondo vincolo: Adami satura 3 ore
+con altre materie e ne restano solo 1 per le classi 1A/B/C
+matematica. Allora la domanda complessiva su Adami+Bruni
+per matematica diventa 6 ore, l'offerta 1+3 = 4. Controllo
+2 fallisce: si vede subito che servono 2 ore in pi\`u
+(rilassare un altro docente, o ridurre il monte).
+\end{esempiobox}
+
+\section{L'integrazione nell'UI}
+
+\sidenote{Hall \`e il \emph{primo} controllo che il sistema
+esegue. Se fallisce, l'utente vede subito quale gruppo di
+classi/materie \`e il problema, prima ancora che la pipeline
+parta.}
+
+In $\pi$Tantum il pre-check di Hall \`e esposto in tre punti
+dell'interfaccia:
+\begin{enumerate}
+\item Bottone inline nella card di Phase~A del Workflow.
+\item Riga in AdvancedTechniquesCard, con bottone
+  ``Esegui'' che lancia tutti e tre i controlli.
+\item Sezione del tab Statistiche/Diagnostica, dove il
+  risultato \`e mostrato come run asincrono visualizzabile
+  in dettaglio.
+\end{enumerate}
+
+L'output \`e sempre una lista di ``deficit'' con il
+sotto-insieme problematico evidenziato. Esempio:
+\begin{lstlisting}
+HALL CHECK FAILED
+Deficit 1 (controllo 2):
+  materia=Matematica, domanda=18, offerta=15
+  -- 3 ore mancanti
+Deficit 2 (controllo 1):
+  classe=4B, materia=Storia: 2 ore richieste,
+  ma il docente compatibile (Conti) ne ha solo 1
+  residua.
+\end{lstlisting}
+
+\section{Limiti e quando non basta}
+
+\begin{avvertenzabox}
+\begin{itemize}
+\item Il pre-check \`e \emph{necessario} ma non
+  \emph{sufficiente}: pu\`o passare anche quando il problema
+  \`e infeasibile per ragioni \emph{temporali} (es. lo
+  stesso docente serve in due slot incompatibili). Un Hall
+  ``ok'' garantisce solo che \emph{le ore totali bastano},
+  non che si possano disporre nello spazio settimanale.
+\item I controlli 1 e 2 sono esatti; il controllo 3 \`e
+  euristico (random sampling). Aumentare $K$ rende il
+  controllo pi\`u robusto a discapito del tempo.
+\item Hall non considera vincoli logici DSL complessi (es.
+  ``il prof X e Y mai stesso giorno''). Quelli vengono
+  verificati solo durante l'esecuzione di CP-SAT.
+\end{itemize}
+\end{avvertenzabox}
+
+\section{Approfondimento: l'algoritmo di Hopcroft-Karp}
+
+\begin{approfondimentobox}
+Verificare \emph{esattamente} l'esistenza di un matching che
+copre un lato di un grafo bipartito si pu\`o fare in tempo
+$O(E\sqrt{V})$ con l'algoritmo di Hopcroft-Karp del
+1973~\parencite{hopcroft1973}. \`E quello che usa
+internamente OR-Tools per il propagatore globale
+\texttt{AllDifferent}: ogni volta che CP-SAT propaga un
+vincolo del tipo ``$n$ variabili devono prendere valori
+distinti'', costruisce il grafo bipartito \emph{variabili
+vs valori} e chiama Hopcroft-Karp per verificare la
+fattibilit\`a residua. Se non c'\`e matching $\to$
+contraddizione $\to$ backtracking immediato.
+
+In $\pi$Tantum non si usa Hopcroft-Karp esplicitamente nel
+pre-check (i tre controlli rapidi sono pi\`u che sufficienti
+nei casi pratici), ma l'algoritmo \`e \emph{dentro} CP-SAT
+ad ogni propagazione.
+\end{approfondimentobox}
+
+\section{Connessioni}
+
+\begin{connessionebox}
+\begin{itemize}
+\item \textbf{CP-SAT} (cap.~\ref{ch:metodo_cpsat}): la
+  propagazione del vincolo \texttt{AllDifferent} in CP-SAT
+  usa internamente un calcolo di matching basato sullo
+  stesso teorema di Hall.
+\item \textbf{Decomposizione spettrale}
+  (cap.~\ref{ch:metodo_spettrale}): Hall si esegue \emph{su
+  ciascun cluster} oltre che globalmente.
+\item \textbf{Workflow}: il pre-check \`e raccomandato come
+  \emph{primo} step della pipeline; risparmia minuti di
+  CP-SAT su istanze infeasible.
+\end{itemize}
+\end{connessionebox}
+
+\begin{biblioparvabox}
+\begin{itemize}
+\item \cite{hall1935}: l'articolo originale di Hall.
+  Cinque pagine, una gemma.
+\item \cite{hopcroft1973}: l'algoritmo polinomiale per
+  matching bipartito, fondante della complessit\`a moderna.
+\item \cite{lovasz1986}: \emph{Matching Theory}, libro
+  classico per chi vuole approfondire.
+\item \cite{papadimitriou1998}, capp.~10--11: sezione
+  accessibile sui matching e i flussi.
+\end{itemize}
+\end{biblioparvabox}

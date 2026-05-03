@@ -1,0 +1,321 @@
+\chapter{Il problema del timetabling scolastico}
+\label{ch:problema_timetabling}
+
+\epigraph{``Educational timetabling is one of the most studied
+problems in operations research, yet remains one of the
+hardest in practice.''}{Andrea Schaerf,
+\emph{A survey of automated timetabling}~\parencite{schaerf1999}}
+
+\lettrine[lines=3]{I}{l problema} dell'orario scolastico
+sembra semplice se descritto a parole: assegnare a ogni
+lezione (combinazione classe-materia-docente) uno
+\emph{slot} settimanale e un'\emph{aula}, in modo che nessun
+docente, classe o aula sia in due posti contemporaneamente,
+che ogni materia copra il suo monte ore, e che tutto sia il
+pi\`u comodo possibile per chi lo dovr\`a vivere.
+
+In pratica \`e uno dei problemi pi\`u studiati della ricerca
+operativa applicata~\parencite{schaerf1999, carter1998} e una
+delle classi di problemi su cui si misurano i moderni solver
+di constraint programming. La difficolt\`a viene da tre fonti
+intrecciate: la dimensione combinatoria, la natura dei
+vincoli e l'ambiguit\`a degli obiettivi.
+
+\section{Dimensione: quante combinazioni?}
+
+Consideriamo una scuola italiana di dimensione media:
+\sidenote{I numeri citati corrispondono al profilo
+\texttt{medium} di $\pi$Tantum, che simula un istituto
+secondario di secondo grado.}
+30~classi, 60~docenti, 5--6~giorni di lezione, 5--6~ore al
+giorno. Ogni classe ha tipicamente 30 ore settimanali (5
+giorni $\times$ 6 ore). Le lezioni totali sono dunque dell'ordine
+di $30 \times 30 = 900$ slot da riempire.
+
+Per ogni slot bisogna scegliere quale materia mettere e quale
+docente farla insegnare. Le materie e i docenti sono gi\`a
+vincolati dal monte ore e dalle classi-di-concorso, ma anche
+solo limitando le scelte ai docenti compatibili rimangono
+diversi candidati per slot. Una stima molto conservativa
+dello spazio delle soluzioni \`e:
+\[
+  |S| \approx \prod_{i=1}^{N_{\text{lezioni}}} k_i
+\]
+dove $k_i$ \`e il numero di slot ammissibili per la lezione
+$i$. Anche con $k_i$ piccolo (diciamo 5--10) il prodotto su
+$\sim 900$ lezioni \`e dell'ordine di $10^{700}$ o pi\`u.
+
+\begin{esempiobox}
+Per dare un'idea: il numero di atomi nell'universo osservabile
+\`e stimato attorno a $10^{80}$. Lo spazio delle assegnazioni
+possibili di una scuola media \`e $10^{620}$ \emph{volte}
+quel numero. Esplorarlo per enumerazione cieca \`e non solo
+impraticabile ma fisicamente impossibile.
+\end{esempiobox}
+
+Questo \`e il motivo per cui non basta ``provare le
+combinazioni''. Servono algoritmi che \emph{guidano} la
+ricerca: scartano sotto-spazi enormi senza esaminarli (la
+propagazione di vincoli), si fermano su soluzioni
+ragionevoli senza pretendere l'ottimo (le metaeuristiche), o
+ricorrono al rilassamento per lavorare su sotto-problemi pi\`u
+trattabili (Lagrange, generazione di colonne).
+
+\section{Natura dei vincoli: HARD vs SOFT vs PREFERRED}
+
+Il secondo motivo di difficolt\`a \`e che i vincoli del
+timetabling non sono tutti uguali: ce ne sono di
+\emph{rigidi} (HARD), che vanno rispettati \emph{sempre}, e
+ce ne sono di \emph{morbidi} (SOFT), che si vorrebbero
+rispettare ma su cui si pu\`o transigere se serve.
+
+\begin{defbox}
+Convenzionalmente in $\pi$Tantum si distinguono \emph{cinque}
+livelli, codificati da una palette di cinque colori:
+\begin{itemize}
+\item \textcolor{cAllow}{\textbf{Allowed}} (verde chiaro):
+  permesso, neutro. Il default.
+\item \textcolor{cSoft}{\textbf{Soft}} (giallo): da evitare se
+  possibile. Penalit\`a positiva nell'obiettivo.
+\item \textcolor{cHard}{\textbf{Hard}} (rosso): vietato sempre.
+  Vincolo HARD nel solver.
+\item \textcolor{cPref}{\textbf{Preferred}} (blu): preferito.
+  Bonus negativo nell'obiettivo (riduce il costo).
+\item \textcolor{cEnf}{\textbf{Enforced}} (verde scuro):
+  obbligato. Vincolo HARD in senso opposto: questo slot
+  \emph{deve} essere usato.
+\end{itemize}
+\end{defbox}
+
+La distinzione \`e cruciale per la progettazione del solver. I
+vincoli HARD sono \emph{vincoli di fattibilit\`a}: una
+soluzione che li viola non \`e neanche una soluzione (\`e una
+proposta da scartare). I vincoli SOFT entrano nella
+\emph{funzione obiettivo}: il solver cerca la soluzione
+fattibile che li violi il meno possibile, ma in caso di
+trade-off pu\`o decidere di violarne uno.
+
+\sidenote{La modellazione HARD/SOFT \`e standard in letteratura:
+si veda~\parencite[\S2]{schaerf1999} e~\parencite{carter1998}.}
+Senza questa distinzione il problema diventa rapidamente
+inattaccabile: se ``il prof Bianchi preferirebbe non lavorare
+sabato'' fosse un vincolo HARD, una qualsiasi
+incompatibilit\`a fra le sue preferenze e quelle dei colleghi
+renderebbe il problema infeasibile e l'utente si troverebbe
+di fronte a un solver che dice ``no soluzione'' senza
+spiegare perch\'e.
+
+\subsection{Esempio di tassonomia HARD/SOFT}
+
+\begin{esempiobox}
+Una piccola tassonomia di vincoli tipici di una scuola
+italiana:
+\begin{itemize}
+\item \textcolor{cHard}{HARD}: due classi non in stessa aula
+  contemporaneamente; un docente non in due classi
+  contemporaneamente; copertura del monte ore di ogni
+  materia in ogni classe; rispetto delle classi di concorso;
+  giorno libero contrattuale.
+\item \textcolor{cHard}{HARD condizionato}: il lab di fisica
+  \`e disponibile solo certi giorni; certe materie devono
+  stare in aule specifiche.
+\item \textcolor{cSoft}{SOFT}: evitare i ``buchi'' nell'orario
+  di un docente; evitare la sesta ora consecutiva di una
+  materia teorica pesante; concentrare le ore di una stessa
+  materia in giorni diversi della settimana.
+\item \textcolor{cPref}{PREFERRED}: preferire che la
+  matematica stia nelle prime 4 ore; preferire i lab in due
+  ore consecutive.
+\item \textcolor{cEnf}{ENFORCED}: la riunione di consiglio si
+  tiene gioved\`i 5\textsuperscript{a} ora (slot pre-allocato).
+\end{itemize}
+\end{esempiobox}
+
+\section{Complessit\`a teorica: NP-completezza e oltre}
+
+Il timetabling scolastico, anche nella sua versione pi\`u
+basica, \`e \emph{NP-completo}. \`E un fatto storicamente
+documentato: il timetabling include come caso particolare il
+\textsc{graph coloring} (assegnare colori a nodi di un grafo
+in modo che nodi adiacenti abbiano colori diversi), che
+Karp~(1972) dimostr\`o NP-completo. Per riduzione, anche il
+timetabling lo \`e.
+
+\begin{approfondimentobox}
+\textbf{La riduzione informale}. Si pu\`o pensare a una
+versione semplificata del timetabling come un problema di
+colorazione: i nodi sono le lezioni, gli archi sono ``due
+lezioni che condividono una risorsa'' (stesso docente, stessa
+classe, stessa aula), i colori sono gli slot. Trovare un
+orario in $k$ slot equivale a colorare il grafo con $k$
+colori. Visto che \textsc{$k$-graph-coloring} \`e
+NP-completo per $k \geq 3$~\parencite{garey1979}, anche il
+timetabling lo \`e.
+\end{approfondimentobox}
+
+In pratica significa che non esiste un algoritmo polinomiale
+che risolva esattamente \emph{tutte} le istanze del problema
+in tempo ragionevole. Esistono algoritmi che funzionano
+\emph{quasi sempre} su istanze reali, ma sono \emph{garantiti}
+solo per istanze speciali. La buona notizia \`e che le istanze
+\emph{reali} di una scuola italiana stanno \emph{lontane dai
+casi peggiori}: la struttura dei vincoli \`e altamente
+strutturata (le classi sono molte ma le classi di concorso
+sono poche; i docenti hanno disponibilit\`a tipicamente
+contigue), e i moderni solver sfruttano questa struttura.
+
+\section{Storia in pillole}
+
+\begin{storiabox}
+\textbf{Anni '60--'70}: i primi tentativi sono manuali,
+assistiti da fogli di calcolo o schede. La letteratura
+inizia a comparire con Gotlieb (1962), De Werra
+(1971). I metodi sono basati su backtracking e
+colorazione di grafi.
+
+\textbf{Anni '80--'90}: nascono le metaeuristiche
+(\emph{simulated annealing}~\parencite{kirkpatrick1983},
+\emph{tabu search}~\parencite{glover1986}). Le prime
+competizioni internazionali (ITC, da fine '90) forniscono
+benchmark standardizzati.
+
+\textbf{Anni 2000}: i \emph{constraint solver} maturano
+(GeCode, ECLiPSe, Chaff per SAT). Pisinger e
+Ropke~\parencite{ropke2006} introducono ALNS. La conferenza
+PATAT~\parencite{patat} diventa il riferimento mondiale.
+
+\textbf{Anni 2010--oggi}: i solver moderni (CP-SAT,
+Gurobi, IBM CPLEX) gestiscono istanze prima
+inattaccabili. Le pubblicazioni si concentrano su
+ibridi (LNS + CP-SAT, decomposizione + metaeuristiche)
+e su tecniche di apprendimento automatico per generare
+heuristic.
+\end{storiabox}
+
+\section{Quattro famiglie di approcci}
+
+La letteratura distingue tradizionalmente quattro famiglie di
+approcci al timetabling, che $\pi$Tantum \emph{combina} invece
+di scegliere fra l'una o l'altra.
+
+\subsection{Constraint programming puro}
+
+Si modella il problema come un CSP\index{CSP (Constraint
+Satisfaction Problem)} (\emph{Constraint Satisfaction
+Problem}) e si lascia che un solver come CP-SAT lo risolva.
+Vantaggio: estremamente generale, facile aggiungere vincoli.
+Svantaggio: scala male oltre $\sim 80$ classi senza
+decomposizione.
+
+\subsection{Programmazione lineare intera (ILP)}
+
+Si formula il problema come MILP (variabili 0/1 + obiettivo
+lineare) e lo si passa a Gurobi/CPLEX/HiGHS. Vantaggio:
+ottimo dimostrabile su istanze piccole. Svantaggio: la
+formulazione MILP del timetabling tipicamente richiede
+$10^6$--$10^7$ variabili binarie e diventa pesante.
+
+\subsection{Metaeuristiche}
+
+Si parte da una soluzione approssimata e la si migliora con
+moltiplicazione di operatori locali: \emph{simulated
+annealing}, \emph{tabu search}, \emph{ILS}, \emph{LNS}, etc.
+Vantaggio: scala benissimo, restituisce sempre una
+soluzione. Svantaggio: nessuna garanzia di ottimalit\`a.
+
+\subsection{Decomposizione + ricomposizione}
+
+Si spezza il problema in sotto-problemi pi\`u piccoli, li si
+risolve indipendentemente, e li si ricuce. La decomposizione
+pu\`o essere \emph{spettrale} (clustering del grafo
+bipartito), \emph{lagrangiana} (rilassamento dei vincoli che
+legano i sotto-problemi), o \emph{di Dantzig-Wolfe}
+(generazione di colonne).
+
+\section{La filosofia di $\pi$Tantum}
+
+\sidenote{La pipeline a quattro fasi \`e descritta in dettaglio
+nel cap.~\ref{ch:workflow_di_ottimizzazione}.}
+$\pi$Tantum non sceglie una sola famiglia ma \emph{ne combina
+quattro} in una pipeline a quattro fasi:
+
+\begin{enumerate}
+\item \textbf{Phase A -- Assignment}: greedy + CP-SAT su un
+  problema di matching docenti $\to$ classi. Il
+  pre-controllo di Hall (cap.~\ref{ch:metodo_hall}) verifica
+  che il problema sia almeno formalmente fattibile.
+\item \textbf{Phase B -- Decomposizione + risoluzione}: la
+  decomposizione spettrale (cap.~\ref{ch:metodo_spettrale})
+  spezza la scuola in cluster; CP-SAT
+  (cap.~\ref{ch:metodo_cpsat}) risolve ogni cluster; un
+  passo di ``ricucitura'' globale armonizza le interfacce.
+\item \textbf{Phase C -- Raffinamento metaeuristico}: LNS,
+  ALNS, SA, TS, ILS, VNS
+  (cap.~\ref{ch:metodo_metaeuristiche}) migliorano
+  iterativamente la soluzione di Phase~B sulle SOFT.
+\item \textbf{Phase D -- Assegnamento aule}: un secondo
+  passo CP-SAT mappa (classe, slot) $\to$ aula rispettando
+  tipi, capacit\`a, preferenze.
+\end{enumerate}
+
+Il rilassamento lagrangiano e la generazione di colonne
+(cap.~\ref{ch:metodo_lagrangian}) sono opzionali, attivi solo
+sulle istanze pi\`u grandi (oltre $\sim 200$ classi).
+
+\begin{ideabox}
+La filosofia \`e \emph{nessun metodo da solo}, ma una
+\emph{cooperazione orchestrata}: ogni fase produce qualcosa
+che la fase successiva pu\`o usare come punto di partenza, e
+ogni fase ha un metodo di controllo che dice ``se non parti
+da una soluzione fattibile, fermati e segnala''.
+\end{ideabox}
+
+\section{Cosa rende difficile il caso italiano}
+
+I benchmark accademici (\emph{ITC-2007}, \emph{ITC-2011},
+\emph{XHSTT}~\parencite{mccollum2010}) sono importanti ma non
+catturano alcune peculiarit\`a del sistema scolastico italiano:
+
+\begin{itemize}
+\item Gli \emph{indirizzi} (Liceo Classico, Scientifico,
+  Linguistico, ITIS, IPS, ecc.) hanno monte ore diversi anche
+  per la stessa materia. Una classe ``3A scientifico'' fa
+  matematica in modo diverso da una ``3A classico''.
+\item Le \emph{classi di concorso} (A027, A019, ...) limitano
+  quali docenti possono insegnare cosa. Un docente di A027
+  pu\`o insegnare matematica e fisica al biennio scientifico
+  ma non lettere al classico.
+\item Le \emph{compresenze} (es. matematica-laboratorio nei
+  tecnici) richiedono che due docenti diversi siano nello
+  stesso slot stessa classe.
+\item I \emph{gruppi articolati} (seconda lingua, IRC vs
+  alternativa, recupero) hanno membri da pi\`u classi diverse
+  che si incontrano in slot comuni.
+\item I \emph{vincoli sindacali} (giorno libero CCNL, monte
+  ore massimo per docente) sono HARD e devono essere
+  rispettati.
+\item Le \emph{preferenze graduate} dei docenti (in base a
+  punteggio di graduatoria) introducono priorit\`a sociali
+  che il software deve onorare.
+\end{itemize}
+
+Tutti questi sono codificati come entit\`a o vincoli
+specifici nel modello dati di $\pi$Tantum (cap.~\ref{ch:modello_dati}).
+
+\begin{biblioparvabox}
+\begin{itemize}
+\item \emph{Survey} dello stato dell'arte:
+  \cite{schaerf1999} (datato ma fondante),
+  \cite{burke2007} (pi\`u aggiornato).
+\item \emph{Standard di formulazione e benchmark}:
+  \cite{mccollum2010} per ITC-2007 e XHSTT,
+  \cite{patat} per la conferenza PATAT.
+\item \emph{Manuali OR}: \cite{wolsey1998} per la
+  programmazione intera, \cite{rossi2006} per la
+  programmazione a vincoli, \cite{glover2003} per le
+  metaeuristiche.
+\item \emph{Riferimento storico originario}:
+  \cite{hall1935} sul teorema dei matrimoni
+  (cap.~\ref{ch:metodo_hall}).
+\end{itemize}
+\end{biblioparvabox}

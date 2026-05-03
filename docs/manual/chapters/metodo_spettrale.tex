@@ -1,0 +1,329 @@
+\chapter{Decomposizione spettrale: spezzare per regnare}
+\label{ch:metodo_spettrale}
+
+\epigraph{``The eigenvectors of the Laplacian know more about
+the graph than you might think.''}{Fan R. K. Chung,
+\emph{Spectral Graph Theory}~\parencite{chung1997}}
+
+\lettrine[lines=3]{I}{mmagina} di dover organizzare l'orario
+di un istituto comprensivo enorme: 90 classi, 200 docenti,
+12 indirizzi diversi. Sembra un'impresa formidabile da
+risolvere ``tutta insieme''. Ma se osservi il grafo che ha
+per nodi le classi e i docenti, e archi che dicono ``questo
+docente insegna in questa classe'', noti qualcosa: il grafo
+non \`e omogeneo. Ci sono \emph{cluster} naturali. Le classi
+del liceo classico hanno docenti che lavorano quasi
+esclusivamente con il classico; le classi dell'ITIS hanno i
+loro. I docenti di matematica si distribuiscono fra
+indirizzi affini ma raramente toccano l'IPSIA accanto.
+
+Se tu potessi \emph{vedere} questi cluster e risolvere
+l'orario di ognuno separatamente, il problema cambierebbe
+faccia: invece di una scuola da 90 classi, avresti 5--7
+sotto-scuole da 12--18 classi. Ognuna trattabile in pochi
+minuti. Questo \`e il trucco della decomposizione spettrale:
+\emph{usare l'algebra del grafo per individuare i cluster
+naturali}.
+
+\section{Da dove viene l'idea}
+
+\begin{storiabox}
+Nel 1973 il matematico ceco Miroslav
+Fiedler~\parencite{fiedler1973} pubblic\`o un risultato che
+all'epoca sembrava puramente teorico: il \emph{secondo}
+autovettore del Laplaciano di un grafo (oggi chiamato
+\emph{vettore di Fiedler}\index{Fiedler!vettore}) ne rivela
+la struttura comunitaria. Quasi vent'anni dopo Shi e
+Malik~\parencite{shi2000} riadattarono l'idea per la
+\emph{segmentazione di immagini}: vedi un'immagine come
+grafo (pixel = nodi, archi = somiglianza fra pixel
+adiacenti), calcoli il vettore di Fiedler e
+ottieni i contorni degli oggetti. Da l\`i in poi
+il \emph{spectral clustering}~\parencite{vonluxburg2007} \`e
+diventato uno standard nella community di machine learning.
+\end{storiabox}
+
+L'idea nascosta nel risultato di Fiedler \`e che la
+\emph{struttura combinatoria} di un grafo (chi \`e connesso
+con chi) si riflette nello \emph{spettro} (gli autovalori)
+di una matrice associata. E lo spettro \`e calcolabile in
+tempo polinomiale standard.
+
+\section{Costruzione passo-passo}
+
+\subsection{(1) Il grafo bipartito classe--docente}
+
+\begin{defbox}
+Per una scuola con $n$ classi e $m$ docenti, costruiamo un
+\emph{grafo bipartito}\index{grafo bipartito} $G = (V, E)$
+con:
+\begin{itemize}
+\item $V = V_{\text{C}} \cup V_{\text{D}}$, dove
+  $V_{\text{C}}$ \`e l'insieme delle classi e $V_{\text{D}}$
+  l'insieme dei docenti.
+\item $E$: c'\`e un arco $\{c, d\}$ con peso $w_{cd}$ se il
+  docente $d$ insegna $w_{cd}$ ore alla classe $c$.
+\end{itemize}
+\end{defbox}
+
+Esempio in miniatura: una scuola con 3 classi ($c_1, c_2, c_3$)
+e 4 docenti ($d_1, d_2, d_3, d_4$), in cui $d_1, d_2$
+insegnano solo nelle prime due classi e $d_3, d_4$ solo
+nella terza, ha due cluster evidenti: $\{c_1, c_2, d_1, d_2\}$
+e $\{c_3, d_3, d_4\}$. Il grafo bipartito ha pochissimi (o
+zero) archi fra i due cluster.
+
+\subsection{(2) La matrice di adiacenza e quella dei gradi}
+
+\begin{defbox}
+La \emph{matrice di adiacenza} $A$ \`e una matrice quadrata
+$|V| \times |V|$ con $A_{ij} = w_{ij}$ se esiste l'arco
+$\{i, j\}$, 0 altrimenti.
+
+La \emph{matrice dei gradi} $D$ \`e diagonale con
+$D_{ii} = \sum_j A_{ij}$, ovvero la somma dei pesi degli
+archi incidenti su $i$. Per un docente, $D_{ii}$ \`e il monte
+ore totale; per una classe, \`e la somma delle ore di lezione
+ricevute.
+\end{defbox}
+
+\subsection{(3) Il Laplaciano (normalizzato)}
+
+\begin{defbox}
+Il \emph{Laplaciano}\index{Laplaciano!normalizzato}
+\emph{normalizzato} di $G$ \`e:
+\[
+  L = I - D^{-1/2} A\, D^{-1/2}
+\]
+dove $I$ \`e la matrice identit\`a.
+\end{defbox}
+
+\textbf{Come si legge}: prendi la matrice di adiacenza $A$
+(che dice chi \`e connesso a chi), la \emph{normalizzi}
+dividendo ogni elemento per la radice del prodotto dei gradi
+dei due estremi (per togliere l'effetto della diversa
+``importanza'' dei nodi), e sottrai il risultato dall'identit\`a.
+
+\textbf{Propriet\`a chiave}:
+\begin{itemize}
+\item $L$ \`e simmetrica e semi-definita positiva.
+\item Tutti i suoi autovalori $\lambda_0, \lambda_1, \ldots$
+  sono nell'intervallo $[0, 2]$.
+\item L'autovalore minimo $\lambda_0$ vale sempre 0; il
+  corrispondente autovettore \`e proporzionale a
+  $D^{1/2}\mathbf{1}$ (banale).
+\item Il \emph{secondo autovalore} $\lambda_1$ \`e detto
+  \emph{algebraic connectivity}~\parencite{fiedler1973}: \`e
+  ``piccolo'' quando il grafo ha cluster ben separati,
+  ``grande'' quando il grafo \`e ben connesso.
+\end{itemize}
+
+\subsection{(4) Il vettore di Fiedler}
+
+\begin{defbox}
+Il \emph{vettore di Fiedler} $v_1$ \`e l'autovettore
+associato al secondo autovalore $\lambda_1$ di $L$.
+\end{defbox}
+
+L'idea cruciale: ogni nodo del grafo corrisponde a una
+componente di $v_1$, cio\`e a un numero reale. Se ordini i
+nodi per il valore della loro componente in $v_1$, ottieni
+un \emph{ordinamento naturale} che separa le comunit\`a.
+
+\sidenote{Esempio:
+se $v_1 = (-0.4, -0.5, +0.3, +0.6)^\top$, l'ordinamento per
+componenti riordina i nodi come $\{2, 1, 3, 4\}$. Tagliando
+fra il 2\textsuperscript{o} e il 3\textsuperscript{o} ottieni
+i due cluster.}
+
+\subsection{(5) k-means sui top-$k$ autovettori}
+
+Per ottenere $k$ cluster (non solo 2), si calcolano i primi
+$k$ autovettori non-banali $v_1, v_2, \ldots, v_k$ di $L$.
+Si ottiene cos\`i una matrice $|V| \times k$: ogni nodo
+diventa un punto in $\mathbb{R}^k$. A questo punto si applica
+$k$-means standard su questa rappresentazione \emph{spettrale}
+e si ottengono $k$ cluster.
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[scale=0.9, every node/.style={font=\small\sffamily}]
+  % cluster A
+  \node[circle, draw, fill=cPref!30, minimum size=8mm] (c1) at (0,2) {$c_1$};
+  \node[circle, draw, fill=cPref!30, minimum size=8mm] (c2) at (0,1) {$c_2$};
+  \node[circle, draw, fill=cPref!10, minimum size=8mm] (d1) at (1.5,2) {$d_1$};
+  \node[circle, draw, fill=cPref!10, minimum size=8mm] (d2) at (1.5,1) {$d_2$};
+  \draw (c1)--(d1); \draw (c1)--(d2); \draw (c2)--(d1); \draw (c2)--(d2);
+  % cluster B
+  \node[circle, draw, fill=cOro!30, minimum size=8mm] (c3) at (5,2) {$c_3$};
+  \node[circle, draw, fill=cOro!30, minimum size=8mm] (c4) at (5,1) {$c_4$};
+  \node[circle, draw, fill=cOro!10, minimum size=8mm] (d3) at (6.5,2) {$d_3$};
+  \node[circle, draw, fill=cOro!10, minimum size=8mm] (d4) at (6.5,1) {$d_4$};
+  \draw (c3)--(d3); \draw (c3)--(d4); \draw (c4)--(d3); \draw (c4)--(d4);
+  % bridge
+  \draw[dashed, thin] (d2)--(c3) node[midway, above, font=\scriptsize, text=cSiena] {ponte};
+  % rectangles
+  \draw[thick, rounded corners=4pt, cPref] ($(c1.north west)+(-0.3,0.3)$) rectangle ($(d2.south east)+(0.3,-0.3)$);
+  \draw[thick, rounded corners=4pt, cOro] ($(c3.north west)+(-0.3,0.3)$) rectangle ($(d4.south east)+(0.3,-0.3)$);
+  \node[font=\sffamily\bfseries, color=cPref] at (0.75, 3) {Cluster A};
+  \node[font=\sffamily\bfseries, color=cOro] at (5.75, 3) {Cluster B};
+\end{tikzpicture}
+\caption{Esempio di grafo bipartito con due cluster naturali
+e un ``ponte'' debole. Il vettore di Fiedler assegna
+componenti di segno opposto ai due cluster.}
+\label{fig:spettrale-cluster}
+\end{figure}
+
+\section{Esempio mini-completo a mano}
+
+Prendiamo la scuola di fig.~\ref{fig:spettrale-cluster}:
+4 classi, 4 docenti, archi come disegnati (incluso un
+``ponte'' debole $d_2$--$c_3$).
+
+\textbf{Passo 1: matrici.} Numeriamo i nodi
+$1, 2, \ldots, 8$ in ordine $c_1, c_2, c_3, c_4, d_1, d_2,
+d_3, d_4$. La matrice di adiacenza $A$ \`e (con peso 1 ovunque):
+\[
+A = \begin{pmatrix}
+0 & 0 & 0 & 0 & 1 & 1 & 0 & 0 \\
+0 & 0 & 0 & 0 & 1 & 1 & 0 & 0 \\
+0 & 0 & 0 & 0 & 0 & 1 & 1 & 1 \\
+0 & 0 & 0 & 0 & 0 & 0 & 1 & 1 \\
+1 & 1 & 0 & 0 & 0 & 0 & 0 & 0 \\
+1 & 1 & 1 & 0 & 0 & 0 & 0 & 0 \\
+0 & 0 & 1 & 1 & 0 & 0 & 0 & 0 \\
+0 & 0 & 1 & 1 & 0 & 0 & 0 & 0 \\
+\end{pmatrix}
+\]
+
+I gradi sono: $D = \mathrm{diag}(2, 2, 3, 2, 2, 3, 2, 2)$.
+
+\textbf{Passo 2: Laplaciano normalizzato.} Si ottiene
+applicando la formula $L = I - D^{-1/2} A D^{-1/2}$ (il
+calcolo a mano \`e tedioso, lo demandiamo a NumPy).
+
+\textbf{Passo 3: spettro.} Calcolando con
+\texttt{numpy.linalg.eigh(L)} si ottiene:
+\[
+  \lambda_0 \approx 0,\quad
+  \lambda_1 \approx 0.18,\quad
+  \lambda_2 \approx 0.72,\quad \ldots
+\]
+Il piccolo valore $\lambda_1 \approx 0.18$ conferma che il
+grafo \`e debolmente connesso: i due cluster sono ben
+separati, il ponte $d_2$--$c_3$ \`e l'unico legame.
+
+\textbf{Passo 4: vettore di Fiedler.} \`E l'autovettore
+associato a $\lambda_1$. Calcolandolo si trova qualcosa come:
+\[
+  v_1 \approx (+0.40, +0.40, -0.35, -0.40, +0.35, +0.30, -0.30, -0.30)^\top
+\]
+I primi quattro nodi (cluster A: $c_1, c_2, d_1, d_2$) hanno
+componenti positive; gli altri quattro (cluster B:
+$c_3, c_4, d_3, d_4$) hanno componenti negative. La
+separazione \`e netta. Tagliando in zero, otteniamo
+esattamente i due cluster.
+
+\begin{esempiobox}
+Per ottenere $k > 2$ cluster, si usano i primi $k$
+autovettori e si applica $k$-means. Su questa stessa scuola
+con $k = 2$, $k$-means su $v_1$ produce gli stessi due
+cluster ottenuti dal segno.
+\end{esempiobox}
+
+\section{Generalizzazione: cosa cambia su scuola reale}
+
+In una scuola con 90 classi e 200 docenti il calcolo \`e
+identico, solo che le matrici sono $290 \times 290$ e gli
+autovettori si calcolano in qualche secondo con
+LAPACK/scipy. La differenza pratica \`e:
+
+\begin{itemize}
+\item I cluster non sono \emph{cos\`i} netti come nell'esempio
+  giocattolo. Tipicamente ci sono cluster ben separati e
+  poi ``nodi di confine'' che potrebbero stare in pi\`u
+  cluster.
+\item Il numero $k$ di cluster non \`e dato a priori: si
+  sceglie con una \emph{eigengap heuristic}: si cerca il
+  $k$ tale che $\lambda_k$ sia molto pi\`u grande di
+  $\lambda_{k-1}$ (un ``salto'' nello spettro). $\pi$Tantum
+  esegue un'analisi automatica del gap e suggerisce un
+  valore di $k$, ma l'utente pu\`o forzarlo.
+\item Una volta definiti i cluster, la \emph{ricucitura}
+  ($\pi$Tantum la chiama \emph{Phase~B stitch}) richiede un
+  passo CP-SAT globale che armonizza i ``ponti'' fra
+  cluster (lezioni che coinvolgono nodi di cluster diversi).
+\end{itemize}
+
+\section{Quando funziona, quando no}
+
+\begin{ideabox}
+La decomposizione spettrale funziona benissimo quando
+\emph{i cluster naturali esistono}: scuole con indirizzi
+distinti, classi-di-concorso disgiunte, presenza di sedi
+distaccate. Il guadagno tipico su istanze grandi \`e
+$5\times$--$10\times$ rispetto a CP-SAT monolitico.
+\end{ideabox}
+
+\begin{avvertenzabox}
+Quando il grafo \`e \emph{denso} (i docenti insegnano un po'
+ovunque, niente cluster naturali), il vettore di Fiedler
+non separa nulla e i cluster prodotti sono artificiali. In
+quel caso la decomposizione genera ``ponti'' molti e pesanti,
+e la fase di ricucitura diventa pi\`u costosa della
+risoluzione monolitica. $\pi$Tantum lo rileva guardando
+$\lambda_1$ del Laplaciano: se \`e troppo grande (sopra
+$\sim 0.5$), suggerisce di saltare la decomposizione.
+\end{avvertenzabox}
+
+\subsection{Parametri principali}
+
+\begin{itemize}
+\item \texttt{n\_clusters}: numero di cluster da produrre.
+  Default: scelto via eigengap heuristic; tipicamente
+  4--8 per scuole medio-grandi.
+\item \texttt{laplacian\_type}: \texttt{normalized}
+  (default) o \texttt{unnormalized}. Il primo \`e
+  raccomandato per grafi non bilanciati nei pesi.
+\item \texttt{kmeans\_init}: \texttt{k-means++} (default,
+  robusto) o \texttt{random}.
+\item \texttt{stitch\_passes}: numero di iterazioni della
+  fase di ricucitura. Default: 1.
+\end{itemize}
+
+\section{Connessioni}
+
+\begin{connessionebox}
+\begin{itemize}
+\item \textbf{CP-SAT} (cap.~\ref{ch:metodo_cpsat}): ogni
+  cluster \`e risolto da CP-SAT come problema autonomo.
+\item \textbf{Hall pre-check} (cap.~\ref{ch:metodo_hall}): si
+  esegue \emph{su ciascun cluster} oltre che globalmente; se
+  un cluster non passa Hall, si rilassano i ponti per
+  ridistribuire la domanda.
+\item \textbf{Lagrangian Relaxation}
+  (cap.~\ref{ch:metodo_lagrangian}): un'alternativa alla
+  ricucitura combinatoria \`e la dualizzazione dei vincoli
+  inter-cluster con moltiplicatori di Lagrange.
+\item \textbf{Analisi del grafo} (cap.~\ref{ch:metodo_grafo}):
+  modularit\`a, betweenness, densit\`a sono \emph{misure} che
+  $\pi$Tantum espone in dashboard per dare al coordinatore
+  un'idea della ``segmentabilit\`a'' della sua scuola
+  \emph{prima} di lanciare la pipeline.
+\end{itemize}
+\end{connessionebox}
+
+\begin{biblioparvabox}
+\begin{itemize}
+\item \cite{fiedler1973}: il paper originale di Fiedler.
+  Tre pagine, ancora leggibili.
+\item \cite{chung1997}: il libro di riferimento sulla teoria
+  spettrale dei grafi. Tecnico ma chiaro.
+\item \cite{vonluxburg2007}: tutorial divulgativo sullo
+  spectral clustering, con tutti i dettagli pratici (scelta
+  di $k$, normalizzazioni, $k$-means vs alternative).
+\item \cite{shi2000}: l'applicazione al \emph{normalized cut}
+  per immagini, che ha reso popolare l'idea fuori dalla
+  matematica pura.
+\end{itemize}
+\end{biblioparvabox}

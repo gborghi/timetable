@@ -1,0 +1,490 @@
+\chapter{CP-SAT: il motore che cerca, deduce, ritratta}
+\label{ch:metodo_cpsat}
+
+\section{Il problema concreto}
+
+Immagina un dirigente scolastico la prima settimana di
+settembre. Sul tavolo ha l'elenco delle classi (20--80, a
+seconda della scuola), l'elenco dei docenti (40--150), i monte
+ore di ogni materia in ogni indirizzo, le aule disponibili e
+una pila di richieste personali (``il prof Bianchi non lavora
+sabato'', ``il lab di fisica \`e occupato il marted\`i mattina
+da un altro istituto''). Deve produrre un orario settimanale
+in cui ogni lezione sta in uno slot compatibile, nessun
+docente \`e in due posti contemporaneamente, nessuna classe
+ha buchi inutili e ogni materia rispetta il monte ore.
+
+A occhio sembra che basti ``provare''. In pratica il numero
+di assegnamenti possibili \`e astronomico. Una scuola media di
+30 classi con 5 ore al giorno per 6 giorni ha
+$30 \times 5 \times 6 = 900$ slot da riempire scegliendo per
+ognuno una lezione fra centinaia di possibili: $10^{2700}$
+combinazioni circa. Nessun computer al mondo le pu\`o esaminare
+una per una. Serve una macchina che, mentre prova, capisca
+\emph{quali combinazioni si possono escludere subito} senza
+esaminarle.
+
+CP-SAT\index{CP-SAT} \`e questa macchina. Il nome significa
+\emph{Constraint Programming over SAT}: prende l'idea
+classica della programmazione a vincoli e la implementa
+sopra un solver SAT moderno (cio\`e un risolutore di formule
+booleane), con tutte le ottimizzazioni che la comunit\`a SAT
+ha sviluppato negli ultimi vent'anni. \`E sviluppato da Google
+come parte del pacchetto OR-Tools~\cite{ortools}, ed \`e oggi
+uno dei migliori solver gratuiti per problemi combinatori di
+medie/grandi dimensioni.
+
+\begin{ideabox}
+\textbf{In una frase}: CP-SAT \`e un motore che, dato un
+elenco di variabili, di vincoli da rispettare e di un
+obiettivo da minimizzare, cerca un'assegnazione di valori
+alle variabili che rispetti tutto e renda l'obiettivo il pi\`u
+piccolo possibile, senza enumerare le possibilit\`a una a una.
+\end{ideabox}
+
+\section{Una storia in cinque tappe}
+
+Per capire come funziona CP-SAT \`e utile ripercorrere
+brevemente cinque idee successive.
+
+\subsection{(1) Il problema SAT puro}
+
+Negli anni '60 i logici si chiedevano: data una formula
+booleana (un'espressione di variabili true/false collegate da
+\textsc{and}, \textsc{or}, \textsc{not}), esiste un assegnamento
+di verit\`a che la rende vera? Questo \`e il problema SAT,
+formalmente NP-completo~\cite{garey1979}. Una formula tipica
+appare cos\`i:
+\[
+  (x_1 \vee \neg x_2 \vee x_3) \wedge (\neg x_1 \vee x_2)
+  \wedge (x_2 \vee \neg x_3)
+\]
+Le parentesi tonde si chiamano \emph{clausole}; ogni clausola
+\`e un \textsc{or} di letterali (una variabile o la sua
+negazione). Una formula in questa forma \`e detta
+\emph{normalizzata in CNF} (\emph{conjunctive normal form}).
+Il solver deve trovare un'assegnazione che renda \emph{vera
+ogni} clausola.
+
+\subsection{(2) DPLL: backtracking + propagazione unaria}
+
+Negli anni '60 Davis, Putnam, Logemann e Loveland proposero
+l'algoritmo DPLL: scegli una variabile, prova
+\texttt{x=true}, propaga le conseguenze, se trovi una
+contraddizione prova \texttt{x=false}. Si chiama
+\emph{backtracking}: se sbagli torni indietro. La
+propagazione unaria si chiama \emph{unit propagation}: se in
+una clausola tutti i letterali tranne uno sono falsi, quello
+rimasto deve essere vero.
+
+\subsection{(3) CDCL: imparare dai propri errori}
+
+Negli anni '90 si \`e capito che il backtracking puro spreca
+energia: spesso il solver torna indietro a uno stato che
+\emph{contiene la stessa contraddizione} di quello appena
+abbandonato, e ricomincia da capo. La svolta \`e stata il
+\emph{conflict-driven clause learning}: quando trovi una
+contraddizione, analizza le scelte che ti ci hanno portato e
+sintetizzane una nuova clausola che \emph{vieta} quella
+combinazione fatale. Aggiungi la clausola alla formula. La
+prossima volta che ti avvicini a quella combinazione, la unit
+propagation ti blocca subito. Questa idea, implementata in
+solver come Chaff~\cite{moskewicz2001} e tutti i suoi
+successori, ha portato a un salto di prestazioni di ordini di
+grandezza.
+
+\subsection{(4) Constraint Programming: variabili intere e
+vincoli ad alto livello}
+
+Nel frattempo, la comunit\`a di constraint programming
+sviluppava un linguaggio diverso: invece di sole variabili
+booleane e clausole, lavorava con variabili intere su domini
+finiti (es. $x \in \{1,\ldots,30\}$) e vincoli ``ad alto
+livello'' come \texttt{AllDifferent($x_1,\ldots,x_n$)} o
+\texttt{Cumulative} per problemi di scheduling. Per ogni
+vincolo si scrivono \emph{algoritmi di propagazione
+specializzati} che, dato il dominio corrente di ogni
+variabile, eliminano i valori che non possono pi\`u far parte
+di una soluzione.
+
+\subsection{(5) CP-SAT: la fusione}
+
+CP-SAT prende il meglio dei due mondi:
+\begin{itemize}
+\item dal lato CP, eredita le variabili intere e i vincoli
+  globali (il problema rimane scrivibile in modo naturale);
+\item dal lato SAT, eredita CDCL, unit propagation e tutte le
+  ottimizzazioni ingegneristiche (decision heuristic,
+  restart, in-processing).
+\end{itemize}
+
+L'implementazione internamente traduce le variabili intere e
+i vincoli ad alto livello in una rete di booleane equivalente
+(``lazy clause generation''): ogni volta che il solver
+prende una decisione su una variabile intera, le booleane
+associate vengono propagate dal motore SAT, e quando il SAT
+solver scopre una contraddizione, la nuova clausola appresa
+si traduce di nuovo in vincoli sulla rete intera. \`E una
+danza continua fra i due livelli.
+
+\begin{storiabox}
+La famiglia DPLL ha origine nel 1962 (Davis, Putnam,
+Logemann, Loveland). CDCL nasce nel 1996--1997 con GRASP
+(Marques-Silva, Sakallah). Chaff (2001) introduce le strutture
+dati moderne (two-watched literals). CP-SAT come prodotto
+Google nasce intorno al 2010 con OR-Tools, e ha vinto le
+edizioni 2018, 2019, 2020 e 2021 della Mini\-Zinc Challenge,
+la principale competizione di constraint solver.
+\end{storiabox}
+
+\section{Costruzione passo-passo: cosa serve sapere}
+
+\subsection{Variabile in CP}
+
+\begin{defbox}
+Una \textbf{variabile} in CP \`e un'incognita con un
+\emph{dominio} finito di valori possibili. Esempi:
+\begin{itemize}
+\item $\texttt{slot}_{\text{matematica-1A}} \in
+  \{1, 2, \ldots, 36\}$ (lo slot in cui sta la prima ora di
+  matematica della 1A; numero da 1 a 36 se ci sono 6 giorni
+  $\times$ 6 ore).
+\item $\texttt{aula}_{\text{fisica-3B-marted\`i-9}} \in
+  \{\text{LabFisica1}, \text{LabFisica2}\}$.
+\item $\texttt{is\_present}_{\text{Rossi-luned\`i-1}} \in
+  \{0, 1\}$ (variabile booleana).
+\end{itemize}
+\end{defbox}
+
+In Python con OR-Tools si scrivono cos\`i:
+\begin{lstlisting}[style=py]
+from ortools.sat.python import cp_model
+m = cp_model.CpModel()
+
+slot = m.NewIntVar(1, 36, "slot_mate_1A")
+aula = m.NewIntVarFromDomain(
+    cp_model.Domain.FromValues([101, 102]), "aula_fisica_3B_mar_9")
+present = m.NewBoolVar("Rossi_lun_1")
+\end{lstlisting}
+
+\subsection{Vincolo}
+
+\begin{defbox}
+Un \textbf{vincolo}\index{vincolo!CP} \`e una relazione fra
+una o pi\`u variabili che limita le combinazioni di valori
+ammissibili. Esempi:
+\begin{itemize}
+\item \emph{Aritmetico}: $x + y \leq 10$.
+\item \emph{Disuguaglianza}: $x \neq y$.
+\item \emph{Globale}: \texttt{AllDifferent}$(x_1, \ldots, x_n)$
+  significa ``i valori assunti da queste variabili devono
+  essere tutti distinti''. Equivale a $\binom{n}{2}$ vincoli
+  $x_i \neq x_j$, ma il propagatore globale \`e molto pi\`u
+  efficiente (sfrutta il teorema di Hall, vedi
+  cap.~\ref{ch:metodo_hall}).
+\end{itemize}
+\end{defbox}
+
+\subsection{Propagazione}
+
+\begin{defbox}
+La \textbf{propagazione}\index{propagazione (CP)} \`e
+l'applicazione di regole locali che, vista una scelta o
+restrizione su una variabile, restringono il dominio di
+\emph{altre} variabili senza che si debba fare alcun
+``tentativo''. Si tratta di \emph{deduzione automatica}.
+\end{defbox}
+
+\begin{esempiobox}
+Tre variabili $x, y, z \in \{1, 2, 3\}$ e tre vincoli:
+$x \neq y$, $y \neq z$, $z \neq x$. Supponi di aver fissato
+$x = 1$. La propagazione fa:
+\begin{enumerate}
+\item Da $x \neq y$: rimuove $1$ dal dominio di $y$. Ora
+  $y \in \{2, 3\}$.
+\item Da $z \neq x$: rimuove $1$ dal dominio di $z$. Ora
+  $z \in \{2, 3\}$.
+\end{enumerate}
+A questo punto se aggiungi $y = 2$, propaga ancora:
+\begin{enumerate}
+\setcounter{enumi}{2}
+\item Da $y \neq z$: rimuove $2$ dal dominio di $z$. Ora
+  $z = 3$ (forzato).
+\end{enumerate}
+La propagazione ha dedotto $z$ senza enumerare. Senza
+propagazione il solver avrebbe provato $z = 1, 2, 3$ uno per
+uno e fallito su due dei tre tentativi.
+\end{esempiobox}
+
+\subsection{Ricerca}
+
+\begin{defbox}
+La \textbf{ricerca}\index{ricerca (CP)} \`e la fase in cui il
+solver, esaurita la propagazione, sceglie a caso una
+variabile e un valore, lo prova, e ricomincia a propagare. Se
+la propagazione raggiunge una contraddizione (un dominio
+vuoto), la ricerca \emph{fa backtracking}: torna indietro,
+elimina quel valore dal dominio della variabile scelta, e
+prova un altro.
+\end{defbox}
+
+La sequenza ``decisione $\to$ propagazione $\to$ eventuale
+backtracking'' \`e il cuore del solver. La differenza fra un
+solver lento e uno veloce sta in:
+\begin{itemize}
+\item \textbf{quale variabile scelgo}? Euristiche tipiche:
+  ``la pi\`u vincolata'' (smallest domain first), ``la pi\`u
+  attiva nei conflitti recenti'' (VSIDS).
+\item \textbf{quale valore provo}? ``Il pi\`u promettente''
+  (last solution first), o random.
+\item \textbf{quanto imparo da ogni conflitto}? CDCL avanzato
+  con clause learning + restart + clause forgetting.
+\end{itemize}
+
+\subsection{Combinazione: il ciclo CP-SAT}
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[node distance=1.0cm and 0.8cm,
+  block/.style={draw, very thick, rounded corners=4pt,
+                minimum width=3.4cm, minimum height=0.9cm,
+                align=center, font=\small},
+  arr/.style={-{Stealth[length=2.5mm]}, thick}]
+  \node[block, fill=cBox!40] (init) {Modello iniziale\\\footnotesize variabili + vincoli};
+  \node[block, fill=cPref!15, below=of init] (prop) {Propagazione};
+  \node[block, fill=cOro!20, below=of prop] (decide) {Decisione: scegli\\variabile e valore};
+  \node[block, fill=cEnf!15, below left=1cm and -0.6cm of decide] (sol) {Soluzione\\trovata};
+  \node[block, fill=cHard!15, below right=1cm and -0.6cm of decide] (back) {Conflitto:\\backtrack +\\impara clausola};
+  \draw[arr] (init) -- (prop);
+  \draw[arr] (prop) -- (decide);
+  \draw[arr] (decide.south) -- node[draw=none, left, font=\scriptsize]
+        {tutto assegnato} (sol);
+  \draw[arr] (decide.south) -- node[draw=none, right, font=\scriptsize]
+        {dominio vuoto} (back);
+  \draw[arr] (back) to[bend right=45] (prop);
+\end{tikzpicture}
+\caption{Il ciclo CP-SAT. Dopo aver propagato il modello
+iniziale, il solver alterna decisioni e propagazioni;
+ogni conflitto produce una clausola appresa che evita di
+ripetere lo stesso errore.}
+\label{fig:cpsat-cycle}
+\end{figure}
+
+La fig.~\ref{fig:cpsat-cycle} mostra il ciclo. Importante:
+\emph{ogni conflitto non \`e tempo perso}, perch\'e produce una
+clausola appresa che diventa parte permanente del modello
+e accelera tutte le ricerche future.
+
+\section{Esempio mini-completo: 3 docenti, 2 classi}
+
+Per \emph{vedere} CP-SAT all'opera, prendiamo un orario
+miniatura: 3 docenti (Adami, Bruni, Conti), 2 classi (1A, 1B),
+4 slot (luned\`i 1, luned\`i 2, marted\`i 1, marted\`i 2).
+Materie e monte ore:
+\begin{itemize}
+\item 1A: matematica 2h, italiano 1h, storia 1h.
+\item 1B: matematica 1h, italiano 2h, storia 1h.
+\end{itemize}
+Assegnazioni docenti--materia (gi\`a fatte da Phase A):
+\begin{itemize}
+\item Adami insegna matematica in 1A (2h) e in 1B (1h).
+\item Bruni insegna italiano in 1A (1h) e in 1B (2h).
+\item Conti insegna storia in 1A (1h) e in 1B (1h).
+\end{itemize}
+Vincolo aggiuntivo: Bruni non lavora luned\`i 1
+(indisponibilit\`a HARD).
+
+\textbf{Modellazione.} Per ogni (classe, materia, ora) ho una
+variabile intera che dice in quale slot va. Per esempio
+$\texttt{S}_{1\text{A,mate,1}} \in \{1,2,3,4\}$ (l'ora di
+matematica della 1A in lunedi-1, lunedi-2, marted\`i-1 o
+marted\`i-2). In totale ho 8 variabili: due ore di mate-1A,
+una di ita-1A, una di sto-1A, una di mate-1B, due di ita-1B,
+una di sto-1B.
+
+Vincoli HARD:
+\begin{enumerate}
+\item Una classe non pu\`o avere due lezioni nello stesso
+  slot: \texttt{AllDifferent} sui 4 slot di ogni classe.
+\item Un docente non pu\`o tenere due lezioni nello stesso
+  slot: per ogni coppia di lezioni dello stesso docente,
+  $\texttt{S}_a \neq \texttt{S}_b$.
+\item Bruni non lavora luned\`i 1: i due slot di ita-1B e
+  l'uno di ita-1A non possono valere $1$.
+\end{enumerate}
+
+\textbf{Propagazione iniziale.} Dal vincolo (3): tre variabili
+perdono subito $1$ dai loro domini. Ora ita-1A $\in
+\{2,3,4\}$, e analogamente per le due ita-1B.
+
+\textbf{Prima decisione.} Il solver sceglie la variabile con
+dominio pi\`u piccolo. Tutte le 8 hanno dominio simile, ma le
+3 di Bruni ne hanno solo 3. Sceglie $\texttt{ita-1A} = 2$
+(luned\`i-2, primo valore disponibile).
+
+\textbf{Propagazione dopo la decisione.} Il vincolo
+\texttt{AllDifferent} sulla 1A rimuove $2$ dal dominio delle
+altre 3 variabili della 1A. Il vincolo ``Bruni non in due
+slot'' rimuove $2$ dalle due variabili di ita-1B. Ora ita-1B
+ha dominio $\{3,4\}$ \emph{e devono essere entrambi distinti}:
+in pratica $\{3,4\}$ \`e l'unica assegnazione possibile.
+
+In altre parole, la propagazione ha gi\`a forzato i due slot
+di Bruni in 1B. Resta da piazzare 5 variabili: mate-1A (2),
+sto-1A (1), mate-1B (1), sto-1B (1).
+
+\textbf{Seconda decisione.} Il solver tenta
+$\texttt{mate-1A,1} = 1$. Propaga: rimuove $1$ da mate-1A,2
+(dominio: $\{3,4\}$), da sto-1A (dominio $\{3,4\}$), e da
+mate-1B (Adami non pu\`o essere in due posti, dominio
+$\{2,3,4\}$, ma il $2$ \`e gi\`a stato preso da nessuna ora di
+Adami quindi rimane $\{2,3,4\}$).
+
+\textbf{Successive decisioni.} Il solver continua. Tipicamente
+in 5--10 step di decisione+propagazione tutte le 8 variabili
+sono fissate. Se in qualche step trovasse $\texttt{mate-1A,2}
+= 3$ ma sto-1A $= 3$, il vincolo \texttt{AllDifferent}
+darebbe contraddizione: backtracking.
+
+In questo esempio il solver trova soluzione in pochi
+millisecondi, senza neanche dover imparare clausole. Il punto
+\`e che il \emph{numero di tentativi} \`e drasticamente ridotto
+dalla propagazione: invece di esaminare $4^8 = 65{,}536$
+combinazioni, il solver ne esamina meno di 20.
+
+\begin{esempiobox}
+\textbf{Una soluzione possibile}:
+\begin{center}
+\begin{tabular}{lcccc}
+\toprule
+& Lun-1 & Lun-2 & Mar-1 & Mar-2 \\
+\midrule
+1A & mate (Adami) & ita (Bruni) & sto (Conti) & mate (Adami) \\
+1B & sto (Conti) & mate (Adami) & ita (Bruni) & ita (Bruni) \\
+\bottomrule
+\end{tabular}
+\end{center}
+Ogni classe ha 4 ore distinte; Adami non sta mai in due
+posti contemporanei (lun-1, lun-2, mar-2 sono i suoi 3
+slot); Bruni non insegna luned\`i 1; Conti insegna lun-1 e
+mar-1. Tutto rispetta i vincoli.
+\end{esempiobox}
+
+\section{Generalizzazione alla scuola reale}
+
+In una scuola di 30 classi e 60 docenti la stessa logica
+funziona, con due differenze importanti:
+
+\begin{enumerate}
+\item \textbf{La propagazione fa gran parte del lavoro}. I
+  vincoli \texttt{AllDifferent}, le indisponibilit\`a, le
+  preferenze rigide e i lab condivisi creano una rete molto
+  fitta di deduzioni: una scelta su una classe del triennio
+  spesso costringe decine di altri slot.
+\item \textbf{La ricerca diventa interessante quando i vincoli
+  HARD sono ``quasi soddisfatti''}. Quando il solver ha
+  piazzato il 70\% delle lezioni e si trova davanti alle
+  ultime, qualunque scelta porta a contraddizioni e il
+  backtracking si scatena. \`E qui che le clausole apprese
+  fanno la differenza: dopo qualche centinaio di conflitti il
+  solver ``capisce'' che certe combinazioni non funzionano e
+  smette di provarle.
+\end{enumerate}
+
+\subsection{L'obiettivo: ottimizzazione, non solo
+soddisfacibilit\`a}
+
+CP-SAT non si limita a trovare \emph{una} soluzione: pu\`o
+\emph{ottimizzare}. Si dichiara una variabile aggiuntiva
+$\texttt{obj}$ definita come somma pesata di pezzi
+``brutti'' (es. ore isolate dei docenti, sesta ora delle
+classi, lezioni in slot non preferiti) e si chiede al solver
+di minimizzarla. Internamente CP-SAT alterna ricerca della
+soluzione e ricerca di una migliore: ogni volta che ne trova
+una, aggiunge il vincolo $\texttt{obj} < \text{best}$ e
+ricomincia. Termina quando dimostra che non esiste soluzione
+migliore o quando finisce il tempo.
+
+In $\pi$Tantum la funzione obiettivo \`e descritta nel
+cap.~\ref{ch:workflow_di_ottimizzazione}; si veda anche la
+documentazione DSL per la sintassi degli obiettivi
+componibili.
+
+\section{Quando usarlo (e quando no)}
+
+\textbf{CP-SAT brilla quando}:
+\begin{itemize}
+\item Il problema \`e \emph{combinatorio puro} (variabili
+  intere, vincoli logici): scheduling, configurazione,
+  packing, routing piccoli/medi.
+\item I vincoli sono \emph{molto interconnessi}: la
+  propagazione ha materiale su cui lavorare.
+\item Il numero di variabili \`e nell'ordine $10^3$--$10^5$:
+  oltre, conviene decomporre o usare metaeuristiche.
+\end{itemize}
+
+\textbf{Limiti}:
+\begin{itemize}
+\item Sopra $\sim 10^6$ variabili boolean equivalenti, anche
+  CP-SAT diventa lento. \`E uno dei motivi per cui
+  $\pi$Tantum decompone le scuole grandi (cap.~\ref{ch:metodo_spettrale}).
+\item Sui problemi \emph{continui} (variabili reali) CP-SAT
+  non lavora; servono solver LP/MIP/SOCP.
+\item Se l'obiettivo \`e una somma di molti termini con pesi
+  fini, la ricerca dell'ottimo esatto pu\`o impiegare a lungo:
+  spesso conviene fermarla con un \texttt{time\_limit} e
+  raffinare con metaeuristiche.
+\end{itemize}
+
+\begin{avvertenzabox}
+CP-SAT \`e una ``scatola intelligente'' ma non magica.
+Modellare male un problema (es. con vincoli ridondanti, o con
+variabili intere che potevano essere booleane) lo rallenta di
+ordini di grandezza. La regola pratica \`e: \emph{usa i
+vincoli globali quando puoi}, perch\'e ogni vincolo globale ha
+un propagatore specializzato che lavora molto meglio di
+$n^2$ vincoli binari.
+\end{avvertenzabox}
+
+\section{Connessioni con il resto del sistema}
+
+\begin{connessionebox}
+\begin{itemize}
+\item \textbf{Decomposizione spettrale}
+  (cap.~\ref{ch:metodo_spettrale}): per scuole oltre $\sim 80$
+  classi, $\pi$Tantum spezza il problema in cluster e
+  invoca CP-SAT su ognuno.
+\item \textbf{LNS / SA / TS / ILS} (cap.~\ref{ch:metodo_metaeuristiche}):
+  ogni metaeuristica usa CP-SAT per ``riparare''
+  sotto-vicinati ad ogni iterazione (ALNS in particolare).
+\item \textbf{Hall pre-check} (cap.~\ref{ch:metodo_hall}):
+  prima di lanciare CP-SAT, $\pi$Tantum verifica che
+  l'assegnamento docenti $\to$ classi sia \emph{matching-feasible}.
+  Se Hall fallisce, CP-SAT non potrebbe trovare nessuna
+  soluzione e darebbe \texttt{INFEASIBLE} dopo aver bruciato
+  minuti di calcolo.
+\item \textbf{Lagrangian Relaxation}
+  (cap.~\ref{ch:metodo_lagrangian}): rilassa alcuni vincoli
+  HARD trasformandoli in penalit\`a sull'obiettivo, riducendo
+  il problema CP-SAT a sotto-problemi pi\`u piccoli.
+\end{itemize}
+\end{connessionebox}
+
+\begin{biblioparvabox}
+\begin{itemize}
+\item Lettura introduttiva (divulgativa): Russell \& Norvig,
+  \emph{Artificial Intelligence: A Modern Approach},
+  capp.~6--7 sui CSP.
+\item Manuale di riferimento: Rossi, Van Beek, Walsh,
+  \emph{Handbook of Constraint Programming}~\cite{rossi2006},
+  capp.~3 (CSP), 4 (consistency), 6 (search).
+\item Storia di CDCL e SAT moderno: Marques-Silva, Lynce,
+  Malik, \emph{Conflict-Driven Clause Learning SAT
+  Solvers}, in \emph{Handbook of Satisfiability}, IOS Press
+  2009.
+\item Documentazione OR-Tools: \url{https://developers.google.com/optimization/cp/cp_solver}
+  -- molti esempi pratici in Python.
+\item Contesto teorico (NP-completezza):
+  Garey \& Johnson~\cite{garey1979} resta il classico.
+\end{itemize}
+\end{biblioparvabox}

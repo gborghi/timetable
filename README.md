@@ -43,24 +43,22 @@ performance numbers across school sizes.
   comandi di clone, note Apple Silicon, troubleshooting per OS,
   verifica installazione, aggiornamento, disinstallazione. **Quick
   start** per ciascun OS in cima al file.
-- **Tre manuali in PDF** (la documentazione e' divisa in due
-  parti per adattarsi a pubblici diversi):
-  - **[Manuale generale (PDF, ~19 pagine)](docs/manual_generale.pdf)**
-    --- per chi vuole iniziare a usare $\pi$Tantum: dirigenti
-    scolastici, coordinatori d'orario, docenti utenti. Tono
-    discorsivo, casi d'uso pratici, niente jargon.
-  - **[Appendici tecniche (PDF, ~20 pagine)](docs/appendici_tecniche.pdf)**
-    --- per sviluppatori e curiosi tecnici: architettura,
-    modello dati, API REST, grammatica DSL, strategie di
-    ottimizzazione, diagnostica, guida all'estensione.
-  - **[Manuale completo (PDF, ~41 pagine)](docs/manual_completo.pdf)**
-    --- entrambi i volumi in un unico documento.
-  Tutti compilati con la pipeline lualatex+biber+makeindex+lualatex.
-  Sorgenti `.tex` in `docs/manual_generale.tex`,
-  `docs/appendici_tecniche.tex`, `docs/manual_completo.tex` (con
-  capitoli condivisi in `docs/manual/chapters/`); ricompila con
+- **[Manuale (PDF)](docs/manual.pdf)** -- una monografia unica,
+  scritta in stile discorsivo, accessibile a chi non e' tecnico ma
+  rigorosa quando il contenuto lo richiede. Copre il problema del
+  timetabling scolastico, la panoramica di piTantum, l'interfaccia
+  utente, il modello a vincoli, e poi tutti i metodi algoritmici
+  (CP-SAT, decomposizione spettrale, metaeuristiche, Hall pre-check,
+  rilassamento lagrangiano, generazione di colonne, Monte Carlo,
+  analisi del grafo bipartito, statistica applicata, DSL parser),
+  l'architettura software, il modello dati, le API REST, la guida
+  all'estensione, i benchmark sui cinque profili e una sezione di
+  lessons learned. Sorgente LaTeX in `docs/manual.tex` con i
+  capitoli in `docs/manual/chapters/` e la bibliografia in
+  `docs/manual/bibliography.bib`. Ricompila con
   `docs/build_manual.sh` (Linux/macOS/Git Bash) o
-  `docs/build_manual.bat` (Windows).
+  `docs/build_manual.bat` (Windows). La pipeline e' lualatex +
+  biber + makeindex + lualatex (x2).
 - **[docs/](docs/)** -- modular markdown reference:
   [installation](docs/installation.md) /
   [architecture](docs/architecture.md) /
@@ -238,8 +236,7 @@ forall s in students where "BES" in s.tags:
 
 Reference completo + galleria di 30+ esempi in
 [`docs/general_dsl.md`](docs/general_dsl.md) e nel capitolo
-"DSL generico per i vincoli" delle Appendici tecniche
-([`docs/appendici_tecniche.pdf`](docs/appendici_tecniche.pdf)).
+"DSL generico per i vincoli" del [Manuale](docs/manual.pdf).
 
 ## Repository layout
 

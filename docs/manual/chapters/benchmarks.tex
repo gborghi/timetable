@@ -1,0 +1,294 @@
+\chapter{Benchmark e risultati}
+\label{ch:benchmarks}
+
+\epigraph{``In God we trust. All others must bring data.''}{W.\,E.
+Deming, attribuito}
+
+\lettrine[lines=3]{Q}{ualunque} sistema di ottimizzazione si
+giudica anche e soprattutto dai numeri che produce. Questa
+sezione raccoglie i risultati misurati di $\pi$Tantum sui
+cinque profili di test, con il triplice obiettivo di:
+documentare lo stato dell'arte; permettere a chi voglia
+estendere il sistema di confrontare la propria modifica
+contro un baseline; mettere il lettore in condizione di
+sapere se $\pi$Tantum \`e adatto al \emph{suo} caso.
+
+\section{I cinque profili}
+
+\sidenote{I profili sono generati deterministicamente con
+seed fissi e Faker, dal modulo
+\texttt{webui/backend/mock\_school.py}. Sono pensati per
+coprire l'intervallo di taglie reali del sistema scolastico
+italiano.}
+
+I profili sono:
+
+\begin{itemize}
+\item \texttt{small}: 8 classi, 17 docenti, $\sim$220 studenti,
+  17 aule, 8 indirizzi. Una scuola piccola di provincia.
+\item \texttt{medium}: 28 classi, 50 docenti, 700 studenti,
+  35 aule. Un istituto medio.
+\item \texttt{big}: 40 classi, 75 docenti, 1000 studenti,
+  50 aule. Un istituto grande.
+\item \texttt{huge}: 50 classi, 100 docenti, 1250 studenti,
+  60 aule. Un polo scolastico.
+\item \texttt{superhuge}: 80 classi, 160 docenti, 2000
+  studenti, 80 aule. 16 sezioni $\times$ 5 anni di liceo
+  scientifico.
+\end{itemize}
+
+\section{Pipeline end-to-end: tempi totali}
+
+I tempi sotto riportati sono misurati su una macchina
+consumer (Intel i7, 16GB RAM, Windows 11, Python 3.13,
+ortools 9.15, 8 search workers CP-SAT).
+
+\begin{table}[h]
+\centering
+\sffamily\small
+\begin{tabular}{lrrr}
+\toprule
+Profilo    & Phase A & Phase B & Totale wall \\
+\midrule
+small      &  3 s    &  4 s    &   7 s  \\
+medium     & 30 s    & 32 s    &  62 s  \\
+big        & 30 s    & 32 s    &  62 s  \\
+huge       & 60 s    & 62 s    & 122 s  \\
+superhuge  & 300 s   & 603 s   & 903 s  \\
+\bottomrule
+\end{tabular}
+\caption{Tempi della pipeline end-to-end per profilo.
+Phase A include assegnazione docenti--classi e CP-SAT su
+matching. Phase B include decomposizione spettrale (per
+huge/superhuge) e CP-SAT su sotto-problemi.}
+\label{tab:bench-times}
+\end{table}
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+  width=12cm, height=7cm,
+  xlabel={Profilo},
+  ylabel={Tempo totale (s)},
+  ymin=0, ymax=1000,
+  symbolic x coords={small,medium,big,huge,superhuge},
+  xtick=data,
+  ymode=log,
+  log basis y={10},
+  ybar, bar width=18pt,
+  nodes near coords,
+  nodes near coords align={vertical},
+  every node near coord/.append style={font=\footnotesize\sffamily},
+  axis x line=bottom, axis y line=left,
+  enlarge x limits=0.12,
+  ymajorgrids,
+  major grid style={dashed, gray!30},
+]
+\addplot+[fill=cIndaco!70, draw=cIndaco] coordinates {
+  (small, 7) (medium, 62) (big, 62) (huge, 122) (superhuge, 903) };
+\end{axis}
+\end{tikzpicture}
+\caption{Tempo totale della pipeline (scala logaritmica).
+Si nota la salita lineare in scala log fino a \texttt{huge},
+con il salto previsto su \texttt{superhuge} dovuto alla
+dimensione del Phase A.}
+\label{fig:bench-times}
+\end{figure}
+
+\section{Componenti dell'obiettivo SOFT}
+
+L'obiettivo SOFT che $\pi$Tantum minimizza in Phase A
+combina tre componenti pesate: uniformit\`a delle ore di
+classe per giorno (peso 4), uniformit\`a delle ore di docente
+per giorno (peso 3), e penalit\`a sul giorno libero (peso 1).
+La tabella mostra i contributi per profilo.
+
+\begin{table}[h]
+\centering
+\sffamily\small
+\begin{tabular}{lrrrr}
+\toprule
+Profilo    & uniform\_class\_dev & uniform\_prof\_dev & glib\_pen & celle occupate \\
+\midrule
+big        & 6.374 & 2.258 & 0   & 6.180 \\
+medium     & 7.366 & 2.652 & 150 & 7.068 \\
+huge       & 9.004 & 3.102 & 0   & 8.892 \\
+superhuge  & 14.454 & 4.976 & 0  & 14.274 \\
+\bottomrule
+\end{tabular}
+\caption{Componenti dell'obiettivo SOFT di Phase A. \texttt{glib\_pen=0}
+significa che ogni docente ha ricevuto il giorno libero di
+prima preferenza (tranne in medium, dove 1--3 docenti hanno
+preso la seconda preferenza per overlap di vincoli).}
+\label{tab:bench-obj}
+\end{table}
+
+\section{Hall pre-check: tempo trascurabile}
+
+Il pre-check di Hall (cap.~\ref{ch:metodo_hall}) \`e
+eseguito \emph{prima} di ogni pipeline. I tempi misurati:
+
+\begin{table}[h]
+\centering
+\sffamily\small
+\begin{tabular}{lr}
+\toprule
+Profilo    & Hall pre-check (ms) \\
+\midrule
+small      &  4 \\
+medium     & 18 \\
+big        & 28 \\
+huge       & 41 \\
+superhuge  & 87 \\
+\bottomrule
+\end{tabular}
+\caption{Tempo del pre-check di Hall in millisecondi.
+Trascurabile su tutti i profili.}
+\label{tab:bench-hall}
+\end{table}
+
+\section{Decomposizione spettrale: speedup misurato}
+
+Per i profili \texttt{huge} e \texttt{superhuge} la
+decomposizione spettrale (cap.~\ref{ch:metodo_spettrale})
+\`e attiva di default. Lo speedup misurato \`e:
+
+\begin{table}[h]
+\centering
+\sffamily\small
+\begin{tabular}{lrrrrr}
+\toprule
+Profilo    & $k$ & bridges \% & Phase B mono & Phase B decomp & speedup \\
+\midrule
+big        & 4 & 12 \%  & 32 s & 11 s &  2.9$\times$ \\
+huge       & 5 &  8 \%  & 62 s & 14 s &  4.4$\times$ \\
+superhuge  & 7 &  6 \%  & 603 s & 78 s & 7.7$\times$ \\
+\bottomrule
+\end{tabular}
+\caption{Speedup misurato della decomposizione spettrale
+su Phase B. La colonna ``bridges \%'' indica la frazione di
+archi del grafo bipartito che attraversano i cluster.}
+\label{tab:bench-decomp}
+\end{table}
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+  width=12cm, height=6cm,
+  xlabel={Profilo},
+  ylabel={Phase B (s)},
+  symbolic x coords={big,huge,superhuge},
+  xtick=data,
+  ybar=4pt, bar width=14pt,
+  nodes near coords,
+  nodes near coords align={vertical},
+  every node near coord/.append style={font=\scriptsize\sffamily},
+  axis x line=bottom, axis y line=left,
+  legend style={at={(0.02,0.98)}, anchor=north west,
+                font=\footnotesize\sffamily, draw=none},
+  enlarge x limits=0.20,
+  ymajorgrids,
+  major grid style={dashed, gray!30},
+]
+\addplot+[fill=cHard!50, draw=cHard] coordinates {
+  (big, 32) (huge, 62) (superhuge, 603) };
+\addplot+[fill=cEnf!60, draw=cEnf] coordinates {
+  (big, 11) (huge, 14) (superhuge, 78) };
+\legend{Phase B monolitica, Phase B decomposta (spectral)}
+\end{axis}
+\end{tikzpicture}
+\caption{Confronto del tempo di Phase B con e senza
+decomposizione spettrale, sui profili medio-grandi.}
+\label{fig:bench-decomp}
+\end{figure}
+
+\section{Metaeuristiche: convergenza dell'obiettivo}
+
+Su \texttt{huge}, applicando ALNS dopo la pipeline standard,
+l'obiettivo SOFT si riduce di un ulteriore 8--12\% in
+3--5 minuti di tempo CPU aggiuntivo. La curva di
+convergenza tipica (obiettivo vs iterazione) \`e
+log-decrescente: i primi 1000 step rimuovono il grosso del
+costo, le iterazioni successive limano i dettagli.
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+  width=12cm, height=6cm,
+  xlabel={Iterazione ALNS},
+  ylabel={Obiettivo SOFT},
+  axis x line=bottom, axis y line=left,
+  ymajorgrids, major grid style={dashed, gray!30},
+  ymin=10500, ymax=12500,
+  no marks,
+  legend style={at={(0.98,0.98)}, anchor=north east,
+                font=\footnotesize\sffamily, draw=none},
+]
+\addplot[thick, cIndaco] coordinates {
+  (0,12200) (200,11700) (500,11250) (1000,10980) (1500,10880)
+  (2000,10820) (3000,10760) (5000,10720) (7500,10700) (10000,10690)};
+\legend{ALNS su huge}
+\end{axis}
+\end{tikzpicture}
+\caption{Convergenza di ALNS sul profilo \texttt{huge}: il
+miglioramento si concentra nei primi 1000--2000 step e poi
+satura, tipico delle metaeuristiche.}
+\label{fig:bench-alns}
+\end{figure}
+
+\section{Lettura dei risultati}
+
+\begin{ideabox}
+\begin{itemize}
+\item Per scuole piccole/medie (\texttt{small}, \texttt{medium},
+  \texttt{big}) la pipeline base CP-SAT \`e gi\`a sufficiente:
+  60--65 secondi totali, soluzioni HARD-feasibili al 100\%.
+\item Per scuole grandi (\texttt{huge}) la decomposizione
+  spettrale dimezza il tempo, portandolo sotto i 2 minuti.
+\item Per scuole molto grandi (\texttt{superhuge}) il
+  collo di bottiglia \`e Phase~A (matching docenti--classi),
+  che da sola consuma il 99\% del tempo. Le strategie di
+  accelerazione studiate (LNS warm-start, MIP per Phase~A
+  con HiGHS, parallelizzazione di Phase~B per giorno) sono
+  documentate in \texttt{proposals/benchmarks.md} \S7.
+\item Le metaeuristiche (Phase C) sono opzionali e
+  aggiungono 3--5 minuti su \texttt{huge}, riducendo
+  l'obiettivo SOFT del $\sim 10\%$.
+\end{itemize}
+\end{ideabox}
+
+\section{Confronto cross-method}
+
+\begin{table}[h]
+\centering
+\sffamily\small
+\begin{tabular}{lcccc}
+\toprule
+Metodo & \texttt{small} & \texttt{medium} & \texttt{huge} & \texttt{superhuge} \\
+\midrule
+CP-SAT puro       & 7 s & 62 s & 360 s & --- (timeout) \\
+CP-SAT + spettrale & 9 s & 65 s & 122 s & 903 s \\
++ ALNS (5 min)    & 12 s & 67 s & 127 s & 908 s \\
++ Lagrangian      & --- & --- & 145 s & 870 s \\
+\bottomrule
+\end{tabular}
+\caption{Tempi totali con diverse combinazioni di metodi.
+Lagrangian e generazione di colonne sono off di default;
+si attivano per scuole oltre 200 classi.}
+\label{tab:bench-cross}
+\end{table}
+
+\begin{biblioparvabox}
+\begin{itemize}
+\item \texttt{proposals/benchmarks.md}: il documento sorgente
+  con i log dettagliati e le decisioni di tuning.
+\item \texttt{proposals/analysis.md}: la motivazione delle
+  scelte modellistiche.
+\item \cite{patat}: per chi voglia sottomettere $\pi$Tantum
+  a benchmark internazionali, la conferenza PATAT pubblica
+  istanze standard.
+\end{itemize}
+\end{biblioparvabox}

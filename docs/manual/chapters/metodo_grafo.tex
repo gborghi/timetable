@@ -1,0 +1,179 @@
+\chapter{Analisi del grafo bipartito: vedere la struttura}
+\label{ch:metodo_grafo}
+
+\epigraph{``A network is more than the sum of its nodes.''}{Mark
+E. J. Newman, \emph{Networks: An Introduction}~\parencite{newman2010}}
+
+\lettrine[lines=3]{O}{gni} scuola pu\`o essere vista come un
+\emph{grafo bipartito} che ha per nodi le classi e i docenti,
+con un arco fra un docente e una classe se il docente
+insegna in quella classe (eventualmente pesato dal numero di
+ore). Questo grafo non \`e un'astrazione gratuita: ne
+emergono \emph{misure quantitative} che dicono molto sulla
+struttura organizzativa della scuola e sulla difficolt\`a del
+problema di scheduling.
+
+In $\pi$Tantum la pagina Diagnostica espone tre misure
+classiche della network analysis:
+\emph{modularit\`a}\index{modularit\`a},
+\emph{betweenness centrality}\index{betweenness} e
+\emph{densit\`a}\index{densit\`a (grafo)}. Ciascuna ha un
+significato preciso e un suggerimento pratico associato.
+
+\section{Modularit\`a: quanto \`e ``a cluster'' la scuola}
+
+\begin{storiabox}
+La modularit\`a \`e una misura introdotta da Newman e Girvan
+nel 2004~\parencite{newman2004} per quantificare la \emph{community
+structure} di un grafo: \`e alta quando il grafo si divide
+naturalmente in gruppi (comunit\`a) ben separati, \`e bassa o
+negativa quando il grafo \`e omogeneo. \`E diventata una delle
+misure pi\`u usate nella scienza delle reti.
+\end{storiabox}
+
+\begin{defbox}
+Per un grafo $G$ con $m$ archi e una partizione dei nodi in
+comunit\`a $C_1, \ldots, C_k$, la modularit\`a \`e:
+\[
+  Q = \frac{1}{2m} \sum_{i,j} \left[ A_{ij} - \frac{k_i k_j}{2m}
+                            \right] \delta(c_i, c_j)
+\]
+dove $A_{ij}$ \`e la matrice di adiacenza, $k_i$ \`e il grado
+del nodo $i$, $\delta(c_i, c_j) = 1$ se $i$ e $j$ sono nella
+stessa comunit\`a, 0 altrimenti.
+\end{defbox}
+
+\textbf{Come si legge}: per ogni coppia di nodi nella stessa
+comunit\`a, si confronta il \emph{numero effettivo} di archi
+fra loro ($A_{ij}$) con il \emph{numero atteso} se gli archi
+fossero distribuiti casualmente preservando i gradi
+($k_i k_j / 2m$). Se i nodi della stessa comunit\`a sono
+\emph{pi\`u connessi} di quanto ci si aspetterebbe a caso, $Q$
+\`e positiva. Valori tipici: $Q < 0.3$ (struttura debole),
+$0.3 < Q < 0.5$ (struttura moderata), $Q > 0.5$ (struttura
+marcata).
+
+\begin{esempiobox}
+La scuola di fig.~\ref{fig:spettrale-cluster}
+(cap.~\ref{ch:metodo_spettrale}) ha modularit\`a $Q \approx
+0.42$ (struttura moderata: due cluster ben separati ma con
+un ponte). Una scuola con un solo indirizzo e docenti che
+insegnano un po' ovunque ha tipicamente $Q < 0.2$.
+\end{esempiobox}
+
+\textbf{Suggerimento pratico}: se $Q > 0.4$, la
+decomposizione spettrale (cap.~\ref{ch:metodo_spettrale})
+funzioner\`a bene; la pipeline pu\`o essere accelerata
+risolvendo cluster indipendenti. Se $Q < 0.2$, la
+decomposizione produrr\`a cluster artificiali e conviene
+risolvere monoliticamente.
+
+\section{Betweenness centrality: i ``ponti'' del sistema}
+
+\begin{storiabox}
+La \emph{betweenness} fu introdotta da Linton Freeman nel
+1977~\parencite{freeman1977} nella sociologia dei piccoli
+gruppi: misura quanto un individuo \`e ``intermediario'' nelle
+comunicazioni del gruppo. Si \`e poi diffusa in tantissimi
+campi (citation networks, Internet, biology).
+\end{storiabox}
+
+\begin{defbox}
+Per un nodo $v$, la \emph{betweenness centrality} \`e:
+\[
+  C_B(v) = \sum_{s \neq v \neq t} \frac{\sigma_{st}(v)}{\sigma_{st}}
+\]
+dove $\sigma_{st}$ \`e il numero di shortest path da $s$ a
+$t$, $\sigma_{st}(v)$ il numero di quelli che passano per
+$v$.
+\end{defbox}
+
+\textbf{Come si legge}: $C_B(v)$ \`e alta se $v$ \`e ``in
+mezzo'' a molti percorsi del grafo. Un docente con
+betweenness alta \`e quello che, se si toglie, ``sconnette''
+parecchio il sistema. Tipicamente sono docenti che
+insegnano in pi\`u indirizzi diversi, fungendo da ponte fra
+cluster.
+
+\textbf{Suggerimento pratico}: i top-$k$ docenti per
+betweenness sono quelli su cui il timetabling \`e pi\`u
+fragile. Una loro indisponibilit\`a aggiuntiva ha alta
+probabilit\`a di rendere il problema infeasible. Vale la
+pena tenerli sotto controllo durante l'anno.
+
+\section{Densit\`a: quanto \`e ``pieno'' il grafo}
+
+\begin{defbox}
+La \emph{densit\`a} di un grafo bipartito con $n_C$ classi e
+$n_D$ docenti, che ha $|E|$ archi, \`e:
+\[
+  \rho = \frac{|E|}{n_C \cdot n_D}
+\]
+\end{defbox}
+
+Vale fra 0 (nessun arco) e 1 (tutti i docenti insegnano in
+tutte le classi). Per scuole italiane reali, $\rho$ \`e
+tipicamente $0.05$--$0.15$.
+
+\textbf{Suggerimento pratico}: $\rho$ alta significa molti
+docenti che insegnano in molte classi (es. ITIS dove i
+docenti coprono pi\`u indirizzi). $\pi$Tantum tipicamente
+risolve in pi\`u tempo le scuole con $\rho$ alta perch\'e i
+vincoli fra docenti diversi sono pi\`u intrecciati. Valori
+$\rho > 0.3$ sono considerati ``densi'' e suggeriscono di
+\emph{non} usare la decomposizione spettrale (vedi sopra).
+
+\section{Visualizzazione e interpretazione}
+
+In Diagnostica $\pi$Tantum mostra:
+\begin{itemize}
+\item Una \emph{matrice riassuntiva} con $Q$, $\rho$,
+  numero di componenti connesse, top-5 docenti per
+  betweenness.
+\item Un \emph{istogramma} dei gradi (quante classi per
+  docente; quanti docenti per classe).
+\item Un \emph{heatmap} della matrice di adiacenza con
+  righe ordinate per cluster spettrale: a colpo d'occhio
+  si vedono i cluster e i ponti.
+\end{itemize}
+
+\begin{casostudiobox}
+\textbf{Liceo ``Manzoni'', 24 classi}.
+$Q = 0.51$, $\rho = 0.09$, top docente per betweenness:
+prof Esposito (insegna A026 in liceo classico e in liceo
+scientifico, fa da ponte fra i due). Modularit\`a alta
+$\to$ decomposizione spettrale produce 3 cluster (classico,
+scientifico, linguistico) ben separati. Esposito \`e l'unico
+ponte significativo; basta tenerlo come ``shared'' fra due
+cluster con vincolo lagrangiano. Pipeline completa in
+4~min.
+\end{casostudiobox}
+
+\section{Connessioni}
+
+\begin{connessionebox}
+\begin{itemize}
+\item \textbf{Decomposizione spettrale}
+  (cap.~\ref{ch:metodo_spettrale}): la modularit\`a $Q$
+  predice la qualit\`a della decomposizione.
+\item \textbf{Hall pre-check} (cap.~\ref{ch:metodo_hall}):
+  $\rho$ alta in pratica significa molti vincoli di
+  matching da verificare; Hall richiede pi\`u tempo.
+\item \textbf{Monte Carlo} (cap.~\ref{ch:metodo_montecarlo}):
+  i docenti con alta betweenness sono i candidati naturali
+  per le perturbazioni del Monte Carlo (testare cosa
+  succede se diventano indisponibili).
+\end{itemize}
+\end{connessionebox}
+
+\begin{biblioparvabox}
+\begin{itemize}
+\item \cite{newman2004}: il paper originale sulla
+  modularit\`a (Newman \& Girvan).
+\item \cite{freeman1977}: il paper originale sulla
+  betweenness.
+\item \cite{newman2010}: \emph{Networks: An
+  Introduction}, manuale moderno e accessibile per la
+  network analysis.
+\end{itemize}
+\end{biblioparvabox}

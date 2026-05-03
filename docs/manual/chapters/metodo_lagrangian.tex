@@ -1,0 +1,271 @@
+\chapter{Lagrangian Relaxation e Column Generation}
+\label{ch:metodo_lagrangian}
+
+\epigraph{``If you cannot solve a problem, relax it.''}{adagio
+della ricerca operativa, attribuito a vari autori}
+
+\lettrine[lines=3]{C}{i sono} problemi che, pur essendo
+risolvibili in linea di principio da CP-SAT, sono \emph{cos\`i
+grandi} che il solver impiega ore per produrre una soluzione
+mediocre. Una scuola con 200 classi, 400 docenti, 12 indirizzi
+non sta nei tempi di Phase~B di un ciclo standard. Per questi
+casi $\pi$Tantum offre due tecniche di \emph{rilassamento e
+decomposizione} di derivazione classica: il rilassamento
+lagrangiano e la generazione di colonne. Entrambe sono di
+default \emph{disattivate}, da abilitare esplicitamente da
+chi gestisce la pipeline.
+
+\section{Rilassamento lagrangiano: dualizzare i ponti}
+
+\begin{storiabox}
+Il rilassamento lagrangiano nasce nella ricerca operativa
+degli anni '60--'70. Held e Karp (1971)~\parencite{heldkarp1971}
+lo applicarono al \emph{Traveling Salesman Problem} ottenendo
+risultati eccellenti su istanze grandi. Geoffrion
+(1974)~\parencite{geoffrion1974} formaliz\`o l'approccio per
+la programmazione intera generale; Fisher
+(1981)~\parencite{fisher1981} ne fece il manuale operativo
+per chi voleva applicarlo nella pratica industriale.
+\end{storiabox}
+
+\begin{ideabox}
+\textbf{L'idea con un'analogia}. Hai un problema enorme che
+non riesci a risolvere. Decidi di \emph{dimenticare} alcuni
+vincoli scomodi (che ``legano'' parti diverse del problema)
+e di \emph{punirli} con una multa proporzionale alla loro
+violazione. Risolvi il problema rilassato. Misuri quanto i
+vincoli scomodi sono violati. Aggiusti la multa: dove sono
+violati di pi\`u, alzi la multa; dove sono soddisfatti con
+margine, la abbassi. Iteri.
+
+Si dimostra che, sotto ipotesi tecniche, le multe convergono
+a un valore tale che la soluzione del problema rilassato
+soddisfa anche i vincoli ``dimenticati'' --- ottenendo
+quindi una soluzione del problema originale.
+\end{ideabox}
+
+\subsection{Formalizzazione}
+
+Supponi un problema di minimo:
+\[
+  \min_{x \in X} f(x) \quad \text{soggetto a } g(x) \leq 0
+\]
+dove $X$ \`e un insieme di soluzioni ``facili'' (es. unione
+di sotto-problemi indipendenti) e $g(x) \leq 0$ rappresenta
+i vincoli ``difficili'' (i ponti fra sotto-problemi).
+
+\begin{defbox}
+La \emph{Lagrangiana}\index{Lagrangiana} \`e:
+\[
+  L(x, \lambda) = f(x) + \lambda^\top g(x)
+\]
+con $\lambda \geq 0$ vettore dei \emph{moltiplicatori di
+Lagrange}.
+
+Il \emph{problema rilassato} \`e:
+\[
+  q(\lambda) = \min_{x \in X} L(x, \lambda)
+\]
+La funzione $q(\lambda)$ \`e detta \emph{funzione duale}.
+\end{defbox}
+
+\textbf{Come si legge}: per ogni valore del vettore $\lambda$,
+risolvi un problema senza i vincoli scomodi $g(x) \leq 0$
+ma con una penalit\`a $\lambda^\top g(x)$ aggiunta
+all'obiettivo. Se $g(x) > 0$ (vincolo violato), la penalit\`a
+sale; se $g(x) < 0$ (vincolo soddisfatto con margine), la
+penalit\`a scende (il termine \`e negativo). Questo ``incentiva''
+$x$ a soddisfare i vincoli senza forzarli.
+
+\subsection{Subgradient ascent: aggiornare i moltiplicatori}
+
+Si dimostra che $q(\lambda)$ \`e concava in $\lambda$ e che
+$\max_{\lambda \geq 0} q(\lambda) \leq \min_{x: g(x) \leq 0} f(x)$
+(weak duality). L'algoritmo classico aggiorna $\lambda$ con
+un passo di \emph{subgradient ascent}\index{subgradient}:
+\[
+  \lambda_{k+1} = \max\left(0,\ \lambda_k + \alpha_k g(x_k)\right)
+\]
+dove $\alpha_k > 0$ \`e il \emph{passo}, tipicamente
+$\alpha_k = \alpha_0 / (1 + k)$ in $\pi$Tantum.
+
+\textbf{Come si legge}: dopo aver risolto il rilassato e
+trovato $x_k$, calcolo quanto i vincoli sono violati ($g(x_k)$).
+Aggiorno $\lambda$ aggiungendoci un multiplo di $g(x_k)$:
+i moltiplicatori associati a vincoli pi\`u violati salgono di
+pi\`u. Tronco a zero per mantenere $\lambda \geq 0$.
+
+\subsection{Cosa rilassare nel timetabling?}
+
+In $\pi$Tantum la decomposizione lagrangiana si applica
+\emph{dopo} la decomposizione spettrale: si rilassano i
+\emph{ponti inter-cluster}\index{ponte inter-cluster}, cio\`e
+i vincoli che legano lezioni di cluster diversi (tipicamente
+docenti che insegnano a cavallo fra due cluster, oppure
+vincoli logici DSL che attraversano cluster).
+
+Ogni cluster diventa un sotto-problema CP-SAT indipendente
+con un costo aggiuntivo $\lambda_b \cdot (\text{violazione del
+ponte } b)$. Iterando il subgradient, il sistema converge a
+un assegnamento dei ponti coerente con tutti i cluster.
+
+\subsection{Esempio in miniatura}
+
+\begin{esempiobox}
+Due cluster: A (3 classi) e B (3 classi). Un docente, Conti,
+deve insegnare 2 ore in cluster A (storia in 1A) e 2 ore in
+cluster B (storia in 4B). Vincolo ponte: ``Conti non in due
+slot contemporanei''.
+
+Senza rilassamento: Phase~B risolve A e B insieme, vincolo
+HARD globale, propagazione attraversa i cluster (lento).
+
+Con rilassamento: $\lambda$ inizia a 0. Risolvo A da solo
+(mette Conti in lun-1, lun-2). Risolvo B da solo (mette
+Conti in lun-1, lun-2). Conflitto: Conti in lun-1 e lun-2 in
+entrambi i cluster.
+
+Aggiorno $\lambda \leftarrow \alpha \cdot 2 = 0.2$
+(violazione = 2 slot duplicati).
+
+Iter 2: A ora penalizza Conti in lun-1, lun-2 con costo 0.2
+ciascuno; trova Conti in mar-1, mar-2 (costo SOFT pi\`u alto
+ma niente penalit\`a). B mantiene Conti in lun-1, lun-2.
+Conflitto risolto, ma A ha pagato un piccolo costo SOFT.
+
+Dopo 5--10 iterazioni il sistema trova un equilibrio in cui
+Conti \`e in slot diversi nei due cluster e nessun vincolo
+globale \`e violato.
+\end{esempiobox}
+
+\subsection{Perch\'e non sempre?}
+
+\begin{avvertenzabox}
+Lagrangian Relaxation \`e potente ma costoso da
+implementare bene:
+\begin{itemize}
+\item Richiede il \emph{tuning} del passo $\alpha_0$.
+  Troppo grande $\to$ oscillazioni; troppo piccolo $\to$
+  convergenza lentissima.
+\item Pu\`o \emph{non convergere} se il problema duale ha
+  un \emph{duality gap} grosso (frequente nei problemi
+  combinatori interi).
+\item La soluzione finale del rilassato \emph{non} \`e
+  necessariamente fattibile per il problema originale:
+  serve un passo di ``ricostruzione'' (in $\pi$Tantum: un
+  giro di SA per chiudere i ponti residui).
+\end{itemize}
+
+Per queste ragioni $\pi$Tantum lo offre come \emph{opzione
+avanzata}, non come default.
+\end{avvertenzabox}
+
+\section{Column Generation: il catalogo immobiliare}
+
+\begin{storiabox}
+La generazione di colonne (\emph{Column Generation}) nasce
+nel 1960 con Dantzig e Wolfe~\parencite{dantzig1960}.
+L'idea: in molti grandi problemi di programmazione lineare,
+\emph{la maggior parte delle variabili non serve}; sono
+attive solo poche. Invece di costruire il problema con
+tutte le variabili, lo si costruisce con poche e si
+\emph{generano nuove colonne} (= nuove variabili) solo
+quando servono.
+\end{storiabox}
+
+\begin{ideabox}
+\textbf{Analogia}. Sei un'agenzia immobiliare con un milione
+di appartamenti in catalogo. Un cliente cerca un trilocale
+in zona centro. Non gli passi tutto il catalogo: gli
+proponi 3--4 appartamenti che pensi gli vadano bene.
+Se non gli piacciono, ne tiri fuori altri 3--4 con
+caratteristiche diverse. Itera finch\'e il cliente \`e
+soddisfatto. Hai usato il catalogo intero ma esaminandone
+solo una frazione.
+
+Column generation fa lo stesso: ha un \emph{master problem}
+(piccolo, con poche variabili) e uno o pi\`u \emph{sub-problem}
+che \emph{generano} nuove variabili da aggiungere al master,
+basandosi sui prezzi duali correnti del master.
+\end{ideabox}
+
+\subsection{Schema operativo}
+
+\begin{enumerate}
+\item Costruisci il master problem con un sotto-insieme
+  iniziale di variabili (colonne).
+\item Risolvi il master come LP. Ottieni i prezzi duali
+  $\pi$ delle restrizioni.
+\item Per ogni sotto-problema, cerca una colonna con
+  \emph{costo ridotto negativo} ($c_j - \pi^\top a_j < 0$).
+  Se ne trovi, aggiungila al master.
+\item Se nessun sotto-problema produce una colonna
+  vantaggiosa, fermati: il master corrente \`e ottimo per
+  l'LP rilassato.
+\item (Per problemi interi) lancia un branch-and-bound
+  sopra (\emph{branch-and-price}).
+\end{enumerate}
+
+\subsection{Cosa generano le colonne nel timetabling?}
+
+In $\pi$Tantum la formulazione \`e: il master \`e un
+\emph{set covering} dove ogni colonna rappresenta un
+\emph{pattern settimanale completo} di un docente (la
+sequenza di tutti i suoi slot in tutte le sue classi). Il
+master sceglie un pattern per ogni docente in modo da
+coprire tutte le ore-cattedra delle classi. I sub-problem
+generano nuovi pattern docenti, uno per docente, sulla base
+dei prezzi duali.
+
+Il vantaggio: il numero di pattern possibili per docente \`e
+combinatorialmente esplosivo (centinaia di milioni), ma il
+master ne usa solo qualche decina. Il sotto-problema \`e
+relativamente piccolo (un docente alla volta) e CP-SAT lo
+risolve in pochi millisecondi.
+
+\subsection{Limiti pratici}
+
+\begin{avvertenzabox}
+$\pi$Tantum offre column generation come \emph{skeleton
+single-iteration} per scuole oltre 200 classi: una sola
+generazione di colonne, poi master LP, poi
+branch-and-bound. Non \`e l'implementazione completa di un
+branch-and-price moderno (richiederebbe gestione delle
+strategie di branching, gestione dei tagli, etc.). \`E
+considerato un \emph{pre-totale} che produce un upper bound
+per l'obiettivo prima di lanciare la pipeline standard.
+Default: \texttt{enable\_cg=False}.
+\end{avvertenzabox}
+
+\section{Connessioni}
+
+\begin{connessionebox}
+\begin{itemize}
+\item \textbf{Decomposizione spettrale}
+  (cap.~\ref{ch:metodo_spettrale}): naturale alleato del
+  rilassamento lagrangiano (i cluster diventano i
+  sotto-problemi, i ponti inter-cluster diventano i vincoli
+  da dualizzare).
+\item \textbf{CP-SAT} (cap.~\ref{ch:metodo_cpsat}): risolve i
+  sotto-problemi della decomposizione lagrangiana e i
+  sub-problem della column generation.
+\item \textbf{Metaeuristiche}
+  (cap.~\ref{ch:metodo_metaeuristiche}): un giro di SA dopo
+  Lagrangian per chiudere i ponti residui.
+\end{itemize}
+\end{connessionebox}
+
+\begin{biblioparvabox}
+\begin{itemize}
+\item \cite{geoffrion1974}, \cite{fisher1981}: i due
+  riferimenti classici sul rilassamento lagrangiano per IP.
+\item \cite{heldkarp1971}: l'applicazione storica al TSP.
+\item \cite{dantzig1960}: il paper originale sulla
+  decomposizione di Dantzig-Wolfe e generazione di
+  colonne.
+\item \cite{desrosiers2005}: \emph{A Primer in Column
+  Generation}, manuale moderno e accessibile.
+\item \cite{wolsey1998}: capp.~10--11 sui rilassamenti
+  e le decomposizioni in IP.
+\end{itemize}
+\end{biblioparvabox}

@@ -1,0 +1,217 @@
+\chapter{Il DSL generico: un linguaggio per i vincoli}
+\label{ch:metodo_dsl}
+
+\epigraph{``A domain-specific language is a computer
+language specialized to a particular application
+domain.''}{Martin Fowler, \emph{Domain-Specific
+Languages}~\parencite{fowler2010}}
+
+\lettrine[lines=3]{P}{rima} o poi tutti i sistemi di
+scheduling devono affrontare lo stesso problema editoriale:
+gli utenti vogliono esprimere vincoli che non sono mai
+stati previsti. ``Mai due ore di matematica consecutive nei
+gioved\`i pari delle classi prime''; ``almeno un'ora di
+laboratorio per ogni classe di scientifico''; ``il prof
+Bianchi e la prof Verdi mai stesso slot stessa giornata''.
+\`E tecnicamente impossibile prevedere tutto e codificarlo
+hard-coded nel solver.
+
+La soluzione classica \`e un \emph{Domain-Specific
+Language}\index{DSL}: un piccolo linguaggio dichiarativo che
+gli utenti possono usare per scrivere i propri vincoli. In
+$\pi$Tantum il DSL si chiama \emph{DSL generico} e lo
+descriviamo in questo capitolo dal punto di vista
+implementativo.
+
+\section{Filosofia: ``un parser, molti compilatori''}
+
+\begin{ideabox}
+Il DSL generico ha una grammatica unica e un parser unico,
+ma ha pi\`u \emph{back-end}: lo stesso vincolo si pu\`o
+\emph{valutare} sui dati correnti (per check sincroni o per
+filtri lista), si pu\`o \emph{compilare} a vincoli CP-SAT
+(per Phase~B), oppure si pu\`o \emph{compilare} a delta SOFT
+per il drag-and-drop in tempo reale dell'editor Orario.
+\`E lo schema classico ``parser $\to$ AST $\to$ molti
+compilatori'' del Dragon Book~\parencite{aho2006}.
+\end{ideabox}
+
+\section{Grammatica (sintesi)}
+
+La grammatica del DSL \`e costruita con discesa ricorsiva.
+La forma BNF semplificata:
+
+\begin{lstlisting}
+program     := constraint+
+constraint  := quantifier source ('where' filter)? ':' body
+quantifier  := 'forall' | 'exists' | 'count'
+source      := IDENT 'in' (IDENT | path)
+path        := IDENT ('.' IDENT)+
+filter      := expr
+body        := expr
+expr        := orexpr
+orexpr      := andexpr ('or' andexpr)*
+andexpr     := notexpr ('and' notexpr)*
+notexpr     := 'not'? cmp
+cmp         := value relop value | builtin
+relop       := '==' | '!=' | '<' | '<=' | '>' | '>='
+              | 'in' | 'not in' | 'contains'
+value       := literal | path | builtin
+builtin     := 'consecutive' '(' value ',' value ')'
+              | 'same_day' '(' value ',' value ')'
+              | 'lesson' '(' value ',' value ')'
+              | 'has_tag' '(' STRING ')'
+\end{lstlisting}
+
+Le sorgenti supportate sono: \texttt{teachers}, \texttt{classes},
+\texttt{subjects}, \texttt{classrooms}, \texttt{groups},
+\texttt{students}, \texttt{lessons}, \texttt{slots}; pi\`u
+qualsiasi \emph{path} che restituisca una collezione (es.
+\texttt{s.groups}, \texttt{l.classroom.tags}).
+
+\section{Parser e AST}
+
+\begin{defbox}
+Il \emph{parser} \`e un \emph{recursive descent}
+hand-rolled (Python puro, no PLY/Lark). Riconosce token con
+una funzione \texttt{tokenize()} basata su regex, e
+costruisce un AST (\emph{Abstract Syntax
+Tree})\index{AST} dove ogni nodo \`e una piccola dataclass:
+\texttt{Quant}, \texttt{Count}, \texttt{BinOp},
+\texttt{Cmp}, \texttt{Ref}, \texttt{Lit},
+\texttt{Builtin}.
+\end{defbox}
+
+Esempio: l'espressione
+\begin{lstlisting}
+forall t in teachers where t.subject == "Fisica":
+  count l in lessons where l.teacher == t and
+                            l.classroom.type == "lab_fisica":
+    l == 1
+\end{lstlisting}
+
+produce questo AST (semplificato):
+\begin{lstlisting}
+Quant(kind='forall', var='t', source='teachers',
+      filter=Cmp('==', Ref(['t', 'subject']), Lit('Fisica')),
+      body=Count(var='l', source='lessons',
+                 filter=And([
+                   Cmp('==', Ref(['l', 'teacher']), Ref(['t'])),
+                   Cmp('==', Ref(['l', 'classroom', 'type']),
+                            Lit('lab_fisica'))]),
+                 cmp=Cmp('==', Var('count'), Lit(1))))
+\end{lstlisting}
+
+\section{Tre back-end}
+
+\subsection{Evaluator: ``vale o no?''}
+
+\begin{defbox}
+L'\emph{evaluator}\index{evaluator (DSL)} prende un AST e
+i dati correnti del sistema (\texttt{teachers},
+\texttt{lessons}, ecc.) e restituisce \texttt{True/False}
+per i vincoli \texttt{forall}/\texttt{exists}, e un intero
+per i \texttt{count}.
+\end{defbox}
+
+\`E usato in modalit\`a sincrona per i filtri lista (``mostrami
+tutti i docenti per cui questo vincolo \`e violato''), per i
+check pre-pipeline (verifica di consistenza), e come oracolo
+nei test.
+
+\subsection{Compilatore CP-SAT}
+
+\begin{defbox}
+Il \emph{compilatore CP-SAT} traduce l'AST in vincoli OR-Tools.
+Le quantificazioni diventano cicli sui domini; le
+comparazioni diventano vincoli aritmetici; i \texttt{count}
+diventano somme con vincoli di uguaglianza/disuguaglianza.
+\end{defbox}
+
+Esempio: \texttt{count l in lessons where l.teacher == t: l == 1}
+diventa
+\begin{lstlisting}[style=py]
+total = sum(BoolVar(f"l_{l.id}_active") for l in lessons
+            if l.teacher_id == t.id)
+model.Add(total == 1)
+\end{lstlisting}
+
+\subsection{Compilatore delta SOFT}
+
+\begin{defbox}
+Il \emph{compilatore delta} produce, dato un vincolo SOFT e
+una proposta di mossa (drag-and-drop di una lezione), il
+\emph{delta} dell'obiettivo (positivo se la mossa peggiora,
+negativo se migliora) in $O(1)$.
+\end{defbox}
+
+\`E quello che permette all'editor di mostrare in tempo reale
+``+0.3 SOFT'' o ``$-0.7$ SOFT'' mentre l'utente trascina una
+lezione.
+
+\section{Estensione: aggiungere un built-in}
+
+Per aggiungere un nuovo built-in (es. \texttt{distinct\_days}):
+\begin{enumerate}
+\item Estendere la lista dei token nel \texttt{tokenize()}.
+\item Aggiungere il caso nel parser (\texttt{\_parse\_builtin}).
+\item Implementare la valutazione nell'evaluator.
+\item Implementare la compilazione CP-SAT (di solito 5--10
+  righe).
+\item Aggiungere alla galleria del cap.~\ref{ch:dsl_generico_per_i_vincoli}.
+\item Aggiungere un test in \texttt{test\_general\_dsl.py}.
+\end{enumerate}
+
+\section{Performance}
+
+\begin{ideabox}
+Il parser \`e veloce ($\sim 10\mu$s per espressione tipica
+da 50 token). L'evaluator \`e proporzionale al prodotto dei
+domini (es. $|\text{teachers}| \cdot |\text{lessons}|$ per il
+vincolo dell'esempio). Il compilatore CP-SAT genera
+tipicamente $\sim 100$ vincoli per ogni vincolo DSL non
+banale; per scuole grandi, l'aggiunta di 20--30 vincoli DSL
+non rallenta significativamente la pipeline.
+\end{ideabox}
+
+\section{Roadmap}
+
+Funzionalit\`a non ancora implementate ma pianificate:
+\begin{itemize}
+\item \textbf{Live validation}: squiggle rosso sotto la
+  parte invalida, suggerimenti fuzzy, quick-fix.
+\item \textbf{Autocomplete}: nel campo DSL, lista delle
+  sorgenti / attributi / built-in con descrizione.
+\item \textbf{Hover docs}: passando il mouse su un
+  identifier, mostra documentazione contestuale.
+\item \textbf{Natural-language preview}: traduzione
+  automatica del vincolo DSL in italiano leggibile.
+\end{itemize}
+
+\section{Connessioni}
+
+\begin{connessionebox}
+\begin{itemize}
+\item \textbf{CP-SAT} (cap.~\ref{ch:metodo_cpsat}): il
+  back-end principale per i vincoli HARD.
+\item \textbf{Editor Orario}: il compilatore delta abilita
+  il drag-and-drop con preview live.
+\item \textbf{Vincoli logici DNF}
+  (cap.~\ref{ch:dsl_generico_per_i_vincoli}): il DSL
+  generico \`e una generalizzazione del vecchio sistema di
+  ``vincoli logici disgiuntivi'' che ne preserva la
+  semantica come caso particolare.
+\end{itemize}
+\end{connessionebox}
+
+\begin{biblioparvabox}
+\begin{itemize}
+\item \cite{aho2006}: il \emph{Dragon Book}, riferimento
+  classico per parser, AST, compilatori.
+\item \cite{fowler2010}: \emph{Domain-Specific Languages},
+  approccio pratico ai DSL.
+\item \cite{marriott1998}: \emph{Programming with
+  Constraints}, fondamenti della programmazione a
+  vincoli.
+\end{itemize}
+\end{biblioparvabox}

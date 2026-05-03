@@ -1,36 +1,120 @@
-% Manuale tecnico del progetto piTantum (Tempus Tantum;
-% codename interno: timetable).
-% ASCII puro, accenti via macro \`e \'e \`a, virgolette ``...''.
-\documentclass[a4paper,11pt,oneside]{report}
+% =====================================================================
+% piTantum -- Manuale tecnico (monografia editoriale)
+% Documenta la teoria, l'implementazione e l'esperienza pratica del
+% sistema di generazione e gestione dell'orario scolastico piTantum.
+%
+% Editorial framework:
+%   classe       : KOMA-Script scrbook (libro europeo, flessibile)
+%   compilatore  : lualatex (per fontspec / OpenType)
+%   tipografia   : EB Garamond (serif) + Lato (sans) + Inconsolata (mono)
+%   bibliografia : biblatex backend biber, stile authoryear-comp
+%   indice       : imakeidx (indice analitico unico)
+%   layout       : margini ampi con marginnote per glosse a margine
+%
+% ASCII puro nel sorgente; accenti via macro (\`e, \'e, \`a),
+% virgolette ``...''.
+% =====================================================================
+\documentclass[
+  paper=A4,
+  fontsize=11pt,
+  headings=optiontoheadandtoc,
+  twoside=false,
+  parskip=half-,
+  numbers=noenddot,
+  bibliography=totoc,
+  toc=index,
+  toc=listof,
+]{scrbook}
 
+% ---------- Lingua e font ----------
 \usepackage[T1]{fontenc}
 \usepackage[utf8]{inputenc}
 \usepackage[italian]{babel}
-\usepackage{lmodern}
+\usepackage{ebgaramond}
+\usepackage[scaled=0.92]{lato}
+\usepackage[scaled=0.95]{inconsolata}
 \usepackage{microtype}
-\usepackage{geometry}
-\geometry{margin=2.4cm,headheight=14pt}
+
+% ---------- Geometria di pagina ----------
+\usepackage[a4paper,
+  inner=2.4cm, outer=4.4cm, top=2.6cm, bottom=2.8cm,
+  marginparwidth=3.0cm, marginparsep=0.5cm,
+  headheight=15pt, headsep=18pt,
+]{geometry}
+
+% ---------- Pacchetti editoriali ----------
 \usepackage{xcolor}
 \usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{amssymb}
 \usepackage{tikz}
-\usetikzlibrary{positioning,arrows.meta,shapes.geometric,fit,calc}
+\usetikzlibrary{positioning,arrows.meta,shapes.geometric,shapes.misc,fit,calc,
+                decorations.pathreplacing,decorations.pathmorphing,patterns,
+                backgrounds,shadows.blur}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
 \usepackage{listings}
 \usepackage{enumitem}
 \usepackage{array}
 \usepackage{longtable}
 \usepackage{booktabs}
-\usepackage{fancyhdr}
-\usepackage{titlesec}
-\usepackage[hidelinks,bookmarksopen=true]{hyperref}
+\usepackage{multirow}
+\usepackage{makecell}
+\usepackage{tcolorbox}
+\tcbuselibrary{skins,breakable,theorems}
+\usepackage{lettrine}
+\usepackage{marginnote}
+\usepackage{epigraph}
+\setlength{\epigraphwidth}{0.65\textwidth}
+\renewcommand{\epigraphsize}{\small}
+\renewcommand{\epigraphflush}{flushright}
+\usepackage[hidelinks,bookmarksopen=true,bookmarksdepth=2,
+            colorlinks=false]{hyperref}
+\usepackage[style=authoryear-comp,backend=biber,sorting=nyt,
+            maxbibnames=99,maxcitenames=2,uniquename=false,
+            uniquelist=false,giveninits=true]{biblatex}
+\addbibresource{manual/bibliography.bib}
+\usepackage{imakeidx}
+\makeindex[intoc, columns=2, title={Indice analitico}]
+\usepackage[autostyle=true,italian=guillemets]{csquotes}
 
+% ---------- Palette colori (brand piTantum) ----------
+\definecolor{cIndaco}{RGB}{30,58,95}    % indaco profondo
+\definecolor{cOro}{RGB}{201,162,58}     % oro caldo
+\definecolor{cSiena}{RGB}{156,74,28}    % terra di Siena
+\definecolor{cAvorio}{RGB}{247,241,222} % avorio
+\definecolor{cBox}{RGB}{229,231,235}
+\definecolor{cCode}{RGB}{30,41,59}
+\definecolor{cInk}{RGB}{37,42,55}
+% colori "stato vincoli"
 \definecolor{cHard}{RGB}{220,38,38}
 \definecolor{cSoft}{RGB}{217,119,6}
 \definecolor{cPref}{RGB}{37,99,235}
 \definecolor{cEnf}{RGB}{6,95,70}
 \definecolor{cAllow}{RGB}{16,185,129}
-\definecolor{cBox}{RGB}{229,231,235}
-\definecolor{cCode}{RGB}{30,41,59}
 
+% ---------- Heading e capitoli (KOMA + colori) ----------
+\addtokomafont{disposition}{\rmfamily}
+\addtokomafont{chapter}{\color{cIndaco}\sffamily\bfseries}
+\addtokomafont{section}{\color{cIndaco}\sffamily}
+\addtokomafont{subsection}{\color{cIndaco}\sffamily}
+\addtokomafont{subsubsection}{\color{cIndaco}\sffamily}
+\addtokomafont{pageheadfoot}{\sffamily\small\color{cInk}}
+\addtokomafont{pagenumber}{\sffamily\bfseries}
+
+% Header / footer KOMA
+\usepackage[automark,headsepline]{scrlayer-scrpage}
+\clearpairofpagestyles
+\ihead{\textit{$\pi$Tantum --- monografia tecnica}}
+\ohead{\headmark}
+\ofoot*{\pagemark}
+
+% Drop-cap setup (lettrine)
+\setcounter{DefaultLines}{3}
+\renewcommand{\LettrineFontHook}{\color{cIndaco}\bfseries}
+\renewcommand{\DefaultLraise}{0.05}
+
+% ---------- Listings ----------
 \lstset{
   basicstyle=\ttfamily\footnotesize,
   keywordstyle=\color{cPref}\bfseries,
@@ -49,17 +133,85 @@
 }
 \lstdefinestyle{json}{language=,morekeywords={true,false,null}}
 \lstdefinestyle{py}{language=Python}
-\lstdefinestyle{shell}{language=bash,morekeywords={apt,brew,dnf,pacman,pip,npm,git,curl}}
+\lstdefinestyle{shell}{language=bash,
+  morekeywords={apt,brew,dnf,pacman,pip,npm,git,curl}}
 
-\titleformat{\chapter}[hang]{\Huge\bfseries}{\thechapter.}{12pt}{}
-\titleformat{\section}{\Large\bfseries}{\thesection}{10pt}{}
-\titleformat{\subsection}{\large\bfseries}{\thesubsection}{8pt}{}
+% ---------- Box editoriali (tcolorbox) ----------
+% Idea / intuizione (azzurro)
+\newtcolorbox{ideabox}[1][]{enhanced, breakable,
+  colback=cPref!8, colframe=cPref!70, boxrule=0.6pt,
+  arc=2pt, left=8pt, right=8pt, top=4pt, bottom=4pt,
+  fonttitle=\sffamily\bfseries, title=Intuizione, #1}
 
-\pagestyle{fancy}
-\fancyhf{}
-\fancyhead[L]{\textit{piTantum -- manuale tecnico}}
-\fancyhead[R]{\thepage}
-\renewcommand{\headrulewidth}{0.4pt}
+\newtcolorbox{defbox}[1][]{enhanced, breakable,
+  colback=cEnf!6, colframe=cEnf!60, boxrule=0.6pt,
+  arc=2pt, left=8pt, right=8pt, top=4pt, bottom=4pt,
+  fonttitle=\sffamily\bfseries, title=Definizione, #1}
+
+\newtcolorbox{esempiobox}[1][]{enhanced, breakable,
+  colback=cOro!12, colframe=cOro!75, boxrule=0.6pt,
+  arc=2pt, left=8pt, right=8pt, top=4pt, bottom=4pt,
+  fonttitle=\sffamily\bfseries, title=Esempio, #1}
+
+\newtcolorbox{avvertenzabox}[1][]{enhanced, breakable,
+  colback=cHard!8, colframe=cHard!70, boxrule=0.6pt,
+  arc=2pt, left=8pt, right=8pt, top=4pt, bottom=4pt,
+  fonttitle=\sffamily\bfseries, title=Attenzione, #1}
+
+\newtcolorbox{storiabox}[1][]{enhanced, breakable,
+  colback=cSiena!8, colframe=cSiena!70, boxrule=0.6pt,
+  arc=2pt, left=8pt, right=8pt, top=4pt, bottom=4pt,
+  fonttitle=\sffamily\bfseries, title=Nota storica, #1}
+
+\newtcolorbox{connessionebox}[1][]{enhanced, breakable,
+  colback=cBox!50, colframe=cCode!60, boxrule=0.6pt,
+  arc=2pt, left=8pt, right=8pt, top=4pt, bottom=4pt,
+  fonttitle=\sffamily\bfseries, title=Connessioni, #1}
+
+\newtcolorbox{biblioparvabox}[1][]{enhanced, breakable,
+  colback=cIndaco!6, colframe=cIndaco!60, boxrule=0.6pt,
+  arc=2pt, left=8pt, right=8pt, top=4pt, bottom=4pt,
+  fonttitle=\sffamily\bfseries, title=Per approfondire, #1}
+
+\newtcolorbox{approfondimentobox}[1][]{enhanced, breakable,
+  colback=cIndaco!4, colframe=cIndaco!50, boxrule=0.6pt,
+  arc=2pt, left=8pt, right=8pt, top=4pt, bottom=4pt,
+  fonttitle=\sffamily\bfseries, title=Approfondimento, #1}
+
+\newtcolorbox{casostudiobox}[1][]{enhanced, breakable,
+  colback=cOro!8, colframe=cSiena!50, boxrule=0.8pt,
+  arc=3pt, left=10pt, right=10pt, top=6pt, bottom=6pt,
+  fonttitle=\sffamily\bfseries, title=Caso di studio, #1}
+
+\newtcolorbox{curiositabox}[1][]{enhanced, breakable,
+  colback=cAvorio!90, colframe=cOro!60, boxrule=0.6pt,
+  arc=2pt, left=8pt, right=8pt, top=4pt, bottom=4pt,
+  fonttitle=\sffamily\bfseries, title=Curiosit\`a, #1}
+
+\newtcolorbox{erroricomunibox}[1][]{enhanced, breakable,
+  colback=cHard!5, colframe=cHard!50, boxrule=0.6pt,
+  arc=2pt, left=8pt, right=8pt, top=4pt, bottom=4pt,
+  fonttitle=\sffamily\bfseries, title=Errori comuni, #1}
+
+% ---------- Pull-quote (citazione evidenziata) ----------
+\newcommand{\pullquote}[2]{%
+  \par\medskip
+  \noindent\hfill
+  \begin{minipage}{0.78\textwidth}
+    \color{cSiena}\itshape\large
+    \hangindent=0.6cm\hangafter=1
+    \rule{0pt}{1.4em}\textcolor{cOro}{\bfseries\Large``\,}#1\textcolor{cOro}{\bfseries\Large\,''}\\
+    \upshape\small\color{cInk}\hfill --- #2
+  \end{minipage}\par\medskip
+}
+
+% ---------- Glossa a margine (marginpar in stile Tufte-light) ----------
+\newcommand{\sidenote}[1]{%
+  \marginnote{\footnotesize\sffamily\color{cInk}#1}}
+
+% ---------- TOC layout ----------
+\setcounter{tocdepth}{1}
+\setcounter{secnumdepth}{2}
 
 \title{}
 \author{}

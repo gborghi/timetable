@@ -1,0 +1,196 @@
+\chapter{L'orario come oggetto strutturale}
+\label{ch:orario_oggetto_strutturale}
+
+\epigraph{``First, solve the problem. Then, write the
+code.''}{John Johnson}
+
+\lettrine[lines=3]{P}{rima} di descrivere come $\pi$Tantum
+\emph{costruisce} un orario, vale la pena descrivere
+\emph{cosa \`e} un orario --- visto come oggetto strutturato.
+Le entit\`a coinvolte, le relazioni che le legano, i
+vincoli ricorrenti che intervengono. Questa lente
+``strutturale'' \`e quella che ha guidato la progettazione
+del modello dati di $\pi$Tantum (cap.~\ref{ch:modello_dati}).
+
+\section{Le entit\`a}
+
+Una scuola italiana, ai fini del timetabling, si descrive
+con sette entit\`a principali.
+
+\subsection{Docente}
+
+Il \emph{docente} ha un'anagrafica (cognome, nome, eventuale
+nickname), una o pi\`u \emph{classi di concorso} (es. A027
+matematica e fisica, A019 storia e filosofia), un \emph{monte
+ore massimo} settimanale (tipicamente 18 per il ruolo
+ordinario), un \emph{giorno libero contrattuale}, e una
+\emph{matrice di disponibilit\`a} 6$\times$6 in cui ogni cella
+ha uno dei cinque stati (allowed, soft, hard, preferred,
+enforced).
+
+Pu\`o avere preferenze aggiuntive: una \emph{matrice di
+preferenza per le aule} (in quali aule vorrebbe insegnare,
+con i 5 stati), un \emph{punteggio di graduatoria} per il
+criterio Anzianit\`a, un elenco di \emph{tre giorni preferiti
+per essere libero}.
+
+\subsection{Classe}
+
+La \emph{classe} ha un nome (es. ``3A scientifico''), un
+\emph{anno di corso} (1--5), un \emph{indirizzo} (rimanda
+all'entit\`a Indirizzo), un \emph{numero di studenti}, una
+\emph{home class} (l'aula di norma), e una propria matrice
+di disponibilit\`a 6$\times$6 (es. la 3A non fa lezione il
+sabato perch\'e in gita una volta al mese).
+
+Pu\`o avere un \emph{max\_hours\_per\_day} (limite di ore
+giornaliere, tipicamente 6 ma talora 5 o 7 per casi
+speciali), un \emph{peso SOFT sulla 6\textsuperscript{a} ora}
+(quanto si vuole evitarla), e tre \emph{giorni preferiti
+liberi}.
+
+\subsection{Materia}
+
+La \emph{materia} ha un nome (Matematica, Italiano, Storia,
+Religione, ...), una \emph{matrice di compatibilit\`a con le
+aule} (es. fisica deve stare in lab\_fisica, religione pu\`o
+stare ovunque), un peso che indica quanto la materia \`e
+``concettualmente pesante'' (per il vincolo di ``no due ore
+pesanti consecutive''), e una \emph{matrice subject-group-weight}
+che dice quali classi di concorso possono insegnarla.
+
+\subsection{Aula}
+
+L'\emph{aula} ha un nome (es. ``Aula 12'' o ``Lab Fisica 1''),
+un \emph{tipo} (\texttt{aula\_normale}, \texttt{lab\_fisica},
+\texttt{lab\_chimica}, \texttt{lab\_informatica},
+\texttt{palestra}, \texttt{aula\_magna}, ecc.), una
+\emph{capienza}, un flag \emph{multi\_class} (se pu\`o
+ospitare pi\`u classi contemporaneamente, es. l'aula magna),
+una \emph{matrice di disponibilit\`a} 6$\times$6 (per
+indisponibilit\`a tipo manutenzione), una \emph{matrice di
+preferenze classe-by-classe}, e una lista di \emph{tag}
+(stringhe libere come \texttt{matematica}, \texttt{piano\_terra},
+\texttt{accessibile\_disabili}).
+
+\subsection{Indirizzo}
+
+L'\emph{indirizzo} (curriculum) corrisponde all'``ordinamento''
+italiano (Liceo Classico, Scientifico, Linguistico, ITIS,
+IPSIA, IPS, ITER, ITT, ...). Per ogni anno e per ogni
+materia, l'indirizzo specifica il \emph{numero di ore
+settimanali}. Un'eventuale lista di \emph{vincoli logici
+indirizzo-specifici} (es. ``in 1\textsuperscript{o} anno
+scientifico la matematica non sta dopo la 4\textsuperscript{a}
+ora'').
+
+\subsection{Studente}
+
+Lo \emph{studente} ha un'anagrafica, appartiene a una classe
+di base, pu\`o appartenere a uno o pi\`u \emph{gruppi
+articolati} (es. seconda lingua, IRC vs alternativa,
+recupero), ha eventuali \emph{tag} (\texttt{BES},
+\texttt{DSA}, \texttt{debito\_matematica\_4}). I tag sono
+metadato passivo per filtri e raggruppamenti, non sostituiscono
+i gruppi.
+
+\subsection{Gruppo articolato}
+
+Il \emph{gruppo articolato} \`e un insieme di studenti che si
+incontrano in slot comuni per un'attivit\`a specifica (es.
+``IRC della 1A+1B'', ``Recupero matematica del biennio'',
+``Spagnolo seconda lingua del triennio''). I membri possono
+provenire da qualunque combinazione di classi (semantica
+``Tipo C''). Un gruppo richiede slot dedicati e un'aula
+specifica.
+
+\section{Le relazioni}
+
+Le entit\`a sopra sono collegate da una rete di relazioni che
+sono il ``substrato'' del timetabling.
+
+\begin{itemize}
+\item \textbf{Cattedra} (Docente $\to$ Classe $\to$ Materia
+  $\to$ ore): l'unit\`a fondamentale. Indica che il docente $D$
+  insegna $h$ ore della materia $M$ alla classe $C$ in
+  un anno.
+\item \textbf{Compresenza}: due (o pi\`u) docenti che devono
+  essere nello stesso slot stessa classe stessa materia.
+  Tipicamente teoria + laboratorio nei tecnici.
+\item \textbf{Lezione}: un'istanza concreta in un certo
+  slot, con un'aula assegnata. \`E ci\`o che la pipeline
+  produce.
+\item \textbf{Indisponibilit\`a (HARD)}: la matrice 6$\times$6
+  con celle rosse del docente/classe/aula.
+\item \textbf{Vincolo logico DSL}: un'espressione del DSL
+  generico (cap.~\ref{ch:metodo_dsl}) che lega entit\`a in
+  qualunque combinazione.
+\end{itemize}
+
+\section{I vincoli ricorrenti}
+
+Alcuni vincoli ritornano in ogni scuola italiana, anche se
+con sfumature diverse.
+
+\begin{itemize}
+\item \textbf{Copertura}: ogni materia deve ricevere il suo
+  monte ore in ogni classe. HARD.
+\item \textbf{Non sovrapposizione}: docente, classe, aula
+  in al pi\`u una lezione per slot. HARD.
+\item \textbf{Compatibilit\`a classe di concorso}: solo
+  docenti della classe giusta possono insegnare una
+  materia. HARD.
+\item \textbf{Compatibilit\`a aula--materia}: fisica solo in
+  lab\_fisica, ginnastica solo in palestra, etc. HARD o
+  PREFERRED a seconda della scuola.
+\item \textbf{Giorno libero contrattuale}: un giorno di
+  riposo settimanale per ogni docente. HARD per CCNL.
+\item \textbf{Compresenze}: due lezioni esattamente
+  nello stesso slot stessa classe. HARD.
+\item \textbf{No buchi nelle classi}: nessuna ora vuota nel
+  mezzo della giornata della classe. HARD nelle scuole
+  pi\`u rigide, SOFT in quelle pi\`u flessibili.
+\item \textbf{Sesta ora}: si vorrebbe evitare la sesta ora,
+  o renderla solo per certe materie. SOFT.
+\item \textbf{No buchi docenti}: simile, ma per i docenti.
+  SOFT.
+\item \textbf{Distribuzione settimanale}: una stessa
+  materia non concentrata in due giorni consecutivi. SOFT.
+\item \textbf{Coppie di ore consecutive}: certe materie
+  (es. ginnastica, lab) richiedono blocchi di 2 ore.
+  PREFERRED o HARD.
+\end{itemize}
+
+\section{Il caso italiano: peculiarit\`a}
+
+\begin{casostudiobox}
+\textbf{IIS ``Galileo Ferraris''}, Torino, 28 classi
+distribuite su tre indirizzi (ITIS Informatica, ITIS
+Elettronica, IPS Servizi Commerciali). Le tre articolazioni
+hanno monte ore diversi anche per materie ``comuni'' come
+matematica e italiano. I docenti di matematica (A026 e
+A027) coprono tutte e tre le articolazioni; i docenti
+specifici (es. Sistemi e Reti per Informatica) sono
+limitati a un solo indirizzo. Compresenze numerose
+(matematica + lab\_inf in Informatica, fisica + lab\_fisica
+in Elettronica). Giorni di stage in azienda concentrati
+nelle ultime settimane: $\pi$Tantum gestisce attraverso un
+\emph{vincolo logico DSL} che svuota i pomeriggi di marted\`i
+e gioved\`i delle classi quinte nel periodo aprile--maggio.
+\end{casostudiobox}
+
+Il caso italiano si distingue dai benchmark accademici
+internazionali (ITC, XHSTT~\parencite{mccollum2010}) per:
+\begin{itemize}
+\item Indirizzi (curricula) come entit\`a di prim'ordine,
+  con monte ore variabile.
+\item Classi di concorso esplicite e gerarchiche.
+\item Compresenze come vincolo HARD ricorrente.
+\item Gruppi articolati cross-class.
+\item Vincoli sindacali (giorno libero CCNL, max ore).
+\end{itemize}
+
+Tutte queste peculiarit\`a sono codificate nel modello dati
+di $\pi$Tantum (cap.~\ref{ch:modello_dati}); $\pi$Tantum
+\`e progettato \emph{a partire} da queste, non come
+generalizzazione di un sistema accademico.
