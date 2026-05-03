@@ -2,6 +2,12 @@
   "name": "pitantum-frontend",
   "version": "0.1.0",
   "description": "piTantum (Tempus Tantum) -- Omnia, Lucili, aliena sunt, tempus tantum nostrum est. (Seneca, Ep. I,1) -- school timetable manager.",
+  "contributors": [
+    "Fernando Gargiulo",
+    "Giovanni Borghi",
+    "Matteo Mariani",
+    "Stefano Bertozzi"
+  ],
   "private": true,
   "type": "module",
   "scripts": {
