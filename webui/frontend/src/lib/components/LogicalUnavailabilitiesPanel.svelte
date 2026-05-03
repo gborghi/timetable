@@ -237,7 +237,7 @@
       <div><strong>Tipi:</strong>
         <span class="pill-red !text-[10px]">HARD</span> deve essere soddisfatto;
         <span class="pill-amber !text-[10px]">SOFT</span> paga penalita se violato;
-        <span class="pill-blue !text-[10px]">PREFERITO</span> da bonus se soddisfatto;
+        <span class="pill-blue !text-[10px]">PREFERRED</span> da bonus se soddisfatto;
         <span class="pill-c-enforced !text-[10px]">ENFORCED</span>
         deve essere soddisfatto E almeno uno degli slot della DNF deve essere
         un'ora di lezione attiva.
@@ -274,13 +274,13 @@
             <td>
               <button class="text-xs"
                 on:click={() => cycleKind(r)}
-                title="click per ciclare HARD -> SOFT -> PREFERITO -> ENFORCED">
+                title="click per ciclare HARD -> SOFT -> PREFERRED -> ENFORCED">
                 {#if kindFromRule(r) === 'enforced'}
                   <span class="pill-c-enforced">ENFORCED</span>
                 {:else if kindFromRule(r) === 'hard'}
                   <span class="pill-red">HARD</span>
                 {:else if kindFromRule(r) === 'preferred'}
-                  <span class="pill-blue">PREFERITO</span>
+                  <span class="pill-blue">PREFERRED</span>
                 {:else}
                   <span class="pill-amber">SOFT</span>
                 {/if}
@@ -337,7 +337,7 @@
       </label>
       <label class="flex items-center gap-1 text-xs">
         <input type="radio" bind:group={draftKind} value="preferred"/>
-        <span class="pill-blue !text-[10px]">PREFERITO</span>
+        <span class="pill-blue !text-[10px]">PREFERRED</span>
       </label>
       <label class="flex items-center gap-1 text-xs">
         <input type="radio" bind:group={draftKind} value="enforced"/>
@@ -347,7 +347,7 @@
            class:opacity-50={draftKind === 'hard' || draftKind === 'enforced'}>
         <label>
           {#if draftKind === 'soft'}Penalita (soft, &gt; 0)
-          {:else if draftKind === 'preferred'}Bonus (preferito, &lt; 0)
+          {:else if draftKind === 'preferred'}Bonus (PREFERRED, &lt; 0)
           {:else}-{/if}
         </label>
         <input type="number" class="w-24"

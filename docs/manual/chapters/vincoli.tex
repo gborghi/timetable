@@ -22,7 +22,7 @@ Stato & Colore & Semantica \\
 \textcolor{cHard}{HARD} & rosso &
   il solver deve evitare questo slot, oppure il vincolo logico DEVE
   essere soddisfatto \\
-\textcolor{cPref}{PREFERITO} & blu &
+\textcolor{cPref}{PREFERRED} & blu &
   bonus negativo quando lo slot \`e usato / il vincolo logico \`e
   soddisfatto (\texttt{-bonus} riduce l'obiettivo) \\
 \textcolor{cEnf}{ENFORCED} & verde scuro &
@@ -125,7 +125,7 @@ Per ogni regola con DNF \texttt{[clause1, clause2, ...]}:
   \item HARD: il solver impone almeno una clausola fully active.
   \item SOFT: se nessuna clausola \`e fully active, paga
         \texttt{+soft\_penalty}.
-  \item PREFERITO: se almeno una clausola \`e fully active, ottiene
+  \item PREFERRED: se almeno una clausola \`e fully active, ottiene
         \texttt{+soft\_penalty} (negativo, quindi reduce dell'obiettivo).
   \item ENFORCED: come HARD ma con presence required -- almeno
         uno degli slot della DNF deve coincidere con un'ora di lezione

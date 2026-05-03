@@ -1,6 +1,6 @@
 /**
  * Smoke tests for $lib/constraint_levels.js — the single source of truth
- * for the 5-state taxonomy (HARD/SOFT/PREFERITO/ENFORCED/ALLOWED).
+ * for the 5-state taxonomy (HARD/SOFT/PREFERRED/ENFORCED/ALLOWED).
  *
  * Uses Node 20+ built-in test runner (node:test) so we don't need to add
  * vitest as a dependency. Run with:
@@ -48,7 +48,7 @@ test('LEVEL_PILL_CLASS and LEVEL_CELL_CLASS cover every LEVELS entry', () => {
 test('DEFAULT_PENALTY signs match domain semantics', () => {
   // SOFT: positive penalty (we want LESS of these violations).
   assert.ok(DEFAULT_PENALTY.soft > 0);
-  // PREFERITO: negative penalty (we want MORE of these — reward).
+  // PREFERRED: negative penalty (we want MORE of these — reward).
   assert.ok(DEFAULT_PENALTY.preferred < 0);
   // HARD/ENFORCED/ALLOWED: zero (handled by is_hard or no objective term).
   assert.equal(DEFAULT_PENALTY.hard, 0);
@@ -67,7 +67,7 @@ test('kindFromRule falls back to is_hard for legacy rows', () => {
   assert.equal(kindFromRule({ is_hard: true }), 'hard');
 });
 
-test('kindFromRule infers PREFERITO from negative soft_penalty (legacy)', () => {
+test('kindFromRule infers PREFERRED from negative soft_penalty (legacy)', () => {
   assert.equal(kindFromRule({ is_hard: false, soft_penalty: -100 }), 'preferred');
 });
 
@@ -109,7 +109,7 @@ test('payloadFromKind: SOFT clamps to positive penalty', () => {
   assert.equal(p.soft_penalty, 50);
 });
 
-test('payloadFromKind: PREFERITO clamps to negative penalty', () => {
+test('payloadFromKind: PREFERRED clamps to negative penalty', () => {
   const p = payloadFromKind('preferred', 'aula:LAB1', 30);
   assert.equal(p.is_hard, false);
   assert.equal(p.soft_penalty, -30);

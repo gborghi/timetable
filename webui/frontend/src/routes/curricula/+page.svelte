@@ -336,7 +336,7 @@
                       {:else if _kindFromRule(r) === 'hard'}
                         <span class="pill-red">HARD</span>
                       {:else if _kindFromRule(r) === 'preferred'}
-                        <span class="pill-blue">PREFERITO</span>
+                        <span class="pill-blue">PREFERRED</span>
                       {:else}
                         <span class="pill-amber">SOFT</span>
                       {/if}
@@ -393,7 +393,7 @@
               </label>
               <label class="flex items-center gap-1 text-xs">
                 <input type="radio" bind:group={logicalDraftKind} value="preferred"/>
-                <span class="pill-blue !text-[10px]">PREFERITO</span>
+                <span class="pill-blue !text-[10px]">PREFERRED</span>
               </label>
               <label class="flex items-center gap-1 text-xs">
                 <input type="radio" bind:group={logicalDraftKind} value="enforced"/>

@@ -298,7 +298,7 @@
     <div class="mt-4 grid grid-cols-3 gap-3 items-end">
       <label class="flex gap-2 text-sm"><input type="checkbox" bind:checked={editing.multi_class}/> Multi-classe</label>
       <div class="field"><label>Max classi simultanee (HARD)</label><input type="number" bind:value={editing.multi_class_max}/></div>
-      <div class="field"><label>Preferito (SOFT)</label><input type="number" bind:value={editing.multi_class_pref}/></div>
+      <div class="field"><label>PREFERRED (SOFT)</label><input type="number" bind:value={editing.multi_class_pref}/></div>
       <div class="field"><label>Peso preferenza concorrenza</label><input type="number" bind:value={editing.multi_class_pref_weight}/></div>
     </div>
 

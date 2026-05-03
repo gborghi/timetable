@@ -215,7 +215,7 @@ studente.
 **Objective (funzione obiettivo).** La quantit\`a numerica che
 il solver cerca di **minimizzare**. \`E la somma pesata delle
 violazioni SOFT (con segno + per le penalit\`a, segno - per i
-bonus PREFERITO).
+bonus PREFERRED).
 
 **OR-Tools.** Libreria di Google per programmazione vincolata e
 ottimizzazione combinatoria. piTantum la usa per il solver
@@ -235,7 +235,7 @@ quale prendere.
 finale: import dataset -> Phase A -> Phase B -> metaeuristiche
 -> classroom assignment. Configurabile dal tab Workflow.
 
-**PREFERITO.** Stato/livello di vincolo: bonus se rispettato,
+**PREFERRED.** Stato/livello di vincolo: bonus se rispettato,
 nessuna penalit\`a se violato. Opposto del SOFT.
 
 ## R
@@ -258,7 +258,7 @@ multi-livello) salvata con un nome riusabile dal dropdown
 
 **SOFT.** Stato/livello di vincolo: regola che il solver cerca
 di rispettare ma pu\`o violare pagando una penalit\`a (peso che
-decidi tu). Opposto del PREFERITO.
+decidi tu). Opposto del PREFERRED.
 
 **Slot.** Una coppia (giorno, ora). Un giorno tipico ha 6 slot
 (8\textsuperscript{a}, 9\textsuperscript{a}, ..., 13\textsuperscript{a}); la

@@ -28,7 +28,7 @@ export default {
           'primary-d':   '#88a5d8',
           'secondary-d': '#f0c869',
         },
-        // Constraint level palette (HARD/SOFT/PREFERITO/ENFORCED/ALLOWED).
+        // Constraint level palette (HARD/SOFT/PREFERRED/ENFORCED/ALLOWED).
         // Used everywhere a vincolo is rendered. Inline `style="background:...;
         // color:..."` blocks are being replaced by these tokens.
         c: {

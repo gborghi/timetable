@@ -199,7 +199,7 @@
         <span class="w-3 h-3 rounded-sm border border-red-400 bg-red-300"></span> HARD non disp.
       </span>
       <span class="flex items-center gap-1">
-        <span class="w-3 h-3 rounded-sm border border-sky-400 bg-sky-200"></span> PREFERITO (penalita -)
+        <span class="w-3 h-3 rounded-sm border border-sky-400 bg-sky-200"></span> PREFERRED (penalita -)
       </span>
       <span class="flex items-center gap-1">
         <span class="w-3 h-3 rounded-sm border border-emerald-700 bg-emerald-700"></span> ENFORCED (deve esserci)
@@ -208,7 +208,7 @@
   </div>
   <p class="text-xs text-ink-500 mb-2">
     Click sulla cella: libero -&gt; giallo (soft, +100) -&gt; rosso (hard) -&gt;
-    blu (preferito, -100) -&gt; libero.
+    blu (PREFERRED, -100) -&gt; libero.
     Quando la cella e\` gialla o blu, modifica la penalita nel campo numerico.
     Trascina per applicare lo stesso stato a un blocco.
     <span class="text-ink-700">
@@ -259,7 +259,7 @@
                   title={(isSoft
                     ? 'SOFT - penalita ' + cell.soft_penalty
                     : isPref
-                    ? 'PREFERITO - bonus ' + cell.soft_penalty
+                    ? 'PREFERRED - bonus ' + cell.soft_penalty
                     : isEnf
                     ? 'ENFORCED - DEVE essere occupata' + (cell.reason ? ' - ' + cell.reason : '')
                     : isHard

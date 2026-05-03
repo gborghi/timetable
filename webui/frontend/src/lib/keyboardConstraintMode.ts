@@ -184,7 +184,7 @@ export const LEGEND_ITEMS: readonly ShortcutLegendItem[] = [
     label: "HARD",
     swatch: "bg-red-300 border-red-500" },
   { key: "P", shortcut: "p",
-    label: "PREFERITO",
+    label: "PREFERRED",
     swatch: "bg-sky-200 border-sky-400" },
   { key: "E", shortcut: "e",
     label: "ENFORCED",

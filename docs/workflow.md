@@ -110,8 +110,8 @@ Sulla soluzione di Phase B applica ognuno di:
 Ognuno migliora il SOFT score (somma pesata di: holes per teacher,
 isolated 1- and 5-hour days, weekly distribution, dual-hour pairs,
 no 6th hour, banded preferences su materie). Il SOFT include anche
-la contribuzione delle matrici di disponibilita' SOFT/PREFERITO e
-dei logical SOFT/PREFERITO (vedere
+la contribuzione delle matrici di disponibilita' SOFT/PREFERRED e
+dei logical SOFT/PREFERRED (vedere
 `optimization.py::availability_soft_penalty` e
 `_logical_check_for_solution`).
 

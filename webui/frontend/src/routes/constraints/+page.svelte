@@ -491,7 +491,7 @@
     materia-aula e docente-aula non default, regole di compresenza).
     I colori riflettono il tipo: <span class="pill-red">HARD</span>,
     <span class="pill-amber">SOFT</span>,
-    <span class="pill-blue">PREFERITO</span>,
+    <span class="pill-blue">PREFERRED</span>,
     <span class="pill-c-enforced">ENFORCED</span>.
   </p>
 

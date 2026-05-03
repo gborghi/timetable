@@ -134,7 +134,7 @@
   const LEVELS = [
     { value: 'hard',      label: '🟥 HARD',      desc: 'Non negoziabile' },
     { value: 'soft',      label: '🟨 SOFT',      desc: 'Penalita positiva' },
-    { value: 'preferred', label: '🟦 PREFERITO', desc: 'Bonus negativo' },
+    { value: 'preferred', label: '🟦 PREFERRED', desc: 'Bonus negativo' },
     { value: 'enforced',  label: '🟩 ENFORCED',  desc: 'Deve essere cosi' },
     { value: 'allowed',   label: '🟢 ALLOWED',   desc: 'Esplicitamente permesso (override)' },
     { value: 'forbidden', label: '⛔ FORBIDDEN', desc: 'Esplicitamente vietato' },

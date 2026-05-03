@@ -59,7 +59,7 @@ del tab Vincoli, scegli che livello dargli:
   violarla, ma per ogni violazione paga una penalit\`a (un peso
   che decidi tu). Il solver cerca di minimizzare la somma delle
   penalit\`a.
-- **PREFERITO** \`e l'opposto del soft: nessuna penalit\`a se
+- **PREFERRED** \`e l'opposto del soft: nessuna penalit\`a se
   non si soddisfa, bonus se invece viene rispettato.
 - **ENFORCED** \`e come HARD ma usato per regole strutturali
   che esprimono "questa cosa **deve** accadere" (mentre HARD di
@@ -604,7 +604,7 @@ forall l in lessons where l.subject == Religione
 Tutti i vincoli scritti in questo linguaggio sono gestiti dal
 tab **Vincoli** della web app. Per ognuno puoi:
 
-- **Vedere** il testo, il livello (HARD/SOFT/PREFERITO/ENFORCED),
+- **Vedere** il testo, il livello (HARD/SOFT/PREFERRED/ENFORCED),
   il peso, e a chi \`e applicato.
 - **Modificare** (apri il modal, cambi il testo, premi Salva: una
   validazione live ti dice subito se la sintassi \`e corretta).
@@ -623,7 +623,7 @@ tab **Vincoli** della web app. Per ognuno puoi:
 - **HARD** — vincolo che il programma non viola mai.
 - **SOFT** — vincolo che il programma cerca di rispettare ma pu\`o
   violare pagando una penalit\`a.
-- **PREFERITO** — preferenza che d\`a un bonus se rispettata, ma
+- **PREFERRED** — preferenza che d\`a un bonus se rispettata, ma
   non penalizza se violata.
 - **ENFORCED** — variante di HARD per vincoli "che devono
   esistere" (es. una lezione che deve esserci).

@@ -187,7 +187,7 @@
         <select bind:value={level}>
           <option value="hard">🟥 HARD</option>
           <option value="soft">🟨 SOFT (penalty)</option>
-          <option value="preferred">🟦 PREFERITO (bonus)</option>
+          <option value="preferred">🟦 PREFERRED (bonus)</option>
           <option value="enforced">🟩 ENFORCED</option>
         </select>
       </div>

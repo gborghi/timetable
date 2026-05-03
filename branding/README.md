@@ -56,7 +56,7 @@ disponibili come Tailwind tokens (`bg-brand-primary`,
 
 ## Colori di sistema (5 stati vincoli)
 
-Indipendenti dalla palette di brand: HARD/SOFT/PREFERITO/ENFORCED/
+Indipendenti dalla palette di brand: HARD/SOFT/PREFERRED/ENFORCED/
 ALLOWED hanno la loro palette in `tailwind.config.js::colors.c.*`.
 Vedere `docs/constraints.md`.
 

@@ -580,9 +580,9 @@ master di docente/classe/aula:
    `Aula`, `Indirizzo / Curriculum`, `Materia + Aula (preferenza)`,
    `Docente + Aula (preferenza)`. Per ognuno appare il select
    dell'entita' corrispondente (con search-friendly autosort).
-2. **Livello**: radio fra HARD / SOFT (DISLIKED) / PREFERITO /
+2. **Livello**: radio fra HARD / SOFT (DISLIKED) / PREFERRED /
    ENFORCED / ALLOWED / FORBIDDEN, con codice colore standard. Il
-   campo `peso` appare solo per SOFT e PREFERITO; per PREFERITO
+   campo `peso` appare solo per SOFT e PREFERRED; per PREFERRED
    il valore viene negato automaticamente lato backend.
 3. **Tipo di vincolo (kind)**, dipendente dallo scope:
    - `matrix_slot`: cella (giorno, ora) singola nella matrice di
@@ -653,7 +653,7 @@ scuole molto grandi (>500 cattedre) il time_limit_s default 30s
 puo' non bastare; in quel caso il pannello mostra un risultato
 "inconclusivo" e l'utente puo' aumentare il limite.
 
-Pill colorate per livello (HARD rosso / SOFT giallo / PREFERITO blu /
+Pill colorate per livello (HARD rosso / SOFT giallo / PREFERRED blu /
 ENFORCED verde scuro / ALLOWED verde chiaro / FORBIDDEN rosso). Per
 ogni riga: bottoni Modifica (modal con livello + peso + espressione
 per i logici) e Elimina (DELETE generico).

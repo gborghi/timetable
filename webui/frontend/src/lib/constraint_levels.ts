@@ -1,6 +1,6 @@
 // Centralised constraint-level taxonomy.
 //
-// The same 5 levels (HARD / SOFT / PREFERITO / ENFORCED / ALLOWED) are
+// The same 5 levels (HARD / SOFT / PREFERRED / ENFORCED / ALLOWED) are
 // surfaced in 4-5 different files. This module is the single source of
 // truth.
 
@@ -26,7 +26,7 @@ export const LOGICAL_KINDS: readonly LogicalKind[] = [
 export const LEVEL_LABEL: Record<ConstraintLevel, string> = {
   allowed: "ALLOWED",
   soft: "SOFT",
-  preferred: "PREFERITO",
+  preferred: "PREFERRED",
   hard: "HARD",
   forbidden: "FORBIDDEN",
   enforced: "ENFORCED",
@@ -104,7 +104,7 @@ export function levelCellClass(level: ConstraintLevel | string): string {
 /**
  * Convert a UI kind + penalty (always positive value chosen by the user)
  * into the backend payload shape used by /api/.../logical-unavailabilities
- * etc. Sign-clamps the penalty for SOFT/PREFERITO; sets is_hard for
+ * etc. Sign-clamps the penalty for SOFT/PREFERRED; sets is_hard for
  * HARD/ENFORCED.
  */
 export function payloadFromKind(

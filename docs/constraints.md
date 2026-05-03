@@ -12,7 +12,7 @@ qui).
 | ALLOWED    | verde chiaro | default (solo per le grid materia<->aula e docente<->aula); nessuna contribuzione all'obiettivo |
 | SOFT       | giallo       | penalita' positiva quando lo slot e' usato (`+penalty` aggiunto all'obiettivo, che e' minimizzato) |
 | HARD       | rosso        | il solver deve evitare questo slot (per matrici), oppure il vincolo logico DEVE essere soddisfatto |
-| PREFERITO  | blu          | bonus negativo quando lo slot e' usato / il vincolo logico e' soddisfatto (`-bonus` riduce l'obiettivo); incoraggia |
+| PREFERRED  | blu          | bonus negativo quando lo slot e' usato / il vincolo logico e' soddisfatto (`-bonus` riduce l'obiettivo); incoraggia |
 | ENFORCED   | verde scuro  | il solver DEVE far accadere questo slot / soddisfare il vincolo. Per le matrici significa "presence required"; per i logical significa "DNF must be satisfied AND mappata su lezioni attive" |
 
 Per le matrici di disponibilita' di docenti / classi / aule il flusso di
@@ -150,7 +150,7 @@ DNF `[clause1, clause2, ...]`:
 
 - HARD: il solver impone almeno una clausola fully active.
 - SOFT: se nessuna clausola e' fully active, paga `+soft_penalty`.
-- PREFERITO: se almeno una clausola e' fully active, ottiene
+- PREFERRED: se almeno una clausola e' fully active, ottiene
   `+soft_penalty` (negativo, quindi reduce dell'obiettivo).
 - ENFORCED: come HARD ma con la semantica "presence required" -- almeno
   uno degli slot della DNF deve coincidere con un'ora di lezione attiva

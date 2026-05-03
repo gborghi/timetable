@@ -172,7 +172,7 @@
           </label>
           <label class="flex gap-1 items-center">
             <input type="radio" bind:group={logicalKind} value="preferred"/>
-            <span class="pill-blue !text-[10px]">PREFERITO</span>
+            <span class="pill-blue !text-[10px]">PREFERRED</span>
           </label>
           <label class="flex gap-1 items-center">
             <input type="radio" bind:group={logicalKind} value="enforced"/>
@@ -240,7 +240,7 @@
         <select bind:value={unavailState} class="px-2 py-1 border border-ink-200 rounded">
           <option value="hard">HARD (rosso)</option>
           <option value="soft">SOFT (giallo, penalita +)</option>
-          <option value="preferred">PREFERITO (blu, bonus -)</option>
+          <option value="preferred">PREFERRED (blu, bonus -)</option>
           <option value="enforced">ENFORCED (verde scuro, deve esserci)</option>
         </select>
         {#if unavailState === 'soft' || unavailState === 'preferred'}
