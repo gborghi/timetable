@@ -1,67 +1,200 @@
-\chapter{Vincoli}
+\chapter{Il modello a vincoli}
+\label{ch:vincoli}
 
-\section{I 5 stati / 4 kind}
+\epigraph{``Constraints are not the enemy of creativity. Constraints
+are creativity's best friend.''}{Twyla Tharp,
+\emph{The Creative Habit}}
 
-Il sistema usa una tassonomia uniforme di \emph{5 stati} sia per le
-matrici di disponibilit\`a (cella per cella) sia per le preferenze
-di aula. I vincoli logici disgiuntivi (DNF) hanno \emph{4 kind}
-(\textsc{allowed} non si applica qui).
+\lettrine[lines=3]{C}{ostruire} un orario significa, dal
+punto di vista formale, soddisfare un sistema di vincoli.
+Alcuni di essi devono valere senza eccezione, altri esprimono
+preferenze che il sistema cerca di rispettare il pi\`u
+possibile pur sapendo che, in caso di conflitto, sar\`a
+necessario un compromesso. Questo capitolo descrive con
+ordine la tassonomia dei vincoli che $\pi$Tantum riconosce,
+il modo in cui essi vengono espressi nell'interfaccia, e la
+loro traduzione interna in vincoli per il solver CP-SAT.
 
-\begin{center}
-\small
-\begin{tabular}{l l p{8cm}}
+La distinzione fra vincoli rigidi e morbidi non \`e un
+dettaglio implementativo: \`e la chiave che permette al
+sistema di restituire soluzioni utilizzabili. Trattare ogni
+richiesta dell'utente come inderogabile produrrebbe sistemi
+cronicamente infattibili, mentre trattare ogni vincolo come
+puramente preferenziale violerebbe le regole contrattuali e
+le esigenze didattiche di base. La gradazione in cinque
+livelli che ora descriveremo \`e il risultato di un
+compromesso meditato fra espressivit\`a per l'utente e
+trattabilit\`a per il solver.
+
+\section{La tassonomia dei cinque stati}
+
+I vincoli di $\pi$Tantum sono organizzati in una tassonomia
+uniforme di cinque stati, applicata sia alle matrici di
+disponibilit\`a (cella per cella, per docenti, classi e
+aule) sia alle preferenze di aula. I vincoli logici
+disgiuntivi, espressi nel DSL del sistema, riconoscono
+quattro di questi stati (l'ALLOWED non si applica a quel
+contesto). La tabella~\ref{tab:cinque-stati} riassume i
+cinque stati con il loro colore convenzionale, la loro
+semantica e l'effetto che producono sul solver.
+
+\begin{table}[h]
+\centering
+\sffamily\small
+\begin{tabular}{l l p{8.5cm}}
 \toprule
-Stato & Colore & Semantica \\
+\textbf{Stato} & \textbf{Colore} & \textbf{Semantica} \\
 \midrule
-\textcolor{cAllow}{ALLOWED} & verde chiaro &
-  default (solo grid materia$\leftrightarrow$aula e
-  docente$\leftrightarrow$aula); nessuna contribuzione all'obiettivo \\
-\textcolor{cSoft}{SOFT} & giallo &
-  penalit\`a positiva quando lo slot \`e usato (\texttt{+penalty}
-  aggiunto all'obiettivo, che \`e minimizzato) \\
-\textcolor{cHard}{HARD} & rosso &
-  il solver deve evitare questo slot, oppure il vincolo logico DEVE
-  essere soddisfatto \\
+\textcolor{cAllow}{ALLOWED}  & verde chiaro & default neutro,
+  applicabile soltanto alle griglie materia--aula e docente--aula;
+  non contribuisce all'obiettivo \\
+\textcolor{cSoft}{SOFT}      & giallo &
+  penalit\`a positiva quando lo slot viene utilizzato; il valore
+  \texttt{+penalty} viene sommato all'obiettivo che il solver
+  minimizza \\
+\textcolor{cHard}{HARD}      & rosso &
+  vincolo inderogabile: il solver deve evitare lo slot oppure
+  soddisfare il vincolo logico in modo assoluto \\
 \textcolor{cPref}{PREFERRED} & blu &
-  bonus negativo quando lo slot \`e usato / il vincolo logico \`e
-  soddisfatto (\texttt{-bonus} riduce l'obiettivo) \\
-\textcolor{cEnf}{ENFORCED} & verde scuro &
-  il solver DEVE far accadere questo slot / soddisfare il vincolo
-  con presence required \\
+  bonus negativo quando lo slot viene utilizzato o quando il
+  vincolo logico \`e soddisfatto; il \texttt{-bonus} riduce
+  l'obiettivo \\
+\textcolor{cEnf}{ENFORCED}   & verde scuro &
+  il solver deve forzare l'occorrenza dello slot o la
+  soddisfazione del vincolo, con \emph{presence required}
+  attiva \\
 \bottomrule
 \end{tabular}
-\end{center}
+\caption{I cinque stati della tassonomia di $\pi$Tantum, con
+colori, semantica e contributo alla funzione obiettivo.}
+\label{tab:cinque-stati}
+\end{table}
 
-\section{Matrici di disponibilit\`a 5-stati}
+Ognuno di questi stati ha un significato preciso che vale la
+pena commentare. Lo stato ALLOWED, codificato in verde
+chiaro, rappresenta la situazione di partenza: quella in cui
+nessuna preferenza esplicita \`e stata espressa. \`E
+applicabile soltanto a quelle griglie in cui ha senso
+distinguere fra ``ammesso'' e ``vietato'', come la
+compatibilit\`a fra una materia e un'aula. Per le matrici di
+disponibilit\`a settimanale di docenti, classi e aule, lo
+stato di partenza \`e implicitamente la disponibilit\`a, e
+ALLOWED non viene mai utilizzato.
 
-Il ciclo cliccando una cella \`e:
+Lo stato SOFT, codificato in giallo, esprime una preferenza
+negativa: l'utente preferirebbe non utilizzare quello slot,
+ma se serve si pu\`o accettare. Quantitativamente, l'uso
+dello slot aggiunge un costo positivo all'obiettivo, e il
+solver cerca di evitarlo nei limiti del possibile. Il valore
+del costo \`e configurabile, e l'utente lo regola attraverso
+un campo numerico che appare nella cella stessa quando essa
+viene marcata come gialla.
 
-\begin{center}
-\texttt{free $\to$ soft $\to$ hard $\to$ preferred $\to$ enforced $\to$
-free}
-\end{center}
+Lo stato HARD, codificato in rosso, esprime un divieto
+assoluto. Il solver \emph{non pu\`o} utilizzare quello slot,
+o equivalentemente \emph{non pu\`o} violare il vincolo
+logico associato. Una soluzione che viola anche un solo
+vincolo HARD non \`e una soluzione: viene scartata
+immediatamente dal solver. Lo stato HARD si usa per
+codificare le indisponibilit\`a contrattuali, le
+incompatibilit\`a fisiche, e tutte le richieste che non
+ammettono eccezioni.
 
-Le celle gialle e blu mostrano un input numerico per editare la
-penalit\`a (positiva sul giallo, negativa sul blu, sign-clamp
-automatico al salvataggio).
+Lo stato PREFERRED, codificato in blu, \`e simmetrico
+rispetto al SOFT: esprime una preferenza positiva, una
+configurazione che si vorrebbe vedere occorrere. L'uso
+dello slot porta un bonus negativo all'obiettivo, e il
+solver \`e quindi spinto a scegliere quella configurazione
+quando ne ha possibilit\`a. \`E utile per esprimere
+desideri come ``preferirei avere il laboratorio in due ore
+consecutive'' o ``preferirei avere la palestra il
+gioved\`i''.
 
-\paragraph{Sincronizzazione free\_day.} Quando il docente ha
-\texttt{free\_day} settato, tutte e 6 le ore di quel giorno appaiono
-HARD nella matrice automaticamente. Se l'utente edita la matrice
-manualmente e tutte le ore di un giorno diventano HARD, il backend
-deduce il \texttt{free\_day}; viceversa cambiare il \texttt{free\_day}
-sostituisce le auto-cells.
+Lo stato ENFORCED, codificato in verde scuro, esprime una
+richiesta assoluta in senso opposto a HARD: il solver
+\emph{deve} far accadere quella configurazione, non
+soltanto deve permetterla. \`E lo strumento con cui si
+codifica, per esempio, ``la riunione di consiglio si tiene
+gioved\`i alla quinta ora'' (lo slot \`e
+\emph{pre-allocato}). \`E un livello da usare con parsimonia,
+perch\'e ENFORCED multipli e in conflitto fra loro rendono il
+problema infeasibile, e il sistema non pu\`o fare altro che
+segnalare l'impossibilit\`a.
 
-\paragraph{Mapping CP-SAT.} In
-\texttt{optimization.py::\_availability\_constraints} ogni tabella
-si traduce in: \texttt{<entity>\_hard} (set di tuple, forbidden
-assignment), \texttt{<entity>\_soft} (dict tuple$\to$penalty signed),
-\texttt{<entity>\_enforced} (set di tuple, presence required nel
-solver).
+\section{Le matrici di disponibilit\`a}
 
-\section{Vincoli logici (DNF)}
+Le matrici di disponibilit\`a sono lo strumento principale
+con cui l'utente esprime preferenze e indisponibilit\`a per
+docenti, classi e aule. Ognuna di queste entit\`a possiede
+una matrice di sei righe per sei colonne, che corrispondono
+ai sei giorni della settimana scolastica e alle sei ore di
+lezione tipiche di una giornata. Cliccando su una cella con
+il mouse, l'utente la fa ciclare attraverso gli stati
+disponibili nella sequenza \texttt{libero $\to$ giallo (SOFT)
+$\to$ rosso (HARD) $\to$ blu (PREFERRED) $\to$ verde scuro
+(ENFORCED) $\to$ libero}, in modo da poter raggiungere
+qualunque stato con al massimo cinque click.
 
-\subsection{Sintassi}
+Quando una cella viene marcata come SOFT (gialla) o
+PREFERRED (blu), accanto al colore appare un campo numerico
+che permette di editare la penalit\`a o il bonus associati.
+La logica dei segni \`e gestita automaticamente dal sistema:
+i valori positivi sono ammessi soltanto sulle celle gialle e
+i valori negativi soltanto su quelle blu, e il backend
+applica un \emph{sign-clamp} al salvataggio per evitare
+incoerenze. Trascinando il mouse mentre si tiene premuto il
+tasto, si pu\`o applicare lo stesso stato a un blocco
+contiguo di celle, comodit\`a che velocizza l'editing
+quando un'intera giornata o un'intera fascia oraria deve
+essere marcata in modo uniforme.
+
+Una funzionalit\`a di sincronizzazione automatica governa il
+rapporto fra il campo \emph{free day} del docente (il
+giorno libero contrattuale) e la matrice. Quando il
+\texttt{free\_day} \`e impostato, tutte e sei le ore di quel
+giorno appaiono automaticamente HARD nella matrice, in modo
+visivo, anche se l'utente non le ha marcate
+esplicitamente. Viceversa, se l'utente edita la matrice
+manualmente e tutte le ore di un giorno diventano HARD, il
+backend deduce da questo che il \texttt{free\_day} \`e
+quel giorno e lo aggiorna di conseguenza. La logica \`e
+implementata nel modulo \texttt{webui/backend/db.py} e
+garantisce che le due rappresentazioni restino sempre
+coerenti.
+
+La traduzione interna delle matrici nel modello CP-SAT
+avviene nel modulo \texttt{optimization.py}, all'interno
+della funzione \texttt{\_availability\_constraints}. Per
+ogni entit\`a (docente, classe, aula), la matrice viene
+analizzata e le sue celle si traducono in tre strutture
+dati: un insieme di tuple \texttt{<entity>\_hard} che
+rappresentano le \emph{forbidden assignments}, un dizionario
+\texttt{<entity>\_soft} che mappa tuple a penalit\`a (con
+segno gi\`a corretto), e un insieme di tuple
+\texttt{<entity>\_enforced} che rappresentano le
+\emph{presence required} nel solver. CP-SAT usa queste
+strutture per costruire i vincoli durante la fase di
+risoluzione.
+
+\section{I vincoli logici disgiuntivi}
+
+Accanto alle matrici di disponibilit\`a, il sistema offre
+agli utenti uno strumento pi\`u espressivo per codificare
+vincoli che non si lascino ridurre a singole celle: i
+\emph{vincoli logici disgiuntivi}, spesso indicati con
+l'acronimo DNF dall'inglese \emph{Disjunctive Normal Form}.
+Si tratta di espressioni logiche che combinano slot e
+predicati attraverso gli operatori AND, OR e NOT, e che si
+applicano a una entit\`a (docente, classe, aula, indirizzo)
+con un determinato livello di rigidit\`a (HARD, SOFT,
+PREFERRED, ENFORCED).
+
+\subsection{La grammatica delle espressioni}
+
+La sintassi delle espressioni logiche di $\pi$Tantum \`e
+stata pensata per essere compatta e leggibile. La forma BNF
+semplificata \`e mostrata nel listato che segue, e descrive
+gli elementi che si possono combinare.
 
 \begin{lstlisting}[basicstyle=\ttfamily\small]
 expr     := or_expr
@@ -77,25 +210,42 @@ giorno   := lun|mar|mer|gio|ven|sab (anche lunedi|...|sabato,
 ora      := 1..6 (ordinale, 1=08:00) | 8..13 (assoluta)
 \end{lstlisting}
 
-Sono accettati \texttt{\&} (AND), \texttt{|} (OR), \texttt{!} (NOT).
-\texttt{mai} \`e alias di \texttt{NOT}.
+La grammatica accetta anche le forme abbreviate \texttt{\&}
+per AND, \texttt{|} per OR e \texttt{!} per NOT, oltre
+all'alias italiano \texttt{mai} per NOT che produce
+espressioni pi\`u naturali nei casi tipici. Per esempio,
+\texttt{mai aula:LabFisica@mar} si legge in modo
+trasparente come ``mai nel laboratorio di fisica il
+marted\`i''.
 
-\subsection{Predicate atoms}
+\subsection{I predicate atoms}
+
+Oltre agli slot temporali grezzi, le espressioni possono
+contenere \emph{predicate atoms} che si riferiscono ad
+entit\`a specifiche. La sintassi dei predicate atoms \`e
+illustrata negli esempi seguenti.
 
 \begin{lstlisting}[basicstyle=\ttfamily\small]
-aula:LabFisica           -- l'entita' usa l'aula a qualunque slot
-aula:LabFisica@mar       -- il martedi a qualunque ora
-aula:LabFisica@mar4      -- martedi 4a ora (= 11:00)
+aula:LabFisica           -- usa l'aula LabFisica a qualunque slot
+aula:LabFisica@mar       -- usa LabFisica il martedi a qualunque ora
+aula:LabFisica@mar4      -- usa LabFisica martedi alla 4a ora (11:00)
 materia:Religione@lun8   -- lezione di religione lunedi alle 8
-classe:1A_Scientifico    -- riferimento alla classe
-gruppo:IRC               -- riferimento al gruppo
+classe:1A_Scientifico    -- riferimento alla classe 1A scientifico
+gruppo:IRC               -- riferimento al gruppo IRC
 \end{lstlisting}
 
-I literal predicate vengono parsati e persistiti correttamente.
-Il solver li tratta otticamente per ora; l'integrazione strong con
-la fase classroom assignment \`e pianificata.
+I predicate atoms vengono parsati e persistiti correttamente
+dal sistema. Il solver li tratta in modo coerente per le
+restrizioni temporali; l'integrazione completa con la fase
+di assegnazione delle aule \`e oggetto di sviluppo
+incrementale, descritto nella roadmap del progetto.
 
 \subsection{Esempi pratici}
+
+Il modo migliore per familiarizzare con la sintassi dei
+vincoli logici \`e leggere alcuni esempi reali di uso. I
+seguenti esempi sono presi dalla pratica di alcune scuole
+che usano $\pi$Tantum.
 
 \begin{lstlisting}[basicstyle=\ttfamily\small]
 % Per docenti
@@ -117,110 +267,196 @@ mai materia:Religione
 gruppo:IRC OR gruppo:Alternativa
 \end{lstlisting}
 
+Il primo esempio per i docenti, \texttt{lun8 AND lun9},
+significa che il docente deve essere presente luned\`i alle
+otto e alle nove (per esempio per una compresenza
+obbligatoria). Il secondo esempio, con OR fra due
+congiunzioni, ammette due alternative: o luned\`i alle
+otto-nove, o marted\`i alle otto-nove. Il quarto, con NOT,
+vieta la combinazione mercoled\`i terza-quarta ora. I tre
+esempi con \texttt{mai} esprimono divieti su entit\`a
+specifiche, leggibili in modo quasi colloquiale.
+
 \subsection{Mapping CP-SAT}
 
-Per ogni regola con DNF \texttt{[clause1, clause2, ...]}:
+Per ogni regola con DNF \texttt{[clause1, clause2, \ldots]},
+il solver applica una traduzione che dipende dal kind del
+vincolo. Una regola HARD impone che almeno una clausola sia
+\emph{fully active}, ovvero che tutti i suoi atomi siano
+veri. Una regola SOFT permette che nessuna clausola sia
+attiva, ma in tal caso paga la penalit\`a positiva
+\texttt{+soft\_penalty}. Una regola PREFERRED dota di un
+bonus negativo \texttt{-soft\_penalty} la situazione in cui
+almeno una clausola \`e attiva, riducendo cos\`i
+l'obiettivo da minimizzare. Una regola ENFORCED si comporta
+come una HARD ma con \emph{presence required}: almeno uno
+degli slot della DNF deve coincidere con un'ora di lezione
+attiva per l'entit\`a in questione, non basta che il vincolo
+sia formalmente soddisfatto sui domini.
 
-\begin{itemize}
-  \item HARD: il solver impone almeno una clausola fully active.
-  \item SOFT: se nessuna clausola \`e fully active, paga
-        \texttt{+soft\_penalty}.
-  \item PREFERRED: se almeno una clausola \`e fully active, ottiene
-        \texttt{+soft\_penalty} (negativo, quindi reduce dell'obiettivo).
-  \item ENFORCED: come HARD ma con presence required -- almeno
-        uno degli slot della DNF deve coincidere con un'ora di lezione
-        attiva per quell'entit\`a.
-\end{itemize}
+\section{I toggle HARD per classe}
 
-\section{Vincoli HARD a toggle (per classe)}
+Oltre ai vincoli espressi nelle matrici e ai vincoli logici,
+il sistema mette a disposizione una serie di vincoli HARD
+predefiniti, espressi come booleani nella tabella
+\texttt{school\_classes}, che la maggior parte delle scuole
+usa con valori standard. Sono sette: \texttt{hard\_entry\_at\_8}
+(impone che la prima lezione cominci alle otto),
+\texttt{hard\_exit\_after\_12} (impone che l'ultima lezione
+non finisca prima delle dodici), \texttt{hard\_no\_holes}
+(vieta i buchi nell'orario della classe),
+\texttt{hard\_dual\_math} (impone che la matematica si
+tenga in coppie di ore consecutive), \texttt{hard\_dual\_italian}
+(idem per italiano), \texttt{hard\_motorie\_pairs} (idem per
+educazione fisica), e \texttt{hard\_max\_6\_per\_day}
+(impone il limite di sei ore al giorno).
 
-In \texttt{school\_classes} ci sono 7 boolean strutturali:
-\texttt{hard\_entry\_at\_8}, \texttt{hard\_exit\_after\_12},
-\texttt{hard\_no\_holes}, \texttt{hard\_dual\_math},
-\texttt{hard\_dual\_italian}, \texttt{hard\_motorie\_pairs},
-\texttt{hard\_max\_6\_per\_day}. Il soft
-\texttt{soft\_minimize\_sixth\_weight} regola il peso della 6a ora.
+A questi sette toggle si affianca il parametro SOFT
+\texttt{soft\_minimize\_sixth\_weight}, che regola il peso
+dell'obiettivo di evitare la sesta ora come ultima del
+giorno. Il valore predefinito \`e tarato per esprimere una
+preferenza moderata; valori pi\`u alti fanno s\`i che il
+solver eviti la sesta ora con maggiore insistenza, valori
+pi\`u bassi la accettano pi\`u liberamente.
 
-\section{Conflict detection}
+\section{Il rilevamento dei conflitti}
 
-Il tab \emph{Vincoli} ha un bottone "Cerca conflitti"
-(\texttt{GET /api/monitor/conflicts}) che segnala:
+Il tab Vincoli dell'interfaccia fornisce un bottone
+denominato ``Cerca conflitti'' che, attivato, esegue una
+diagnostica sul sistema di vincoli correntemente espresso e
+segnala incoerenze rilevabili senza dover lanciare il
+solver. Il bottone fa una chiamata HTTP a
+\texttt{GET /api/monitor/conflicts}, e l'output viene mostrato
+all'utente in una tabella con tre tipi di errore.
 
-\begin{itemize}
-  \item \textbf{matrix\_hard\_enforced} -- stessa cella marcata sia
-        HARD sia ENFORCED.
-  \item \textbf{enforced\_on\_free\_day} -- cella ENFORCED del docente
-        nel suo \texttt{free\_day}.
-  \item \textbf{logical\_unsatisfiable} -- vincolo logico
-        HARD/ENFORCED la cui DNF non \`e soddisfacibile dato l'insieme
-        degli HARD slot dell'owner.
-\end{itemize}
+Il primo tipo, denominato \texttt{matrix\_hard\_enforced},
+segnala le celle marcate sia come HARD sia come ENFORCED
+contemporaneamente. Si tratta di una contraddizione
+diretta, perch\'e una stessa cella non pu\`o essere allo
+stesso tempo proibita e obbligatoria. Il secondo tipo,
+denominato \texttt{enforced\_on\_free\_day}, segnala le
+celle ENFORCED del docente che cadono nel suo giorno libero
+contrattuale: anche questa \`e una contraddizione,
+risolvibile o spostando l'ENFORCED o cambiando il
+\texttt{free\_day}. Il terzo tipo, denominato
+\texttt{logical\_unsatisfiable}, segnala i vincoli logici
+HARD o ENFORCED la cui DNF non \`e soddisfacibile dato
+l'insieme degli slot HARD del proprietario. \`E un caso che
+richiede al coordinatore di rivedere il vincolo o di
+rilassare le indisponibilit\`a.
 
-\section{Tag aule -- etichette libere}
+\section{Tag delle aule}
 
-Per esprimere ``questa aula ha il proiettore'', ``questa aula
-\`e adatta alla matematica perch\'e ha la lavagna grande'',
-``questa aula \`e una sala riunioni'', il sistema offre i
-\textbf{tag delle aule}: etichette libere che il coordinatore
-attacca dalla scheda Aule. Ogni aula pu\`o avere quanti tag
-vuoi; ogni tag pu\`o essere riutilizzato su pi\`u aule.
+Per esprimere caratteristiche delle aule che non si lasciano
+ridurre al solo nome o tipo (``questa aula ha il
+proiettore'', ``questa aula \`e adatta alla matematica
+perch\'e ha la lavagna grande'', ``questa aula \`e una sala
+riunioni''), il sistema offre i \emph{tag delle aule}: si
+tratta di etichette libere, vere e proprie stringhe, che il
+coordinatore associa a ciascuna aula dalla scheda Aule.
+Ogni aula pu\`o avere quanti tag desidera, e ogni tag pu\`o
+essere riutilizzato su pi\`u aule. La struttura non impone
+una tassonomia gerarchica: i tag formano un semplice
+insieme.
 
-I tag sono utilissimi nei vincoli: invece di scrivere ``solo
-queste tre aule precise'' (lista che andrebbe aggiornata ogni
-volta che le aule cambiano), scrivi ``aule taggate
-matematica'' e il vincolo segue automaticamente le etichettature
-correnti.
+L'utilit\`a dei tag emerge soprattutto nella scrittura dei
+vincoli. Invece di scrivere ``solo queste tre aule
+specifiche'', enumerandole per nome (un elenco che andrebbe
+aggiornato ogni volta che le aule cambiano), il coordinatore
+pu\`o scrivere ``aule taggate matematica'', e il vincolo
+seguir\`a automaticamente le etichettature correnti. Se
+domani viene aggiunta una nuova aula taggata
+\texttt{matematica}, il vincolo la includer\`a senza
+ulteriori interventi.
 
-Esempio: vogliamo che la matematica si tenga solo in aule
-taggate \texttt{matematica}. Una volta etichettate le aule
-giuste dalla scheda Aule, il vincolo nel DSL generico \`e:
+Un esempio pratico chiarisce la logica. Supponiamo di
+volere che la matematica si tenga soltanto in aule taggate
+\texttt{matematica}. Una volta etichettate dalla scheda
+Aule le aule che vogliamo includere, il vincolo nel DSL
+generico si scrive cos\`i:
 
 \begin{lstlisting}
 forall l in lessons where l.subject == Matematica:
     "matematica" in l.classroom.tags
 \end{lstlisting}
 
-Il sistema ha anche una serie di tag automatici prodotti dalla
-generazione mock (per esempio le aule home class ricevono il
-tag dell'indirizzo della classe assegnata). Per dettagli vedi
-il modulo \texttt{webui/backend/mock\_classrooms.py}.
+Il sistema offre anche una serie di tag automatici prodotti
+dalla generazione mock. Per esempio, le aule home class
+ricevono il tag dell'indirizzo della classe assegnata,
+permettendo di scrivere vincoli del tipo ``le lezioni della
+3A devono stare in aule taggate scientifico''. I dettagli
+della generazione automatica si trovano nel modulo
+\texttt{webui/backend/mock\_classrooms.py}.
 
-\section{Preferenze di giorno libero del docente}
+\section{Le preferenze di giorno libero per i docenti}
 
-I docenti hanno diritto contrattuale a un certo numero di
-giorni liberi a settimana (tipicamente uno per il CCNL
-italiano). $\pi$Tantum gestisce questo aspetto in modo
-flessibile attraverso tre slot di preferenza ordinati:
+I docenti hanno diritto, per contratto collettivo nazionale
+del settore scolastico italiano, a un certo numero di giorni
+liberi a settimana, tipicamente uno per il personale a
+tempo pieno. $\pi$Tantum gestisce questa esigenza in modo
+flessibile attraverso un meccanismo a tre slot di preferenza
+ordinati. Il primo slot rappresenta il giorno libero
+ideale del docente, per esempio il sabato; il secondo
+rappresenta il giorno di ripiego se il primo non \`e
+realizzabile, per esempio il mercoled\`i; il terzo
+rappresenta l'ultima alternativa, per esempio il luned\`i.
 
-\begin{itemize}
-\item \textbf{1\textsuperscript{a} preferenza} -- il giorno
-  libero ideale del docente (es. ``sabato'').
-\item \textbf{2\textsuperscript{a} preferenza} -- il giorno di
-  ripiego se il primo non \`e possibile (es. ``mercoledi'').
-\item \textbf{3\textsuperscript{a} preferenza} -- l'ultima
-  alternativa (es. ``luned\`i'').
-\end{itemize}
+Per ciascuna delle tre preferenze, il docente o il
+coordinatore pu\`o scegliere se essa sia di tipo HARD
+(assoluta, non negoziabile) o di tipo SOFT con un peso
+configurabile. A questo si aggiunge il campo
+\texttt{required\_free\_days\_count}, che indica quanti
+giorni liberi servano in totale: il valore predefinito \`e
+uno, conforme al contratto collettivo, ma scuole con
+docenti a tempo parziale possono richiederne di pi\`u.
 
-Per ciascuna preferenza il docente (o il coordinatore) sceglie
-se \`e \textbf{HARD} (assoluta) o \textbf{SOFT} con un peso. Pi\`u un campo
-\textbf{required\_free\_days\_count} indica \emph{quanti} giorni
-liberi servono in totale (di default 1 per CCNL).
+Un esempio illustra la flessibilit\`a del meccanismo. Si
+consideri un docente con le preferenze [sabato HARD,
+mercoled\`i SOFT con peso 50, luned\`i SOFT con peso 20] e
+con \texttt{required\_free\_days\_count = 1}. Il sistema
+cercher\`a sicuramente di mantenere libero il sabato,
+perch\'e \`e HARD; se non riuscisse, in seconda istanza
+cercher\`a di liberare il mercoled\`i (con un costo SOFT
+di 50 se non ci riesce); in terza istanza cercher\`a di
+liberare il luned\`i (con un costo di 20). La gradazione
+permette al sistema di scegliere il compromesso pi\`u
+ragionevole quando le preferenze multiple dei vari docenti
+entrano in conflitto fra loro.
 
-Esempio: un docente con preferenze [sabato HARD, mercoledi SOFT
-peso 50] e count=1 vorr\`a sicuramente sabato libero, e in
-secondo ordine il mercoledi se il sabato non \`e fattibile.
+\section{Le preferenze di giorno libero per le classi}
 
-\section{Preferenze di giorno libero della classe}
+Anche le classi possono avere giorni preferiti di non
+attivit\`a, e la struttura del meccanismo \`e analoga a
+quella dei docenti: tre slot ordinati con flag HARD o SOFT,
+pi\`u un \texttt{required\_free\_days\_count}. La
+motivazione \`e diversa: una classe pu\`o desiderare di
+avere il sabato libero per attivit\`a di stage, oppure il
+luned\`i per evitare il rientro tipicamente faticoso dopo il
+fine settimana.
 
-Anche le classi possono avere giorni preferiti di non-attivit\`a.
-La struttura \`e analoga a quella dei docenti: tre slot
-ordinati con flag HARD/SOFT, pi\`u un \textbf{required\_free\_days\_count}.
+In aggiunta alle preferenze di giorno libero, le classi
+possiedono il campo \texttt{max\_hours\_per\_day}, che
+impone un tetto HARD al numero di ore in un giorno. Il
+valore predefinito \`e cinque, ma alcuni istituti adottano
+quattro per le classi del biennio (per ridurre il carico
+giornaliero) o sei o sette per casi particolari. Riducendo
+il tetto si ottengono giornate pi\`u leggere, ma se il
+monte ore complessivo della classe \`e alto sar\`a
+necessario estendere il calendario settimanale al sabato per
+non sforare. Il sistema gestisce automaticamente questa
+ridistribuzione, e segnala all'utente i casi in cui un
+tetto troppo basso renderebbe il problema infeasibile.
 
-In aggiunta le classi hanno il campo
-\textbf{max\_hours\_per\_day} (default 5) che impone un tetto
-HARD al numero di ore in un giorno. Riducendolo (a 4 per
-esempio) si ottengono giornate pi\`u leggere — ma se il monte
-ore della classe \`e alto bisogner\`a estendere il calendario
-settimanale al sabato.
+\section*{Cosa abbiamo visto in questo capitolo}
 
-% =========== Cap 5: Workflow ===========
+Abbiamo descritto la tassonomia dei cinque stati che
+$\pi$Tantum usa per esprimere i vincoli, le matrici di
+disponibilit\`a settimanale per docenti, classi e aule, i
+vincoli logici disgiuntivi con la loro grammatica e i loro
+predicate atoms, i toggle HARD predefiniti per le classi, il
+meccanismo di rilevamento dei conflitti, il sistema dei tag
+per le aule e le preferenze ordinate di giorno libero per
+docenti e classi. Tutti questi strumenti sono il vocabolario
+con cui l'utente esprime le richieste della propria scuola
+al sistema; i prossimi capitoli descrivono come il sistema
+le interpreta e le risolve.
