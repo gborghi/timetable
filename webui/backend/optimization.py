@@ -199,6 +199,18 @@ def import_experiments_profile(profile: str, use_optimized: bool,
         sol_plain = os.path.join(
             experiments_dir, f"solution_timetable_{profile}.pkl"
         )
+        # MEGA pipeline (run_mega_pipeline.py) emits non-canonical
+        # filenames: solution_mega_temporal_alns.pkl is the post-ALNS
+        # polished result (the equivalent of *_optimized.pkl), and
+        # solution_temporal_mega.pkl is the pre-ALNS temporal-decomposed
+        # result (the equivalent of *_decomposed.pkl). Honour these as
+        # additional fallbacks before giving up.
+        sol_alt_optimized = os.path.join(
+            experiments_dir, f"solution_{profile}_temporal_alns.pkl"
+        )
+        sol_alt_decomposed = os.path.join(
+            experiments_dir, f"solution_temporal_{profile}.pkl"
+        )
         if not os.path.exists(school_pkl):
             raise FileNotFoundError(
                 f"school_{profile}.pkl not found in experiments/"
@@ -267,8 +279,12 @@ def import_experiments_profile(profile: str, use_optimized: bool,
         sol_path = None
         if use_optimized and os.path.exists(sol_optimized):
             sol_path = sol_optimized
+        elif use_optimized and os.path.exists(sol_alt_optimized):
+            sol_path = sol_alt_optimized
         elif os.path.exists(sol_decomposed):
             sol_path = sol_decomposed
+        elif os.path.exists(sol_alt_decomposed):
+            sol_path = sol_alt_decomposed
         elif os.path.exists(sol_plain):
             sol_path = sol_plain
         if sol_path:

@@ -70,27 +70,38 @@ def list_profiles():
     experiments_dir = os.path.normpath(
         os.path.join(here, "..", "..", "..", "experiments")
     )
+
+    def _exists_any(*candidates):
+        return any(os.path.exists(os.path.join(experiments_dir, c))
+                    for c in candidates)
+
     profiles = []
-    for name in ("small", "medium", "big", "huge", "superhuge"):
+    for name in ("small", "medium", "big", "huge", "superhuge", "mega"):
         school = os.path.join(experiments_dir, f"school_{name}.pkl")
-        if os.path.exists(school):
-            has_profs = os.path.exists(
-                os.path.join(experiments_dir, f"profs_{name}.pkl")
-            )
-            has_opt = os.path.exists(
-                os.path.join(experiments_dir,
-                             f"solution_timetable_{name}_optimized.pkl")
-            )
-            has_dec = os.path.exists(
-                os.path.join(experiments_dir,
-                             f"solution_timetable_{name}_decomposed.pkl")
-            )
-            profiles.append({
-                "name": name,
-                "has_profs": has_profs,
-                "has_optimized_solution": has_opt,
-                "has_decomposed_solution": has_dec,
-            })
+        if not os.path.exists(school):
+            continue
+        has_profs = os.path.exists(
+            os.path.join(experiments_dir, f"profs_{name}.pkl")
+        )
+        # MEGA's pipeline (run_mega_pipeline.py) writes
+        # solution_mega_temporal_alns.pkl (final ALNS-polished) and
+        # solution_temporal_mega.pkl (pre-ALNS); other profiles use the
+        # canonical solution_timetable_<name>_{optimized,decomposed}.pkl
+        # naming. Detect either form.
+        has_opt = _exists_any(
+            f"solution_timetable_{name}_optimized.pkl",
+            f"solution_{name}_temporal_alns.pkl",
+        )
+        has_dec = _exists_any(
+            f"solution_timetable_{name}_decomposed.pkl",
+            f"solution_temporal_{name}.pkl",
+        )
+        profiles.append({
+            "name": name,
+            "has_profs": has_profs,
+            "has_optimized_solution": has_opt,
+            "has_decomposed_solution": has_dec,
+        })
     return profiles
 
 
