@@ -264,6 +264,88 @@ fra loro.
   locale tranquilla" con scossoni periodici (perturbazioni)
   per esplorare zone diverse dello spazio.
 
+## Decomposizione: spezzare il problema in parti
+
+Tre nuovi metodi di decomposizione si affiancano alla
+decomposizione spettrale gi\`a esistente. Sono ortogonali fra
+loro: si possono combinare in pipeline a pi\`u stadi
+(spettrale + temporale, METIS + temporale, eccetera) per
+ottenere il massimo speedup.
+
+### Decomposizione temporale (per giorno)
+
+La decomposizione temporale spezza il problema lungo l'asse
+del tempo invece che lungo le entit\`a. Ciascuno dei sei
+giorni della settimana diventa un sotto-problema separato,
+risolvibile in parallelo. Una piccola fase di
+pre-distribuzione decide quante ore di ciascuna cattedra
+vanno in ciascun giorno (rispettando i vincoli settimanali
+come la doppia ora di matematica e il tetto di ore per
+classe), e poi sei istanze CP-SAT lavorano una per giorno
+sulle ore cos\`i pre-distribuite. Il vantaggio principale \`e
+che il metodo \`e \emph{sempre applicabile}: non richiede
+una struttura comunitaria nel grafo classe-docente, e
+parallelizza naturalmente su sei core di una macchina
+moderna. \`E pensato per scuole dense, dove la decomposizione
+spettrale fatica perch\'e i cluster non emergono. Modulo:
+`experiments/decomposition_temporal.py`.
+
+### Decomposizione METIS (k-way multilevel partitioning)
+
+METIS \`e una libreria classica per il partizionamento di
+grafi che produce partizioni $k$-bilanciate minimizzando
+il taglio. Funziona bene su grafi densi senza struttura
+comunitaria evidente, dove la decomposizione spettrale
+restituisce cluster artificiali. \`E configurabile con il
+numero di partizioni $K$ (default $K = \sqrt{n_{\text{classes}}}$)
+e la tolleranza di sbilanciamento (default 5\%). Richiede la
+libreria Python `pymetis`, installabile con `pip install
+pymetis`; in mancanza, il sistema segnala chiaramente
+all'utente che deve installarla o scegliere un metodo
+alternativo. Modulo: `experiments/decomposition_metis.py`.
+
+### Decomposizione per curriculum
+
+La decomposizione per curriculum sfrutta direttamente
+l'informazione gi\`a codificata nel campo `curriculum_id`
+delle classi: ogni indirizzo (Liceo Scientifico, ITIS
+Informatica, eccetera) diventa un cluster, e i docenti che
+insegnano in pi\`u indirizzi sono i ponti. \`E la
+decomposizione pi\`u prevedibile e interpretabile, perch\'e
+ogni cluster corrisponde a un'organizzazione che il
+coordinatore conosce bene; in compenso ignora la connettivit\`a
+effettiva del grafo e produce ponti pi\`u numerosi quando i
+docenti circolano molto fra indirizzi. \`E pensata per
+scuole con indirizzi ben definiti e con poca circolazione
+inter-indirizzo dei docenti. L'utente pu\`o accorpare
+manualmente curricula con poche classi per evitare cluster
+troppo piccoli. Modulo:
+`experiments/decomposition_curriculum.py`.
+
+### Auto-detect della strategia migliore
+
+Il modulo `experiments/decomposition_auto.py` espone la
+funzione `auto_detect_decomposition_strategy(profs)` che
+calcola due metriche descrittive del grafo bipartito
+classe-docente (modularit\`a di Newman-Girvan e densit\`a) e
+suggerisce la strategia di decomposizione migliore. Se la
+modularit\`a \`e alta (sopra 0.30) consiglia la decomposizione
+spettrale, perch\'e il grafo presenta cluster naturali; se la
+densit\`a \`e alta (sopra 0.60) consiglia METIS, perch\'e il
+grafo \`e denso e privo di cluster spontanei; in tutti gli
+altri casi consiglia la decomposizione per curriculum. In
+ogni caso suggerisce di combinare la scelta primaria con la
+decomposizione temporale, che parallelizza ortogonalmente
+sui sei giorni della settimana. La raccomandazione
+restituita \`e un dataclass `DecompositionRecommendation` con
+strategia, flag combinatorio, le due metriche e una
+motivazione testuale leggibile dall'utente.
+
+L'endpoint REST `GET /api/optimize/decomposition/recommend`
+espone questa funzione al frontend, che la usa per mostrare
+un tooltip "Suggerimento" nella card delle decomposizioni del
+tab Workflow.
+
 ## Pipeline integrata: ordine consigliato
 
 ```
