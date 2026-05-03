@@ -269,11 +269,19 @@ def launch_decomposition(method: str, payload: dict | None = None):
         raise HTTPException(400, f"unknown method '{method}'")
     body = payload or {}
     if method == "spectral":
-        raise HTTPException(
-            501,
-            "Use POST /api/optimize/phase-b with "
-            "use_decomposition=true.",
-        )
+        # Spectral runs through the standard /optimize/phase-b
+        # endpoint. The flag use_decomposition=true on that
+        # endpoint enables exactly the spectral path (the
+        # historical implementation, see run_phase_b in
+        # optimization.py). We forward the user there with a
+        # short JSON hint instead of returning 501.
+        return {
+            "redirect": "/api/optimize/phase-b",
+            "hint": ("Use POST /api/optimize/phase-b with "
+                     "use_decomposition=true to run the spectral "
+                     "decomposition. This endpoint is preserved "
+                     "for compatibility."),
+        }
     if method == "temporal":
         rid = optimization.run_decomposition_temporal(
             time_a=float(body.get("time_a", 60.0)),
@@ -288,13 +296,47 @@ def launch_decomposition(method: str, payload: dict | None = None):
             alns_alpha=float(body.get("alns_alpha", 0.995)),
         )
         return {"run_id": rid}
-    raise HTTPException(
-        501,
-        f"Method '{method}' wiring is on the roadmap. "
-        f"experiments/decomposition_{method}.py contains the "
-        f"partitioning logic; the solve loop integration with "
-        f"cpsat_v2_timetable Stage A/B/C is queued.",
-    )
+    if method == "metis":
+        rid = optimization.run_decomposition_metis(
+            time_a=float(body.get("time_a", 60.0)),
+            time_bridges=float(body.get("time_bridges", 30.0)),
+            time_per_cluster=float(body.get("time_per_cluster", 30.0)),
+            time_ricucitura=float(body.get("time_ricucitura", 60.0)),
+            time_mono=float(body.get("time_mono", 120.0)),
+            workers=int(body.get("workers", 8)),
+            k=body.get("k"),
+            imbalance=float(body.get("imbalance", 1.05)),
+            run_alns=bool(body.get("run_alns", False)),
+            alns_budget_s=float(body.get("alns_budget_s", 300.0)),
+        )
+        return {"run_id": rid}
+    if method == "curriculum":
+        rid = optimization.run_decomposition_curriculum(
+            time_a=float(body.get("time_a", 60.0)),
+            time_bridges=float(body.get("time_bridges", 30.0)),
+            time_per_cluster=float(body.get("time_per_cluster", 30.0)),
+            time_ricucitura=float(body.get("time_ricucitura", 60.0)),
+            time_mono=float(body.get("time_mono", 120.0)),
+            workers=int(body.get("workers", 8)),
+            manual_groupings=body.get("manual_groupings"),
+            min_cluster_size=int(body.get("min_cluster_size", 3)),
+            run_alns=bool(body.get("run_alns", False)),
+            alns_budget_s=float(body.get("alns_budget_s", 300.0)),
+        )
+        return {"run_id": rid}
+    if method == "combined":
+        # Combined isn't a separate orchestrator: the user enables
+        # both spectral (in phase_b) and temporal as separate
+        # pipeline steps. We surface that as a hint, not as a 501.
+        return {
+            "hint": ("Combined non e' un orchestrator dedicato. "
+                     "Per spectral + temporal, ticka entrambi gli "
+                     "step nella card Pipeline (decomp_spectral + "
+                     "decomp_temporal). Vedi "
+                     "docs/optimization_strategies.md, sezione "
+                     "'Pipeline a piu' stadi'."),
+        }
+    raise HTTPException(400, f"unknown method '{method}'")
 
 
 @router.post("/assignment")

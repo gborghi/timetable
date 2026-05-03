@@ -162,21 +162,56 @@ def solve_with_curriculum_decomposition(
     classroom_to_curriculum: dict[str, str],
     manual_groupings: dict[str, str] | None = None,
     *,
-    time_per_cluster: float = 60.0,
-    time_bridges: float = 60.0,
+    time_a: float = 60.0,
+    time_bridges: float = 30.0,
+    time_per_cluster: float = 30.0,
+    time_ricucitura: float = 60.0,
+    time_mono: float = 120.0,
+    workers: int = 8,
+    log: bool = False,
+    dc_value: dict | None = None,
 ):
-    """Stub: integra con cpsat_v2_timetable per risolvere ogni cluster.
+    """Pipeline end-to-end: partition by curriculum + Stage A/B/C/mono.
 
-    L'implementazione effettiva del solve riusa il pattern
-    Stage A (bridges first) -> Stage B (cluster internals con
-    bridges fissati) -> Stage C (ricucitura) gia' presente in
-    `decomposition_spectral_v2.py`. Qui il modulo si occupa solo
-    della partitioning logic; il loop di risoluzione e' delegato.
+    Builds clusters by curriculum_id (with optional manual
+    accorpamento via `manual_groupings`), identifies bridge
+    teachers, and delegates the day-wise CP-SAT loop to the shared
+    `decomposition_loop.run_partitioned_pipeline`.
+
+    Parameters
+    ----------
+    profs : dict
+        Phase A output (teacher -> classi -> subject -> ore).
+    classroom_to_curriculum : dict
+        Map class_name -> curriculum_id. Pulled from the SchoolClass
+        table on the server side.
+    manual_groupings : dict, optional
+        Map curriculum_id -> macro_cluster_id, to merge tiny
+        curricula. See `auto_group_small_curricula`.
+    time_a, time_bridges, time_per_cluster, time_ricucitura,
+    time_mono : float
+        CP-SAT budgets, in seconds.
+    workers : int
+        CP-SAT search workers per stage.
+    log : bool
+        If True, log progress on stdout.
+    dc_value : dict, optional
+        Pre-computed Phase A; if None, the master is run inside.
+
+    Returns
+    -------
+    Same shape as decomposition_loop.run_partitioned_pipeline.
     """
-    raise NotImplementedError(
-        "Integrazione con cpsat_v2_timetable: vedi roadmap in "
-        "docs/optimization_strategies.md, sezione 'Decomposizione "
-        "per curriculum'. La logica di partitioning e' gia' qui; "
-        "manca solo il wiring del solve loop, identico a "
-        "decomposition_spectral_v2.run_decomposed_pipeline()."
+    import decomposition_loop as dl  # type: ignore
+
+    labels, classes, _ = build_clusters_by_curriculum(
+        profs, classroom_to_curriculum, manual_groupings,
+    )
+    bridges = find_bridges(profs, classes, labels)
+    return dl.run_partitioned_pipeline(
+        profs, labels, classes, bridges,
+        time_a=time_a, time_bridges=time_bridges,
+        time_cluster=time_per_cluster,
+        time_ricucitura=time_ricucitura, time_mono=time_mono,
+        workers=workers, log=log, dc_value=dc_value,
     )

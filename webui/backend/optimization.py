@@ -2621,3 +2621,228 @@ def run_decomposition_temporal(*, time_a: float = 60.0,
 
     start_thread(run_id, target)
     return run_id
+
+
+# ----------------------------------------------------------------------
+# DECOMPOSITION: per-curriculum
+# ----------------------------------------------------------------------
+
+def run_decomposition_curriculum(*, time_a: float = 60.0,
+                                 time_bridges: float = 30.0,
+                                 time_per_cluster: float = 30.0,
+                                 time_ricucitura: float = 60.0,
+                                 time_mono: float = 120.0,
+                                 workers: int = 8,
+                                 manual_groupings: dict | None = None,
+                                 min_cluster_size: int = 3,
+                                 run_alns: bool = False,
+                                 alns_budget_s: float = 300.0) -> int:
+    """Async run that partitions classes by curriculum_id, runs Stage
+    A/B/C/monolithic loop, optionally chains ALNS finishing."""
+    params = dict(time_a=time_a, time_bridges=time_bridges,
+                  time_per_cluster=time_per_cluster,
+                  time_ricucitura=time_ricucitura, time_mono=time_mono,
+                  workers=workers, manual_groupings=manual_groupings,
+                  min_cluster_size=min_cluster_size,
+                  run_alns=run_alns, alns_budget_s=alns_budget_s)
+    run_id = create_run(
+        "decomposition_curriculum",
+        "Decomposizione per curriculum (Stage A/B/C + opzionale ALNS)",
+        None, params)
+
+    def target(rid: int):
+        with SessionLocal() as db:
+            locked_snap = _snapshot_locked_lessons(db)
+            profs = engine_io.profs_dict_from_db(db)
+            cls_to_curr = {}
+            for c in db.query(models.SchoolClass).all():
+                if c.curriculum_id is not None:
+                    cur = db.query(models.Curriculum).filter_by(
+                        id=c.curriculum_id).first()
+                    cls_to_curr[c.name] = (cur.name if cur
+                                           else "cur_" + str(c.curriculum_id))
+                else:
+                    cls_to_curr[c.name] = "_unknown"
+        if not profs:
+            raise RuntimeError("Nessun assegnamento prof->classe.")
+
+        import sys
+        exp_dir = os.path.join(
+            os.path.dirname(os.path.dirname(
+                os.path.dirname(os.path.abspath(__file__)))),
+            "experiments")
+        if exp_dir not in sys.path:
+            sys.path.insert(0, exp_dir)
+        import decomposition_curriculum as dec_c  # type: ignore
+        auto = dec_c.auto_group_small_curricula(
+            cls_to_curr, min_classes=min_cluster_size)
+        manual = dict(auto)
+        if manual_groupings:
+            manual.update(manual_groupings)
+
+        update_run(rid, progress=0.05)
+        result = dec_c.solve_with_curriculum_decomposition(
+            profs, cls_to_curr, manual,
+            time_a=time_a, time_bridges=time_bridges,
+            time_per_cluster=time_per_cluster,
+            time_ricucitura=time_ricucitura, time_mono=time_mono,
+            workers=workers, log=True,
+        )
+        update_run(rid, progress=0.85)
+        full_solution = result["full_solution"]
+        timings = result["timings"]
+        failed_days = result["failed_days"]
+        status = result["status"]
+
+        import metaheuristics as meta  # type: ignore
+        v0, m0 = meta.compute_soft(full_solution, profs)
+        feasible = meta.is_hard_feasible(full_solution, profs, verbose=False)
+
+        if run_alns and feasible:
+            try:
+                import alns as alns_mod  # type: ignore
+                refined, _ = alns_mod.run_alns(
+                    full_solution, profs, result["dc_value"],
+                    alns_budget_s, log=False, workers=2)
+                v1, m1 = meta.compute_soft(refined, profs)
+                if (meta.is_hard_feasible(refined, profs, verbose=False)
+                        and v1 <= v0):
+                    full_solution, v0, m0 = refined, v1, m1
+            except Exception as e:
+                print("[curriculum] ALNS skipped: " + str(e))
+
+        with SessionLocal() as db:
+            sid = engine_io.import_solution_into_db(
+                db, full_solution,
+                name="Curriculum decomposition run " + str(rid),
+                kind="phase_b_curriculum",
+                obj_value=float(v0),
+                metrics={**m0, "feasible": feasible,
+                         "master_s": round(timings["master"], 1),
+                         "days_total_s": round(timings["days_total"], 1),
+                         "cluster_sizes": result["cluster_sizes"],
+                         "bridges_count": result["bridges_count"],
+                         "failed_days": failed_days, "status": status},
+                make_active=True,
+            )
+            n_restored = _restore_locked_lessons(db, sid, locked_snap)
+            if n_restored:
+                db.commit()
+        update_run(rid, progress=1.0,
+                   metrics={"feasible": feasible, "obj": float(v0),
+                            "master_s": round(timings["master"], 1),
+                            "days_total_s": round(timings["days_total"], 1),
+                            "cluster_sizes": result["cluster_sizes"],
+                            "bridges_count": result["bridges_count"],
+                            "failed_days": failed_days,
+                            "status": status, "solution_id": sid})
+
+    start_thread(run_id, target)
+    return run_id
+
+
+# ----------------------------------------------------------------------
+# DECOMPOSITION: METIS k-way
+# ----------------------------------------------------------------------
+
+def run_decomposition_metis(*, time_a: float = 60.0,
+                            time_bridges: float = 30.0,
+                            time_per_cluster: float = 30.0,
+                            time_ricucitura: float = 60.0,
+                            time_mono: float = 120.0,
+                            workers: int = 8,
+                            k: int | None = None,
+                            imbalance: float = 1.05,
+                            run_alns: bool = False,
+                            alns_budget_s: float = 300.0) -> int:
+    """Async run that partitions classes via pymetis k-way (or pure-
+    Python fallback) + Stage A/B/C/monolithic loop."""
+    params = dict(time_a=time_a, time_bridges=time_bridges,
+                  time_per_cluster=time_per_cluster,
+                  time_ricucitura=time_ricucitura, time_mono=time_mono,
+                  workers=workers, k=k, imbalance=imbalance,
+                  run_alns=run_alns, alns_budget_s=alns_budget_s)
+    run_id = create_run(
+        "decomposition_metis",
+        "Decomposizione METIS k-way",
+        None, params)
+
+    def target(rid: int):
+        with SessionLocal() as db:
+            locked_snap = _snapshot_locked_lessons(db)
+            profs = engine_io.profs_dict_from_db(db)
+        if not profs:
+            raise RuntimeError("Nessun assegnamento prof->classe.")
+
+        import sys
+        exp_dir = os.path.join(
+            os.path.dirname(os.path.dirname(
+                os.path.dirname(os.path.abspath(__file__)))),
+            "experiments")
+        if exp_dir not in sys.path:
+            sys.path.insert(0, exp_dir)
+        import decomposition_metis as dec_m  # type: ignore
+        if not dec_m._has_pymetis():
+            print("[metis] pymetis non disponibile, uso fallback "
+                  "Python balanced k-way (qualita' equivalente per "
+                  "n < 200 classi).")
+
+        update_run(rid, progress=0.05)
+        result = dec_m.solve_with_metis_decomposition(
+            profs, k=k, imbalance=imbalance,
+            time_a=time_a, time_bridges=time_bridges,
+            time_per_cluster=time_per_cluster,
+            time_ricucitura=time_ricucitura, time_mono=time_mono,
+            workers=workers, log=True,
+        )
+        update_run(rid, progress=0.85)
+        full_solution = result["full_solution"]
+        timings = result["timings"]
+        failed_days = result["failed_days"]
+        status = result["status"]
+
+        import metaheuristics as meta  # type: ignore
+        v0, m0 = meta.compute_soft(full_solution, profs)
+        feasible = meta.is_hard_feasible(full_solution, profs, verbose=False)
+
+        if run_alns and feasible:
+            try:
+                import alns as alns_mod  # type: ignore
+                refined, _ = alns_mod.run_alns(
+                    full_solution, profs, result["dc_value"],
+                    alns_budget_s, log=False, workers=2)
+                v1, m1 = meta.compute_soft(refined, profs)
+                if (meta.is_hard_feasible(refined, profs, verbose=False)
+                        and v1 <= v0):
+                    full_solution, v0, m0 = refined, v1, m1
+            except Exception as e:
+                print("[metis] ALNS skipped: " + str(e))
+
+        with SessionLocal() as db:
+            sid = engine_io.import_solution_into_db(
+                db, full_solution,
+                name="METIS decomposition run " + str(rid),
+                kind="phase_b_metis",
+                obj_value=float(v0),
+                metrics={**m0, "feasible": feasible,
+                         "master_s": round(timings["master"], 1),
+                         "days_total_s": round(timings["days_total"], 1),
+                         "cluster_sizes": result["cluster_sizes"],
+                         "bridges_count": result["bridges_count"],
+                         "failed_days": failed_days, "status": status},
+                make_active=True,
+            )
+            n_restored = _restore_locked_lessons(db, sid, locked_snap)
+            if n_restored:
+                db.commit()
+        update_run(rid, progress=1.0,
+                   metrics={"feasible": feasible, "obj": float(v0),
+                            "master_s": round(timings["master"], 1),
+                            "days_total_s": round(timings["days_total"], 1),
+                            "cluster_sizes": result["cluster_sizes"],
+                            "bridges_count": result["bridges_count"],
+                            "failed_days": failed_days,
+                            "status": status, "solution_id": sid})
+
+    start_thread(run_id, target)
+    return run_id
