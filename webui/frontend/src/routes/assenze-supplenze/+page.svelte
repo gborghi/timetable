@@ -439,21 +439,40 @@
         {#if cellModal.detail.available.length === 0}
           <p class="text-xs text-ink-400 italic">Nessun docente disponibile.</p>
         {:else}
+          <p class="text-[11px] text-ink-400 mb-1">
+            <span class="pill !text-[9px]"
+              style="background:#e9d5ff;color:#581c87;">POT</span>
+            in cima = docenti con ore di potenziamento
+            (Legge 107), priorita' supplenze.
+          </p>
           <ul class="space-y-1 max-h-96 overflow-auto">
             {#each cellModal.detail.available as t}
               <li class="card !shadow-none p-2 cursor-grab
                          hover:bg-accent-500/10 active:cursor-grabbing"
+                  class:!border-purple-300={t.is_potenziamento}
+                  class:!bg-purple-50={t.is_potenziamento}
                   draggable="true"
                   on:dragstart={(ev) => onDragStart(ev, t)}
                   on:dragend={onDragEnd}
                   title="Trascina su una classe scoperta">
                 <div class="flex items-baseline justify-between">
-                  <strong>{t.display}</strong>
+                  <strong>
+                    {#if t.is_potenziamento}
+                      <span class="pill !text-[9px]"
+                        style="background:#e9d5ff;color:#581c87;"
+                        title={`${t.potenziamento_hours}h di potenziamento`}
+                      >POT</span>
+                    {/if}
+                    {t.display}
+                  </strong>
                   {#if t.group}<span class="text-[10px] text-ink-500">{t.group}</span>{/if}
                 </div>
                 <div class="text-[11px] text-ink-500">
                   {(t.subjects || []).join(', ') || '-'}
                   <span class="ml-2">{t.scheduled_hours}/{t.max_hours} ore</span>
+                  {#if t.is_potenziamento}
+                    <span class="ml-2">+{t.potenziamento_hours}h pot</span>
+                  {/if}
                 </div>
               </li>
             {/each}

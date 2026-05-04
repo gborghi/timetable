@@ -153,6 +153,8 @@ class AvailableTeacher(BaseModel):
     subjects: list[str] = Field(default_factory=list)
     scheduled_hours: int = 0
     max_hours: int = 0
+    is_potenziamento: bool = False
+    potenziamento_hours: int = 0
 
 
 class CoverageCellDetail(BaseModel):
@@ -536,15 +538,38 @@ def coverage_cell(date: dt.date = Query(...),
         info["sub_acting_by_slot"].get(slot, set()),
         teacher_by_name,
     )
+    # Potenziamento (Legge 107) priority: teachers with at least
+    # one is_potenziamento Assignment are buffer profs available
+    # for substitutions. Surface their pot hours and put them
+    # first in the list.
+    pot_hours_by_teacher: dict[int, int] = {}
+    for a in db.query(models.Assignment).filter(
+        models.Assignment.is_potenziamento == True  # noqa: E712
+    ).all():
+        pot_hours_by_teacher[a.teacher_id] = (
+            pot_hours_by_teacher.get(a.teacher_id, 0)
+            + int(a.hours or 0))
+    avail_entries = []
     for t in avail:
-        out.available.append(AvailableTeacher(
+        avail_entries.append(AvailableTeacher(
             id=t.id, name=t.name,
             display=_teacher_display(t),
             group=t.group,
             subjects=[ts.subject for ts in t.subjects],
             scheduled_hours=teacher_total.get(t.name, 0),
             max_hours=t.max_hours,
+            is_potenziamento=t.id in pot_hours_by_teacher,
+            potenziamento_hours=pot_hours_by_teacher.get(t.id, 0),
         ))
+    # Sort: potenziamento first (descending by pot hours), then the
+    # rest by scheduled_hours ASC (less-loaded teachers preferred).
+    avail_entries.sort(
+        key=lambda e: (
+            0 if e.is_potenziamento else 1,
+            -e.potenziamento_hours,
+            e.scheduled_hours,
+        ))
+    out.available = avail_entries
     # status
     if any(u.substitute_teacher_id is None for u in out.uncovered):
         out.status = "red"
