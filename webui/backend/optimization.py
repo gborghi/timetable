@@ -2930,8 +2930,12 @@ def run_decomposition_temporal(*, time_a: float = 60.0,
         print(f"[temporal] HARD feasible: {feasible}, SOFT obj={v0:.1f}")
 
         # Step 5: ALNS finishing stage (optional, sequential on the
-        # ricucita solution).
-        if run_alns and feasible:
+        # ricucita solution). Skipped when locks are active because
+        # ALNS is not yet lock-aware (Atom 5 of the migration).
+        if run_alns and feasible and locked_snap:
+            print(f"[temporal] ALNS skipped: {len(locked_snap)} "
+                  f"locked lessons present; ALNS not yet lock-aware.")
+        elif run_alns and feasible:
             print(f"[temporal] step 5: ALNS finishing for "
                   f"{alns_budget_s:.0f}s")
             try:
@@ -3053,12 +3057,19 @@ def run_decomposition_curriculum(*, time_a: float = 60.0,
             manual.update(manual_groupings)
 
         update_run(rid, progress=0.05)
+        locked_dc = _locked_day_count_from_snapshot(locked_snap) or None
+        locked_by_day = _locked_slots_by_day(locked_snap) or None
+        if locked_snap:
+            print(f"[curriculum] native lock path: {len(locked_snap)} "
+                  f"locked lessons fed to solver")
         result = dec_c.solve_with_curriculum_decomposition(
             profs, cls_to_curr, manual,
             time_a=time_a, time_bridges=time_bridges,
             time_per_cluster=time_per_cluster,
             time_ricucitura=time_ricucitura, time_mono=time_mono,
             workers=workers, log=True,
+            locked_day_count=locked_dc,
+            locked_by_day=locked_by_day,
         )
         update_run(rid, progress=0.85)
         full_solution = result["full_solution"]
@@ -3070,7 +3081,15 @@ def run_decomposition_curriculum(*, time_a: float = 60.0,
         v0, m0 = meta.compute_soft(full_solution, profs)
         feasible = meta.is_hard_feasible(full_solution, profs, verbose=False)
 
-        if run_alns and feasible:
+        if run_alns and feasible and locked_snap:
+            # ALNS is not yet lock-aware (Atom 5 of the migration);
+            # running it on a solution with locks would let the
+            # destroy/repair operators move those lessons. Skip
+            # with a warning; the solver-primary placement of the
+            # locks survives untouched.
+            print(f"[curriculum] ALNS skipped: {len(locked_snap)} "
+                  f"locked lessons present; ALNS not yet lock-aware.")
+        elif run_alns and feasible:
             try:
                 import alns as alns_mod  # type: ignore
                 refined, _ = alns_mod.run_alns(
@@ -3097,9 +3116,11 @@ def run_decomposition_curriculum(*, time_a: float = 60.0,
                          "failed_days": failed_days, "status": status},
                 make_active=True,
             )
-            n_restored = _restore_locked_lessons(db, sid, locked_snap)
-            if n_restored:
+            n_touched = _apply_locked_classrooms(db, sid, locked_snap)
+            if n_touched:
                 db.commit()
+                print(f"[curriculum] re-applied classroom on "
+                      f"{n_touched} locked lessons (native path)")
         update_run(rid, progress=1.0,
                    metrics={"feasible": feasible, "obj": float(v0),
                             "master_s": round(timings["master"], 1),
@@ -3160,12 +3181,19 @@ def run_decomposition_metis(*, time_a: float = 60.0,
                   "n < 200 classi).")
 
         update_run(rid, progress=0.05)
+        locked_dc = _locked_day_count_from_snapshot(locked_snap) or None
+        locked_by_day = _locked_slots_by_day(locked_snap) or None
+        if locked_snap:
+            print(f"[metis] native lock path: {len(locked_snap)} "
+                  f"locked lessons fed to solver")
         result = dec_m.solve_with_metis_decomposition(
             profs, k=k, imbalance=imbalance,
             time_a=time_a, time_bridges=time_bridges,
             time_per_cluster=time_per_cluster,
             time_ricucitura=time_ricucitura, time_mono=time_mono,
             workers=workers, log=True,
+            locked_day_count=locked_dc,
+            locked_by_day=locked_by_day,
         )
         update_run(rid, progress=0.85)
         full_solution = result["full_solution"]
@@ -3177,7 +3205,10 @@ def run_decomposition_metis(*, time_a: float = 60.0,
         v0, m0 = meta.compute_soft(full_solution, profs)
         feasible = meta.is_hard_feasible(full_solution, profs, verbose=False)
 
-        if run_alns and feasible:
+        if run_alns and feasible and locked_snap:
+            print(f"[metis] ALNS skipped: {len(locked_snap)} "
+                  f"locked lessons present; ALNS not yet lock-aware.")
+        elif run_alns and feasible:
             try:
                 import alns as alns_mod  # type: ignore
                 refined, _ = alns_mod.run_alns(
@@ -3204,9 +3235,11 @@ def run_decomposition_metis(*, time_a: float = 60.0,
                          "failed_days": failed_days, "status": status},
                 make_active=True,
             )
-            n_restored = _restore_locked_lessons(db, sid, locked_snap)
-            if n_restored:
+            n_touched = _apply_locked_classrooms(db, sid, locked_snap)
+            if n_touched:
                 db.commit()
+                print(f"[metis] re-applied classroom on "
+                      f"{n_touched} locked lessons (native path)")
         update_run(rid, progress=1.0,
                    metrics={"feasible": feasible, "obj": float(v0),
                             "master_s": round(timings["master"], 1),
