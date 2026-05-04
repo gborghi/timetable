@@ -108,8 +108,17 @@ def solve_classroom_assignment(
     time_limit_s: float = 30.0,
     workers: int = 4,
     log: bool = False,
+    locked_classrooms: list[tuple] | None = None,
 ) -> tuple[dict | None, str]:
-    """Returns (mapping, status_name). mapping is None if infeasible."""
+    """Returns (mapping, status_name). mapping is None if infeasible.
+
+    `locked_classrooms` (optional): list of tuples
+    (class_name, subject, day, hour, classroom_name) that MUST be
+    assigned. Each such lesson_key gets `model.Add(x[(key, room)] == 1)`
+    for the named room. If the named room is not eligible for that
+    lesson (kind / availability) the solver returns INFEASIBLE with
+    a `LOCKED_INELIGIBLE:...` status.
+    """
     if not lessons:
         return {}, "OPTIMAL"
     if not classrooms:
@@ -123,6 +132,16 @@ def solve_classroom_assignment(
 
     rooms = [_normalize_classroom(r) for r in classrooms]
     room_by_name = {r["name"]: r for r in rooms}
+
+    # Build the locked-room map keyed by lesson_key.
+    locks_by_lesson: dict[tuple, str] = {}
+    for entry in (locked_classrooms or []):
+        if len(entry) != 5:
+            continue
+        cl_l, s_l, d_l, h_l, room_name = entry
+        if not room_name:
+            continue
+        locks_by_lesson[(cl_l, s_l, int(d_l), int(h_l))] = room_name
 
     # Group lessons by (class, subject, day, hour) — multiple co-teachers
     # share one lesson and one room.
@@ -149,6 +168,14 @@ def solve_classroom_assignment(
     if no_room_keys:
         # Return early with diagnostic
         return None, f"NO_ELIGIBLE:{no_room_keys[:5]}"
+
+    # Validate locks against eligibility.
+    bad_locks = [
+        (k, room) for k, room in locks_by_lesson.items()
+        if k not in eligible or room not in eligible.get(k, [])
+    ]
+    if bad_locks:
+        return None, f"LOCKED_INELIGIBLE:{bad_locks[:5]}"
 
     model = cp_model.CpModel()
     # x[lesson_key, room_name] = 1 if that lesson is assigned to that room
@@ -187,6 +214,16 @@ def solve_classroom_assignment(
                 int(soft["multi_class_overflow"] *
                     room["multi_class_pref_weight"]) * ov
             )
+
+    # Native locks: force x[(key, room)] == 1 for every locked
+    # (lesson_key, room_name). The eligibility validation above
+    # has already ensured the room is in `eligible[key]`.
+    for key, room_name in locks_by_lesson.items():
+        var = x.get((key, room_name))
+        if var is None:
+            # Defensive: should be caught by bad_locks above.
+            continue
+        model.Add(var == 1)
 
     # Bonus terms (negative because we minimize -bonus)
     bonus_terms: list[Any] = []

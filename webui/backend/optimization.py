@@ -2218,19 +2218,36 @@ def _apply_rooms_to_solution(sid: int, *, time_limit_s: float,
     with SessionLocal() as db:
         lessons = engine_io.lessons_for_classroom_step(db, sid)
         rooms = engine_io.classrooms_dicts_from_db(db)
+        # Native lock for the classroom step: read the snapshot of
+        # locked Lessons that have a classroom_name and force the
+        # solver to assign that room to that lesson.
+        locked_snap = _snapshot_locked_lessons(db)
+    locked_classrooms = [
+        (d["class_name"], d["subject"], int(d["day"]), int(d["hour"]),
+         d["classroom_name"])
+        for d in locked_snap
+        if d.get("day") is not None and d.get("hour") is not None
+        and d.get("classroom_name")
+    ]
     if not rooms:
         print(f"[{log_prefix}] no rooms in DB; skipping room step")
         return {"rooms_skipped": "no_rooms"}
     if not lessons:
         print(f"[{log_prefix}] solution has no lessons; skipping room step")
         return {"rooms_skipped": "no_lessons"}
-    print(f"[{log_prefix}] {len(lessons)} lessons, {len(rooms)} rooms")
+    print(f"[{log_prefix}] {len(lessons)} lessons, {len(rooms)} rooms"
+          + (f", {len(locked_classrooms)} classroom locks"
+             if locked_classrooms else ""))
     result, status = solve_classroom_assignment(
         lessons, rooms, time_limit_s=time_limit_s,
         workers=workers, log=log,
+        locked_classrooms=locked_classrooms or None,
     )
     if result is None:
         print(f"[{log_prefix}] CP-SAT infeasible ({status}); fallback greedy")
+        # Greedy doesn't honour locks; the upstream
+        # _apply_locked_classrooms step (called by every pipeline
+        # after the rooms step) will re-overwrite the lock targets.
         result = greedy_classroom_assignment(
             lessons, rooms, prefer_home=prefer_home,
         )
@@ -2259,16 +2276,27 @@ def run_classroom_assignment(time_limit_s: float, workers: int, log: bool,
                 )
             lessons = engine_io.lessons_for_classroom_step(db, active.id)
             rooms = engine_io.classrooms_dicts_from_db(db)
+            locked_snap = _snapshot_locked_lessons(db)
+        locked_classrooms = [
+            (d["class_name"], d["subject"], int(d["day"]), int(d["hour"]),
+             d["classroom_name"])
+            for d in locked_snap
+            if d.get("day") is not None and d.get("hour") is not None
+            and d.get("classroom_name")
+        ]
         if not rooms:
             raise RuntimeError(
                 "Nessuna aula nel DB: importa o genera la lista aule prima."
             )
         if not lessons:
             raise RuntimeError("Soluzione attiva senza lezioni.")
-        print(f"[rooms] {len(lessons)} lezioni, {len(rooms)} aule")
+        print(f"[rooms] {len(lessons)} lezioni, {len(rooms)} aule"
+              + (f", {len(locked_classrooms)} aule lockate"
+                 if locked_classrooms else ""))
         result, status = solve_classroom_assignment(
             lessons, rooms, time_limit_s=time_limit_s,
             workers=workers, log=log,
+            locked_classrooms=locked_classrooms or None,
         )
         if result is None:
             print(f"[rooms] CP-SAT infeasible ({status}); fallback greedy")
