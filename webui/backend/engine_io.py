@@ -162,7 +162,23 @@ def school_dict_from_db(db: Session) -> dict[str, Any]:
 
 
 def profs_dict_from_db(db: Session) -> dict[str, Any]:
-    """Build profs_<profile>.pkl content from the active assignments."""
+    """Build profs_<profile>.pkl content from the active assignments.
+
+    Task C1 update:
+    - Shared coteaching: each member of a coteach group has its own
+      Assignment row, so all of them naturally land in `profs` with
+      the cattedra's full hours (the principal teacher's hours --
+      the n_hours-of-overlap is enforced by the solver via the
+      coteach_groups_for_solver helper, NOT by inflating triples here).
+    - Potenziamento (class_id is NULL): excluded from `profs` entirely
+      because the solver handles them through a separate
+      potenziamento_assignments_from_db channel; the standard
+      Phase A / Phase B variables are class-bound and don't fit a
+      class-less cattedra.
+    - Sostegno (is_support=True, subject='sostegno'): included in
+      `profs` as a regular triple. The shadow constraint is added
+      separately by the solver using support_assignments_from_db.
+    """
     rng = random.Random(123)
     days = list(range(1, 7))
     # Use teacher.free_day for the primary free day
@@ -170,6 +186,8 @@ def profs_dict_from_db(db: Session) -> dict[str, Any]:
     teachers = {t.id: t for t in db.query(models.Teacher).all()}
     classes = {c.id: c for c in db.query(models.SchoolClass).all()}
     for a in db.query(models.Assignment).all():
+        if a.is_potenziamento:
+            continue
         t = teachers.get(a.teacher_id)
         cl = classes.get(a.class_id)
         if t is None or cl is None:
@@ -185,6 +203,107 @@ def profs_dict_from_db(db: Session) -> dict[str, Any]:
         rest = [d for d in days if d != primary]
         rng.shuffle(rest)
         info["glibero"] = [primary, rest[0], rest[1]]
+    return out
+
+
+# ============================================================
+# Task C1: extensions for coteaching, sostegno, potenziamento
+# ============================================================
+
+def coteach_groups_for_solver(db: Session) -> list[dict]:
+    """Return the list of CoteachGroup specs the solver consumes.
+
+    Each entry:
+      {
+        'group_id': int,
+        'class_name': str,
+        'subject': str,
+        'n_hours': int,
+        'required': bool,
+        'weight': float,
+        'teachers': [teacher_name1, teacher_name2, ...]
+      }
+
+    Members are derived from Assignment.coteach_group_id back-FK.
+    Skipped silently if the group has fewer than 2 members.
+    """
+    out: list[dict] = []
+    teachers_by_id = {t.id: t for t in db.query(models.Teacher).all()}
+    classes_by_id = {c.id: c for c in db.query(models.SchoolClass).all()}
+    for g in db.query(models.CoteachGroup).all():
+        members = [a for a in db.query(models.Assignment).filter(
+            models.Assignment.coteach_group_id == g.id
+        ).all() if a.teacher_id in teachers_by_id]
+        if len(members) < 2:
+            continue
+        cl = classes_by_id.get(g.class_id)
+        if cl is None:
+            continue
+        teacher_names = [teachers_by_id[a.teacher_id].name
+                         for a in members
+                         if a.teacher_id in teachers_by_id]
+        out.append({
+            "group_id": g.id,
+            "class_name": cl.name,
+            "subject": g.subject,
+            "n_hours": int(g.n_hours),
+            "required": bool(g.required),
+            "weight": float(g.weight or 100.0),
+            "teachers": teacher_names,
+        })
+    return out
+
+
+def support_assignments_from_db(db: Session) -> list[dict]:
+    """Return the list of sostegno (shadow) assignments. Each entry:
+      {
+        'teacher_name': str, 'class_name': str,
+        'subject': str (typically 'sostegno'), 'n_hours': int
+      }
+    These rows have is_support=True and a class_id set. The solver
+    uses them to add `slot[sost,X,sost,h] <= OR(slot[*,X,*,h] for
+    not-support)` and to NOT count the sostegno slot in class-busy.
+    """
+    out: list[dict] = []
+    teachers_by_id = {t.id: t for t in db.query(models.Teacher).all()}
+    classes_by_id = {c.id: c for c in db.query(models.SchoolClass).all()}
+    for a in db.query(models.Assignment).filter(
+        models.Assignment.is_support == True  # noqa: E712
+    ).all():
+        t = teachers_by_id.get(a.teacher_id)
+        cl = classes_by_id.get(a.class_id)
+        if t is None or cl is None:
+            continue
+        out.append({
+            "teacher_name": t.name,
+            "class_name": cl.name,
+            "subject": a.subject,
+            "n_hours": int(a.hours),
+        })
+    return out
+
+
+def potenziamento_assignments_from_db(db: Session) -> list[dict]:
+    """Return the list of potenziamento (class-less) assignments.
+      [{'teacher_name': str, 'subject': str, 'n_hours': int}]
+    Skipped silently if class_id is set (data anomaly: a row marked
+    is_potenziamento=True with a non-null class_id is malformed).
+    """
+    out: list[dict] = []
+    teachers_by_id = {t.id: t for t in db.query(models.Teacher).all()}
+    for a in db.query(models.Assignment).filter(
+        models.Assignment.is_potenziamento == True  # noqa: E712
+    ).all():
+        if a.class_id is not None:
+            continue                # malformed
+        t = teachers_by_id.get(a.teacher_id)
+        if t is None:
+            continue
+        out.append({
+            "teacher_name": t.name,
+            "subject": a.subject or "Potenziamento",
+            "n_hours": int(a.hours),
+        })
     return out
 
 
