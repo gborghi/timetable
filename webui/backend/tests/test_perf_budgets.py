@@ -195,14 +195,18 @@ def test_full_tab_cycle_within_budget(client):
         "/api/groups",
         "/api/curricula",
     ]
-    t0 = time.time()
+    timings: list[tuple[str, float]] = []
     for path in tabs:
+        t0 = time.time()
         r = client.get(path)
+        timings.append((path, (time.time() - t0) * 1000.0))
         assert r.status_code == 200, f"{path}: {r.status_code}"
-    dt_total = time.time() - t0
+    dt_total = sum(t for _, t in timings) / 1000.0
+    breakdown = ", ".join(f"{p}={dt:.0f}ms" for p, dt in timings)
     assert dt_total < 15.0, (
         f"Tab cycle took {dt_total:.1f}s (budget 15s). "
-        f"This is the scenario the user reports as 'stuck'."
+        f"This is the scenario the user reports as 'stuck'. "
+        f"Per-tab: {breakdown}"
     )
 
 
