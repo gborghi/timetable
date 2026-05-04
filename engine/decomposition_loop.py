@@ -63,6 +63,7 @@ def run_partitioned_pipeline(
     dc_value: dict | None = None,
     locked_day_count: dict | None = None,
     locked_by_day: dict | None = None,
+    coteach_groups: list | None = None,
 ):
     """Run the canonical Stage A/B/C/monolithic loop on a precomputed
     cluster partition.
@@ -133,6 +134,7 @@ def run_partitioned_pipeline(
             profs, classes_v, triples, class_profs,
             time_limit=time_a, workers=workers, log=False,
             locked_day_count=locked_day_count,
+            coteach_groups=coteach_groups,
         )
     elapsed_master = time.time() - t0
 
@@ -157,6 +159,7 @@ def run_partitioned_pipeline(
             mono_out, _ = dec.solve_monolithic_day(
                 d, profs, triples, dc_value, time_mono, workers,
                 locked_slots_for_day=locks_d,
+                coteach_groups=coteach_groups,
             )
             if mono_out is None:
                 failed_days.append(d)

@@ -530,16 +530,18 @@ def stage_c_ricucitura(day, profs, bridges, triples, dc_value,
 
 def solve_monolithic_day(day, profs, triples, dc_value,
                          time_limit, workers, log=False,
-                         locked_slots_for_day=None):
+                         locked_slots_for_day=None,
+                         coteach_groups=None):
     """Monolithic fallback for a single day. Forwards
-    `locked_slots_for_day` to cv2.solve_phase_b_for_day, which is
-    already lock-aware."""
+    `locked_slots_for_day` and `coteach_groups` to
+    cv2.solve_phase_b_for_day."""
     classes, _, class_profs = cv2.build_indices(profs)
     out, status = cv2.solve_phase_b_for_day(
         day, profs, classes, triples, class_profs, dc_value,
         time_limit=time_limit, workers=workers, log=log,
         enforce_no_holes=True,
         locked_slots_for_day=locked_slots_for_day,
+        coteach_groups=coteach_groups,
     )
     return out, status
 

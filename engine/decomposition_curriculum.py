@@ -172,6 +172,7 @@ def solve_with_curriculum_decomposition(
     dc_value: dict | None = None,
     locked_day_count: dict | None = None,
     locked_by_day: dict | None = None,
+    coteach_groups: list | None = None,
 ):
     """Pipeline end-to-end: partition by curriculum + Stage A/B/C/mono.
 
@@ -218,4 +219,5 @@ def solve_with_curriculum_decomposition(
         workers=workers, log=log, dc_value=dc_value,
         locked_day_count=locked_day_count,
         locked_by_day=locked_by_day,
+        coteach_groups=coteach_groups,
     )

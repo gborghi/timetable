@@ -310,7 +310,8 @@ def _diversified_seed(profs: dict, dc_value: dict,
 def _completion_solver(initial_sol: dict, profs: dict, dc_value: dict,
                        time_limit: float = 30.0,
                        workers: int = 4,
-                       locked_by_day: dict | None = None) -> dict | None:
+                       locked_by_day: dict | None = None,
+                       coteach_groups: list | None = None) -> dict | None:
     """Completion solver. When the master LP assembly leaves any
     (cl, subj, day) under-covered, this routine simply runs the
     standard Phase B day-solver for every day from scratch (using
@@ -339,6 +340,7 @@ def _completion_solver(initial_sol: dict, profs: dict, dc_value: dict,
             d, profs, classes_v, triples, class_profs, dc_value,
             time_limit=time_limit, workers=workers, log=False,
             locked_slots_for_day=(locked_by_day or {}).get(d),
+            coteach_groups=coteach_groups,
         )
         if out is None:
             return None
@@ -355,6 +357,7 @@ def run_column_generation(profs: dict, dc_value: dict,
                           log: bool = True,
                           locks: set | None = None,
                           locked_by_day: dict | None = None,
+                          coteach_groups: list | None = None,
                           ) -> tuple[dict | None, dict]:
     """Iterative Column Generation with master LP + diversified
     pattern enrichment + integer recovery + completion fallback.
@@ -490,6 +493,7 @@ def run_column_generation(profs: dict, dc_value: dict,
             time_limit=completion_time_limit,
             workers=completion_workers,
             locked_by_day=locked_by_day,
+            coteach_groups=coteach_groups,
         )
         if completed is not None and meta.is_hard_feasible(
                 completed, profs, verbose=False):

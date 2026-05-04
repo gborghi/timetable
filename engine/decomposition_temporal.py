@@ -64,7 +64,8 @@ HOURS = cv2.HOURS
 
 def pre_distribute_hours(profs: dict, *, time_limit: float = 60.0,
                          workers: int = 8, log: bool = False,
-                         locked_day_count: dict | None = None):
+                         locked_day_count: dict | None = None,
+                         coteach_groups: list | None = None):
     """Master CP-SAT che distribuisce le ore-cattedra fra i giorni.
 
     Riusa esattamente `cpsat_v2_timetable.solve_phase_a`, che e' il
@@ -77,6 +78,9 @@ def pre_distribute_hours(profs: dict, *, time_limit: float = 60.0,
     `(prof, class, subject, day) -> int` che impone un FLOOR sul
     numero di ore di quella cattedra nel giorno indicato.
 
+    Se `coteach_groups` e' valorizzato, e' la lista di dict consumata
+    da solve_phase_a per imporre i vincoli di compresenza.
+
     Returns
     -------
     dc_value : dict (str, str, str, int) -> int
@@ -87,6 +91,7 @@ def pre_distribute_hours(profs: dict, *, time_limit: float = 60.0,
         profs, classes, triples, class_profs,
         time_limit=time_limit, workers=workers, log=log,
         locked_day_count=locked_day_count,
+        coteach_groups=coteach_groups,
     )
 
 
@@ -97,7 +102,8 @@ def pre_distribute_hours(profs: dict, *, time_limit: float = 60.0,
 def solve_day(day: int, profs: dict, dc_value: dict, *,
               time_limit: float = 30.0, workers: int = 4,
               enforce_no_holes: bool = True, log: bool = False,
-              locked_slots_for_day: list | None = None):
+              locked_slots_for_day: list | None = None,
+              coteach_groups: list | None = None):
     """Risolve il sotto-problema CP-SAT del giorno `day`.
 
     Riusa `cpsat_v2_timetable.solve_phase_b_for_day`. Le ore
@@ -120,6 +126,7 @@ def solve_day(day: int, profs: dict, dc_value: dict, *,
         time_limit=time_limit, workers=workers, log=log,
         enforce_no_holes=enforce_no_holes,
         locked_slots_for_day=locked_slots_for_day,
+        coteach_groups=coteach_groups,
     )
 
 
@@ -128,19 +135,25 @@ def solve_day(day: int, profs: dict, dc_value: dict, *,
 # loads them and calls solve_day.
 def _worker_solve_day(args):
     """Top-level worker function so ProcessPoolExecutor can pickle
-    it on Windows. Arguments are passed packed into a tuple to make
-    `executor.submit` ergonomics straightforward.
-
-    Tuple shape (backward compat): the 6-element form is the legacy
-    one (no locks); a 7th element, when present, carries the
-    `locked_slots_for_day` list."""
-    if len(args) == 7:
+    it on Windows. Arguments are packed into a variable-length
+    tuple for backward compat:
+      - 6 elements: legacy (no locks, no coteach)
+      - 7 elements: + locked_slots_for_day
+      - 8 elements: + coteach_groups
+    """
+    if len(args) == 8:
+        (day, profs_path, dc_path, time_limit, workers,
+         enforce_no_holes, locked_slots_for_day,
+         coteach_groups) = args
+    elif len(args) == 7:
         (day, profs_path, dc_path, time_limit, workers,
          enforce_no_holes, locked_slots_for_day) = args
+        coteach_groups = None
     else:
         (day, profs_path, dc_path, time_limit, workers,
          enforce_no_holes) = args
         locked_slots_for_day = None
+        coteach_groups = None
     with open(profs_path, "rb") as f:
         profs = pickle.load(f)
     with open(dc_path, "rb") as f:
@@ -151,6 +164,7 @@ def _worker_solve_day(args):
         time_limit=time_limit, workers=workers,
         enforce_no_holes=enforce_no_holes, log=False,
         locked_slots_for_day=locked_slots_for_day,
+        coteach_groups=coteach_groups,
     )
     dt = time.time() - t0
     return day, out, int(status), dt
@@ -173,7 +187,8 @@ def run_temporal_pipeline(profs_path: str, *,
                           out_path: str | None = None,
                           dc_out_path: str | None = None,
                           locked_day_count: dict | None = None,
-                          locked_by_day: dict | None = None):
+                          locked_by_day: dict | None = None,
+                          coteach_groups: list | None = None):
     """Orchestra master + day-solvers paralleli + ricucitura.
 
     Parameters
@@ -244,7 +259,8 @@ def run_temporal_pipeline(profs_path: str, *,
     try:
         dc_value = pre_distribute_hours(
             profs, time_limit=time_a, workers=8, log=False,
-            locked_day_count=locked_day_count)
+            locked_day_count=locked_day_count,
+            coteach_groups=coteach_groups)
     except Exception as e:
         return {
             'full_solution': {},
@@ -299,7 +315,8 @@ def run_temporal_pipeline(profs_path: str, *,
                               (d, profs_pkl, dc_pkl,
                                time_day, cpsat_workers_per_day,
                                enforce_no_holes,
-                               (locked_by_day or {}).get(d, None))): d
+                               (locked_by_day or {}).get(d, None),
+                               coteach_groups)): d
                     for d in DAYS
                 }
                 done_args_iter = (as_completed(futures, timeout=day_timeout)
@@ -345,6 +362,7 @@ def run_temporal_pipeline(profs_path: str, *,
                 time_limit=time_day, workers=cpsat_workers_per_day,
                 enforce_no_holes=enforce_no_holes, log=False,
                 locked_slots_for_day=(locked_by_day or {}).get(d, None),
+                coteach_groups=coteach_groups,
             )
             dt = time.time() - t
             days_per_day[d] = dt
