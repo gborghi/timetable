@@ -251,47 +251,114 @@
 
   $: groupedBuckets = data ? groupRows(data.items, groupBy1, groupBy2) : [];
 
-  function rowId(r, idx) {
+  // visualRows: flat array of rows in DISPLAYED order (after grouping
+  // and sub-grouping, in the same order the user sees them on screen).
+  // Each row is tagged with two indices:
+  //   _vIdx  : 0-based position in the visual order, used for shift+click
+  //   _inSub : 0-based position within its subgroup, used to disambiguate
+  //            placeholder rows (multiple "missing hours" for the same
+  //            assignment) inside one bucket
+  // Mutating the row objects in place is fine: groupRows returns the
+  // same row references that came from data.items, and the visualRows
+  // reactive runs whenever groupedBuckets changes, so the tags stay
+  // consistent with what's rendered.
+  $: visualRows = (() => {
+    const arr = [];
+    let v = 0;
+    for (const b of groupedBuckets) {
+      for (const sb of b.sub) {
+        let inSub = 0;
+        for (const r of sb.rows2) {
+          r._vIdx = v;
+          r._inSub = inSub;
+          arr.push(r);
+          v++;
+          inSub++;
+        }
+      }
+    }
+    return arr;
+  })();
+
+  function rowId(r) {
+    // Lessons have a stable lesson_id; placeholders need a tiebreaker
+    // because one assignment can have N missing-hour placeholder rows.
+    // _inSub is set during the visualRows pass; we fall back to 0 if
+    // somehow called before that runs.
     return r.lesson_id != null
       ? `lesson:${r.lesson_id}`
-      : `placeholder:${r.assignment_id}:${idx}`;
+      : `placeholder:${r.assignment_id}:${r._inSub ?? 0}`;
   }
 
   // ----- Selection helpers (mirrors SortableQueryableList) ------------
-  let lastClickedKey = null;
-  function isSelected(r, idx) {
-    return selectedIds.includes(rowId(r, idx));
+  // lastClickedIdx is a _vIdx (visual flat index), so shift+click
+  // ranges follow what the user sees, not server order.
+  let lastClickedIdx = -1;
+  function isSelected(r) {
+    return selectedIds.includes(rowId(r));
   }
-  function toggleOne(r, idx) {
-    const k = rowId(r, idx);
+  function toggleOne(r) {
+    const k = rowId(r);
     if (selectedIds.includes(k)) {
       selectedIds = selectedIds.filter((x) => x !== k);
     } else {
       selectedIds = [...selectedIds, k];
     }
-    lastClickedKey = k;
+    lastClickedIdx = r._vIdx ?? lastClickedIdx;
+  }
+  function selectRange(fromVIdx, toVIdx) {
+    if (visualRows.length === 0) return;
+    const lo = Math.max(0, Math.min(fromVIdx, toVIdx));
+    const hi = Math.min(visualRows.length - 1, Math.max(fromVIdx, toVIdx));
+    const ks = [];
+    for (let i = lo; i <= hi; i++) ks.push(rowId(visualRows[i]));
+    const set = new Set(selectedIds);
+    ks.forEach((k) => set.add(k));
+    selectedIds = [...set];
+  }
+  // Row click handler — same semantics as SortableQueryableList:
+  //   plain click       => single-select (replace)
+  //   shift+click       => extend range from last anchor (visual order)
+  //   ctrl/cmd+click    => toggle one
+  // Clicks on the checkbox itself are handled separately (with
+  // stopPropagation on the input), so this only fires for clicks on
+  // the rest of the row.
+  function onRowClick(ev, r) {
+    if (!selectable) return;
+    // Don't hijack clicks on actual interactive controls inside the row
+    // (action buttons, eventual links).
+    const t = ev.target;
+    if (t && (t.tagName === 'BUTTON' || t.tagName === 'INPUT'
+              || t.tagName === 'A' || t.closest('button')
+              || t.closest('a') || t.closest('input'))) return;
+    const idx = r._vIdx ?? -1;
+    if (ev.shiftKey && lastClickedIdx >= 0 && idx >= 0) {
+      selectRange(lastClickedIdx, idx);
+    } else if (ev.ctrlKey || ev.metaKey) {
+      toggleOne(r);
+    } else {
+      const k = rowId(r);
+      if (selectedIds.length === 1 && selectedIds[0] === k) {
+        selectedIds = [];
+      } else {
+        selectedIds = [k];
+      }
+      lastClickedIdx = idx;
+    }
+    ev.preventDefault();
   }
   function selectAllVisible() {
-    const all = [];
-    let i = 0;
-    for (const r of (data?.items ?? [])) {
-      all.push(rowId(r, i++));
-    }
-    selectedIds = all;
+    // Walk visualRows so that even placeholders get the right rowId
+    // (they need _inSub tagged, which only the visual pass guarantees).
+    selectedIds = visualRows.map(rowId);
   }
   function clearSelection() {
     selectedIds = [];
-    lastClickedKey = null;
+    lastClickedIdx = -1;
   }
   function _selectedRows() {
     const idSet = new Set(selectedIds);
-    const rows = [];
-    let i = 0;
-    for (const r of (data?.items ?? [])) {
-      if (idSet.has(rowId(r, i))) rows.push(r);
-      i++;
-    }
-    return rows;
+    return visualRows.filter((r) => idSet.has(rowId(r)));
   }
   async function bulkDelete() {
     if (!onBulkDelete) return;
@@ -501,12 +568,15 @@
           <tr>
             {#if selectable}
               <th class="w-6 text-center"
-                  title="Tieni Ctrl o Shift per selezione multipla.">
+                  title={'Click sulla riga: seleziona singola.\n'
+                       + 'Shift+click sulla riga: estendi selezione fino a qui.\n'
+                       + 'Ctrl/Cmd+click sulla riga: aggiungi/togli senza azzerare.\n'
+                       + 'Click sulla checkbox: toggle solo della riga.'}>
                 <input type="checkbox"
                        checked={selectedIds.length > 0
-                                && selectedIds.length === (data.items?.length ?? 0)}
+                                && selectedIds.length === (visualRows.length)}
                        indeterminate={selectedIds.length > 0
-                                && selectedIds.length < (data.items?.length ?? 0)}
+                                && selectedIds.length < (visualRows.length)}
                        on:change={(e) => e.target.checked
                                 ? selectAllVisible() : clearSelection()}/>
               </th>
@@ -647,19 +717,21 @@
                   </tr>
                 {/if}
                 {#if g2Open}
-                  {#each sb.rows2 as r, i (rowId(r, i))}
-                    <tr style={selectable && isSelected(r, i)
+                  {#each sb.rows2 as r (rowId(r))}
+                    <tr style={selectable && isSelected(r)
                                 ? 'background-color: rgba(59,130,246,0.18);'
                                 : (r.is_scheduled
                                     ? (r.is_complete ? '' : 'background-color:#fef9c3;')
                                     : 'background-color:#fef2f2;')}
                         class:border-l-4={r.is_locked || r.locked}
-                        class:border-amber-500={r.is_locked || r.locked}>
+                        class:border-amber-500={r.is_locked || r.locked}
+                        class:cursor-pointer={selectable}
+                        on:click={(e) => onRowClick(e, r)}>
                       {#if selectable}
                         <td class="w-6 text-center">
                           <input type="checkbox"
-                                 checked={isSelected(r, i)}
-                                 on:click|stopPropagation={() => toggleOne(r, i)}/>
+                                 checked={isSelected(r)}
+                                 on:click|stopPropagation={() => toggleOne(r)}/>
                         </td>
                       {/if}
                       <td class="text-[11px]"
