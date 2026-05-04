@@ -488,9 +488,13 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
         with SessionLocal() as db:
             locked_snap = _snapshot_locked_lessons(db)
             profs = engine_io.profs_dict_from_db(db)
+            coteach_groups = engine_io.coteach_groups_for_solver(db)
         if locked_snap:
             print(f"[phaseB] {len(locked_snap)} locked lessons "
                   f"({'native CP-SAT' if not use_decomposition else 'snapshot/restore'} path)")
+        if coteach_groups:
+            print(f"[phaseB] {len(coteach_groups)} coteach groups "
+                  f"(shared mode)")
         if not profs:
             raise RuntimeError(
                 "Nessun assegnamento prof->classe; esegui prima "
@@ -515,6 +519,7 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
             profs, classes, triples, class_profs,
             time_limit=time_a, workers=workers, log=log,
             locked_day_count=locked_dc or None,
+            coteach_groups=coteach_groups or None,
         )
         with open(os.path.join(ws, "phase_a_dc.pkl"), "wb") as f:
             pickle.dump(dc_value, f)
@@ -614,12 +619,13 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                     }
                     full_solution.update(out)
         else:
-            # monolithic per day -- native locks
+            # monolithic per day -- native locks + coteach groups
             for d in DAYS:
                 out, status = cv2.solve_phase_b_for_day(
                     d, profs, classes, triples, class_profs, dc_value,
                     time_limit=time_mono, workers=workers, log=log,
                     locked_slots_for_day=locked_by_day.get(d, []),
+                    coteach_groups=coteach_groups or None,
                 )
                 if out is None and locked_by_day.get(d):
                     raise RuntimeError(

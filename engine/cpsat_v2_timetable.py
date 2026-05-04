@@ -176,14 +176,26 @@ def build_indices(profs):
 # -----------------------------
 def solve_phase_a(profs, classes, triples, class_profs,
                   time_limit=30, workers=8, log=True,
-                  locked_day_count=None):
+                  locked_day_count=None,
+                  coteach_groups=None):
     """Risolve Phase A. Se `locked_day_count` e\` valorizzato, e\` un
     dict (prof, class, subject, day) -> int che impone un FLOOR sul
     numero di ore di quella cattedra nel giorno indicato. Le ore non
     coperte dai lock restano libere (il vincolo settimanale
-    sum_d day_count == ore resta intatto)."""
+    sum_d day_count == ore resta intatto).
+
+    Se `coteach_groups` e\` valorizzato, e\` una lista di dict
+    {class_name, subject, n_hours, teachers, required} (formato di
+    engine_io.coteach_groups_for_solver). Per ogni gruppo HARD viene
+    introdotta una IntVar `coday_count[g, d]` in [0, n_hours] tale
+    che sum_d == n_hours, e per ogni teacher Ti del gruppo
+    `day_count[(Ti, X, Y, d)] >= coday_count[g, d]`. Il valore di
+    `coday_count` viene incluso nell'output dc_value cosi\` che
+    Phase B sappia quante ore sono in compresenza in ciascun giorno.
+    """
     model = cp_model.CpModel()
     locked_day_count = locked_day_count or {}
+    coteach_groups = list(coteach_groups or [])
 
     # Variabili int [0..MAX_PER_DAY_TRIPLE]
     day_count = {}                             # (prof, cl, subj, day) -> IntVar
@@ -210,6 +222,45 @@ def solve_phase_a(profs, classes, triples, class_profs,
             # with the lock set.
             continue
         model.Add(day_count[(p, cl, subj, d)] >= int(n_lock))
+
+    # Shared coteaching: for each HARD group, introduce coday_count
+    # IntVars and tie them to each member's day_count. Convention:
+    #   members[0] is the PRINCIPAL teacher (full cattedra hours).
+    #     -> day_count[principal, d] >= coday[g, d]   (the n_hours of
+    #     overlap are a subset of the principal's hours).
+    #   members[1:] are CO-TEACHERS (their cattedra hours are exactly
+    #     the compresenza hours).
+    #     -> day_count[codoc, d] == coday[g, d]
+    # `coteach_codoc_triples` collects the (codoc, class, subj) keys
+    # so the cl_day_load + ore_per_classe constraints below can
+    # exclude them (their hours are already counted via the principal).
+    coday_count_vars: dict[tuple[int, int], Any] = {}
+    coteach_codoc_triples: set[tuple[str, str, str]] = set()
+    for g in coteach_groups:
+        if not g.get("required"):
+            continue                  # SOFT not yet enforced
+        gid = g["group_id"]
+        gcl = g["class_name"]
+        gsub = g["subject"]
+        gn = int(g["n_hours"])
+        gteachers = list(g["teachers"])
+        # Skip groups whose triples are not in dc_value (e.g. a member
+        # has zero hours scheduled). Defensive: malformed inputs.
+        usable = [t for t in gteachers
+                  if (t, gcl, gsub, DAYS[0]) in day_count]
+        if len(usable) < 2:
+            continue
+        principal = usable[0]
+        codocs = usable[1:]
+        for d in DAYS:
+            cdv = model.NewIntVar(0, gn, f"coday_{gid}_{d}")
+            coday_count_vars[(gid, d)] = cdv
+            model.Add(day_count[(principal, gcl, gsub, d)] >= cdv)
+            for t in codocs:
+                model.Add(day_count[(t, gcl, gsub, d)] == cdv)
+        model.Add(sum(coday_count_vars[(gid, d)] for d in DAYS) == gn)
+        for t in codocs:
+            coteach_codoc_triples.add((t, gcl, gsub))
 
     # Per (prof, cl, day): max MAX_PER_DAY_PROF_CL
     triples_by_prof_cl = defaultdict(list)
@@ -245,8 +296,12 @@ def solve_phase_a(profs, classes, triples, class_profs,
     #   (HARD-1) "se classe > 24 ore settimanali, no day = 3" =>
     #            ridondante con (HARD-2): {0, [4, max]} esclude 3.
     #   Equivalenza pratica: cl_day_load in {0, 4, 5, 6}.
+    # Codoc triples are excluded from cl_day_load (their hours are
+    # already counted via the principal teacher's day_count).
     triples_by_cl = defaultdict(list)
     for (p, cl, subj, ore) in triples:
+        if (p, cl, subj) in coteach_codoc_triples:
+            continue
         triples_by_cl[cl].append((p, subj))
     cl_day_load = {}
     for cl, lst in triples_by_cl.items():
@@ -278,10 +333,15 @@ def solve_phase_a(profs, classes, triples, class_profs,
         model.Add(n_sixth_hour == 0)
 
     # vincolo settimanale: sum_d load = ore curriculum totali della classe
+    # Codoc triples excluded (already counted via principal).
     ore_per_classe = defaultdict(int)
     for (p, cl, subj, ore) in triples:
+        if (p, cl, subj) in coteach_codoc_triples:
+            continue
         ore_per_classe[cl] += ore
     for cl in classes:
+        if (cl, 1) not in cl_day_load:
+            continue           # class with no triples (degenerate)
         model.Add(
             sum(cl_day_load[(cl, d)] for d in DAYS) == ore_per_classe[cl]
         )
@@ -561,10 +621,16 @@ def solve_phase_a(profs, classes, triples, class_profs,
             f"[phaseA] WARNING: vincolo HARD violato (load 1/2/3 trovato)"
         )
 
-    # Estrai assegnazione giornaliera
+    # Estrai assegnazione giornaliera. The coday_count IntVars (one
+    # per shared coteaching group * day) are merged into dc_value
+    # using the namespaced key ("__coday__", group_id, day) so Phase B
+    # can read them without breaking the (p, cl, subj, day) -> int
+    # contract for cattedra-bound entries.
     dc_value = {
         k: solver.Value(v) for k, v in day_count.items()
     }
+    for (gid, d), var in coday_count_vars.items():
+        dc_value[("__coday__", gid, d)] = solver.Value(var)
     return dc_value
 
 
@@ -574,7 +640,8 @@ def solve_phase_a(profs, classes, triples, class_profs,
 def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
                           dc_value, time_limit=10, workers=4, log=False,
                           enforce_no_holes=True,
-                          locked_slots_for_day=None):
+                          locked_slots_for_day=None,
+                          coteach_groups=None):
     r"""Risolve il sotto-problema di un singolo giorno.
 
     Se enforce_no_holes=True (default) impone ai profili di classe la
@@ -586,6 +653,16 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
     tuple (prof, class, subject, hour) che devono valere 1 (cioe\`
     occupati). Sono i lock nativi: il solver li tratta come
     constraint e li sfrutta per potare lo spazio di ricerca.
+
+    Se `coteach_groups` e\` valorizzato, e\` la stessa lista di dict
+    passata a solve_phase_a (uno per gruppo di compresenza). Per
+    ogni gruppo la cui `coday_count` per questo giorno e\` > 0 (letta
+    da dc_value tramite la chiave ("__coday__", group_id, day)),
+    introdurre `coslot[(g, h)]` BoolVar con somma == coday e
+    legare `slot[(Ti, X, Y, h)] >= coslot[(g, h)]` per ogni teacher
+    del gruppo. Il vincolo class-busy aggrega per (class, subject)
+    cosi\` che gli k slot di compresenza contino UNA sola volta
+    come occupazione classe.
     """
     model = cp_model.CpModel()
     slot = {}                                  # (p, cl, subj, h) -> Bool
@@ -622,6 +699,38 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
             continue
         model.Add(slot[key] == 1)
 
+    # Shared coteaching: introduce coslot vars and tie member slots.
+    # Build a dict (class_name, subject) -> set(teacher_names)
+    # to drive the class-busy aggregation later.
+    coteach_groups = list(coteach_groups or [])
+    coslot: dict[tuple[int, int], Any] = {}    # (group_id, hour) -> Bool
+    coteach_members_by_cl_subj: dict[
+        tuple[str, str], list[str]] = {}
+    coteach_n_by_day: dict[int, int] = {}        # group_id -> n_hours_today
+    for g in coteach_groups:
+        if not g.get("required"):
+            continue
+        gid = g["group_id"]
+        gcl = g["class_name"]
+        gsub = g["subject"]
+        gteachers = list(g["teachers"])
+        # Active members today: must have a slot var (i.e. dc_value > 0)
+        usable = [t for t in gteachers
+                  if (t, gcl, gsub, HOURS[0]) in slot]
+        if len(usable) < 2:
+            continue
+        n_today = int(dc_value.get(("__coday__", gid, day), 0))
+        coteach_n_by_day[gid] = n_today
+        if n_today == 0:
+            continue
+        coteach_members_by_cl_subj[(gcl, gsub)] = usable
+        for h in HOURS:
+            cv = model.NewBoolVar(f"co_{gid}_{day}_{h}")
+            coslot[(gid, h)] = cv
+            for t in usable:
+                model.Add(slot[(t, gcl, gsub, h)] >= cv)
+        model.Add(sum(coslot[(gid, h)] for h in HOURS) == n_today)
+
     # No overlap prof
     for p in {pp for (pp, _, _, _) in triples_active}:
         for h in HOURS:
@@ -631,25 +740,36 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
                 <= 1
             )
 
-    # No overlap classe + no holes (classe presente in slot 8 e
-    # presenza non crescente).
+    # Classe occupata: per ogni (class, subject, h), aggregare i k
+    # slot dei k coteachers in un OR -- conta UNA sola occupazione
+    # classe anche quando i co-docenti sono entrambi presenti
+    # (compresenza). Senza compresenza, k=1 e il vincolo degenera
+    # all'usuale sum<=1.
     cls_in_day = {cl for (_, cl, _, _) in triples_active}
     present_per_class = {}
     for cl in cls_in_day:
-        # presenza per ora
         present = []
         for h in HOURS:
-            slot_keys = [
-                slot[(p, cl, s, h)]
-                for (p, cc, s, _) in triples_active if cc == cl
-            ]
+            # Group slot vars by subject within this class.
+            subjects_in_cl = {ss for (_, cc, ss, _)
+                              in triples_active if cc == cl}
+            subj_busy_vars = []
+            for s in subjects_in_cl:
+                keys_s = [slot[(p, cl, s, h)]
+                          for (p, cc, ss, _) in triples_active
+                          if cc == cl and ss == s]
+                if not keys_s:
+                    continue
+                if len(keys_s) == 1:
+                    subj_busy_vars.append(keys_s[0])
+                else:
+                    sb = model.NewBoolVar(f"sb_{cl}_{s}_{day}_{h}")
+                    model.AddMaxEquality(sb, keys_s)
+                    subj_busy_vars.append(sb)
             pr = model.NewBoolVar(f"pr_{cl}_{day}_{h}")
-            if slot_keys:
-                model.AddMaxEquality(pr, slot_keys)
-                model.Add(sum(slot_keys) == pr)        # sostituisce <=1
-                                                        # quando pr=1
-                # in realta\` "sum<=1" basta; il MaxEq + Add forzano
-                # esattamente 1 quando presente.
+            if subj_busy_vars:
+                model.AddMaxEquality(pr, subj_busy_vars)
+                model.Add(sum(subj_busy_vars) == pr)
             else:
                 model.Add(pr == 0)
             present.append(pr)
