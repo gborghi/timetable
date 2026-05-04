@@ -2899,6 +2899,14 @@ def run_decomposition_temporal(*, time_a: float = 60.0,
 
         update_run(rid, progress=0.05)
         print("[temporal] starting pipeline")
+        # Native locks: feed both Phase A floor and per-day slot
+        # constraints to the orchestrator. ALNS receives them too
+        # (see step 5 below).
+        locked_dc = _locked_day_count_from_snapshot(locked_snap)
+        locked_by_day = _locked_slots_by_day(locked_snap)
+        if locked_snap:
+            print(f"[temporal] native lock path: {len(locked_snap)} "
+                  f"locked lessons fed to solver")
         result = dec_t.run_temporal_pipeline(
             profs_pkl,
             parallel=parallel,
@@ -2911,6 +2919,8 @@ def run_decomposition_temporal(*, time_a: float = 60.0,
             log_progress=True,
             out_path=os.path.join(ws, "solution.pkl"),
             dc_out_path=os.path.join(ws, "dc.pkl"),
+            locked_day_count=locked_dc or None,
+            locked_by_day=locked_by_day or None,
         )
         update_run(rid, progress=0.85)
 
@@ -2966,10 +2976,13 @@ def run_decomposition_temporal(*, time_a: float = 60.0,
                          "status": status},
                 make_active=True,
             )
-            n_restored = _restore_locked_lessons(db, sid, locked_snap)
-            if n_restored:
+            # Native-lock path: solver placed the lessons; only
+            # re-apply classroom_name + cotaught_with attributes.
+            n_touched = _apply_locked_classrooms(db, sid, locked_snap)
+            if n_touched:
                 db.commit()
-                print(f"[temporal] restored {n_restored} locked lessons")
+                print(f"[temporal] re-applied classroom on "
+                      f"{n_touched} locked lessons (native path)")
 
         update_run(rid, progress=1.0,
                    metrics={"feasible": feasible,
