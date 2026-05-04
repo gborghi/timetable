@@ -2081,24 +2081,113 @@ def _snapshot_and_validate_locks(db: Session) -> list[dict]:
     return snap
 
 
+def validate_coteach_sostegno_potenziamento(db: Session) -> list[str]:
+    """Pre-flight check for the Task C1 schema additions. Catches:
+
+    - CoteachGroup.n_hours > principal teacher's Assignment.hours.
+    - CoteachGroup.n_hours != codoc's Assignment.hours (codoc is
+      supposed to have exactly n_hours of weekly hours -- all in
+      compresenza).
+    - Support assignment without a valid class_id.
+    - Potenziamento assignment with class_id set (malformed).
+    - Potenziamento total per teacher > 30 (5 hours/day * 6 days).
+    """
+    violations: list[str] = []
+    teachers_by_id = {t.id: t for t in db.query(models.Teacher).all()}
+    classes_by_id = {c.id: c for c in db.query(models.SchoolClass).all()}
+
+    # Coteach groups
+    for g in db.query(models.CoteachGroup).all():
+        members = db.query(models.Assignment).filter(
+            models.Assignment.coteach_group_id == g.id
+        ).all()
+        if not members:
+            continue
+        members_sorted = sorted(
+            members,
+            key=lambda a: (-int(a.hours or 0),
+                            teachers_by_id.get(a.teacher_id).name
+                            if a.teacher_id in teachers_by_id else ""),
+        )
+        principal = members_sorted[0]
+        if g.n_hours > (principal.hours or 0):
+            cl = classes_by_id.get(g.class_id)
+            cn = cl.name if cl else f"#{g.class_id}"
+            violations.append(
+                f"compresenza ({cn}, {g.subject}): n_hours={g.n_hours} "
+                f"> ore principale ({principal.hours})"
+            )
+        for codoc in members_sorted[1:]:
+            if (codoc.hours or 0) != g.n_hours:
+                t = teachers_by_id.get(codoc.teacher_id)
+                cn = (classes_by_id.get(g.class_id).name
+                      if g.class_id in classes_by_id else "?")
+                violations.append(
+                    f"compresenza ({cn}, {g.subject}): codoc "
+                    f"{t.name if t else codoc.teacher_id} ha "
+                    f"{codoc.hours} ore ma il gruppo richiede "
+                    f"esattamente {g.n_hours}"
+                )
+
+    # Support assignments
+    for a in db.query(models.Assignment).filter(
+        models.Assignment.is_support == True  # noqa: E712
+    ).all():
+        if a.class_id is None or a.class_id not in classes_by_id:
+            t = teachers_by_id.get(a.teacher_id)
+            tn = t.name if t else f"#{a.teacher_id}"
+            violations.append(
+                f"sostegno {tn}: classe non valida (class_id="
+                f"{a.class_id!r}); il sostegno deve riferirsi a una "
+                f"classe esistente."
+            )
+
+    # Potenziamento assignments
+    pot_by_teacher: dict[int, int] = {}
+    for a in db.query(models.Assignment).filter(
+        models.Assignment.is_potenziamento == True  # noqa: E712
+    ).all():
+        if a.class_id is not None:
+            t = teachers_by_id.get(a.teacher_id)
+            tn = t.name if t else f"#{a.teacher_id}"
+            violations.append(
+                f"potenziamento {tn}: ha class_id={a.class_id} ma "
+                f"deve essere class_id NULL (cattedra senza classe)"
+            )
+        pot_by_teacher[a.teacher_id] = (
+            pot_by_teacher.get(a.teacher_id, 0) + int(a.hours or 0))
+    for tid, total in pot_by_teacher.items():
+        if total > 30:
+            t = teachers_by_id.get(tid)
+            tn = t.name if t else f"#{tid}"
+            violations.append(
+                f"potenziamento {tn}: {total} ore > 30 (cap "
+                f"settimanale; 5 ore/giorno x 6 giorni)"
+            )
+    return violations
+
+
 def _preflight_lock_check() -> None:
     """Sync wrapper for the pre-flight check. Called by every
     run_xxx entry-point BEFORE create_run + start_thread, so a lock
     violation surfaces as a 400 on the synchronous POST instead of
     silently failing the run later. Opens its own session: cheap
     and short-lived.
+
+    Also validates Task C1 invariants (coteach n_hours, sostegno
+    class_id, potenziamento total cap).
     """
     with SessionLocal() as db:
         snap = _snapshot_locked_lessons(db)
-    if not snap:
-        return
-    violations = validate_locks_vs_constraints(snap)
+        cs_violations = validate_coteach_sostegno_potenziamento(db)
+    violations = list(cs_violations)
+    if snap:
+        violations.extend(validate_locks_vs_constraints(snap))
     if violations:
         raise RuntimeError(
-            "Lock incompatibili con i vincoli HARD attuali: "
+            "Configurazione incompatibile con i vincoli HARD: "
             + "; ".join(violations)
-            + ". Sblocca le lezioni in conflitto o rimuovi i "
-              "vincoli incompatibili e riprova."
+            + ". Correggi le anomalie e riprova."
         )
 
 
