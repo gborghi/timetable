@@ -44,6 +44,10 @@
   export let onBulkDissociate = null; // optional async (rows[]) => void
   export let onBulkLock = null;       // optional async (rows[]) => void
   export let onBulkPlace = null;      // optional async (rows[]) => void
+  export let onBulkApply = null;      // optional async (rows[]) => void
+                                      //   opens BulkEventsModal: bulk
+                                      //   set/clear classroom + set lock
+                                      //   with dry-run conflict review.
   export let onChanged = () => {};
   // Multi-select like SortableQueryableList. When true, a checkbox
   // column is shown; the parent can read `selectedIds` via
@@ -396,6 +400,14 @@
     await refresh();
     onChanged();
   }
+  async function bulkApply() {
+    if (!onBulkApply) return;
+    const rows = _selectedRows();
+    if (rows.length === 0) return;
+    // The modal owns the user flow (verify -> conflicts -> apply); we
+    // just hand it the rows. Selection / refresh happen via onDone().
+    await onBulkApply(rows);
+  }
 </script>
 
 <div class="space-y-2 {redTheme ? 'p-3 border-2 border-red-300 bg-red-50 rounded' : ''}">
@@ -492,6 +504,13 @@
                 disabled={selectedIds.length === 0}
                 title="Esegue il placer sui selezionati">
           Piazza selezionati
+        </button>
+      {/if}
+      {#if onBulkApply}
+        <button class="btn !text-xs" on:click={bulkApply}
+                disabled={selectedIds.length === 0}
+                title="Assegna o rimuove l'aula, oppure blocca/sblocca, con dry-run dei conflitti">
+          Modifica selezionati
         </button>
       {/if}
       {#if onBulkDelete}

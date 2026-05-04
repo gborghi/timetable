@@ -9,6 +9,7 @@
   import AddLessonModal from '$lib/components/schedule/AddLessonModal.svelte';
   import GroupedEventsTable from '$lib/components/monitor/GroupedEventsTable.svelte';
   import PlaceEventModal from '$lib/components/monitor/PlaceEventModal.svelte';
+  import BulkEventsModal from '$lib/components/monitor/BulkEventsModal.svelte';
 
   let summary = null;
   let allRooms = [];
@@ -36,6 +37,10 @@
   let placeOpen = false;
   let placeIds = [];
   let placeSummaries = [];
+
+  // Bulk-apply modal state (set/clear classroom + set lock).
+  let bulkApplyOpen = false;
+  let bulkApplyRows = [];
 
   // Add-event / Add-lesson / slot-picker modal state owned at the page
   // level so per-row actions across both tables share the same dialogs.
@@ -189,6 +194,14 @@
       flash('Errore: ' + (e.message || e), 'error');
     }
     await refreshAll();
+  }
+
+  // Bulk apply (BulkEventsModal): set/clear classroom + set lock with
+  // dry-run conflict review. The modal handles the verify -> apply flow.
+  function bulkApply(rows) {
+    if (rows.length === 0) return;
+    bulkApplyRows = rows;
+    bulkApplyOpen = true;
   }
 
   function bulkPlace(rows) {
@@ -542,6 +555,7 @@
                         onBulkDissociate={bulkDissociate}
                         onBulkLock={bulkLock}
                         onBulkPlace={bulkPlace}
+                        onBulkApply={bulkApply}
                         onChanged={refreshAll}/>
   {/key}
 </div>
@@ -651,3 +665,8 @@
                  summaries={placeSummaries}
                  onClose={() => (placeOpen = false)}
                  onCompleted={refreshAll}/>
+
+<BulkEventsModal bind:open={bulkApplyOpen}
+                 selectedRows={bulkApplyRows}
+                 rooms={allRooms}
+                 onDone={refreshAll}/>

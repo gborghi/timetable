@@ -32,6 +32,7 @@ from backend.utils.request_logging import RequestLoggingMiddleware  # noqa: E402
 from backend.routers import (  # noqa: E402
     assignments,
     bulk,
+    bulk_events,
     classes,
     classrooms,
     constraints,
@@ -128,6 +129,7 @@ app.include_router(students.router)
 app.include_router(students.tags_router)
 app.include_router(groups.router)
 app.include_router(imports.router)
+app.include_router(bulk_events.router)
 app.include_router(bulk.router)
 app.include_router(coverage.router)
 app.include_router(monitor.router)
