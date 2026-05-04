@@ -50,6 +50,10 @@
   let selectedIds = [];
   let showBulk = false;
   let showTagsModal = false;
+  // Mirror the list's currently-rendered rows so bulk-delete can
+  // snapshot them (for UNDO) without poking at SortableQueryableList
+  // internals.
+  let latestRows = [];
 
   let showGenPanel = false;
   let suggested = null;
@@ -83,7 +87,7 @@
   }
 
   async function runGenerate() {
-    if (listRef && listRef.rows && listRef.rows.length > 0
+    if (latestRows && latestRows.length > 0
         && !confirm('Sostituire le aule esistenti con la nuova configurazione?')) return;
     busyGen = true;
     try {
@@ -143,13 +147,103 @@
     } catch (e) { flash('Errore: ' + e.message, 'error'); }
   }
 
+  // Strip server-computed fields from a snapshot so it can round-trip
+  // through classroomsSvc.create() without the backend rejecting it.
+  // (Classroom doesn't expose computed fields like teachers do, but
+  // the helper is here so bulk and single deletes share one place.)
+  function _scrubRoomSnapshot(snap) {
+    delete snap.id;
+    return snap;
+  }
+
   async function del(row) {
     if (!confirm('Eliminare ' + row.name + '?')) return;
+    const snapshot = _scrubRoomSnapshot(cloneRow(row));
     try {
       await classroomsSvc.remove(row.id);
       await listRef.reload();
       await refreshDataset();
+      flash('Aula eliminata', 'success', {
+        ms: 8000,
+        action: {
+          label: 'Annulla',
+          fn: async () => {
+            try {
+              await classroomsSvc.create(snapshot);
+              await listRef.reload();
+              await refreshDataset();
+              flash('Eliminazione annullata', 'success');
+            } catch (e) {
+              flash('Annullamento fallito: ' + e.message, 'error');
+            }
+          }
+        }
+      });
     } catch (e) { flash('Errore: ' + e.message, 'error'); }
+  }
+
+  // Bulk-delete: same pattern as the per-row del(). Frontend loop of
+  // DELETE /api/classrooms/{id} — cascade is whatever the per-row
+  // endpoint already does.
+  let bulkDeleting = false;
+  async function bulkDel() {
+    if (bulkDeleting) return;
+    if (selectedIds.length === 0) return;
+    const idSet = new Set(selectedIds.map((x) => Number(x)));
+    const rows = latestRows.filter((r) => idSet.has(Number(r.id)));
+    if (rows.length === 0) {
+      flash('Selezione non trovata nella vista corrente. Resetta i filtri e riprova.',
+            'error');
+      return;
+    }
+    if (rows.length !== selectedIds.length) {
+      if (!confirm(`Eliminare ${rows.length} aule? `
+          + `(${selectedIds.length - rows.length} non sono nella `
+          + `pagina corrente e verranno ignorate.)`)) return;
+    } else {
+      if (!confirm(`Eliminare ${rows.length} aule?`)) return;
+    }
+    bulkDeleting = true;
+    const snapshots = rows.map((r) => _scrubRoomSnapshot(cloneRow(r)));
+    let okCount = 0;
+    const errors = [];
+    try {
+      for (const r of rows) {
+        try {
+          await classroomsSvc.remove(r.id);
+          okCount++;
+        } catch (e) {
+          errors.push(`${r.name}: ${e.message ?? e}`);
+        }
+      }
+      selectedIds = [];
+      await listRef.reload();
+      await refreshDataset();
+      const tone = errors.length ? 'warning' : 'success';
+      flash(`${okCount}/${rows.length} aule eliminate`
+            + (errors.length ? ` (${errors.length} errori)` : ''),
+            tone, {
+        ms: 10000,
+        action: {
+          label: 'Annulla',
+          fn: async () => {
+            let restored = 0;
+            for (const snap of snapshots) {
+              try {
+                await classroomsSvc.create(snap);
+                restored++;
+              } catch (e) { console.warn('UNDO create failed', e); }
+            }
+            await listRef.reload();
+            await refreshDataset();
+            flash(`Ripristinate ${restored}/${snapshots.length} aule`,
+                  restored === snapshots.length ? 'success' : 'warning');
+          }
+        }
+      });
+    } finally {
+      bulkDeleting = false;
+    }
   }
 
   $: totalIfApplied = (suggested?.n_classes || 0)
@@ -197,6 +291,11 @@
             title="Applica un vincolo a tutte le aule selezionate">
       Vincolo collettivo ({selectedIds.length})
     </button>
+    <button class="btn-danger !text-xs" on:click={bulkDel}
+            disabled={selectedIds.length === 0 || bulkDeleting}
+            title="Elimina tutte le aule selezionate (con UNDO)">
+      {bulkDeleting ? 'Eliminazione...' : `Elimina selezionati (${selectedIds.length})`}
+    </button>
   </div>
 
   {#if showGenPanel && suggested}
@@ -243,6 +342,7 @@
     rowKey={(r) => r.id}
     selectable={true}
     bind:selectedIds
+    onRowsChange={(rs) => (latestRows = rs)}
     let:row let:columns>
     <td><strong>{row.name}</strong></td>
     <td><span class="pill">{row.kind}</span></td>

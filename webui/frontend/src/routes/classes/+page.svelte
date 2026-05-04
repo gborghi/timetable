@@ -15,6 +15,10 @@
   let listRef = null;
   let selectedIds = [];
   let showBulk = false;
+  // Mirror the list's currently-rendered rows so bulk-delete can
+  // snapshot them (for UNDO) without poking at SortableQueryableList
+  // internals.
+  let latestRows = [];
 
   // Lookup data cached via TanStack Query: instant on revisit.
   const subjectsQ = subjectsQuery.useList();
@@ -82,12 +86,18 @@
     }
   }
 
+  // Strip server-computed fields from a snapshot so it can round-trip
+  // through classesSvc.create() without the backend rejecting it.
+  function _scrubClassSnapshot(snap) {
+    delete snap.id;
+    delete snap.ore_totali;
+    delete snap.n_subjects;
+    return snap;
+  }
+
   async function del(row) {
     if (!confirm('Eliminare ' + row.name + '?')) return;
-    const snapshot = cloneRow(row);
-    delete snapshot.id;
-    delete snapshot.ore_totali;
-    delete snapshot.n_subjects;
+    const snapshot = _scrubClassSnapshot(cloneRow(row));
     try {
       await classesSvc.remove(row.id);
       await listRef.reload();
@@ -109,6 +119,71 @@
         }
       });
     } catch (e) { flash('Errore: ' + e.message, 'error'); }
+  }
+
+  // Bulk-delete: mirrors the per-row del() pattern. Frontend loop of
+  // DELETE /api/classes/{id} so cascade behaviour is identical to N
+  // single deletes; one batch confirm and one toast UNDO.
+  let bulkDeleting = false;
+  async function bulkDel() {
+    if (bulkDeleting) return;
+    if (selectedIds.length === 0) return;
+    const idSet = new Set(selectedIds.map((x) => Number(x)));
+    const rows = latestRows.filter((r) => idSet.has(Number(r.id)));
+    if (rows.length === 0) {
+      flash('Selezione non trovata nella vista corrente. Resetta i filtri e riprova.',
+            'error');
+      return;
+    }
+    if (rows.length !== selectedIds.length) {
+      if (!confirm(`Eliminare ${rows.length} classi? `
+          + `(${selectedIds.length - rows.length} non sono nella `
+          + `pagina corrente e verranno ignorati.)`)) return;
+    } else {
+      if (!confirm(`Eliminare ${rows.length} classi? `
+          + `L'azione cancella anche le cattedre collegate.`)) return;
+    }
+    bulkDeleting = true;
+    const snapshots = rows.map((r) => _scrubClassSnapshot(cloneRow(r)));
+    let okCount = 0;
+    const errors = [];
+    try {
+      for (const r of rows) {
+        try {
+          await classesSvc.remove(r.id);
+          okCount++;
+        } catch (e) {
+          errors.push(`${r.name}: ${e.message ?? e}`);
+        }
+      }
+      selectedIds = [];
+      await listRef.reload();
+      await refreshDataset();
+      const tone = errors.length ? 'warning' : 'success';
+      flash(`${okCount}/${rows.length} classi eliminate`
+            + (errors.length ? ` (${errors.length} errori)` : ''),
+            tone, {
+        ms: 10000,
+        action: {
+          label: 'Annulla',
+          fn: async () => {
+            let restored = 0;
+            for (const snap of snapshots) {
+              try {
+                await classesSvc.create(snap);
+                restored++;
+              } catch (e) { console.warn('UNDO create failed', e); }
+            }
+            await listRef.reload();
+            await refreshDataset();
+            flash(`Ripristinate ${restored}/${snapshots.length} classi`,
+                  restored === snapshots.length ? 'success' : 'warning');
+          }
+        }
+      });
+    } finally {
+      bulkDeleting = false;
+    }
   }
 
   const columns = [
@@ -143,6 +218,11 @@
             title="Applica un vincolo a tutte le classi selezionate">
       Vincolo collettivo ({selectedIds.length})
     </button>
+    <button class="btn-danger !text-xs" on:click={bulkDel}
+            disabled={selectedIds.length === 0 || bulkDeleting}
+            title="Elimina tutte le classi selezionate (con UNDO)">
+      {bulkDeleting ? 'Eliminazione...' : `Elimina selezionati (${selectedIds.length})`}
+    </button>
   </div>
 
   <SortableQueryableList
@@ -154,6 +234,7 @@
     rowKey={(r) => r.id}
     selectable={true}
     bind:selectedIds
+    onRowsChange={(rs) => (latestRows = rs)}
     let:row let:columns>
     <td><strong>{row.name}</strong></td>
     <td class="text-center">{row.year}</td>

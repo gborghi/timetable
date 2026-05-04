@@ -20,6 +20,10 @@
   let listRef = null;
   let selectedIds = [];
   let showBulk = false;
+  // Mirror the list's currently-rendered rows so bulk-delete can
+  // snapshot them (for UNDO) without poking at SortableQueryableList
+  // internals. Updated via the onRowsChange callback below.
+  let latestRows = [];
 
   // Lookup data via TanStack Query: cached, deduplicated across pages,
   // auto-invalidated by the global mutation counter (see
@@ -224,14 +228,20 @@
     }
   }
 
+  // Strip server-computed fields from a snapshot so it can round-trip
+  // through teachers.create() without the backend rejecting it.
+  function _scrubTeacherSnapshot(snap) {
+    delete snap.id;
+    delete snap.scheduled_hours;
+    delete snap.n_classes;
+    delete snap.soft_penalty_total;
+    return snap;
+  }
+
   async function del(row) {
     if (!confirm('Eliminare ' + row.name + '?')) return;
     // Snapshot the row before destroying it so UNDO can rebuild it.
-    const snapshot = cloneRow(row);
-    delete snapshot.id;
-    delete snapshot.scheduled_hours;
-    delete snapshot.n_classes;
-    delete snapshot.soft_penalty_total;
+    const snapshot = _scrubTeacherSnapshot(cloneRow(row));
     try {
       await teachers.remove(row.id);
       await listRef.reload();
@@ -254,6 +264,77 @@
       });
     } catch (e) {
       flash('Errore: ' + e.message, 'error');
+    }
+  }
+
+  // Bulk-delete: same semantics as N single deletes (loop of DELETE
+  // /api/teachers/{id}), with one batch confirm and one toast UNDO that
+  // recreates them all. We don't have a backend bulk-delete endpoint and
+  // adding one would duplicate the cascade behaviour the per-row
+  // endpoint already provides.
+  let bulkDeleting = false;
+  async function bulkDel() {
+    if (bulkDeleting) return;
+    if (selectedIds.length === 0) return;
+    // Resolve selected rows from the list's current page so we can
+    // snapshot them before deletion (need full payload for UNDO).
+    const idSet = new Set(selectedIds.map((x) => Number(x)));
+    const rows = latestRows.filter((r) => idSet.has(Number(r.id)));
+    if (rows.length === 0) {
+      flash('Selezione non trovata nella vista corrente. Resetta i filtri e riprova.',
+            'error');
+      return;
+    }
+    if (rows.length !== selectedIds.length) {
+      // Selection includes ids that aren't on the current page (e.g.
+      // user paginated). Be explicit so the user is not surprised.
+      if (!confirm(`Eliminare ${rows.length} docenti? `
+          + `(${selectedIds.length - rows.length} non sono nella `
+          + `pagina corrente e verranno ignorati.)`)) return;
+    } else {
+      if (!confirm(`Eliminare ${rows.length} docenti? `
+          + `L'azione cancella anche le cattedre collegate.`)) return;
+    }
+    bulkDeleting = true;
+    const snapshots = rows.map((r) => _scrubTeacherSnapshot(cloneRow(r)));
+    let okCount = 0;
+    const errors = [];
+    try {
+      for (const r of rows) {
+        try {
+          await teachers.remove(r.id);
+          okCount++;
+        } catch (e) {
+          errors.push(`${r.name}: ${e.message ?? e}`);
+        }
+      }
+      selectedIds = [];
+      await listRef.reload();
+      await refreshDataset();
+      const tone = errors.length ? 'warning' : 'success';
+      flash(`${okCount}/${rows.length} docenti eliminati`
+            + (errors.length ? ` (${errors.length} errori)` : ''),
+            tone, {
+        ms: 10000,
+        action: {
+          label: 'Annulla',
+          fn: async () => {
+            let restored = 0;
+            for (const snap of snapshots) {
+              try {
+                await teachers.create(snap);
+                restored++;
+              } catch (e) { console.warn('UNDO create failed', e); }
+            }
+            await listRef.reload();
+            await refreshDataset();
+            flash(`Ripristinati ${restored}/${snapshots.length} docenti`,
+                  restored === snapshots.length ? 'success' : 'warning');
+          }
+        }
+      });
+    } finally {
+      bulkDeleting = false;
     }
   }
 
@@ -304,6 +385,11 @@
             title="Applica un vincolo a tutti i docenti selezionati">
       Vincolo collettivo ({selectedIds.length})
     </button>
+    <button class="btn-danger !text-xs" on:click={bulkDel}
+            disabled={selectedIds.length === 0 || bulkDeleting}
+            title="Elimina tutti i docenti selezionati (con UNDO)">
+      {bulkDeleting ? 'Eliminazione...' : `Elimina selezionati (${selectedIds.length})`}
+    </button>
   </div>
 
   <SortableQueryableList
@@ -315,6 +401,7 @@
     rowKey={(r) => r.id}
     selectable={true}
     bind:selectedIds
+    onRowsChange={(rs) => (latestRows = rs)}
     let:row let:columns>
     <td><strong>{row.last_name ?? row.name}</strong>
       {#if row.matricola}<span class="text-xs text-ink-500"> ({row.matricola})</span>{/if}
