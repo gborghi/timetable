@@ -177,7 +177,8 @@ def build_indices(profs):
 def solve_phase_a(profs, classes, triples, class_profs,
                   time_limit=30, workers=8, log=True,
                   locked_day_count=None,
-                  coteach_groups=None):
+                  coteach_groups=None,
+                  support_assignments=None):
     """Risolve Phase A. Se `locked_day_count` e\` valorizzato, e\` un
     dict (prof, class, subject, day) -> int che impone un FLOOR sul
     numero di ore di quella cattedra nel giorno indicato. Le ore non
@@ -196,6 +197,15 @@ def solve_phase_a(profs, classes, triples, class_profs,
     model = cp_model.CpModel()
     locked_day_count = locked_day_count or {}
     coteach_groups = list(coteach_groups or [])
+    support_assignments = list(support_assignments or [])
+    # Support triples: (prof, class, subject) of every sostegno
+    # Assignment. Used below to exclude them from cl_day_load /
+    # ore_per_classe (the support hours follow the class' other
+    # lessons, they don't add a fresh class-hour demand).
+    support_triples_set: set[tuple[str, str, str]] = {
+        (sa["teacher_name"], sa["class_name"], sa["subject"])
+        for sa in support_assignments
+    }
 
     # Variabili int [0..MAX_PER_DAY_TRIPLE]
     day_count = {}                             # (prof, cl, subj, day) -> IntVar
@@ -296,11 +306,16 @@ def solve_phase_a(profs, classes, triples, class_profs,
     #   (HARD-1) "se classe > 24 ore settimanali, no day = 3" =>
     #            ridondante con (HARD-2): {0, [4, max]} esclude 3.
     #   Equivalenza pratica: cl_day_load in {0, 4, 5, 6}.
-    # Codoc triples are excluded from cl_day_load (their hours are
-    # already counted via the principal teacher's day_count).
+    # Codoc and SUPPORT triples are excluded from cl_day_load:
+    # codoc hours are already counted via the principal; sostegno
+    # hours follow the class' other lessons (the shadow constraint
+    # in Phase B forces support slots to coincide with non-support
+    # ones; they don't add a fresh class-hour demand).
     triples_by_cl = defaultdict(list)
     for (p, cl, subj, ore) in triples:
         if (p, cl, subj) in coteach_codoc_triples:
+            continue
+        if (p, cl, subj) in support_triples_set:
             continue
         triples_by_cl[cl].append((p, subj))
     cl_day_load = {}
@@ -319,6 +334,8 @@ def solve_phase_a(profs, classes, triples, class_profs,
     sixth_hour_inds = []
     for cl in classes:
         for d in DAYS:
+            if (cl, d) not in cl_day_load:
+                continue          # class has no non-support triples
             load = cl_day_load[(cl, d)]
             is6 = model.NewBoolVar(f"is6_{cl}_{d}")
             model.Add(load == 6).OnlyEnforceIf(is6)
@@ -333,12 +350,29 @@ def solve_phase_a(profs, classes, triples, class_profs,
         model.Add(n_sixth_hour == 0)
 
     # vincolo settimanale: sum_d load = ore curriculum totali della classe
-    # Codoc triples excluded (already counted via principal).
+    # Codoc + sostegno triples excluded (codoc already in principal;
+    # sostegno shadows other lessons).
     ore_per_classe = defaultdict(int)
     for (p, cl, subj, ore) in triples:
         if (p, cl, subj) in coteach_codoc_triples:
             continue
+        if (p, cl, subj) in support_triples_set:
+            continue
         ore_per_classe[cl] += ore
+    # Support triples follow the class load: per day, support hours
+    # cannot exceed cl_day_load (the support teacher cannot be in
+    # class on a day where the class has no lessons).
+    for sa in support_assignments:
+        sp = sa["teacher_name"]
+        sc = sa["class_name"]
+        ss = sa["subject"]
+        if (sc, 1) not in cl_day_load:
+            continue
+        for d in DAYS:
+            key = (sp, sc, ss, d)
+            if key not in day_count:
+                continue
+            model.Add(day_count[key] <= cl_day_load[(sc, d)])
     for cl in classes:
         if (cl, 1) not in cl_day_load:
             continue           # class with no triples (degenerate)
@@ -512,8 +546,13 @@ def solve_phase_a(profs, classes, triples, class_profs,
                 model.Add(cnt_pcd >= 1).OnlyEnforceIf(ind)
                 model.Add(cnt_pcd == 0).OnlyEnforceIf(ind.Not())
                 rl = model.NewIntVar(0, len(HOURS), f"rl_{p}_{c}_{d}")
-                model.Add(rl == cl_day_load[(c, d)]).OnlyEnforceIf(ind)
-                model.Add(rl == 0).OnlyEnforceIf(ind.Not())
+                if (c, d) in cl_day_load:
+                    model.Add(rl == cl_day_load[(c, d)]).OnlyEnforceIf(ind)
+                    model.Add(rl == 0).OnlyEnforceIf(ind.Not())
+                else:
+                    # Class has no non-support triples; treat its
+                    # load as 0 always.
+                    model.Add(rl == 0)
                 relevant_loads.append(rl)
             max_load = model.NewIntVar(0, len(HOURS), f"mlh_{p}_{d}")
             if relevant_loads:
@@ -641,7 +680,8 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
                           dc_value, time_limit=10, workers=4, log=False,
                           enforce_no_holes=True,
                           locked_slots_for_day=None,
-                          coteach_groups=None):
+                          coteach_groups=None,
+                          support_assignments=None):
     r"""Risolve il sotto-problema di un singolo giorno.
 
     Se enforce_no_holes=True (default) impone ai profili di classe la
@@ -668,6 +708,11 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
     slot = {}                                  # (p, cl, subj, h) -> Bool
     triples_active = []
     locked_slots_for_day = list(locked_slots_for_day or [])
+    support_assignments = list(support_assignments or [])
+    support_triples_set: set[tuple[str, str, str]] = {
+        (sa["teacher_name"], sa["class_name"], sa["subject"])
+        for sa in support_assignments
+    }
     for (p, cl, subj, ore) in triples:
         # Phase A output is dense (one entry per (p,cl,subj,day) over the
         # 6 days), but partial / column-generation pipelines may pass a
@@ -744,20 +789,23 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
     # slot dei k coteachers in un OR -- conta UNA sola occupazione
     # classe anche quando i co-docenti sono entrambi presenti
     # (compresenza). Senza compresenza, k=1 e il vincolo degenera
-    # all'usuale sum<=1.
+    # all'usuale sum<=1. Le triple di SOSTEGNO sono escluse: il
+    # sostegno segue la classe (vincolo shadow sotto), non aggiunge
+    # un'occupazione classe.
     cls_in_day = {cl for (_, cl, _, _) in triples_active}
     present_per_class = {}
+    pr_per_cl_h: dict[tuple[str, int], Any] = {}
     for cl in cls_in_day:
         present = []
         for h in HOURS:
-            # Group slot vars by subject within this class.
             subjects_in_cl = {ss for (_, cc, ss, _)
                               in triples_active if cc == cl}
             subj_busy_vars = []
             for s in subjects_in_cl:
                 keys_s = [slot[(p, cl, s, h)]
                           for (p, cc, ss, _) in triples_active
-                          if cc == cl and ss == s]
+                          if cc == cl and ss == s
+                          and (p, cl, s) not in support_triples_set]
                 if not keys_s:
                     continue
                 if len(keys_s) == 1:
@@ -772,6 +820,7 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
                 model.Add(sum(subj_busy_vars) == pr)
             else:
                 model.Add(pr == 0)
+            pr_per_cl_h[(cl, h)] = pr
             present.append(pr)
         present_per_class[cl] = present
         if enforce_no_holes:
@@ -792,6 +841,26 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
         if 11 in HOURS:
             h11_idx = HOURS.index(11)
             model.Add(present[h11_idx] == 1)
+
+    # Shadow (sostegno): for every support triple, the support
+    # slot at h must imply the class is busy with a non-support
+    # subject at h. slot[(sost, X, sost, h)] <= pr[X, h]. If pr
+    # for that (class, hour) does not exist (the class has no
+    # other subjects mapped to a non-support pr_var that day),
+    # force the support slot to 0.
+    for sa in support_assignments:
+        sp = sa["teacher_name"]
+        sc = sa["class_name"]
+        ss = sa["subject"]
+        for h in HOURS:
+            sk = slot.get((sp, sc, ss, h))
+            if sk is None:
+                continue
+            cp = pr_per_cl_h.get((sc, h))
+            if cp is None:
+                model.Add(sk == 0)
+            else:
+                model.Add(sk <= cp)
 
     # HARD (A)+(B): Mat/Ita doppia consecutiva (se >=2 ore quel
     # giorno) e Scienzemotorie sempre a coppie consecutive.
