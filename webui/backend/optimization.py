@@ -477,6 +477,7 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                   optimize_rooms=optimize_rooms,
                   rooms_time_limit_s=rooms_time_limit_s,
                   rooms_prefer_home=rooms_prefer_home)
+    _preflight_lock_check()
     run_id = create_run("phase_b", "Schedulazione orario", None, params)
 
     def target(rid: int):
@@ -730,6 +731,7 @@ def run_meta(stage: str, budget_s: float, workers: int, log: bool,
                   lagrangian_max_iter=lagrangian_max_iter,
                   lagrangian_tolerance=lagrangian_tolerance,
                   lagrangian_alpha_0=lagrangian_alpha_0)
+    _preflight_lock_check()
     run_id = create_run(stage, f"{stage.upper()} on active solution",
                         None, params)
 
@@ -1115,6 +1117,7 @@ def run_column_generation(*, time_budget_s: float = 60.0,
     if branching_strategy not in ("variable", "ryan_foster"):
         print(f"[cg] WARNING: branching_strategy={branching_strategy!r} "
               f"non riconosciuta")
+    _preflight_lock_check()
     rid = create_run("cg", "Column Generation alternative Phase B",
                       None, params)
 
@@ -1219,6 +1222,7 @@ def run_full_pipeline(profile: str,
                   meta_optimize_rooms=meta_optimize_rooms,
                   meta_rooms_time_limit_s=meta_rooms_time_limit_s,
                   meta_rooms_prefer_home=meta_rooms_prefer_home)
+    _preflight_lock_check()
     run_id = create_run("full", f"Full pipeline ({profile})", profile, params)
 
     def target(rid: int):
@@ -1916,6 +1920,166 @@ def _apply_locked_classrooms(db: Session, solution_id: int,
             l.cotaught_with = snap["cotaught_with"]
         n_touched += 1
     return n_touched
+
+
+# Engine HARD constants mirrored here so the pre-flight check
+# doesn't need to import the CP-SAT module just to read them.
+_LOCK_MAX_PER_DAY_TRIPLE = 2     # max ore stessa cattedra/giorno
+_LOCK_MAX_PER_DAY_PROF_CL = 3    # max ore (prof, class)/giorno
+_LOCK_MAX_PROF_HOURS_PER_DAY = 5 # max ore prof/giorno
+
+
+def validate_locks_vs_constraints(snapshot: list[dict]) -> list[str]:
+    """Pre-flight check: detect locks that already violate the
+    structural HARD constraints of the engine, BEFORE spending a
+    minute on the solver only to get an INFEASIBLE message.
+
+    Returns a list of human-readable violation strings; empty list
+    means the lock set is consistent with the HARD constraints we
+    can check at this layer.
+
+    Catches:
+      - >MAX_PER_DAY_TRIPLE locks for the same cattedra in one day
+      - >MAX_PER_DAY_PROF_CL locks for the same (prof, class) in one
+        day
+      - >MAX_PROF_HOURS_PER_DAY locks for the same prof in one day
+      - two locks at the same (class, day, hour) but with different
+        teachers (a class cannot be in two lessons at once)
+      - two locks at the same (prof, day, hour) (a prof cannot be
+        in two classes at once)
+      - two locks with the same classroom_name at the same
+        (day, hour) but different (class, subject), unless the
+        classroom is multi_class -- but we don't have the
+        Classroom row here so we just flag it; the engine layer
+        will resolve / accept multi_class as appropriate.
+
+    Does NOT catch:
+      - free_day collisions (the engine free_day is a 3-way choice;
+        the solver will pick a different candidate when one is
+        locked)
+      - hard_motorie_pairs / hard_dual_math etc. -- these are
+        per-class flags that interact with the structure of
+        day_count and are non-trivial to reproduce here. The
+        engine returns a clear INFEASIBLE message when violated.
+    """
+    if not snapshot:
+        return []
+    violations: list[str] = []
+
+    by_triple_day: dict[tuple, int] = {}
+    by_profcl_day: dict[tuple, int] = {}
+    by_prof_day: dict[tuple, int] = {}
+    by_class_slot: dict[tuple, list[tuple]] = {}
+    by_prof_slot: dict[tuple, list[tuple]] = {}
+    by_room_slot: dict[tuple, list[tuple]] = {}
+
+    for snap in snapshot:
+        if snap.get("day") is None or snap.get("hour") is None:
+            continue
+        t = snap["teacher_name"]
+        c = snap["class_name"]
+        s = snap["subject"]
+        d = int(snap["day"])
+        h = int(snap["hour"])
+        room = snap.get("classroom_name")
+
+        by_triple_day[(t, c, s, d)] = by_triple_day.get((t, c, s, d), 0) + 1
+        by_profcl_day[(t, c, d)] = by_profcl_day.get((t, c, d), 0) + 1
+        by_prof_day[(t, d)] = by_prof_day.get((t, d), 0) + 1
+        by_class_slot.setdefault((c, d, h), []).append((t, s))
+        by_prof_slot.setdefault((t, d, h), []).append((c, s))
+        if room:
+            by_room_slot.setdefault((room, d, h), []).append((c, s, t))
+
+    for (t, c, s, d), n in by_triple_day.items():
+        if n > _LOCK_MAX_PER_DAY_TRIPLE:
+            violations.append(
+                f"cattedra {t}/{c}/{s} ha {n} lock in giorno {d} "
+                f"ma il massimo per cattedra/giorno e' "
+                f"{_LOCK_MAX_PER_DAY_TRIPLE}"
+            )
+    for (t, c, d), n in by_profcl_day.items():
+        if n > _LOCK_MAX_PER_DAY_PROF_CL:
+            violations.append(
+                f"docente {t} in classe {c} ha {n} lock in giorno {d} "
+                f"ma il massimo per (docente,classe)/giorno e' "
+                f"{_LOCK_MAX_PER_DAY_PROF_CL}"
+            )
+    for (t, d), n in by_prof_day.items():
+        if n > _LOCK_MAX_PROF_HOURS_PER_DAY:
+            violations.append(
+                f"docente {t} ha {n} lock in giorno {d} "
+                f"ma il massimo per docente/giorno e' "
+                f"{_LOCK_MAX_PROF_HOURS_PER_DAY}"
+            )
+    for (c, d, h), entries in by_class_slot.items():
+        teachers = {e[0] for e in entries}
+        if len(teachers) > 1:
+            violations.append(
+                f"classe {c} ha {len(entries)} lock simultanei in "
+                f"giorno {d} ora {h} ({sorted(teachers)}): la classe "
+                f"non puo' stare in piu' lezioni contemporaneamente"
+            )
+    for (t, d, h), entries in by_prof_slot.items():
+        classes = {e[0] for e in entries}
+        if len(classes) > 1:
+            violations.append(
+                f"docente {t} ha {len(entries)} lock simultanei in "
+                f"giorno {d} ora {h} ({sorted(classes)}): il docente "
+                f"non puo' stare in piu' classi contemporaneamente"
+            )
+    for (room, d, h), entries in by_room_slot.items():
+        if len(entries) > 1:
+            classes = {e[0] for e in entries}
+            if len(classes) > 1:
+                violations.append(
+                    f"aula {room} ha {len(entries)} lock simultanei in "
+                    f"giorno {d} ora {h} ({sorted(classes)}): se l'aula "
+                    f"non e' multi_class l'engine restituira' "
+                    f"INFEASIBLE")
+    return violations
+
+
+def _snapshot_and_validate_locks(db: Session) -> list[dict]:
+    """Read the locked-Lesson snapshot AND run the pre-flight
+    validation. If the lock set violates a structural HARD,
+    raise RuntimeError with a multi-line message listing every
+    violation, BEFORE the solver thread is spawned. The router's
+    HTTPException handler maps RuntimeError to a 400 with code
+    `engine_error`.
+    """
+    snap = _snapshot_locked_lessons(db)
+    if snap:
+        violations = validate_locks_vs_constraints(snap)
+        if violations:
+            raise RuntimeError(
+                "Lock incompatibili con i vincoli HARD attuali: "
+                + "; ".join(violations)
+                + ". Sblocca le lezioni in conflitto o rimuovi i "
+                  "vincoli incompatibili e riprova."
+            )
+    return snap
+
+
+def _preflight_lock_check() -> None:
+    """Sync wrapper for the pre-flight check. Called by every
+    run_xxx entry-point BEFORE create_run + start_thread, so a lock
+    violation surfaces as a 400 on the synchronous POST instead of
+    silently failing the run later. Opens its own session: cheap
+    and short-lived.
+    """
+    with SessionLocal() as db:
+        snap = _snapshot_locked_lessons(db)
+    if not snap:
+        return
+    violations = validate_locks_vs_constraints(snap)
+    if violations:
+        raise RuntimeError(
+            "Lock incompatibili con i vincoli HARD attuali: "
+            + "; ".join(violations)
+            + ". Sblocca le lezioni in conflitto o rimuovi i "
+              "vincoli incompatibili e riprova."
+        )
 
 
 def _snapshot_locked_lessons(db: Session) -> list[dict]:
@@ -2851,6 +3015,7 @@ def run_decomposition_temporal(*, time_a: float = 60.0,
                   parallel=parallel, enforce_no_holes=enforce_no_holes,
                   run_alns=run_alns, alns_budget_s=alns_budget_s,
                   alns_T0=alns_T0, alns_alpha=alns_alpha)
+    _preflight_lock_check()
     run_id = create_run(
         "decomposition_temporal",
         "Decomposizione temporale (master + 6 day-solver paralleli)",
@@ -3015,6 +3180,7 @@ def run_decomposition_curriculum(*, time_a: float = 60.0,
                   workers=workers, manual_groupings=manual_groupings,
                   min_cluster_size=min_cluster_size,
                   run_alns=run_alns, alns_budget_s=alns_budget_s)
+    _preflight_lock_check()
     run_id = create_run(
         "decomposition_curriculum",
         "Decomposizione per curriculum (Stage A/B/C + opzionale ALNS)",
@@ -3149,6 +3315,7 @@ def run_decomposition_metis(*, time_a: float = 60.0,
                   time_ricucitura=time_ricucitura, time_mono=time_mono,
                   workers=workers, k=k, imbalance=imbalance,
                   run_alns=run_alns, alns_budget_s=alns_budget_s)
+    _preflight_lock_check()
     run_id = create_run(
         "decomposition_metis",
         "Decomposizione METIS k-way",
