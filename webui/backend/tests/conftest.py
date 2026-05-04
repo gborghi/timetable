@@ -188,9 +188,24 @@ def _apply_migrations_on(engine):
                 ("parallel_group_id",
                  "ALTER TABLE assignments ADD COLUMN "
                  "parallel_group_id INTEGER"),
+                ("group_id",
+                 "ALTER TABLE assignments ADD COLUMN "
+                 "group_id INTEGER"),
             ):
                 if not has_column("assignments", col):
                     conn.execute(text(ddl))
+        if insp.has_table("coteach_groups"):
+            if not has_column("coteach_groups", "group_id"):
+                conn.execute(text(
+                    "ALTER TABLE coteach_groups ADD COLUMN "
+                    "group_id INTEGER"
+                ))
+        if insp.has_table("lessons"):
+            if not has_column("lessons", "group_name"):
+                conn.execute(text(
+                    "ALTER TABLE lessons ADD COLUMN "
+                    "group_name VARCHAR(120)"
+                ))
 
 
 @pytest.fixture

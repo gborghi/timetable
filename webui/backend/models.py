@@ -437,8 +437,19 @@ class Assignment(Base):
                 "religione + alternativa): they occupy the same slot "
                 "but the class counts as busy ONCE."
     )
+    # Task C3: a class-less Assignment can target a StudyGroup
+    # (Spagnolo cross-class, Recupero matematica). Invariant XOR:
+    # exactly one of (class_id, group_id) is non-null, OR both are
+    # null when is_potenziamento=True. Enforced via CHECK constraint
+    # below + application-layer validation.
+    group_id: Mapped[int | None] = mapped_column(
+        ForeignKey("study_groups.id", ondelete="CASCADE"),
+        nullable=True, index=True,
+        comment="Task C3: target StudyGroup. XOR with class_id."
+    )
     teacher: Mapped["Teacher"] = relationship()
     school_class: Mapped["SchoolClass"] = relationship()
+    study_group: Mapped["StudyGroup | None"] = relationship()
     coteach_group: Mapped["CoteachGroup | None"] = relationship(
         back_populates="assignments"
     )
@@ -494,6 +505,17 @@ class Lesson(Base):
     )
     teacher_name: Mapped[str] = mapped_column(String(120), index=True)
     class_name: Mapped[str] = mapped_column(String(40), index=True)
+    # Task C3: a Lesson can target a StudyGroup instead of a class.
+    # When `group_name` is non-NULL the lesson belongs to that group;
+    # `class_name` is then the conventional label of the group's
+    # virtual class (typically equal to `group_name` for display).
+    # XOR enforced at the application layer.
+    group_name: Mapped[str | None] = mapped_column(
+        String(120), nullable=True, index=True,
+        comment="Task C3: non-NULL when this lesson is for a "
+                "StudyGroup instead of a class. XOR with the "
+                "class-bound shape."
+    )
     subject: Mapped[str] = mapped_column(String(64))
     day: Mapped[int] = mapped_column(Integer)
     hour: Mapped[int] = mapped_column(Integer)
@@ -902,8 +924,17 @@ class CoteachGroup(Base):
     """
     __tablename__ = "coteach_groups"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    class_id: Mapped[int] = mapped_column(
-        ForeignKey("school_classes.id", ondelete="CASCADE"), index=True
+    class_id: Mapped[int | None] = mapped_column(
+        ForeignKey("school_classes.id", ondelete="CASCADE"),
+        nullable=True, index=True,
+        comment="non-NULL when coteaching applies to a class. "
+                "XOR with group_id."
+    )
+    group_id: Mapped[int | None] = mapped_column(
+        ForeignKey("study_groups.id", ondelete="CASCADE"),
+        nullable=True, index=True,
+        comment="Task C3: non-NULL when coteaching applies to a "
+                "StudyGroup. XOR with class_id."
     )
     subject: Mapped[str] = mapped_column(String(64))
     n_hours: Mapped[int] = mapped_column(
@@ -922,13 +953,16 @@ class CoteachGroup(Base):
         Float, default=100.0,
         comment="SOFT penalty when the n_hours overlap is broken"
     )
-    school_class: Mapped["SchoolClass"] = relationship()
+    school_class: Mapped["SchoolClass | None"] = relationship()
+    study_group: Mapped["StudyGroup | None"] = relationship()
     assignments: Mapped[list["Assignment"]] = relationship(
         back_populates="coteach_group"
     )
     __table_args__ = (
         UniqueConstraint("class_id", "subject",
                          name="uq_coteach_group_cl_subj"),
+        UniqueConstraint("group_id", "subject",
+                         name="uq_coteach_group_g_subj"),
     )
 
 

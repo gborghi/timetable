@@ -360,6 +360,9 @@ def _apply_lightweight_migrations() -> None:
                 ("parallel_group_id",
                  "ALTER TABLE assignments ADD COLUMN "
                  "parallel_group_id INTEGER"),
+                ("group_id",
+                 "ALTER TABLE assignments ADD COLUMN "
+                 "group_id INTEGER"),
             ):
                 if not has_column("assignments", col):
                     conn.execute(text(ddl))
@@ -376,8 +379,43 @@ def _apply_lightweight_migrations() -> None:
                 "CREATE INDEX IF NOT EXISTS "
                 "ix_assignments_parallel_group_id "
                 "ON assignments (parallel_group_id)",
+                "CREATE INDEX IF NOT EXISTS "
+                "ix_assignments_group_id "
+                "ON assignments (group_id)",
             ):
                 conn.execute(text(stmt))
+        # Task C3: coteach_groups.group_id (nullable, XOR with class_id).
+        # We do NOT flip class_id to nullable via lightweight migration
+        # (SQLite needs batch_alter_table). Fresh dev DBs get nullable
+        # via Base.metadata.create_all (model honors nullable=True).
+        # Existing DBs needing group-target coteach must run
+        # `alembic upgrade head`.
+        if insp.has_table("coteach_groups"):
+            if not has_column("coteach_groups", "group_id"):
+                conn.execute(text(
+                    "ALTER TABLE coteach_groups ADD COLUMN "
+                    "group_id INTEGER"
+                ))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS "
+                "ix_coteach_groups_group_id "
+                "ON coteach_groups (group_id)"
+            ))
+
+        # Task C3: lessons.group_name (nullable label of the
+        # StudyGroup the lesson belongs to). XOR with the class-bound
+        # shape (class_name + non-NULL).
+        if insp.has_table("lessons"):
+            if not has_column("lessons", "group_name"):
+                conn.execute(text(
+                    "ALTER TABLE lessons ADD COLUMN "
+                    "group_name VARCHAR(120)"
+                ))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS "
+                "ix_lessons_group_name "
+                "ON lessons (group_name)"
+            ))
             # We DO NOT drop uq_assign_cl_subj on existing dev DBs
             # via lightweight migration (SQLite has no DROP
             # CONSTRAINT and a table-rebuild here is risky outside

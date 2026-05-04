@@ -363,6 +363,69 @@ def potenziamento_assignments_from_db(db: Session) -> list[dict]:
     return out
 
 
+def group_assignments_for_solver(db: Session) -> list[dict]:
+    """Task C3: return the list of inter-class group assignments.
+
+    Each entry:
+      {
+        'teacher_name': str,
+        'group_id': int,
+        'group_name': str,        # used as virtual class label in solver
+        'subject': str,
+        'n_hours': int,
+        'home_class_names': [str, ...]  # classes touched by group members
+      }
+
+    Built from Assignment rows with `group_id != NULL`. The solver
+    treats the group as a virtual class with `group_slot[gid, d, h]`
+    BoolVars; class_busy[home_class, d, h] is forced >= group_slot
+    for every home class of any member student.
+
+    `home_class_names` is the resolved list of (distinct) home classes
+    of the students in the group. Empty list => the group has no
+    members yet (the solver tolerates it but the assignment will not
+    propagate class-busy anywhere).
+    """
+    out: list[dict] = []
+    teachers_by_id = {t.id: t for t in db.query(models.Teacher).all()}
+    students_by_id = {s.id: s for s in db.query(models.Student).all()}
+    classes_by_id = {c.id: c for c in db.query(models.SchoolClass).all()}
+
+    # Pre-compute home classes per group (one query, in-memory join).
+    home_by_group: dict[int, list[str]] = {}
+    for g in db.query(models.StudyGroup).all():
+        home_class_ids: set[int] = set()
+        for m in db.query(models.GroupMembership).filter(
+            models.GroupMembership.group_id == g.id
+        ).all():
+            s = students_by_id.get(m.student_id)
+            if s is None or s.class_id is None:
+                continue
+            home_class_ids.add(s.class_id)
+        home_by_group[g.id] = sorted(
+            cl.name for cid, cl in classes_by_id.items()
+            if cid in home_class_ids
+        )
+
+    groups_by_id = {g.id: g for g in db.query(models.StudyGroup).all()}
+    for a in db.query(models.Assignment).filter(
+        models.Assignment.group_id != None  # noqa: E711
+    ).all():
+        t = teachers_by_id.get(a.teacher_id)
+        g = groups_by_id.get(a.group_id)
+        if t is None or g is None:
+            continue
+        out.append({
+            "teacher_name": t.name,
+            "group_id": g.id,
+            "group_name": g.name,
+            "subject": a.subject or "GroupSubject",
+            "n_hours": int(a.hours or 0),
+            "home_class_names": list(home_by_group.get(g.id, [])),
+        })
+    return out
+
+
 def cattedre_from_assignments(db: Session) -> dict[str, dict[str, dict[str, int]]]:
     """teacher_name -> {class_name -> {subject -> ore}}"""
     out: dict[str, dict[str, dict[str, int]]] = {}

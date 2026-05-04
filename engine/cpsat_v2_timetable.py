@@ -180,7 +180,8 @@ def solve_phase_a(profs, classes, triples, class_profs,
                   coteach_groups=None,
                   support_assignments=None,
                   potenziamento_assignments=None,
-                  parallel_groups=None):
+                  parallel_groups=None,
+                  group_assignments=None):
     """Risolve Phase A. Se `locked_day_count` e\` valorizzato, e\` un
     dict (prof, class, subject, day) -> int che impone un FLOOR sul
     numero di ore di quella cattedra nel giorno indicato. Le ore non
@@ -210,6 +211,29 @@ def solve_phase_a(profs, classes, triples, class_profs,
     }
     potenziamento_assignments = list(potenziamento_assignments or [])
     parallel_groups = list(parallel_groups or [])
+    # Task C3: group assignments are scheduled like normal triples
+    # but with class_name = group_name (a virtual class label that
+    # is NOT in `classes`). Their day_count vars get created by the
+    # standard loop below; the home_class busy propagation happens
+    # in Phase B via the class-busy aggregator.
+    group_assignments = list(group_assignments or [])
+    # Build group-augmented triples list. We keep the input `triples`
+    # untouched and add the group ones at the end so downstream
+    # consumers (decomposed pipelines) can pass triples without
+    # group rows and have C3 still work end-to-end.
+    group_triples_set: set[tuple[str, str, str]] = set()
+    augmented_triples = list(triples)
+    for ga in group_assignments:
+        gtri = (ga["teacher_name"], ga["group_name"],
+                ga["subject"], int(ga["n_hours"]))
+        key = (gtri[0], gtri[1], gtri[2])
+        if key in group_triples_set:
+            continue
+        group_triples_set.add(key)
+        augmented_triples.append(gtri)
+    triples = augmented_triples
+    # group_triples_active: (teacher, group_name, subject) tuples used
+    # below to wire home-class busy propagation.
     # parallel_subj_to_busy_key: (class_name, subject) -> stable key
     # used by Phase B's class-busy aggregator. Each parallel group's
     # members share the same key, so they count as ONE class
@@ -362,6 +386,8 @@ def solve_phase_a(profs, classes, triples, class_profs,
             continue
         if (p, cl, subj) in parallel_secondary_triples:
             continue
+        if (p, cl, subj) in group_triples_set:
+            continue                  # group hours not on a real class
         triples_by_cl[cl].append((p, subj))
     cl_day_load = {}
     for cl, lst in triples_by_cl.items():
@@ -404,6 +430,8 @@ def solve_phase_a(profs, classes, triples, class_profs,
             continue
         if (p, cl, subj) in parallel_secondary_triples:
             continue
+        if (p, cl, subj) in group_triples_set:
+            continue                  # group hours have their own sum
         ore_per_classe[cl] += ore
     # Support triples follow the class load: per day, support hours
     # cannot exceed cl_day_load (the support teacher cannot be in
@@ -425,6 +453,34 @@ def solve_phase_a(profs, classes, triples, class_profs,
         model.Add(
             sum(cl_day_load[(cl, d)] for d in DAYS) == ore_per_classe[cl]
         )
+
+    # Task C3: per-day capacity for each home class. The class hours
+    # (cl_day_load) plus the hours of every group touching the class
+    # cannot exceed len(HOURS) on any day -- otherwise Phase B would
+    # be infeasible (no room to schedule both regular lessons and
+    # group lessons in the 6 available slots, and the group prevents
+    # the home class from running another lesson at the group slot).
+    for cl in classes:
+        if (cl, 1) not in cl_day_load:
+            continue
+        home_group_keys = [
+            (ga["teacher_name"], ga["group_name"], ga["subject"])
+            for ga in group_assignments
+            if cl in ga.get("home_class_names", [])
+        ]
+        if not home_group_keys:
+            continue
+        for d in DAYS:
+            group_terms = [
+                day_count[(p, gcl, gs, d)]
+                for (p, gcl, gs) in home_group_keys
+                if (p, gcl, gs, d) in day_count
+            ]
+            if not group_terms:
+                continue
+            model.Add(
+                cl_day_load[(cl, d)] + sum(group_terms) <= len(HOURS)
+            )
 
     # Giorno libero del prof: scegli 1 fra 3 candidati (in glibero)
     glib_choice = {}                           # (prof, k=0/1/2) -> Bool
@@ -610,6 +666,17 @@ def solve_phase_a(profs, classes, triples, class_profs,
     # classi che insegna hanno load=5: solo 5 slot disponibili).
     for p, lst in triples_by_prof.items():
         classes_of_p = sorted({c for c, _ in lst})
+        # Task C3: skip Hall constraint for profs whose only classes
+        # are virtual groups (no cl_day_load entry). The Hall bound
+        # `prof_day_load <= max(cl_day_load)` would force the prof's
+        # daily hours to 0 since a group has no cl_day_load, which
+        # contradicts the sum_d == ore constraint on the group hours.
+        only_group_classes = all(
+            c not in cl_day_load_classes
+            for c in classes_of_p
+        ) if (cl_day_load_classes := {cl for (cl, _) in cl_day_load.keys()}) else False
+        if only_group_classes:
+            continue
         for d in DAYS:
             # rl[c] = cl_day_load[c, d] se prof p ha lezione con c in d,
             #        0 altrimenti.
@@ -761,7 +828,8 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
                           locked_slots_for_day=None,
                           coteach_groups=None,
                           support_assignments=None,
-                          parallel_groups=None):
+                          parallel_groups=None,
+                          group_assignments=None):
     r"""Risolve il sotto-problema di un singolo giorno.
 
     Se enforce_no_holes=True (default) impone ai profili di classe la
@@ -800,6 +868,24 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
         for m in pg.get("members", []):
             parallel_subj_to_busy_key[(pg["class_name"],
                                         m["subject"])] = key
+    # Task C3: augment triples with group assignments (class=group_name).
+    group_assignments = list(group_assignments or [])
+    group_triples_set: set[tuple[str, str, str]] = set()
+    augmented_triples = list(triples)
+    for ga in group_assignments:
+        key = (ga["teacher_name"], ga["group_name"], ga["subject"])
+        if key in group_triples_set:
+            continue
+        group_triples_set.add(key)
+        augmented_triples.append(
+            (ga["teacher_name"], ga["group_name"],
+             ga["subject"], int(ga["n_hours"])))
+    triples = augmented_triples
+    # group_home_classes: (teacher, group_name, subject) -> [home_class, ...]
+    group_home_classes: dict[tuple[str, str, str], list[str]] = {}
+    for ga in group_assignments:
+        gkey = (ga["teacher_name"], ga["group_name"], ga["subject"])
+        group_home_classes[gkey] = list(ga.get("home_class_names", []))
     for (p, cl, subj, ore) in triples:
         # Phase A output is dense (one entry per (p,cl,subj,day) over the
         # 6 days), but partial / column-generation pipelines may pass a
@@ -897,7 +983,21 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
     # all'usuale sum<=1. Le triple di SOSTEGNO sono escluse: il
     # sostegno segue la classe (vincolo shadow sotto), non aggiunge
     # un'occupazione classe.
-    cls_in_day = {cl for (_, cl, _, _) in triples_active}
+    # Task C3: separate "real classes" (subject to HARD-2 etc.) from
+    # "virtual group classes" (no HARD-2). Real classes include any
+    # home_class touched by a group active today, so the home class
+    # gets the busy propagation but NOT the no-holes/HARD-2 logic
+    # if it has only group hours that day.
+    cls_with_direct_triples = {
+        cl for (p, cl, ss, _) in triples_active
+        if (p, cl, ss) not in group_triples_set
+    }
+    home_classes_today: set[str] = set()
+    for (p, cl, ss, _) in triples_active:
+        if (p, cl, ss) in group_triples_set:
+            home_classes_today.update(
+                group_home_classes.get((p, cl, ss), []))
+    cls_in_day = cls_with_direct_triples | home_classes_today
     present_per_class = {}
     pr_per_cl_h: dict[tuple[str, int], Any] = {}
     for cl in cls_in_day:
@@ -906,15 +1006,28 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
             # Group slots by busy_key: parallel-group members share
             # the same key (so they count as ONE class occupation),
             # while regular subjects use the subject string itself.
+            # Group hours touching this class as a home class are
+            # added under a __grp__ busy_key per group.
             keys_by_busy: dict[str, list] = {}
             for (p, cc, ss, _) in triples_active:
                 if cc != cl:
                     continue
                 if (p, cl, ss) in support_triples_set:
                     continue
+                if (p, cc, ss) in group_triples_set:
+                    continue            # handled in the group loop
                 bk = parallel_subj_to_busy_key.get((cl, ss), ss)
                 keys_by_busy.setdefault(bk, []).append(
                     slot[(p, cl, ss, h)])
+            # Add group slots for groups whose home_classes include cl.
+            for (gp, gcl, gss, _) in triples_active:
+                if (gp, gcl, gss) not in group_triples_set:
+                    continue
+                if cl not in group_home_classes.get((gp, gcl, gss), []):
+                    continue
+                gbk = f"__grp__{gcl}__{gss}"
+                keys_by_busy.setdefault(gbk, []).append(
+                    slot[(gp, gcl, gss, h)])
             subj_busy_vars = []
             for bk, keys_s in keys_by_busy.items():
                 if not keys_s:
@@ -935,6 +1048,12 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
             pr_per_cl_h[(cl, h)] = pr
             present.append(pr)
         present_per_class[cl] = present
+        # Task C3: skip HARD-2 / no-holes for classes that ONLY have
+        # group hours today (no direct triples). The group hours are
+        # extras that float on top of the home class' regular slots,
+        # not subject to the curriculum no-holes / 4-hours-min logic.
+        if cl not in cls_with_direct_triples:
+            continue
         if enforce_no_holes:
             # se la classe ha lezione, parte alle 8
             any_present = model.NewBoolVar(f"ap_{cl}_{day}")
