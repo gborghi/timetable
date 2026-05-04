@@ -172,6 +172,11 @@ def feasibility_check(db: Session, *, time_limit_s: float = 30.0
     by_class = defaultdict(list)
     by_teacher = defaultdict(list)
     for a in assignments:
+        # class_id is nullable (potenziamento). The feasibility
+        # check models class-level lesson allocation, so cattedre
+        # without a class don't belong here.
+        if a.class_id is None:
+            continue
         by_class[a.class_id].append(a)
         by_teacher[a.teacher_id].append(a)
 

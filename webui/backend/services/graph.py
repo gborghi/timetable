@@ -72,6 +72,11 @@ def build_graph(db: Session, mode: str) -> dict[str, Any]:
     cls_to_team: dict[int, set[tuple[int, str]]] = defaultdict(set)
     tea_to_cls: dict[int, set[tuple[int, str]]] = defaultdict(set)
     for a in assignments:
+        # class_id is nullable in the schema (potenziamento has no
+        # class). The bipartite graph only models real teacher<->class
+        # edges, so skip those.
+        if a.class_id is None:
+            continue
         cls_to_team[a.class_id].add((a.teacher_id, a.subject))
         tea_to_cls[a.teacher_id].add((a.class_id, a.subject))
 
