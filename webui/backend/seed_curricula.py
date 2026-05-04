@@ -19,7 +19,7 @@ from . import models
 # schedule/mock_classes2.py. Keeping a copy here avoids dragging the
 # mock module (which depends on Faker, ortools, numpy) into the seed
 # path, and lets us serialize it independently as
-# experiments/curricula.pkl for engine consumption.
+# engine/scripts/curricula.pkl for engine consumption.
 CURRICULUM_SUBJECT_HOURS: dict[tuple[str, int], dict[str, int]] = {
     ('Scientifico', 1): {'Matematica': 5, 'Scienzenaturali': 2, 'Geostoria': 3, 'LinguaInglese': 3, 'ConversazioneInglese': 1, 'Latino': 3, 'Italiano': 4, 'Fisica': 2, 'DisegnoArte': 2, 'Scienzemotorie': 2, 'Religione': 1},
     ('Scientifico', 2): {'Matematica': 5, 'Scienzenaturali': 2, 'Geostoria': 3, 'LinguaInglese': 3, 'ConversazioneInglese': 1, 'Latino': 3, 'Italiano': 4, 'Fisica': 2, 'DisegnoArte': 2, 'Scienzemotorie': 2, 'Religione': 1},
@@ -158,12 +158,12 @@ def seed(force: bool = False) -> dict:
 
 
 def export_pickle(path: str | None = None) -> str:
-    """Dump (curricula, scores, hours) into experiments/curricula.pkl so the
+    """Dump (curricula, scores, hours) into engine/scripts/curricula.pkl so the
     engine can ingest indirizzi without going through the DB."""
     if path is None:
         here = os.path.dirname(os.path.abspath(__file__))
         target_dir = os.path.normpath(
-            os.path.join(here, "..", "..", "experiments")
+            os.path.join(here, "..", "..", "engine", "scripts")
         )
         os.makedirs(target_dir, exist_ok=True)
         path = os.path.join(target_dir, "curricula.pkl")

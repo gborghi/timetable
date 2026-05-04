@@ -1,5 +1,5 @@
 """High-level wrappers that turn DB state into engine-friendly inputs,
-invoke the experiments/ functions, and persist the results back to the DB.
+invoke the engine/ functions, and persist the results back to the DB.
 
 Each public function returns the run_id; the actual work runs in a thread
 managed by run_manager."""
@@ -167,11 +167,11 @@ def run_mock_generation(profile: str, mode: str, margin: float,
 
 
 # ----------------------------------------------------------------------
-# Import a pre-existing experiments/ pickle (small/big/medium/...)
+# Import a pre-existing engine/scripts/ pickle (small/big/medium/...)
 # ----------------------------------------------------------------------
 
 
-def import_experiments_profile(profile: str, use_optimized: bool,
+def import_engine_profile(profile: str, use_optimized: bool,
                                *,
                                import_curricula: bool = True,
                                import_classrooms: bool = True,
@@ -183,21 +183,21 @@ def import_experiments_profile(profile: str, use_optimized: bool,
                   import_students=import_students)
     run_id = create_run("import", f"Import {profile}", profile, params)
     here = os.path.dirname(os.path.abspath(__file__))
-    experiments_dir = os.path.normpath(
-        os.path.join(here, "..", "..", "experiments")
+    engine_scripts_dir = os.path.normpath(
+        os.path.join(here, "..", "..", "engine", "scripts")
     )
 
     def target(rid: int):
-        school_pkl = os.path.join(experiments_dir, f"school_{profile}.pkl")
-        profs_pkl = os.path.join(experiments_dir, f"profs_{profile}.pkl")
+        school_pkl = os.path.join(engine_scripts_dir, f"school_{profile}.pkl")
+        profs_pkl = os.path.join(engine_scripts_dir, f"profs_{profile}.pkl")
         sol_optimized = os.path.join(
-            experiments_dir, f"solution_timetable_{profile}_optimized.pkl"
+            engine_scripts_dir, f"solution_timetable_{profile}_optimized.pkl"
         )
         sol_decomposed = os.path.join(
-            experiments_dir, f"solution_timetable_{profile}_decomposed.pkl"
+            engine_scripts_dir, f"solution_timetable_{profile}_decomposed.pkl"
         )
         sol_plain = os.path.join(
-            experiments_dir, f"solution_timetable_{profile}.pkl"
+            engine_scripts_dir, f"solution_timetable_{profile}.pkl"
         )
         # MEGA pipeline (run_mega_pipeline.py) emits non-canonical
         # filenames: solution_mega_temporal_alns.pkl is the post-ALNS
@@ -206,14 +206,14 @@ def import_experiments_profile(profile: str, use_optimized: bool,
         # result (the equivalent of *_decomposed.pkl). Honour these as
         # additional fallbacks before giving up.
         sol_alt_optimized = os.path.join(
-            experiments_dir, f"solution_{profile}_temporal_alns.pkl"
+            engine_scripts_dir, f"solution_{profile}_temporal_alns.pkl"
         )
         sol_alt_decomposed = os.path.join(
-            experiments_dir, f"solution_temporal_{profile}.pkl"
+            engine_scripts_dir, f"solution_temporal_{profile}.pkl"
         )
         if not os.path.exists(school_pkl):
             raise FileNotFoundError(
-                f"school_{profile}.pkl not found in experiments/"
+                f"school_{profile}.pkl not found in engine/scripts/"
             )
         with open(school_pkl, "rb") as f:
             school = pickle.load(f)
@@ -874,7 +874,7 @@ def run_hall_check(*, n_samples: int = 256,
     the other diagnostics.
     """
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..",
-                                     "experiments"))
+                                     "engine", "scripts"))
     from diagnostics import hall_check as hc  # type: ignore
     with SessionLocal() as db:
         return hc.hall_check_from_db(
@@ -890,7 +890,7 @@ def run_diag_hall_check(*, n_samples: int = 256,
     tab so the result lands in /runs alongside the other
     diagnostics."""
     sys.path.insert(0, os.path.join(
-        os.path.dirname(__file__), "..", "..", "experiments",
+        os.path.dirname(__file__), "..", "..", "engine",
     ))
 
     def _go() -> dict:
@@ -936,7 +936,7 @@ def run_diagnostic_async(kind: str, label: str,
 def run_diag_montecarlo(*, n_samples: int = 100,
                          seed: int = 0) -> int:
     sys.path.insert(0, os.path.join(
-        os.path.dirname(__file__), "..", "..", "experiments",
+        os.path.dirname(__file__), "..", "..", "engine",
     ))
 
     def _go() -> dict:
@@ -954,7 +954,7 @@ def run_diag_montecarlo(*, n_samples: int = 100,
 
 def run_diag_bipartite(*, mode: str = "classes") -> int:
     sys.path.insert(0, os.path.join(
-        os.path.dirname(__file__), "..", "..", "experiments",
+        os.path.dirname(__file__), "..", "..", "engine",
     ))
 
     def _go() -> dict:
@@ -971,7 +971,7 @@ def run_diag_bipartite(*, mode: str = "classes") -> int:
 def run_diag_correlations(*, models_spec: list[dict] | None = None
                            ) -> int:
     sys.path.insert(0, os.path.join(
-        os.path.dirname(__file__), "..", "..", "experiments",
+        os.path.dirname(__file__), "..", "..", "engine",
     ))
 
     def _go() -> dict:
@@ -990,7 +990,7 @@ def run_diag_correlations(*, models_spec: list[dict] | None = None
 
 def run_diag_distributions(*, spec: dict | None = None) -> int:
     sys.path.insert(0, os.path.join(
-        os.path.dirname(__file__), "..", "..", "experiments",
+        os.path.dirname(__file__), "..", "..", "engine",
     ))
 
     def _go() -> dict:
@@ -1085,7 +1085,7 @@ def run_column_generation(*, time_budget_s: float = 60.0,
 
     def target(rid_inner: int):
         sys.path.insert(0, os.path.join(os.path.dirname(__file__),
-                                          "..", "..", "experiments"))
+                                          "..", "..", "engine", "scripts"))
         import metaheuristics as meta  # type: ignore
         import column_generation as cg  # type: ignore
         with SessionLocal() as db:
@@ -1413,9 +1413,9 @@ def run_full_pipeline(profile: str,
                         f"decomp_{method}: nessuna assegnazione; "
                         f"metti 'phase_a' prima nella pipeline."
                     )
-                # Lazy import the experiments modules
+                # Lazy import the engine modules
                 exp_dir = os.path.join(os.path.dirname(__file__),
-                                        "..", "..", "experiments")
+                                        "..", "..", "engine", "scripts")
                 if exp_dir not in sys.path:
                     sys.path.insert(0, exp_dir)
                 pb = pb_kwargs or {}
@@ -1543,7 +1543,7 @@ def run_full_pipeline(profile: str,
                 print("[full] === STEP hall_check (diagnostic) ===")
                 try:
                     sys.path.insert(0, os.path.join(
-                        os.path.dirname(__file__), "..", "..", "experiments",
+                        os.path.dirname(__file__), "..", "..", "engine",
                     ))
                     from diagnostics import hall_check as hc  # type: ignore
                     with SessionLocal() as db:
@@ -1567,7 +1567,7 @@ def run_full_pipeline(profile: str,
                 print("[full] === STEP cg (Column Generation) ===")
                 try:
                     sys.path.insert(0, os.path.join(
-                        os.path.dirname(__file__), "..", "..", "experiments",
+                        os.path.dirname(__file__), "..", "..", "engine",
                     ))
                     import column_generation as cgmod  # type: ignore
                     if state["profs"] is None:
@@ -1656,7 +1656,7 @@ def run_full_pipeline(profile: str,
                     )
                 elif step == "alns":
                     sys.path.insert(0, os.path.join(
-                        os.path.dirname(__file__), "..", "..", "experiments",
+                        os.path.dirname(__file__), "..", "..", "engine",
                     ))
                     import alns as alns_mod  # type: ignore
                     new_sol, _hist = alns_mod.run_alns(
@@ -1674,7 +1674,7 @@ def run_full_pipeline(profile: str,
                     )
                 elif step == "vns":
                     sys.path.insert(0, os.path.join(
-                        os.path.dirname(__file__), "..", "..", "experiments",
+                        os.path.dirname(__file__), "..", "..", "engine",
                     ))
                     import vns as vns_mod  # type: ignore
                     new_sol, _hist = vns_mod.run_vns(
@@ -1682,7 +1682,7 @@ def run_full_pipeline(profile: str,
                     )
                 elif step == "lagrangian":
                     sys.path.insert(0, os.path.join(
-                        os.path.dirname(__file__), "..", "..", "experiments",
+                        os.path.dirname(__file__), "..", "..", "engine",
                     ))
                     import lagrangian as lag_mod  # type: ignore
                     new_sol, _info = lag_mod.run_lagrangian(
@@ -2118,7 +2118,7 @@ def _apply_rooms_to_solution(sid: int, *, time_limit_s: float,
 
 def run_classroom_assignment(time_limit_s: float, workers: int, log: bool,
                              prefer_home: bool = True) -> int:
-    """Step 'Assegna aule' — uses experiments/classroom_assignment.py."""
+    """Step 'Assegna aule' — uses engine/classroom_assignment.py."""
     params = dict(time_limit_s=time_limit_s, workers=workers, log=log,
                   prefer_home=prefer_home)
     run_id = create_run("rooms", "Assegnazione aule", None, params)
@@ -2764,7 +2764,7 @@ def run_decomposition_temporal(*, time_a: float = 60.0,
       2) ProcessPoolExecutor over the 6 days with cv2.solve_phase_b_for_day
       3) (optional) ALNS finishing on top of the ricucitura
 
-    The work is delegated to experiments/decomposition_temporal.py
+    The work is delegated to engine/decomposition_temporal.py
     so the same code path is shared by the CLI and by the REST
     endpoint.
     """
@@ -2792,12 +2792,12 @@ def run_decomposition_temporal(*, time_a: float = 60.0,
         with open(profs_pkl, "wb") as f:
             pickle.dump(profs, f)
 
-        # Lazy import: experiments/ contains the orchestrator
+        # Lazy import: engine/ contains the orchestrator
         import sys
         exp_dir = os.path.join(
             os.path.dirname(os.path.dirname(
                 os.path.dirname(os.path.abspath(__file__)))),
-            "experiments")
+            "engine", "scripts")
         if exp_dir not in sys.path:
             sys.path.insert(0, exp_dir)
         import decomposition_temporal as dec_t  # type: ignore
@@ -2939,7 +2939,7 @@ def run_decomposition_curriculum(*, time_a: float = 60.0,
         exp_dir = os.path.join(
             os.path.dirname(os.path.dirname(
                 os.path.dirname(os.path.abspath(__file__)))),
-            "experiments")
+            "engine", "scripts")
         if exp_dir not in sys.path:
             sys.path.insert(0, exp_dir)
         import decomposition_curriculum as dec_c  # type: ignore
@@ -3047,7 +3047,7 @@ def run_decomposition_metis(*, time_a: float = 60.0,
         exp_dir = os.path.join(
             os.path.dirname(os.path.dirname(
                 os.path.dirname(os.path.abspath(__file__)))),
-            "experiments")
+            "engine", "scripts")
         if exp_dir not in sys.path:
             sys.path.insert(0, exp_dir)
         import decomposition_metis as dec_m  # type: ignore

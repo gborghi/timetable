@@ -17,7 +17,7 @@ del tempo non se ne ha altro che quello che si organizza adesso.
 
 Tre layer, in un unico repo:
 
-1. **Solver** (`experiments/`) — a CP-SAT pipeline (Google OR-tools)
+1. **Solver** (`engine/`) — a CP-SAT pipeline (Google OR-tools)
    with spectral decomposition for very large instances, plus a
    collection of metaheuristics (LNS, SA, TS, ILS) that run on top of
    the CP-SAT seed solution.
@@ -249,7 +249,7 @@ Reference completo + galleria di 30+ esempi in
 ## Repository layout
 
 ```
-experiments/   solver code (CP-SAT, decomposition, metaheuristics,
+engine/      solver code (CP-SAT, decomposition, metaheuristics,
                exporters); pickled snapshots per profile (small,
                medium, big, huge, superhuge).
 webui/         FastAPI backend + SvelteKit frontend + docs.
@@ -264,7 +264,7 @@ proposals/     design notes and benchmark results.
 - The webui DB is a single SQLite file at `webui/data/timetable.db`.
   Idempotent migrations live in `webui/backend/db.py` and are run on
   every backend boot — no Alembic, intentionally.
-- Pickle snapshots (`experiments/*.pkl`) are the engine's I/O
+- Pickle snapshots (`engine/scripts/*.pkl`) are the engine's I/O
   format; the webui converts to/from them via
   `webui/backend/engine_io.py`.
 - Excel/CSV import templates can be downloaded from each list page

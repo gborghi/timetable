@@ -21,7 +21,7 @@ PERCHE\` PRODUCE QUALITA\` SIMILE:
 - l'equita\` finale, se attivata, viene ottenuta con dev. assolute.
 
 USO:
-    cd experiments
+    cd engine
     python big_mock_school.py --profile big   # produce school_big.pkl
     python cpsat_v2_assignment.py --school school_big.pkl --time 60
 """

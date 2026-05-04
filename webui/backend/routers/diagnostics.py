@@ -32,10 +32,10 @@ from ..db import get_db
 router = APIRouter(prefix="/api/diagnostics", tags=["diagnostics"])
 
 
-# Make the experiments/ package importable
+# Make the engine/ package importable
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _EXPERIMENTS = os.path.normpath(os.path.join(_HERE, "..", "..", "..",
-                                              "experiments"))
+                                              "engine"))
 if _EXPERIMENTS not in sys.path:
     sys.path.insert(0, _EXPERIMENTS)
 

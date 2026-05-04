@@ -11,7 +11,7 @@ The generator emits the same JSON shape as the curated files
 `load_stress_constraints.py` consumes them transparently.
 
 USE
-    cd experiments
+    cd engine/scripts
     python generate_stress_constraints.py --profile big
     python generate_stress_constraints.py --profile huge
     python generate_stress_constraints.py --all

@@ -7,7 +7,7 @@ http://127.0.0.1:8000. Reports pass / fail + the error message.
 USE
     # Make sure the backend is running on :8000 and a profile is
     # already loaded (small recommended for speed).
-    cd experiments
+    cd engine/scripts
     python workflow_battery.py
 """
 from __future__ import annotations

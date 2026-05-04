@@ -46,15 +46,15 @@ def generate_mock(payload: schemas.MockGenIn):
 @router.post("/import-profile")
 def import_profile(payload: schemas.ImportPickleIn):
     here = os.path.dirname(os.path.abspath(__file__))
-    experiments_dir = os.path.normpath(
-        os.path.join(here, "..", "..", "..", "experiments")
+    engine_scripts_dir = os.path.normpath(
+        os.path.join(here, "..", "..", "..", "engine", "scripts")
     )
-    school_pkl = os.path.join(experiments_dir, f"school_{payload.profile}.pkl")
+    school_pkl = os.path.join(engine_scripts_dir, f"school_{payload.profile}.pkl")
     if not os.path.exists(school_pkl):
         raise HTTPException(
-            404, f"school_{payload.profile}.pkl not found in experiments/"
+            404, f"school_{payload.profile}.pkl not found in engine/scripts/"
         )
-    run_id = optimization.import_experiments_profile(
+    run_id = optimization.import_engine_profile(
         payload.profile, payload.use_optimized,
         import_curricula=payload.import_curricula,
         import_classrooms=payload.import_classrooms,
@@ -67,21 +67,21 @@ def import_profile(payload: schemas.ImportPickleIn):
 @router.get("/available-profiles")
 def list_profiles():
     here = os.path.dirname(os.path.abspath(__file__))
-    experiments_dir = os.path.normpath(
-        os.path.join(here, "..", "..", "..", "experiments")
+    engine_scripts_dir = os.path.normpath(
+        os.path.join(here, "..", "..", "..", "engine", "scripts")
     )
 
     def _exists_any(*candidates):
-        return any(os.path.exists(os.path.join(experiments_dir, c))
+        return any(os.path.exists(os.path.join(engine_scripts_dir, c))
                     for c in candidates)
 
     profiles = []
     for name in ("small", "medium", "big", "huge", "superhuge", "mega"):
-        school = os.path.join(experiments_dir, f"school_{name}.pkl")
+        school = os.path.join(engine_scripts_dir, f"school_{name}.pkl")
         if not os.path.exists(school):
             continue
         has_profs = os.path.exists(
-            os.path.join(experiments_dir, f"profs_{name}.pkl")
+            os.path.join(engine_scripts_dir, f"profs_{name}.pkl")
         )
         # MEGA's pipeline (run_mega_pipeline.py) writes
         # solution_mega_temporal_alns.pkl (final ALNS-polished) and

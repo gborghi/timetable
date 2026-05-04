@@ -50,7 +50,7 @@ Le penalita\` originali quadratiche di "uniform_class" e "uniform_prof"
 sono sostituite con **somma di deviazioni assolute**.
 
 USO:
-    cd experiments
+    cd engine
     python cpsat_v2_timetable.py --profs profs_big.pkl \
         --time-a 30 --time-b 30
 """

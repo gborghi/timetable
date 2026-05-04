@@ -31,7 +31,7 @@ from collections import defaultdict
 from copy import deepcopy
 from typing import Callable
 
-# `experiments/` may or may not be on sys.path depending on how the
+# `engine/` may or may not be on sys.path depending on how the
 # module is loaded (engine vs webui). Make the import robust.
 _HERE = os.path.dirname(os.path.abspath(__file__))
 if _HERE not in sys.path:

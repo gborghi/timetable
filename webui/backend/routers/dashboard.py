@@ -367,7 +367,7 @@ def snapshot_delete(filename: str):
 # The Dashboard "Vincoli" sub-card exposes:
 #   POST /api/dashboard/constraints/import-stress
 #       body: {profile: small|medium|big|huge|superhuge|mega}
-#       reads experiments/stress_constraints/<profile>/*.json
+#       reads engine/scripts/stress_constraints/<profile>/*.json
 #       and bulk-creates the constraints in the live DB.
 #   POST /api/dashboard/constraints/import-file
 #       multipart upload (JSON or xlsx); validates each record and
@@ -386,17 +386,17 @@ _STRESS_PROFILES = ("small", "medium", "big", "huge", "superhuge", "mega")
 
 def _stress_dir(profile: str) -> str:
     """Resolve the stress dataset folder for a profile. Falls back to
-    walking up from the backend dir to find experiments/."""
+    walking up from the backend dir to find engine/scripts/."""
     profile = (profile or "").lower().strip()
     if profile not in _STRESS_PROFILES:
         raise HTTPException(
             400, f"profilo {profile!r} non valido; "
                   f"usa uno tra {list(_STRESS_PROFILES)}.")
     here = os.path.dirname(os.path.abspath(__file__))
-    # walk up to find experiments/
+    # walk up to find engine/scripts/
     cur = here
     for _ in range(8):
-        cand = os.path.join(cur, "experiments", "stress_constraints",
+        cand = os.path.join(cur, "engine", "scripts", "stress_constraints",
                             profile)
         if os.path.isdir(cand):
             return cand
@@ -409,7 +409,7 @@ def _stress_dir(profile: str) -> str:
 
 def _resolve_owner(db: Session, scope: str, pattern: str) -> int | None:
     """Resolve `owner_pattern` for stress datasets to an entity id in
-    the live DB. Mirrors experiments/load_stress_constraints.py."""
+    the live DB. Mirrors engine/scripts/load_stress_constraints.py."""
     if not pattern:
         return None
     pattern = pattern.strip()
@@ -558,7 +558,7 @@ class ImportStressIn(_BM):
 def constraints_import_stress(payload: ImportStressIn,
                                 db: Session = Depends(get_db)):
     """Load a curated stress profile from
-    `experiments/stress_constraints/<profile>/` into the live DB.
+    `engine/scripts/stress_constraints/<profile>/` into the live DB.
 
     Returns a per-record report:
       {profile, n_loaded, n_errors, by_category, intentional_conflicts,

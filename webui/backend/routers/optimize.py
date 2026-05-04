@@ -212,7 +212,7 @@ def recommend_decomposition(db: Session = Depends(get_db)):
     import sys, os
     sys.path.insert(0, os.path.join(
         os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-        "experiments"))
+        "engine"))
     try:
         from decomposition_auto import auto_detect_decomposition_strategy
     except ImportError as e:

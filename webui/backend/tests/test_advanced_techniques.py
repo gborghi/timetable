@@ -19,7 +19,7 @@ import pytest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 EXPERIMENTS = os.path.normpath(os.path.join(HERE, "..", "..", "..",
-                                              "experiments"))
+                                              "engine"))
 if EXPERIMENTS not in sys.path:
     sys.path.insert(0, EXPERIMENTS)
 

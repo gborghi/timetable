@@ -43,7 +43,7 @@ import numpy as np
 
 # Riusa le metriche dal modulo curriculum (stessa interfaccia).
 # Import "soft" via importlib per non rompere se questo modulo
-# viene caricato fuori dal package (es. dal CLI di experiments).
+# viene caricato fuori dal package (es. dal CLI di engine).
 try:  # package import (preferito)
     from .decomposition_curriculum import (  # noqa: F401
         find_bridges, partition_metrics,

@@ -1,5 +1,5 @@
 """Conversion between the DB model (rich constraints) and the engine
-pickles (slim structures consumed by experiments/*.py).
+pickles (slim structures consumed by engine/*.py).
 
 The engine works on three pickle shapes:
 

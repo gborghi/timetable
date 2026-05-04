@@ -1,5 +1,5 @@
 """Loader for the stress-constraint datasets in
-experiments/stress_constraints/.
+engine/stress_constraints/.
 
 For a chosen profile, walks the three category files
 (teacher_, classroom_, relational_) and POSTs each constraint
@@ -8,14 +8,14 @@ to the running webapp's /api/constraints endpoint. Resolves
 teacher with the smallest id).
 
 Tracks the mapping `dataset_id -> db_id` in
-`experiments/stress_constraints/<profile>/loaded_<timestamp>.json`
+`engine/stress_constraints/<profile>/loaded_<timestamp>.json`
 so that later runs of the feasibility-check can verify which
 DB constraint corresponds to which dataset record (by id), and
 in particular which DB rows are part of `intentionally_conflicting`
 pairs.
 
 USE
-    cd experiments
+    cd engine/scripts
     python load_stress_constraints.py --profile small
     python load_stress_constraints.py --profile medium --backend http://127.0.0.1:8000
     python load_stress_constraints.py --profile small --dry-run

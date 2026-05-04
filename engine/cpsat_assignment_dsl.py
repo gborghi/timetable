@@ -22,7 +22,7 @@ from ortools.sat.python import cp_model
 
 def _import_dsl():
     # Make the backend package importable when this file is invoked
-    # standalone or via run_manager (which adds experiments/ to path
+    # standalone or via run_manager (which adds engine/ to path
     # but not webui/).
     here = os.path.dirname(os.path.abspath(__file__))
     repo_root = os.path.dirname(here)

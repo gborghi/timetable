@@ -1,6 +1,6 @@
 """MEGA end-to-end pipeline driver: temporal decomposition + ALNS.
 
-Run from the experiments/ directory:
+Run from the engine/ directory:
 
     python run_mega_pipeline.py
 """

@@ -1,6 +1,6 @@
 r"""Assegnazione delle aule alle lezioni gia\` schedulate -- modulo nuovo.
 
-NON modifica nessuno dei moduli esistenti in `experiments/`. E\` pensato
+NON modifica nessuno dei moduli esistenti in `engine/`. E\` pensato
 per essere chiamato dal backend webui (`webui/backend/optimization.py`)
 con dati gia\` reificati in dict Python.
 
@@ -56,7 +56,7 @@ NOTE
 
 USO programmatico:
 
-    from experiments.classroom_assignment import solve_classroom_assignment
+    from classroom_assignment import solve_classroom_assignment
     out, status = solve_classroom_assignment(
         lessons, classrooms, time_limit_s=30, workers=4
     )

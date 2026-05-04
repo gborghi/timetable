@@ -1,8 +1,21 @@
-# experiments/ -- proof of concept e benchmark
+# engine/ -- motore di scheduling
 
-Questa cartella contiene gli esperimenti che accompagnano
-`proposals/analysis.md`. NIENTE qui dentro modifica i file
-in `schedule/`. Tutti gli script sono "stand-alone" (vedi sezione
+Questa cartella contiene il motore vero e proprio: modello CP-SAT
+(2 fasi), metaeuristiche, strategie di decomposizione, assegnazione
+aule, e diagnostica pre-solve. Era storicamente in `experiments/`,
+rinominata per chiarire il ruolo: i moduli al top level sono
+production code, importati da `webui/backend/optimization.py`.
+
+Layout:
+- `engine/*.py` -- moduli production (importati dal backend webui)
+- `engine/diagnostics/` -- check pre-solve (Hall, Monte Carlo,
+  bipartite, distributions, correlations)
+- `engine/scripts/` -- script standalone di benchmark / pipeline
+  per uso da CLI dell'autore (run_full_pipeline, run_mega_pipeline,
+  workflow_battery, ecc.); non importati dal backend.
+
+NIENTE qui dentro modifica i file in `schedule/` (storico). Gli
+script in `engine/scripts/` sono "stand-alone" (vedi sezione
 "Dipendenze" sotto).
 
 ## Cosa c'e\` qui

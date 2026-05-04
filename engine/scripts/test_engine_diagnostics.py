@@ -3,7 +3,7 @@ r"""Smoke tests per engine_diagnostics.
 Carica la soluzione optimised del profilo small e verifica che le tre
 funzioni diagnostic ritornino strutture sensate. Usa:
 
-    python experiments/test_engine_diagnostics.py
+    python engine/test_engine_diagnostics.py
 """
 from __future__ import annotations
 

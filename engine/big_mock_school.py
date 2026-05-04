@@ -11,7 +11,7 @@ Questo dump viene poi consumato da cpsat_v2_assignment.py
 (senza dipendenze su mock_classes2 a runtime).
 
 Uso:
-    cd experiments
+    cd engine
     python big_mock_school.py [--small | --medium | --big]
 """
 import os

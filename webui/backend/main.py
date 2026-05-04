@@ -3,7 +3,7 @@
 Run from `webui/backend/`:
     .venv/Scripts/python -m uvicorn main:app --reload --port 8000
 
-The app imports the engine modules in `experiments/` lazily (see
+The app imports the engine modules in `engine/` lazily (see
 optimization.py + engine_paths.py)."""
 from __future__ import annotations
 
