@@ -13,12 +13,32 @@ codebase com'è ora.
    Per il liceo medio italiano (35 classi) la pipeline è realistica; per
    IIS grandi (60-80 classi) il tempo solver è già nell'ordine dei
    minuti.
-2. **Due vincoli italiani importanti sono modellati a livello DB ma NON
-   enforced dal solver**: compresenze (`CoTeachingRule`) e gruppi
-   articolati (`StudyGroup` + `GroupSubjectHours`). Il solver li ignora.
-   `Assignment.locked` è gestito con uno snapshot/restore *intorno* al
-   solve (`optimization.py:484, 1797, 1835`), non come constraint nativo
-   — funziona per una rerun mirata, ma non è una soluzione strutturale.
+2. **(AGGIORNATO 2026-05-04/05)** I vincoli italiani precedentemente
+   stub-only sono ora tutti enforced come constraint CP-SAT nativi:
+   - **Compresenze** (Task C1): `CoteachGroup` con due varianti — shared
+     (lab di chimica con assistente: principal/codoc model con
+     `day_count[principal] >= coday`, `day_count[codoc] == coday`) e
+     shadow (sostegno DVA: `slot[sost,X,sost,h] <= OR(slot[*,X,*,h] for
+     non-support)`, non conta come ora-classe).
+   - **Potenziamento** (Legge 107): `Assignment.is_potenziamento=True`
+     con `class_id=NULL`, `pot_day_count[prof, d]` IntVar in solver,
+     UI badge **POT** in `/assenze-supplenze`.
+   - **Parallel groups intra-class** (Task C2):
+     `Assignment.parallel_group_id` (es. religione+alternativa stesso
+     slot, classe busy ONCE).
+   - **Inter-class StudyGroup scheduling** (Task C3):
+     `Assignment.group_id` nullable XOR `class_id`, gruppo come virtual
+     class label, vincolo per-day capacity sulle classi-madre,
+     class-busy aggregator esteso.
+   - **Lock nativi**: `Assignment.locked=True` ora tradotto in
+     constraint CP-SAT diretto (sostituisce snapshot/restore). Pre-flight
+     `validate_locks_vs_constraints` + `validate_coteach_sostegno_potenziamento`
+     restituiscono 400 al POST con elenco specifico delle violazioni.
+
+   **Limitazione residua per C3**: `group_assignments` propagato solo
+   alla pipeline monolitica + `decomposition_temporal`. Le decomposte
+   `spectral_v2 / curriculum / metis / column_generation` ignorano i
+   gruppi (follow-up).
 3. **Un layer di multi-tenancy esiste come scaffolding ma non è
    applicato**: `TenantMixin` è su 7 entità, header `X-Tenant-Id` letto,
    ma nessun router filtra le query per `tenant_id`. Allo stato attuale

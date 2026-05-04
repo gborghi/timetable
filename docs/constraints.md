@@ -224,3 +224,162 @@ Il tab Vincoli ha un bottone "Cerca conflitti" che fa
 
 Ogni conflitto e' presentato con `kind`, `reason` parlante, e la lista
 dei vincoli coinvolti (ognuno con la sua pill colorata).
+
+## Vincoli Italian-school (C1 + C2 + C3)
+
+Sezione aggiunta 2026-05-04/05. Tre famiglie di vincoli specifici della
+scuola italiana, tutti enforced come constraint CP-SAT nativi (non piu'
+gestiti via snapshot/restore).
+
+### C1.1 -- Compresenze "shared" (lab, dual-teacher)
+
+Caso d'uso: laboratorio di chimica del 2C, 4 ore alla settimana, di cui
+2 in compresenza con l'assistente di laboratorio.
+
+**Modello dati**:
+```
+CoteachGroup(class_id=2C, subject="Chimica", n_hours=2, kind="shared",
+             required=True)
+Assignment(teacher=ProfChim, class_id=2C, subject="Chimica", hours=4,
+           coteach_group_id=<id>)
+Assignment(teacher=ProfAss,  class_id=2C, subject="Chimica", hours=2,
+           coteach_group_id=<id>)
+```
+
+**Convenzione**: `members[0]` (ordinati per hours desc, name tiebreak)
+e' il **principal** -- la sua cattedra completa il monte ore. Gli altri
+sono **codoc** -- la loro Assignment e' esattamente n_hours.
+
+**CP-SAT** (Phase A + B):
+- IntVar `coday_count[gid, d]` in `[0, n_hours]`, sum_d == n_hours.
+- `day_count[principal, gcl, gsub, d] >= coday_count[gid, d]` (le ore
+  di compresenza sono un sotto-insieme delle ore del principal).
+- `day_count[codoc, gcl, gsub, d] == coday_count[gid, d]` (codoc fa
+  ESATTAMENTE le ore di compresenza).
+- Codoc triples escluse da `cl_day_load` e `ore_per_classe` (le ore
+  vengono gia' contate via il principal).
+- Phase B: `coslot[gid, h]` BoolVar, sum_h == coday[gid, d];
+  `slot[member, gcl, gsub, h] >= coslot[gid, h]` per ogni member.
+
+**Pre-flight**: principal hours >= n_hours; codoc hours == n_hours.
+
+### C1.2 -- Compresenze "shadow" (sostegno DVA)
+
+Caso d'uso: prof di sostegno che segue uno studente in 2A.
+
+**Modello dati**:
+```
+Assignment(teacher=ProfSost, class_id=2A, subject="sostegno",
+           hours=18, is_support=True)
+```
+
+**Semantica**: il sostegno **non aggiunge** ore-classe; segue le ore
+gia' presenti.
+
+**CP-SAT** (Phase B): per ogni `(prof_sost, X, sostegno, h)`,
+`slot[(sost, X, sost, h)] <= pr_per_cl_h[(X, h)]` dove `pr_per_cl_h`
+e' la BoolVar "X e' occupata in slot h". Se `pr` non esiste (X non
+ha lezioni quel giorno), `slot[sost, X, sost, h] == 0`.
+
+Le triple di sostegno sono escluse da `cl_day_load` e dal
+class-busy aggregator (no double-count).
+
+### C1.3 -- Potenziamento (Legge 107)
+
+Caso d'uso: docenti dell'organico potenziato che non hanno una
+cattedra fissa, usabili per progetti, supplenze, recupero.
+
+**Modello dati**:
+```
+Assignment(teacher=ProfPot, class_id=NULL, subject="Potenziamento",
+           hours=10, is_potenziamento=True)
+```
+
+**Semantica**: le ore vengono schedulate ma non producono `Lesson`
+class-bound. Il prof e' prioritario nel tab `/assenze-supplenze`
+(badge **POT**, bordo viola, primo nella lista dei sostituti).
+
+**CP-SAT** (Phase A): IntVar `pot_day_count[prof, d]` in
+`[0, MAX_PROF_HOURS_PER_DAY]`, sum_d == pot_hours_total.
+`pot_day_count[prof, d] + prof_day_load[prof, d] <= 5` (cap giornaliero).
+Salvato in `dc_value` con chiave `("__pot__", prof, d)` per Phase B.
+
+**Pre-flight**: `class_id` deve essere NULL; cap settimanale 30 ore
+(5 ore/giorno x 6 giorni).
+
+### C2 -- Parallel groups intra-class
+
+Caso d'uso: religione + alternativa in 3B, stessa ora, prof diversi,
+classe occupata UNA volta sola.
+
+**Modello dati**:
+```
+Assignment(teacher=ProfRel, class_id=3B, subject="Religione",
+           hours=1, parallel_group_id=99)
+Assignment(teacher=ProfAlt, class_id=3B, subject="Alternativa",
+           hours=1, parallel_group_id=99)
+```
+
+**CP-SAT**:
+- Phase A: members del gruppo hanno `day_count[m1, d] == day_count[m2, d]`
+  per ogni d. Members[1:] esclusi da `cl_day_load` e `ore_per_classe`
+  (il primo "porta" la classe, gli altri ride-along).
+- Phase B: `slot[m1, h] == slot[m2, h]` per ogni h. Class-busy
+  aggregator usa `parallel_subj_to_busy_key`: tutti i membri della
+  parallela hanno la stessa busy_key, quindi la classe conta come
+  busy ONCE anche con N membri.
+
+### C3 -- Inter-class StudyGroup scheduling
+
+Caso d'uso: gruppo "Spagnolo" con 5 studenti da 2A + 7 da 2B,
+3 ore/settimana, ProfSpa. Le ore di gruppo NON sono lezioni di 2A o
+di 2B (gli studenti sono fisicamente in un'aula diversa), ma 2A e 2B
+non possono fare lezione regolare in quegli slot (i loro studenti del
+gruppo non ci sono).
+
+**Modello dati** (Opzione B: due colonne separate, XOR a livello app):
+```
+StudyGroup(name="Spagnolo", kind="language")
+GroupMembership(group_id=<id>, student_id=<id>) x 12  # i 5+7 membri
+GroupSubjectHours(group_id=<id>, subject="Spagnolo", hours_per_week=3)
+Assignment(teacher=ProfSpa, class_id=NULL, group_id=<id>,
+           subject="Spagnolo", hours=3)
+```
+
+`Assignment.class_id` rimane (legacy alias, NULL per i gruppi).
+`Assignment.group_id` nullable, FK a `study_groups`. XOR a livello
+applicazione: `_preflight_lock_check` rifiuta se entrambi sono
+valorizzati. Stesso pattern su `CoteachGroup.group_id` (compresenze
+su gruppo) e su `Lesson.group_name` (lezione-gruppo nei risultati).
+
+**CP-SAT**:
+- Phase A: la triple `(ProfSpa, "Spagnolo", "Spagnolo", 3)` viene
+  augmentata a `triples` con `class_name = group_name`. Il group_name
+  NON e' in `classes`, quindi non c'e' `cl_day_load` ne'
+  `ore_per_classe` per il gruppo.
+- Phase A vincolo per-day capacity: per ogni classe-madre `cl_h`
+  toccata da almeno un gruppo `g`,
+  `cl_day_load[cl_h, d] + sum(group_day_count[g, d]) <= 6`. Senza
+  questo, Phase B sarebbe infeasible quando curriculum + gruppo
+  superano 6 slot/giorno.
+- Phase A Hall-like fix: il bound `prof_day_load <= max(cl_day_load)`
+  e' saltato per i prof che insegnano SOLO ore di gruppo (altrimenti
+  forzerebbe le loro ore a 0).
+- Phase B: la triple di gruppo entra normalmente in `triples_active`.
+  Il class-busy aggregator aggiunge il group_slot come subj_busy_var
+  per OGNI classe-madre dei membri, sotto la busy_key
+  `__grp__<group_name>__<subject>`. L'invariante `sum(subj_busy) == pr`
+  garantisce che la classe-madre non faccia altre lezioni nello
+  stesso slot.
+- Phase B HARD-2 / no-holes: applicate solo alle classi-con-direct
+  triples. Una classe toccata SOLO da gruppi (caso degenere) non
+  prende il vincolo "esci alle 12" -- il gruppo e' un add-on.
+
+**Pre-flight**: XOR class_id/group_id, gruppo deve avere almeno
+uno studente, ogni studente deve avere classe-madre, hours > 0.
+
+**Pipeline supportate**: monolitica + `decomposition_temporal`.
+Le altre decomposte (`spectral_v2`, `curriculum`, `metis`,
+`column_generation`) ignorano `group_assignments` per ora -- la
+plumbing dei parametri attraverso le 5 pipeline restanti e' un
+follow-up tracciato in AUDIT.md.

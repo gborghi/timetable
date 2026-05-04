@@ -81,6 +81,107 @@ tecnica e' stata sviluppata a partire da queste idee.
   from the UI itself (Excel import format, query syntax, bulk
   operations, classroom auto-generation, ...).
 
+## Funzionalita' avanzate (Italian school constraints)
+
+### Lock nativi nelle lezioni
+
+Una `Assignment` con `locked=True` (toggle nella UI) viene tradotta
+direttamente in un vincolo CP-SAT (non piu' tramite snapshot/restore).
+Vantaggi:
+- fail-fast: lock incompatibili sollevano un 400 al POST, non a meta'
+  della run.
+- propagati a tutte le pipeline (Phase B monolitica, decomposta
+  temporal/spectral_v2/curriculum/metis, column generation, ALNS,
+  VNS, Lagrangian, classroom assignment).
+- pre-flight `validate_locks_vs_constraints` confronta i lock con
+  free_day del docente, max_hours_per_day della classe, vincoli HARD
+  di compresenza ecc.
+
+### Compresenze (Task C1)
+
+Due varianti supportate da `CoteachGroup`:
+
+- **Shared** (es. lab di chimica con assistente): `n_hours` ore di
+  un cattedra condivisa fra il docente principale (cattedra completa)
+  e uno o piu' co-docenti (solo le ore di compresenza). Convenzione
+  `members[0] = principal`. Nel solver: `day_count[principal] >=
+  coday[g, d]` e `day_count[codoc] == coday[g, d]`.
+- **Shadow / sostegno**: prof di sostegno DVA che segue uno studente.
+  Modellato con `Assignment.is_support=True` e subject convenzionalmente
+  `"sostegno"`. Vincolo `slot[(sost, X, sost, h)] <= OR(slot[*, X, *, h]
+  for non-support)`: l'ora di sostegno e' presente solo dove la classe
+  e' gia' occupata da un'altra lezione, e NON conta come ora-classe
+  aggiuntiva.
+
+Esempio Italiano: `2C lab di chimica 2h con compresenza` ->
+`CoteachGroup(class_id=2C, subject=Chimica, n_hours=2)` con
+`Assignment(ProfChim, 2C, Chimica, hours=4)` e
+`Assignment(ProfAss, 2C, Chimica, hours=2)`. Il principale insegna
+4h, l'assistente solo 2h, e quelle 2h coincidono nello stesso slot.
+
+### Potenziamento (Legge 107)
+
+Cattedra senza classe: `Assignment.is_potenziamento=True` con
+`class_id=NULL`. Le ore vengono comunque schedulate (max 5/giorno) e
+il docente diventa prioritario per le supplenze nel tab
+`/assenze-supplenze` (badge **POT** + bordo viola). Cap settimanale
+HARD: 30 ore (5 ore/giorno x 6 giorni).
+
+### Parallel groups intra-class (Task C2)
+
+Casi tipici: `religione + alternativa` nella stessa classe, stessa ora,
+docenti diversi. Modellato con `Assignment.parallel_group_id`:
+membri della stessa parallela condividono lo slot, la classe conta
+come busy **una sola volta**. Esempio:
+`Assignment(ProfRel, 3B, Religione, h=1, parallel_group_id=99)` +
+`Assignment(ProfAlt, 3B, Alternativa, h=1, parallel_group_id=99)`.
+
+### Inter-class StudyGroup scheduling (Task C3)
+
+Gruppi che attraversano piu' classi (es. **Spagnolo** con studenti
+da 2A + 2B). Modello dati: `StudyGroup` esistente con
+`GroupMembership` (studenti) + `GroupSubjectHours` (ore/materia).
+Schema esteso (Opzione B):
+- `Assignment.group_id` nullable (XOR con `class_id`).
+- `CoteachGroup.group_id` nullable (XOR con `class_id`) per
+  compresenze su gruppo.
+- `Lesson.group_name` nullable per le lezioni-gruppo nei risultati.
+
+Solver:
+- nuove triple `(prof, group_name, subject, n_hours)` con `group_name`
+  come "virtual class label" non in `classes` (no `cl_day_load`,
+  no HARD-2).
+- vincolo per-day capacity: `cl_day_load[home_cl, d] +
+  sum(group_day_count[g, d]) <= 6` su ogni classe-madre dei membri.
+- Phase B class-busy aggregator estende le subj_busy aggiungendo
+  `__grp__<gname>__<subj>` come busy_key per ogni classe-madre.
+  L'invariante `sum(subj_busy) == pr` garantisce che la classe non
+  faccia altre lezioni nello slot del gruppo.
+
+Pipeline supportate: monolitica + `decomposition_temporal`. Le altre
+pipeline decomposte (`spectral_v2`, `curriculum`, `metis`,
+`column_generation`) ignorano `group_assignments` per il momento --
+follow-up tracciato in AUDIT.md.
+
+Esempio: gruppo "Spagnolo cross-class" con 5 studenti da 2A + 7 da 2B,
+3h/settimana, ProfSpa: aggiungi `Assignment(teacher=ProfSpa,
+class_id=NULL, group_id=<id Spagnolo>, subject="Spagnolo", hours=3)`.
+Il solver schedulera' 3 ore in slot diversi; sia 2A che 2B saranno
+"occupate" in quegli slot (i loro studenti sono fisicamente nel
+gruppo).
+
+### Pre-flight checks
+
+`validate_coteach_sostegno_potenziamento` controlla a *POST time*:
+- compresenza: principal hours >= n_hours, codoc hours == n_hours.
+- sostegno: class_id deve esistere.
+- potenziamento: class_id NULL, totale settimanale <= 30.
+- gruppo: XOR class_id/group_id, gruppo deve avere studenti, ogni
+  studente deve avere classe-madre, hours > 0.
+
+Le violazioni sono restituite come 400 con elenco specifico, non come
+INFEASIBLE silenzioso a fine run.
+
 ## Brand assets
 
 Loghi, banner, icone e screenshot vivono in [`branding/`](branding/).
