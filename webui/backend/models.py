@@ -386,24 +386,64 @@ class Assignment(Base):
     """Result of the prof->class assignment step. One row per
     (teacher, class, subject) triple. Hours come from the matching class
     subject row; we replicate them here for fast reads and to allow
-    targeted manual overrides."""
+    targeted manual overrides.
+
+    Three special-case shapes (Task C1):
+    - Shared coteaching: N rows with same (class_id, subject) and a
+      shared `coteach_group_id` pointing at the rule that ties them.
+    - Sostegno (shadow): `is_support=True`, `subject="sostegno"`. The
+      teacher follows the class -- placed in slots where the class
+      already has a non-support lesson; doesn't add to class-busy.
+    - Potenziamento: `is_potenziamento=True`, `class_id=NULL`. The
+      teacher's hours get scheduled but produce no class-bound
+      Lesson; available for substitutions and flexible coteaching.
+    """
     __tablename__ = "assignments"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     teacher_id: Mapped[int] = mapped_column(
         ForeignKey("teachers.id", ondelete="CASCADE"), index=True
     )
-    class_id: Mapped[int] = mapped_column(
-        ForeignKey("school_classes.id", ondelete="CASCADE"), index=True
+    class_id: Mapped[int | None] = mapped_column(
+        ForeignKey("school_classes.id", ondelete="CASCADE"),
+        nullable=True, index=True,
+        comment="NULL only for is_potenziamento=True rows"
     )
     subject: Mapped[str] = mapped_column(String(64))
     hours: Mapped[int] = mapped_column(Integer, default=0)
     locked: Mapped[bool] = mapped_column(Boolean, default=False,
                                          comment="true => cannot be changed "
                                          "by the optimizer")
+    coteach_group_id: Mapped[int | None] = mapped_column(
+        ForeignKey("coteach_groups.id", ondelete="SET NULL"),
+        nullable=True, index=True,
+        comment="non-NULL: this Assignment is part of a shared "
+                "coteaching group; n_hours of its `hours` are taught "
+                "together with the other members"
+    )
+    is_support: Mapped[bool] = mapped_column(
+        Boolean, default=False, index=True,
+        comment="true: prof di sostegno; subject is conventionally "
+                "'sostegno'; the teacher follows the class' lessons"
+    )
+    is_potenziamento: Mapped[bool] = mapped_column(
+        Boolean, default=False, index=True,
+        comment="true: ore di potenziamento (Legge 107); class_id is "
+                "NULL; hours are scheduled but produce no Lesson row"
+    )
     teacher: Mapped["Teacher"] = relationship()
     school_class: Mapped["SchoolClass"] = relationship()
+    coteach_group: Mapped["CoteachGroup | None"] = relationship(
+        back_populates="assignments"
+    )
+    # Drop the old uq_assign_cl_subj: shared coteaching needs N rows
+    # for the same (class_id, subject), each with a distinct
+    # teacher_id. The pragma-style unique below covers the same
+    # invariant for the cattedre-normali case (one teacher per
+    # (class, subj, support-flag)) without forbidding shared shape.
     __table_args__ = (
-        UniqueConstraint("class_id", "subject", name="uq_assign_cl_subj"),
+        UniqueConstraint("teacher_id", "class_id", "subject",
+                         "is_support",
+                         name="uq_assign_t_cl_subj_sup"),
     )
 
 
@@ -839,11 +879,62 @@ class LogicalUnavailability(Base):
     )
 
 
+class CoteachGroup(Base):
+    """Task C1: a group of Assignments that teach the same
+    (class, subject) jointly for `n_hours` hours per week. Each
+    member carries the back-FK `Assignment.coteach_group_id`.
+
+    Semantics:
+    - `n_hours` of the cattedra's hours are co-taught (typically a
+      lab or pratico subset of the weekly hours). The remaining
+      hours are taught by the principal teacher alone; the engine
+      reads `n_hours` from this row and the total from the
+      principal's `Assignment.hours`.
+    - `required=True`: HARD constraint (the n_hours overlap must
+      hold). False: SOFT, weight applied when violated.
+    """
+    __tablename__ = "coteach_groups"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    class_id: Mapped[int] = mapped_column(
+        ForeignKey("school_classes.id", ondelete="CASCADE"), index=True
+    )
+    subject: Mapped[str] = mapped_column(String(64))
+    n_hours: Mapped[int] = mapped_column(
+        Integer, default=1,
+        comment="number of hours that must be co-taught"
+    )
+    kind: Mapped[str] = mapped_column(
+        String(16), default="shared",
+        comment="reserved for future variants; only 'shared' supported"
+    )
+    required: Mapped[bool] = mapped_column(
+        Boolean, default=True,
+        comment="HARD if true; SOFT otherwise"
+    )
+    weight: Mapped[float] = mapped_column(
+        Float, default=100.0,
+        comment="SOFT penalty when the n_hours overlap is broken"
+    )
+    school_class: Mapped["SchoolClass"] = relationship()
+    assignments: Mapped[list["Assignment"]] = relationship(
+        back_populates="coteach_group"
+    )
+    __table_args__ = (
+        UniqueConstraint("class_id", "subject",
+                         name="uq_coteach_group_cl_subj"),
+    )
+
+
 class CoTeachingRule(Base):
-    """A rule that says: for class X, subject S, the lesson must (or
-    preferably) be co-taught by N teachers. The ASSIGNMENT step honors
-    this by linking N teachers to (class, subject); during scheduling the
-    lessons MUST share the same slot."""
+    """LEGACY (Task C1): superseded by `CoteachGroup` + the per-row
+    `Assignment.coteach_group_id` FK. Kept temporarily for backward
+    compatibility with import/export pipelines that may still emit
+    rows of this shape; the data migration in alembic moves the
+    payload into CoteachGroup at upgrade time.
+
+    Originally: a rule that says `for class X, subject S, the lesson
+    must (or preferably) be co-taught by N teachers`. The teacher
+    list was kept as `teacher_csv`."""
     __tablename__ = "coteaching_rules"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     class_id: Mapped[int] = mapped_column(

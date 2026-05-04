@@ -171,6 +171,24 @@ def _apply_migrations_on(engine):
                     f"ix_{tbl}_tenant_id ON {tbl} (tenant_id)"
                 ))
 
+        # Task C1 columns on assignments. The CoteachGroup table is
+        # created by Base.metadata.create_all above; we only need
+        # the new columns on `assignments`.
+        if insp.has_table("assignments"):
+            for col, ddl in (
+                ("coteach_group_id",
+                 "ALTER TABLE assignments ADD COLUMN "
+                 "coteach_group_id INTEGER"),
+                ("is_support",
+                 "ALTER TABLE assignments ADD COLUMN "
+                 "is_support INTEGER NOT NULL DEFAULT 0"),
+                ("is_potenziamento",
+                 "ALTER TABLE assignments ADD COLUMN "
+                 "is_potenziamento INTEGER NOT NULL DEFAULT 0"),
+            ):
+                if not has_column("assignments", col):
+                    conn.execute(text(ddl))
+
 
 @pytest.fixture
 def client(app_with_temp_db):

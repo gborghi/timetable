@@ -341,3 +341,41 @@ def _apply_lightweight_migrations() -> None:
                     f"CREATE INDEX IF NOT EXISTS "
                     f"ix_{tbl}_tenant_id ON {tbl} (tenant_id)"
                 ))
+
+        # Task C1: coteach_groups, sostegno, potenziamento.
+        # Mirror of alembic revision b91a4e2c1f00 for dev DBs that
+        # never ran alembic upgrade. SQLite-only; Postgres users
+        # should run `alembic upgrade head`.
+        if insp.has_table("assignments"):
+            for col, ddl in (
+                ("coteach_group_id",
+                 "ALTER TABLE assignments ADD COLUMN "
+                 "coteach_group_id INTEGER"),
+                ("is_support",
+                 "ALTER TABLE assignments ADD COLUMN "
+                 "is_support INTEGER NOT NULL DEFAULT 0"),
+                ("is_potenziamento",
+                 "ALTER TABLE assignments ADD COLUMN "
+                 "is_potenziamento INTEGER NOT NULL DEFAULT 0"),
+            ):
+                if not has_column("assignments", col):
+                    conn.execute(text(ddl))
+            for stmt in (
+                "CREATE INDEX IF NOT EXISTS "
+                "ix_assignments_coteach_group_id "
+                "ON assignments (coteach_group_id)",
+                "CREATE INDEX IF NOT EXISTS "
+                "ix_assignments_is_support "
+                "ON assignments (is_support)",
+                "CREATE INDEX IF NOT EXISTS "
+                "ix_assignments_is_potenziamento "
+                "ON assignments (is_potenziamento)",
+            ):
+                conn.execute(text(stmt))
+            # We DO NOT drop uq_assign_cl_subj on existing dev DBs
+            # via lightweight migration (SQLite has no DROP
+            # CONSTRAINT and a table-rebuild here is risky outside
+            # alembic). Devs who need shared coteaching on an old
+            # dev DB run `alembic upgrade head` once.
+        # Coteach_groups table is created by Base.metadata.create_all
+        # on init_db() (it's a brand-new table). No DDL needed here.
