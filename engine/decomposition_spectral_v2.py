@@ -215,7 +215,15 @@ def add_buchi_soft(model, triples_active, slot, day, prefix):
 # ============================================================
 
 def stage_a_bridges(day, profs, bridges, triples, dc_value,
-                    time_limit, workers, log=False):
+                    time_limit, workers, log=False,
+                    locked_slots_for_day=None):
+    """Stage A: schedule bridge teachers' lessons on `day`.
+
+    `locked_slots_for_day` (optional): iterable of (prof, class,
+    subject, hour) that must hold value 1. Lock entries on
+    non-bridge profs are ignored here (Stage B / C will pick them
+    up); a lock on a bridge prof whose triple is not active that
+    day (dc_value missing or zero) is logged and skipped."""
     cl_day_load = compute_cl_day_load(triples, dc_value, day)
     model = cp_model.CpModel()
     slot = {}
@@ -234,6 +242,19 @@ def stage_a_bridges(day, profs, bridges, triples, dc_value,
             if L == 0 or h - 8 >= L:
                 model.Add(v == 0)
         model.Add(sum(slot[(p, cl, subj, h)] for h in HOURS) == cnt)
+
+    # Native locks: only constrain bridge-prof locks here. Other
+    # locks belong to Stage B (their cluster) or Stage C
+    # (ricucitura).
+    for (p, cl, subj, h) in (locked_slots_for_day or []):
+        if p not in bridges:
+            continue
+        key = (p, cl, subj, h)
+        if key not in slot:
+            print(f"[stageA.day{day}] WARN locked slot {key} not in "
+                  f"model (bridge triple inactive that day); skip.")
+            continue
+        model.Add(slot[key] == 1)
 
     profs_active = {pp for (pp, _, _, _) in triples_active}
     for p in profs_active:
@@ -283,7 +304,15 @@ def stage_a_bridges(day, profs, bridges, triples, dc_value,
 
 def stage_b_cluster_internals(cluster_classes, day, profs, bridges,
                               triples, dc_value, bridge_solution,
-                              time_limit, workers, log=False):
+                              time_limit, workers, log=False,
+                              locked_slots_for_day=None):
+    """Stage B: schedule the internal (non-bridge) profs of a single
+    cluster on `day`, with bridges already placed by Stage A.
+
+    `locked_slots_for_day` (optional): only locks where prof is
+    NOT a bridge AND class is in `cluster_classes` are applied
+    here. Bridge-prof locks were handled by Stage A and the
+    bridge_solution already reflects them."""
     cl_day_load = compute_cl_day_load(triples, dc_value, day)
     bridge_in_slot = defaultdict(int)
     for (p, cl, subj, d, h), v in bridge_solution.items():
@@ -318,6 +347,21 @@ def stage_b_cluster_internals(cluster_classes, day, profs, bridges,
                 for (pp, cl, s, _) in triples_active if pp == p
             ]
             model.Add(sum(keys) <= 1)
+
+    # Native locks: only constrain non-bridge locks within this
+    # cluster. Bridge-prof locks belong to Stage A; locks on classes
+    # outside this cluster belong to other clusters' Stage B runs.
+    for (p, cl, subj, h) in (locked_slots_for_day or []):
+        if p in bridges:
+            continue
+        if cl not in cluster_classes:
+            continue
+        key = (p, cl, subj, h)
+        if key not in slot:
+            print(f"[stageB.day{day}] WARN locked slot {key} not in "
+                  f"model (triple inactive that day or filtered); skip.")
+            continue
+        model.Add(slot[key] == 1)
 
     # Class fill: per (cl, h) in [8..8+L-1]:
     #   bridge_count(cl, h) + sum_internal(cl, h) == 1
@@ -369,9 +413,14 @@ def stage_b_cluster_internals(cluster_classes, day, profs, bridges,
 
 def stage_c_ricucitura(day, profs, bridges, triples, dc_value,
                        fixed_internal_solution,
-                       time_limit, workers, log=False):
+                       time_limit, workers, log=False,
+                       locked_slots_for_day=None):
     """Variabili: bridges (tutti) + internals NON in fixed_solution.
-    Constraints: gli internals fissati hanno slot[k] == valore."""
+    Constraints: gli internals fissati hanno slot[k] == valore.
+
+    `locked_slots_for_day` (optional): all locks for this day are
+    applied. Locks on triples that fall in `fixed_internal_solution`
+    are no-ops (slot is already constrained to fixed_val)."""
     cl_day_load = compute_cl_day_load(triples, dc_value, day)
 
     # Determina quali (p, cl, subj) sono "fissati"
@@ -437,6 +486,19 @@ def stage_c_ricucitura(day, profs, bridges, triples, dc_value,
         model, slot, day, profs, dc_value
     )
 
+    # Native locks: all locks for this day (bridges + non-fixed
+    # internals). Fixed internals already have slot[k] == fixed_val
+    # set above; a redundant slot[k] == 1 there is a no-op when
+    # fixed_val == 1 (consistent) or contradicts the fix (then
+    # CP-SAT returns INFEASIBLE -- the right outcome).
+    for (p, cl, subj, h) in (locked_slots_for_day or []):
+        key = (p, cl, subj, h)
+        if key not in slot:
+            print(f"[stageC.day{day}] WARN locked slot {key} not in "
+                  f"model (triple inactive that day); skip.")
+            continue
+        model.Add(slot[key] == 1)
+
     # SOFT: buchi prof (sui non-fissati)
     free_triples = [
         (p, cl, subj, cnt)
@@ -467,12 +529,17 @@ def stage_c_ricucitura(day, profs, bridges, triples, dc_value,
 # ============================================================
 
 def solve_monolithic_day(day, profs, triples, dc_value,
-                         time_limit, workers, log=False):
+                         time_limit, workers, log=False,
+                         locked_slots_for_day=None):
+    """Monolithic fallback for a single day. Forwards
+    `locked_slots_for_day` to cv2.solve_phase_b_for_day, which is
+    already lock-aware."""
     classes, _, class_profs = cv2.build_indices(profs)
     out, status = cv2.solve_phase_b_for_day(
         day, profs, classes, triples, class_profs, dc_value,
         time_limit=time_limit, workers=workers, log=log,
         enforce_no_holes=True,
+        locked_slots_for_day=locked_slots_for_day,
     )
     return out, status
 

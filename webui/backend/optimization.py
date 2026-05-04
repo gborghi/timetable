@@ -505,15 +505,15 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
         print(f"[phaseB] {len(profs)} profs, {len(classes)} classes, "
               f"{len(triples)} triples")
         update_run(rid, progress=0.05)
-        # Phase A inside the timetable: day_count. Pass locked floor
-        # only on the monolithic path -- the decomposed pipeline is
-        # not yet wired for native locks (TODO).
-        locked_dc = (_locked_day_count_from_snapshot(locked_snap)
-                     if not use_decomposition else None)
+        # Phase A inside the timetable: day_count. Native locks are
+        # passed both on the monolithic and on the decomposed path
+        # (decomposed forwards them to the 4 stages below).
+        locked_dc = _locked_day_count_from_snapshot(locked_snap)
+        locked_by_day = _locked_slots_by_day(locked_snap)
         dc_value = cv2.solve_phase_a(
             profs, classes, triples, class_profs,
             time_limit=time_a, workers=workers, log=log,
-            locked_day_count=locked_dc,
+            locked_day_count=locked_dc or None,
         )
         with open(os.path.join(ws, "phase_a_dc.pkl"), "wb") as f:
             pickle.dump(dc_value, f)
@@ -538,6 +538,7 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                 out, status = dec.stage_a_bridges(
                     d, profs, bridges_set, triples, dc_value,
                     time_bridges, workers,
+                    locked_slots_for_day=locked_by_day.get(d) or None,
                 )
                 if out is None:
                     a_failed.append(d)
@@ -559,6 +560,7 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                     out, status = dec.stage_b_cluster_internals(
                         cl_set, d, profs, bridges_set, triples, dc_value,
                         bridge_solutions[d], time_cluster, workers,
+                        locked_slots_for_day=locked_by_day.get(d) or None,
                     )
                     if out is None:
                         b_failed[d].add(k_id)
@@ -586,6 +588,7 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                 out, status = dec.stage_c_ricucitura(
                     d, profs, bridges_set, triples, dc_value, succ,
                     time_ricucitura, workers,
+                    locked_slots_for_day=locked_by_day.get(d) or None,
                 )
                 if out is None:
                     c_failed.append(d)
@@ -601,6 +604,7 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                 out, status = dec.solve_monolithic_day(
                     d, profs, triples, dc_value,
                     time_mono, workers,
+                    locked_slots_for_day=locked_by_day.get(d) or None,
                 )
                 if out is not None:
                     full_solution = {
@@ -610,7 +614,6 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                     full_solution.update(out)
         else:
             # monolithic per day -- native locks
-            locked_by_day = _locked_slots_by_day(locked_snap)
             for d in DAYS:
                 out, status = cv2.solve_phase_b_for_day(
                     d, profs, classes, triples, class_profs, dc_value,
@@ -640,22 +643,14 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                 metrics={**m, "feasible": feasible},
                 make_active=True,
             )
-            if use_decomposition:
-                # Decomposed path: snapshot/restore is still the only
-                # way the lock survives. TODO: native locks for
-                # decomposed pipeline (see decomposition_spectral_v2).
-                n_touched = _restore_locked_lessons(db, sid, locked_snap)
-                if n_touched:
-                    db.commit()
-                    print(f"[phaseB] restored {n_touched} locked lessons")
-            else:
-                # Native-lock path: the solver placed the lessons; we
-                # only re-apply classroom_name + cotaught_with.
-                n_touched = _apply_locked_classrooms(db, sid, locked_snap)
-                if n_touched:
-                    db.commit()
-                    print(f"[phaseB] re-applied classroom on "
-                          f"{n_touched} locked lessons (native path)")
+            # Native-lock path (both monolithic and decomposed):
+            # the solver placed the locked lessons; we only re-apply
+            # classroom_name + cotaught_with attributes.
+            n_touched = _apply_locked_classrooms(db, sid, locked_snap)
+            if n_touched:
+                db.commit()
+                print(f"[phaseB] re-applied classroom on "
+                      f"{n_touched} locked lessons (native path)")
         rooms_metrics: dict[str, Any] = {}
         if optimize_rooms:
             update_run(rid, progress=0.95)

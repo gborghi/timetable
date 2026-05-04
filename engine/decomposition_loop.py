@@ -61,6 +61,8 @@ def run_partitioned_pipeline(
     workers: int = 8,
     log: bool = False,
     dc_value: dict | None = None,
+    locked_day_count: dict | None = None,
+    locked_by_day: dict | None = None,
 ):
     """Run the canonical Stage A/B/C/monolithic loop on a precomputed
     cluster partition.
@@ -130,6 +132,7 @@ def run_partitioned_pipeline(
         dc_value = cv2.solve_phase_a(
             profs, classes_v, triples, class_profs,
             time_limit=time_a, workers=workers, log=False,
+            locked_day_count=locked_day_count,
         )
     elapsed_master = time.time() - t0
 
@@ -142,15 +145,18 @@ def run_partitioned_pipeline(
 
     for d in DAYS:
         t = time.time()
+        locks_d = (locked_by_day or {}).get(d, None)
         # Stage A: bridges first
         bridges_out, _ = dec.stage_a_bridges(
             d, profs, bridges_set, triples, dc_value,
             time_bridges, workers,
+            locked_slots_for_day=locks_d,
         )
         if bridges_out is None:
             # Bridges infeasible: try monolithic for this day
             mono_out, _ = dec.solve_monolithic_day(
                 d, profs, triples, dc_value, time_mono, workers,
+                locked_slots_for_day=locks_d,
             )
             if mono_out is None:
                 failed_days.append(d)
@@ -177,6 +183,7 @@ def run_partitioned_pipeline(
             out, _ = dec.stage_b_cluster_internals(
                 cl_set, d, profs, bridges_set, triples, dc_value,
                 bridges_out, time_cluster, workers,
+                locked_slots_for_day=locks_d,
             )
             if out is None:
                 b_failed.add(k_id)
@@ -193,11 +200,13 @@ def run_partitioned_pipeline(
             ricuc_out, _ = dec.stage_c_ricucitura(
                 d, profs, bridges_set, triples, dc_value,
                 fixed, time_ricucitura, workers,
+                locked_slots_for_day=locks_d,
             )
             if ricuc_out is None:
                 # Stage D: monolithic fallback for the whole day
                 mono_out, _ = dec.solve_monolithic_day(
                     d, profs, triples, dc_value, time_mono, workers,
+                    locked_slots_for_day=locks_d,
                 )
                 if mono_out is None:
                     failed_days.append(d)
