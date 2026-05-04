@@ -72,7 +72,8 @@ def run_lagrangian(sol: dict, profs: dict, dc_value: dict,
                    tolerance: float = 1e-2,
                    alpha_0: float = 1.0,
                    classes_clusters: dict[int, set[str]] | None = None,
-                   log: bool = True) -> tuple[dict, dict]:
+                   log: bool = True,
+                   locks: set | None = None) -> tuple[dict, dict]:
     """Lagrangian relaxation skeleton.
 
     The skeleton runs `max_iter` subgradient steps but does NOT
@@ -136,7 +137,7 @@ def run_lagrangian(sol: dict, profs: dict, dc_value: dict,
             refined = meta.run_sa(
                 best_sol, profs, dc_value,
                 max(2.0, time_budget_s / max(1, max_iter)),
-                T0=2.0, alpha=0.97, log=False,
+                T0=2.0, alpha=0.97, log=False, locks=locks,
             )
         except Exception:
             refined = best_sol

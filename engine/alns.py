@@ -233,7 +233,8 @@ def run_alns(sol, profs, dc_value, time_budget_s,
              classes_clusters=None, log=True, workers=4,
              T0: float = 5.0, alpha: float = 0.995,
              enabled_destroy: list[str] | None = None,
-             enabled_repair: list[str] | None = None) -> tuple[dict, list]:
+             enabled_repair: list[str] | None = None,
+             locks: set | None = None) -> tuple[dict, list]:
     """Adaptive Large Neighborhood Search with SA acceptance.
 
     Args:
@@ -246,6 +247,12 @@ def run_alns(sol, profs, dc_value, time_budget_s,
       T0, alpha:         SA temperature schedule (T_{i+1} = alpha * T_i)
       enabled_destroy:   subset of DESTROY_OPS keys; default = all
       enabled_repair:    subset of REPAIR_OPS keys; default = all
+      locks:             optional set of (p, cl, s, d, h) tuples that
+                         must remain at value 1. Destroy operators
+                         have their `free` set filtered to exclude
+                         locked keys, so the repair never sees them
+                         as free variables -- the locked lessons
+                         survive every iteration.
 
     Returns:
       (best_sol, history)  history is a list of dicts with the
@@ -290,6 +297,9 @@ def run_alns(sol, profs, dc_value, time_budget_s,
             d_op.update(0.0); r_op.update(0.0)
             continue
 
+        # Filter out locked keys so the repair never frees them.
+        if locks:
+            free = {k for k in free if k not in locks}
         if not free:
             d_op.update(0.0); r_op.update(0.0)
             continue

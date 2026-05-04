@@ -744,9 +744,17 @@ def run_meta(stage: str, budget_s: float, workers: int, log: bool,
                 raise RuntimeError("Nessuna soluzione attiva; esegui prima "
                                    "Phase B o importa un pickle.")
             sol = engine_io.lessons_to_solution_dict(db, active.id)
-        if locked_snap:
-            print(f"[{stage}] {len(locked_snap)} locked lessons will be "
-                  f"restored after the run.")
+        # Native locks for the meta stage: the locked lesson keys
+        # are passed to every algorithm via `locks=` so atomic
+        # moves never disturb them.
+        locks_set = {(d["teacher_name"], d["class_name"], d["subject"],
+                      int(d["day"]), int(d["hour"]))
+                     for d in locked_snap
+                     if d.get("day") is not None
+                        and d.get("hour") is not None} or None
+        if locks_set:
+            print(f"[{stage}] native lock path: "
+                  f"{len(locks_set)} locked keys forbidden to moves")
         if not meta.is_hard_feasible(sol, profs, verbose=False):
             print("[meta] WARNING: la soluzione iniziale viola gli HARD")
         dc_value = _restore_dc_from_solution(sol)
@@ -785,24 +793,25 @@ def run_meta(stage: str, budget_s: float, workers: int, log: bool,
                 new_sol, _hist = meta.run_lns(
                     sol, profs, dc_value, budget_s,
                     classes_clusters=classes_clusters,
-                    log=log, workers=workers,
+                    log=log, workers=workers, locks=locks_set,
                 )
             elif stage == "sa":
                 new_sol = meta.run_sa(
                     sol, profs, dc_value, budget_s,
                     T0=sa_T0, alpha=sa_alpha, log=log,
+                    locks=locks_set,
                 )
             elif stage == "ts":
                 new_sol = meta.run_tabu(
                     sol, profs, dc_value, budget_s,
-                    tabu_size=tabu_size, log=log,
+                    tabu_size=tabu_size, log=log, locks=locks_set,
                 )
             elif stage == "ils":
                 new_sol = meta.run_ils(
                     sol, profs, dc_value, budget_s,
                     classes_clusters=classes_clusters,
                     ts_budget_per_cycle=ts_budget_per_cycle,
-                    n_cycles=n_cycles, log=log,
+                    n_cycles=n_cycles, log=log, locks=locks_set,
                 )
             elif stage == "alns":
                 import alns as alns_mod  # type: ignore
@@ -813,6 +822,7 @@ def run_meta(stage: str, budget_s: float, workers: int, log: bool,
                     T0=alns_T0, alpha=alns_alpha,
                     enabled_destroy=alns_destroy,
                     enabled_repair=alns_repair,
+                    locks=locks_set,
                 )
             elif stage == "vns":
                 import vns as vns_mod  # type: ignore
@@ -820,6 +830,7 @@ def run_meta(stage: str, budget_s: float, workers: int, log: bool,
                     sol, profs, dc_value, budget_s,
                     log=log,
                     enabled_neighbourhoods=vns_neighbourhoods,
+                    locks=locks_set,
                 )
             elif stage == "lagrangian":
                 import lagrangian as lag_mod  # type: ignore
@@ -830,7 +841,7 @@ def run_meta(stage: str, budget_s: float, workers: int, log: bool,
                     tolerance=lagrangian_tolerance,
                     alpha_0=lagrangian_alpha_0,
                     classes_clusters=classes_clusters,
-                    log=log,
+                    log=log, locks=locks_set,
                 )
             else:
                 raise RuntimeError(f"Unknown stage {stage}")
@@ -854,10 +865,13 @@ def run_meta(stage: str, budget_s: float, workers: int, log: bool,
                 metrics={**m, "feasible": feasible},
                 make_active=True,
             )
-            n_restored = _restore_locked_lessons(db, sid, locked_snap)
-            if n_restored:
+            # Native-lock path: the meta runners honoured the locks
+            # via `locks=`; only re-apply classroom_name / cotaught_with.
+            n_touched = _apply_locked_classrooms(db, sid, locked_snap)
+            if n_touched:
                 db.commit()
-                print(f"[{stage}] restored {n_restored} locked lessons")
+                print(f"[{stage}] re-applied classroom on "
+                      f"{n_touched} locked lessons (native path)")
         rooms_metrics: dict[str, Any] = {}
         if optimize_rooms:
             update_run(rid, progress=0.95)
@@ -2930,21 +2944,27 @@ def run_decomposition_temporal(*, time_a: float = 60.0,
         print(f"[temporal] HARD feasible: {feasible}, SOFT obj={v0:.1f}")
 
         # Step 5: ALNS finishing stage (optional, sequential on the
-        # ricucita solution). Skipped when locks are active because
-        # ALNS is not yet lock-aware (Atom 5 of the migration).
-        if run_alns and feasible and locked_snap:
-            print(f"[temporal] ALNS skipped: {len(locked_snap)} "
-                  f"locked lessons present; ALNS not yet lock-aware.")
-        elif run_alns and feasible:
+        # ricucita solution). ALNS is lock-aware after Atom 5: locked
+        # keys are passed via `locks=` and the destroy operators
+        # never free them.
+        if run_alns and feasible:
             print(f"[temporal] step 5: ALNS finishing for "
                   f"{alns_budget_s:.0f}s")
             try:
                 import alns as alns_mod  # type: ignore
                 dc_value = result["dc_value"]
+                alns_locks = {(d["teacher_name"], d["class_name"],
+                                d["subject"], int(d["day"]),
+                                int(d["hour"]))
+                               for d in locked_snap
+                               if d.get("day") is not None
+                                  and d.get("hour") is not None
+                               } or None
                 refined, _hist = alns_mod.run_alns(
                     full_solution, profs, dc_value, alns_budget_s,
                     log=False, workers=cpsat_workers_per_day,
                     T0=alns_T0, alpha=alns_alpha,
+                    locks=alns_locks,
                 )
                 v1, m1 = meta.compute_soft(refined, profs)
                 if meta.is_hard_feasible(refined, profs, verbose=False) \
@@ -3081,20 +3101,20 @@ def run_decomposition_curriculum(*, time_a: float = 60.0,
         v0, m0 = meta.compute_soft(full_solution, profs)
         feasible = meta.is_hard_feasible(full_solution, profs, verbose=False)
 
-        if run_alns and feasible and locked_snap:
-            # ALNS is not yet lock-aware (Atom 5 of the migration);
-            # running it on a solution with locks would let the
-            # destroy/repair operators move those lessons. Skip
-            # with a warning; the solver-primary placement of the
-            # locks survives untouched.
-            print(f"[curriculum] ALNS skipped: {len(locked_snap)} "
-                  f"locked lessons present; ALNS not yet lock-aware.")
-        elif run_alns and feasible:
+        if run_alns and feasible:
             try:
                 import alns as alns_mod  # type: ignore
+                alns_locks = {(d["teacher_name"], d["class_name"],
+                                d["subject"], int(d["day"]),
+                                int(d["hour"]))
+                               for d in locked_snap
+                               if d.get("day") is not None
+                                  and d.get("hour") is not None
+                               } or None
                 refined, _ = alns_mod.run_alns(
                     full_solution, profs, result["dc_value"],
-                    alns_budget_s, log=False, workers=2)
+                    alns_budget_s, log=False, workers=2,
+                    locks=alns_locks)
                 v1, m1 = meta.compute_soft(refined, profs)
                 if (meta.is_hard_feasible(refined, profs, verbose=False)
                         and v1 <= v0):
@@ -3205,15 +3225,20 @@ def run_decomposition_metis(*, time_a: float = 60.0,
         v0, m0 = meta.compute_soft(full_solution, profs)
         feasible = meta.is_hard_feasible(full_solution, profs, verbose=False)
 
-        if run_alns and feasible and locked_snap:
-            print(f"[metis] ALNS skipped: {len(locked_snap)} "
-                  f"locked lessons present; ALNS not yet lock-aware.")
-        elif run_alns and feasible:
+        if run_alns and feasible:
             try:
                 import alns as alns_mod  # type: ignore
+                alns_locks = {(d["teacher_name"], d["class_name"],
+                                d["subject"], int(d["day"]),
+                                int(d["hour"]))
+                               for d in locked_snap
+                               if d.get("day") is not None
+                                  and d.get("hour") is not None
+                               } or None
                 refined, _ = alns_mod.run_alns(
                     full_solution, profs, result["dc_value"],
-                    alns_budget_s, log=False, workers=2)
+                    alns_budget_s, log=False, workers=2,
+                    locks=alns_locks)
                 v1, m1 = meta.compute_soft(refined, profs)
                 if (meta.is_hard_feasible(refined, profs, verbose=False)
                         and v1 <= v0):

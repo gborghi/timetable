@@ -504,7 +504,7 @@ def neighborhood_cluster_day(sol, profs, classes_in_cluster, day):
 
 def run_lns(sol, profs, dc_value, time_budget_s,
             classes_clusters=None, log=True, workers=4,
-            adaptive=True):
+            adaptive=True, locks=None):
     """Esegui Large Neighborhood Search per `time_budget_s` secondi.
 
     Se `adaptive=True` (default), gli operator non sono scelti uniformi
@@ -512,6 +512,10 @@ def run_lns(sol, profs, dc_value, time_budget_s,
     prodotto fin qui (algoritmo "score" classico per Adaptive LNS).
     Inizialmente tutti gli operator hanno punteggio uguale; dopo i primi
     successi/fallimenti lo schema bias-a verso chi paga di piu'.
+
+    Se `locks` e' un set di tuple (p, cl, s, d, h), tali variabili
+    NON vengono mai liberate dai destroy operator: restano fissate al
+    valore corrente (== 1) e _cp_repair le tratta come constraint.
 
     Restituisce (best_sol, log_entries).
     """
@@ -570,6 +574,10 @@ def run_lns(sol, profs, dc_value, time_budget_s,
             d = rng.choice(DAYS)
             free = neighborhood_cluster_day(best, profs, cl_set, d)
             time_local = min(20, time_budget_s / 4)
+        # Filter out locked keys: they must remain 1, the destroy
+        # operators must not free them.
+        if locks:
+            free = {k for k in free if k not in locks}
         if not free:
             continue
         new_sol, ok = _cp_repair(
@@ -611,11 +619,13 @@ def run_lns(sol, profs, dc_value, time_budget_s,
 # Mosse atomiche per SA / TS (preservano HARD)
 # ============================================================
 
-def _swap_two_lessons_same_prof(sol, profs, dc_value, rng):
+def _swap_two_lessons_same_prof(sol, profs, dc_value, rng, locks=None):
     """Tenta uno swap di 2 slot dello stesso prof (cambia hour).
     Restituisce nuova_sol o None se non valida.
+
+    `locks` (optional): set of (p, cl, s, d, h) tuples that must
+    stay at value 1. Any swap touching a locked key is rejected.
     """
-    # Pick a random prof and day where prof has at least 2 lessons
     profs_list = list(profs.keys())
     rng.shuffle(profs_list)
     for p in profs_list:
@@ -625,7 +635,8 @@ def _swap_two_lessons_same_prof(sol, profs, dc_value, rng):
             if len(occupied) < 2:
                 continue
             (k1, _), (k2, _) = rng.sample(occupied, 2)
-            # k1 = (p, cl1, s1, d, h1), k2 = (p, cl2, s2, d, h2)
+            if locks and (k1 in locks or k2 in locks):
+                continue
             new_sol = dict(sol)
             new_sol[k1] = 0
             new_sol[k2] = 0
@@ -639,14 +650,17 @@ def _swap_two_lessons_same_prof(sol, profs, dc_value, rng):
     return None
 
 
-def _move_lesson_to_empty_slot(sol, profs, dc_value, rng):
+def _move_lesson_to_empty_slot(sol, profs, dc_value, rng, locks=None):
     """Sposta una singola lezione (p, cl, s, d, h) a (p, cl, s, d, h')
-    con h' libero per il prof e per la classe."""
+    con h' libero per il prof e per la classe.
+
+    `locks` (optional): a locked key is never moved."""
     occupied = [k for k, v in sol.items() if v == 1]
     rng.shuffle(occupied)
     for k in occupied[:50]:                    # limita tentativi
+        if locks and k in locks:
+            continue
         p, cl, s, d, h_old = k
-        # candidates: ore libere
         for h_new in rng.sample(HOURS, len(HOURS)):
             if h_new == h_old:
                 continue
@@ -661,9 +675,11 @@ def _move_lesson_to_empty_slot(sol, profs, dc_value, rng):
     return None
 
 
-def _swap_two_lessons_same_class(sol, profs, dc_value, rng):
+def _swap_two_lessons_same_class(sol, profs, dc_value, rng, locks=None):
     """Swap fra due lezioni della stessa classe (potenzialmente prof
-    diversi) in slot diversi nello stesso giorno."""
+    diversi) in slot diversi nello stesso giorno.
+
+    `locks` (optional): swaps touching a locked key are rejected."""
     cls_set = sorted({c for p in profs.values() for c in p["classi"]})
     rng.shuffle(cls_set)
     for cl in cls_set[:20]:
@@ -673,6 +689,8 @@ def _swap_two_lessons_same_class(sol, profs, dc_value, rng):
             if len(occupied) < 2:
                 continue
             (k1, _), (k2, _) = rng.sample(occupied, 2)
+            if locks and (k1 in locks or k2 in locks):
+                continue
             new_sol = dict(sol)
             new_sol[k1] = 0
             new_sol[k2] = 0
@@ -697,7 +715,7 @@ ATOMIC_MOVES = [
 # ============================================================
 
 def run_sa(sol, profs, dc_value, time_budget_s,
-           T0=10.0, alpha=0.995, log=True):
+           T0=10.0, alpha=0.995, log=True, locks=None):
     rng = random.Random(123)
     best = dict(sol)
     cur = dict(sol)
@@ -712,7 +730,7 @@ def run_sa(sol, profs, dc_value, time_budget_s,
     while time.time() - t_start < time_budget_s:
         iter_count += 1
         move_fn = rng.choice(ATOMIC_MOVES)
-        new_sol = move_fn(cur, profs, dc_value, rng)
+        new_sol = move_fn(cur, profs, dc_value, rng, locks=locks)
         if new_sol is None:
             T *= alpha
             continue
@@ -739,7 +757,7 @@ def run_sa(sol, profs, dc_value, time_budget_s,
 # ============================================================
 
 def run_tabu(sol, profs, dc_value, time_budget_s,
-             tabu_size=80, log=True):
+             tabu_size=80, log=True, locks=None):
     rng = random.Random(456)
     best = dict(sol)
     cur = dict(sol)
@@ -757,7 +775,7 @@ def run_tabu(sol, profs, dc_value, time_budget_s,
         candidates = []
         for _ in range(30):
             move_fn = rng.choice(ATOMIC_MOVES)
-            new_sol = move_fn(cur, profs, dc_value, rng)
+            new_sol = move_fn(cur, profs, dc_value, rng, locks=locks)
             if new_sol is None:
                 continue
             new_val, _ = compute_soft(new_sol, profs)
@@ -827,7 +845,7 @@ def _perturb(sol, profs, dc_value, rng,
 def run_ils(sol, profs, dc_value, time_budget_s,
             classes_clusters=None, ts_budget_per_cycle=60,
             n_cycles=3, log=True, lns_kick=True,
-            lns_kick_budget=8.0):
+            lns_kick_budget=8.0, locks=None):
     """Iterated Local Search.
 
     Sequenza per ogni ciclo:
@@ -853,7 +871,8 @@ def run_ils(sol, profs, dc_value, time_budget_s,
         local_t = min(ts_budget_per_cycle, rem * 0.7)
         if log:
             print(f"  [ILS cycle {cycle}] TS for {local_t:.0f}s")
-        cur = run_tabu(cur, profs, dc_value, local_t, log=False)
+        cur = run_tabu(cur, profs, dc_value, local_t, log=False,
+                       locks=locks)
         cur_val, _ = compute_soft(cur, profs)
         if cur_val < best_val:
             best = dict(cur)
@@ -872,7 +891,7 @@ def run_ils(sol, profs, dc_value, time_budget_s,
                 cur, profs, dc_value,
                 min(lns_kick_budget, rem * 0.3),
                 classes_clusters=classes_clusters,
-                log=False,
+                log=False, locks=locks,
             )
         else:
             if log:
