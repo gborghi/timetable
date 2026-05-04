@@ -490,6 +490,8 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
             profs = engine_io.profs_dict_from_db(db)
             coteach_groups = engine_io.coteach_groups_for_solver(db)
             support_assignments = engine_io.support_assignments_from_db(db)
+            potenziamento_assignments = (
+                engine_io.potenziamento_assignments_from_db(db))
         if locked_snap:
             print(f"[phaseB] {len(locked_snap)} locked lessons "
                   f"({'native CP-SAT' if not use_decomposition else 'snapshot/restore'} path)")
@@ -499,6 +501,9 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
         if support_assignments:
             print(f"[phaseB] {len(support_assignments)} support "
                   f"(sostegno) assignments")
+        if potenziamento_assignments:
+            print(f"[phaseB] {len(potenziamento_assignments)} "
+                  f"potenziamento assignments")
         if not profs:
             raise RuntimeError(
                 "Nessun assegnamento prof->classe; esegui prima "
@@ -525,6 +530,7 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
             locked_day_count=locked_dc or None,
             coteach_groups=coteach_groups or None,
             support_assignments=support_assignments or None,
+            potenziamento_assignments=potenziamento_assignments or None,
         )
         with open(os.path.join(ws, "phase_a_dc.pkl"), "wb") as f:
             pickle.dump(dc_value, f)

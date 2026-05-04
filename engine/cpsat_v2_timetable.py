@@ -178,7 +178,8 @@ def solve_phase_a(profs, classes, triples, class_profs,
                   time_limit=30, workers=8, log=True,
                   locked_day_count=None,
                   coteach_groups=None,
-                  support_assignments=None):
+                  support_assignments=None,
+                  potenziamento_assignments=None):
     """Risolve Phase A. Se `locked_day_count` e\` valorizzato, e\` un
     dict (prof, class, subject, day) -> int che impone un FLOOR sul
     numero di ore di quella cattedra nel giorno indicato. Le ore non
@@ -206,6 +207,7 @@ def solve_phase_a(profs, classes, triples, class_profs,
         (sa["teacher_name"], sa["class_name"], sa["subject"])
         for sa in support_assignments
     }
+    potenziamento_assignments = list(potenziamento_assignments or [])
 
     # Variabili int [0..MAX_PER_DAY_TRIPLE]
     day_count = {}                             # (prof, cl, subj, day) -> IntVar
@@ -433,6 +435,15 @@ def solve_phase_a(profs, classes, triples, class_profs,
     # Per il prof: dev assoluta del totale ore giornaliere dal target.
     prof_day_load = {}
     abs_prof_terms = []
+    # Potenziamento: pot_day_count[prof, d] in [0, MAX]; the prof's
+    # cattedra hours + potenziamento hours per day must not exceed
+    # MAX_PROF_HOURS_PER_DAY. Stored in dc_value with key
+    # ("__pot__", prof, d) for downstream consumers.
+    pot_day_count_vars: dict[tuple[str, int], Any] = {}
+    pot_by_prof: dict[str, int] = {}
+    for pa in potenziamento_assignments:
+        pot_by_prof[pa["teacher_name"]] = (
+            pot_by_prof.get(pa["teacher_name"], 0) + int(pa["n_hours"]))
     for p, lst in triples_by_prof.items():
         ore_tot = sum(o for (pp, cl, subj, o) in triples if pp == p)
         for d in DAYS:
@@ -441,16 +452,38 @@ def solve_phase_a(profs, classes, triples, class_profs,
             model.Add(
                 ld == sum(day_count[(p, cl, s, d)] for cl, s in lst)
             )
-            # HARD (C): max 5 ore consecutive per giorno = max 5 ore
-            # totali, dato che un giorno ha solo 6 slot e che la
-            # sequenza prof-day non puo\` avere "buchi obbligati"
-            # rispetto agli slot della classe.
             prof_day_load[(p, d)] = ld
             diff = model.NewIntVar(-30, 30, f"pdif_{p}_{d}")
             model.Add(diff == ld * 6 - ore_tot)
             ad = model.NewIntVar(0, 30, f"padif_{p}_{d}")
             model.AddAbsEquality(ad, diff)
             abs_prof_terms.append(ad)
+        # Potenziamento for this prof: distribute over the 6 days.
+        # cattedra ld + pot must stay within the per-day cap.
+        pot_total = pot_by_prof.get(p, 0)
+        if pot_total > 0:
+            for d in DAYS:
+                pdc = model.NewIntVar(0, MAX_PROF_HOURS_PER_DAY,
+                                       f"pot_{p}_{d}")
+                pot_day_count_vars[(p, d)] = pdc
+                model.Add(pdc + prof_day_load[(p, d)]
+                          <= MAX_PROF_HOURS_PER_DAY)
+            model.Add(
+                sum(pot_day_count_vars[(p, d)] for d in DAYS)
+                == pot_total
+            )
+    # Profs that ONLY have potenziamento (no cattedra) need their
+    # own pot_day_count vars without the prof_day_load coupling.
+    for p, pot_total in pot_by_prof.items():
+        if p in triples_by_prof:
+            continue
+        for d in DAYS:
+            pdc = model.NewIntVar(0, MAX_PROF_HOURS_PER_DAY,
+                                   f"pot_{p}_{d}")
+            pot_day_count_vars[(p, d)] = pdc
+        model.Add(
+            sum(pot_day_count_vars[(p, d)] for d in DAYS) == pot_total
+        )
 
     # HARD (A) -- Mat/Ita: per ogni classe, almeno UN giorno deve avere
     # >= 2 ore del docente (qualunque materia, ma stesso prof).
@@ -670,6 +703,8 @@ def solve_phase_a(profs, classes, triples, class_profs,
     }
     for (gid, d), var in coday_count_vars.items():
         dc_value[("__coday__", gid, d)] = solver.Value(var)
+    for (p, d), var in pot_day_count_vars.items():
+        dc_value[("__pot__", p, d)] = solver.Value(var)
     return dc_value
 
 
