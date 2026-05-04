@@ -39,6 +39,29 @@ def client():
     return TestClient(app)
 
 
+@pytest.fixture(scope="module", autouse=True)
+def _warmup_diagnostic_endpoints(client):
+    """Pay the cold-start cost (SQLAlchemy connection pool, GIL
+    contention from the previous test's bg threads) BEFORE the first
+    parametrized `test_heavy_diagnostic_is_async` runs, so its 1000ms
+    budget reflects steady-state behaviour.
+
+    The first POST to /api/diagnostics/* creates the run row and
+    spawns the async target thread. On a cold process the very first
+    POST can absorb several hundred ms of pool init -- enough to
+    occasionally push `correlations-body2` (the third parametrized
+    variant) over budget when it follows two other heavy POSTs.
+
+    We discard the response: this is purely a warmup."""
+    try:
+        client.post("/api/diagnostics/distributions", json={})
+    except Exception:
+        # Warmup must never fail the suite; swallow and let the real
+        # tests report any actual problem.
+        pass
+    yield
+
+
 # ----- List endpoints budgets ----------------------------------------
 
 LIST_BUDGETS_MS = {
