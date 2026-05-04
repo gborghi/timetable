@@ -1,14 +1,11 @@
 /**
- * Smoke tests for $lib/constraint_levels.js — the single source of truth
+ * Smoke tests for $lib/constraint_levels.ts — the single source of truth
  * for the 5-state taxonomy (HARD/SOFT/PREFERRED/ENFORCED/ALLOWED).
  *
- * Uses Node 20+ built-in test runner (node:test) so we don't need to add
- * vitest as a dependency. Run with:
+ * Uses Node's built-in test runner (node:test) plus type-stripping so we
+ * don't need a TS toolchain. Run with:
  *
- *   node --test webui/frontend/src/lib/constraint_levels.test.mjs
- *
- * The frontend package.json already declares "type": "module" so the
- * .js source resolves natively.
+ *   node --experimental-strip-types --test webui/frontend/src/lib/constraint_levels.test.mjs
  */
 
 import { test } from 'node:test';
@@ -19,7 +16,7 @@ import {
   DEFAULT_PENALTY,
   kindFromRule, levelPill, levelLabel, levelCellClass,
   payloadFromKind, clampPenalty,
-} from './constraint_levels.js';
+} from './constraint_levels.ts';
 
 test('LEVELS includes the 5 canonical states + forbidden alias', () => {
   for (const k of ['allowed', 'soft', 'preferred', 'hard', 'enforced', 'forbidden']) {

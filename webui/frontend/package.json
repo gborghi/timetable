@@ -14,7 +14,7 @@
     "dev": "vite dev --host 127.0.0.1 --port 5173",
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1 --port 4173",
-    "test": "node --test src/lib/constraint_levels.test.mjs",
+    "test": "node --experimental-strip-types --no-warnings --test src/lib/constraint_levels.test.mjs",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch"
   },
