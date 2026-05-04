@@ -72,3 +72,53 @@ def test_classroom_lock_to_ineligible_room_is_infeasible():
     )
     assert mapping is None
     assert status.startswith("LOCKED_INELIGIBLE")
+
+
+def test_greedy_fallback_honours_locks():
+    """FU-2: when CP-SAT is bypassed and greedy_classroom_assignment
+    is called directly (e.g. from a fallback path), locks must
+    survive. Pre-fix the greedy ignored its `locked_classrooms`
+    argument; this test would have given Mat a different room."""
+    import classroom_assignment as ca  # type: ignore
+    lessons, classrooms = _scenario()
+    locked = [("1A", "Mat", 1, 8, "R1"),
+              ("1A", "Sci", 1, 10, "R2")]
+    mapping = ca.greedy_classroom_assignment(
+        lessons, classrooms, prefer_home=True,
+        locked_classrooms=locked,
+    )
+    # Both locks honoured.
+    assert mapping[("1A", "Mat", 1, 8)] == "R1"
+    assert mapping[("1A", "Sci", 1, 10)] == "R2"
+
+
+def test_greedy_fallback_no_double_book_against_lock():
+    """If a lock occupies R1 in slot (1, 8), the greedy must NOT
+    pick R1 for the next lesson in the same slot; it picks the
+    next eligible room."""
+    import classroom_assignment as ca  # type: ignore
+    lessons = [
+        {"teacher": "ProfA", "co_teachers": [],
+         "class": "1A", "subject": "Mat", "day": 1, "hour": 8},
+        {"teacher": "ProfB", "co_teachers": [],
+         "class": "1B", "subject": "Mat", "day": 1, "hour": 8},
+    ]
+    classrooms = [
+        {"name": "R1", "kind": "standard", "capacity": 30,
+         "multi_class": False, "multi_class_max": 1,
+         "unavailability": set(), "subject_required": set(),
+         "subject_pref_weight": {}, "class_pref_weight": {},
+         "is_home_for": set()},
+        {"name": "R2", "kind": "standard", "capacity": 30,
+         "multi_class": False, "multi_class_max": 1,
+         "unavailability": set(), "subject_required": set(),
+         "subject_pref_weight": {}, "class_pref_weight": {},
+         "is_home_for": set()},
+    ]
+    locked = [("1A", "Mat", 1, 8, "R1")]
+    mapping = ca.greedy_classroom_assignment(
+        lessons, classrooms, prefer_home=False,
+        locked_classrooms=locked,
+    )
+    assert mapping[("1A", "Mat", 1, 8)] == "R1"
+    assert mapping[("1B", "Mat", 1, 8)] == "R2"

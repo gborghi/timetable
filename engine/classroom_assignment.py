@@ -276,18 +276,44 @@ def greedy_classroom_assignment(
     classrooms: list[dict],
     *,
     prefer_home: bool = True,
+    locked_classrooms: list[tuple] | None = None,
 ) -> dict:
     """Fallback greedy: per slot, prefer the lesson's home room if free.
-    Used when CP-SAT is unnecessary or as a warm start."""
+    Used when CP-SAT is unnecessary or as a warm start.
+
+    `locked_classrooms` (optional): list of
+    (class, subject, day, hour, classroom_name) tuples. The greedy
+    pre-assigns those slots first so any subsequent placement
+    treats the locked room as occupied (counted in `busy`). Locks
+    pointing at an ineligible room are still emitted so the upstream
+    _apply_locked_classrooms step has the right answer; the
+    capacity bookkeeping for that slot is bumped regardless.
+    """
     rooms = [_normalize_classroom(r) for r in classrooms]
-    room_by_name = {r["name"]: r for r in rooms}
     out: dict = {}
     busy: dict[tuple[str, int, int], int] = defaultdict(int)
     by_key: dict[tuple, dict] = {}
     for L in lessons:
         key = (L["class"], L["subject"], int(L["day"]), int(L["hour"]))
         by_key.setdefault(key, L)
+
+    # Pre-place locks. Mark them as done in `out` and reserve the
+    # busy slot so the rest of the greedy doesn't double-book.
+    locked_keys: set[tuple] = set()
+    for entry in (locked_classrooms or []):
+        if len(entry) != 5:
+            continue
+        cl_l, s_l, d_l, h_l, room_name = entry
+        if not room_name:
+            continue
+        key = (cl_l, s_l, int(d_l), int(h_l))
+        out[key] = room_name
+        busy[(room_name, int(d_l), int(h_l))] += 1
+        locked_keys.add(key)
+
     for key in sorted(by_key):
+        if key in locked_keys:
+            continue
         L = by_key[key]
         cl, subj, d, h = key
         candidates = [r for r in rooms if _can_host(r, L)]

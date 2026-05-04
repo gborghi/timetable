@@ -2170,11 +2170,11 @@ def _apply_rooms_to_solution(sid: int, *, time_limit_s: float,
     )
     if result is None:
         print(f"[{log_prefix}] CP-SAT infeasible ({status}); fallback greedy")
-        # Greedy doesn't honour locks; the upstream
-        # _apply_locked_classrooms step (called by every pipeline
-        # after the rooms step) will re-overwrite the lock targets.
+        # Greedy is now lock-aware (FU-2): forward the same
+        # locked_classrooms list so the fallback honours every lock.
         result = greedy_classroom_assignment(
             lessons, rooms, prefer_home=prefer_home,
+            locked_classrooms=locked_classrooms or None,
         )
     with SessionLocal() as db:
         n_rooms = engine_io.apply_room_mapping(db, sid, result)
@@ -2226,7 +2226,8 @@ def run_classroom_assignment(time_limit_s: float, workers: int, log: bool,
         if result is None:
             print(f"[rooms] CP-SAT infeasible ({status}); fallback greedy")
             result = greedy_classroom_assignment(
-                lessons, rooms, prefer_home=prefer_home
+                lessons, rooms, prefer_home=prefer_home,
+                locked_classrooms=locked_classrooms or None,
             )
         with SessionLocal() as db:
             n = engine_io.apply_room_mapping(db, active.id, result)
