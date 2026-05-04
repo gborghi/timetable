@@ -32,19 +32,29 @@ Thumbs.db
 # Project-specific runtime artifacts
 data/*.db
 webui/data/*.db
+webui/data/*.db-shm
+webui/data/*.db-wal
 webui/data/runs/
 output/
-experiments/output/
+engine/scripts/output/
 proofs/
 
 # Exception: MEGA benchmark xlsx outputs are tracked so reviewers
 # can inspect the final orario without re-running the pipeline.
-!experiments/output/mega/
-!experiments/output/mega/*.xlsx
+!engine/scripts/output/mega/
+!engine/scripts/output/mega/*.xlsx
 
-# Pickled snapshots / experiment artifacts
-experiments/*.pkl
+# Pickled snapshots / engine scratch artifacts
+engine/*.pkl
+engine/scripts/*.pkl
 schedule/*.pkl
+
+# Claude Code worktrees (transient development branches)
+.claude/worktrees/
+
+# Audit / scratch notes meant to be read by the user, not committed
+AUDIT.md
+TASK*_REPORT.md
 
 # Logs
 *.log
