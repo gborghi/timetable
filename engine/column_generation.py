@@ -77,11 +77,19 @@ def _seed_patterns(profs: dict, dc_value: dict, max_per_teacher: int = 3,
     out: dict[str, list[dict]] = {}
     profs_list = sorted(profs.keys())
     for p in profs_list:
-        triples = [(p, cl, subj, dc_value.get((p, cl, subj, d), 0))
+        # IMPORTANT: include the DAY in the triple. Earlier versions
+        # carried only (p, cl, subj, count) and tried to rediscover
+        # the day inside the placement loop -- but two distinct days
+        # with non-zero dc_value produced TWO identical entries that
+        # both placed in the first non-zero day, generating "extra
+        # hours" of the same cattedra in one day. Now each
+        # (cattedra, day) pair gets exactly one greedy placement
+        # for `count` hours.
+        triples = [(p, cl, subj, d, dc_value.get((p, cl, subj, d), 0))
                     for cl, sub_dict in (profs[p]["classi"]).items()
                     for subj in sub_dict.keys()
                     for d in DAYS]
-        triples = [t for t in triples if t[3] > 0]
+        triples = [t for t in triples if t[4] > 0]
         if not triples:
             out[p] = []
             continue
@@ -96,16 +104,7 @@ def _seed_patterns(profs: dict, dc_value: dict, max_per_teacher: int = 3,
                 pat[(p, cl_l, s_l, d_l, h_l)] = 1
                 occupied_t.add((p, d_l, h_l))
                 occupied_c.add((cl_l, d_l, h_l))
-            for (pp, cl, subj, _) in triples:
-                # Determine the day this triple was for: encode in DC key
-                d = None
-                for dd in DAYS:
-                    if dc_value.get((pp, cl, subj, dd), 0) > 0:
-                        d = dd
-                        break
-                if d is None:
-                    continue
-                hours_to_place = dc_value.get((pp, cl, subj, d), 0)
+            for (pp, cl, subj, d, hours_to_place) in triples:
                 # Subtract any locked hours already in the pattern for
                 # this triple-day so we don't double-count.
                 already = sum(
@@ -115,6 +114,12 @@ def _seed_patterns(profs: dict, dc_value: dict, max_per_teacher: int = 3,
                 )
                 placed = already
                 for h_idx in range(len(HOURS)):
+                    # Check BEFORE placement: if already at quota,
+                    # don't even try to add more (avoids the
+                    # off-by-one where placed==quota lets one extra
+                    # hour slip through before the post-add break).
+                    if placed >= hours_to_place:
+                        break
                     h = HOURS[(h_idx + offset) % len(HOURS)]
                     if (pp, d, h) in occupied_t or (cl, d, h) in occupied_c:
                         continue
@@ -122,8 +127,6 @@ def _seed_patterns(profs: dict, dc_value: dict, max_per_teacher: int = 3,
                     occupied_t.add((pp, d, h))
                     occupied_c.add((cl, d, h))
                     placed += 1
-                    if placed >= hours_to_place:
-                        break
             if pat:
                 patterns.append(pat)
         out[p] = patterns
@@ -288,6 +291,8 @@ def _diversified_seed(profs: dict, dc_value: dict,
                 )
                 placed = already
                 for h_idx in range(len(HOURS)):
+                    if placed >= hours_to_place:
+                        break
                     h = HOURS[(h_idx + offset) % len(HOURS)]
                     if ((pp, d, h) in occupied_t or
                             (cl, d, h) in occupied_c):
@@ -296,8 +301,6 @@ def _diversified_seed(profs: dict, dc_value: dict,
                     occupied_t.add((pp, d, h))
                     occupied_c.add((cl, d, h))
                     placed += 1
-                    if placed >= hours_to_place:
-                        break
             if pat:
                 patterns.append(pat)
         out[p] = patterns

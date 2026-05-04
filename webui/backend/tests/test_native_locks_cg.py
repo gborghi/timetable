@@ -88,3 +88,49 @@ def test_locks_present_in_every_iteration_pattern():
                         continue
                     assert pat.get(k) == 1, (
                         f"seed {seed} {tname}: lock {k} missing")
+
+
+def test_seed_pattern_no_double_count_after_FU1():
+    """Regression for FU-1: when a triple has dc_value > 0 on two
+    distinct days, _seed_patterns must produce exactly the expected
+    number of hours per day (not the sum on one day). Previously
+    the loop dropped the day from the triple tuple and then
+    rediscovered the FIRST non-zero day, placing both days' hours
+    on day 1."""
+    import column_generation as cg  # type: ignore
+    profs, dc_value = _make_profs_and_dc()
+    # ProfA-1A-Mat: 2h on day 1 + 2h on day 2 (4 weekly).
+    pats = cg._seed_patterns(profs, dc_value, max_per_teacher=1)
+    pat = pats["ProfA"][0]
+    n_d1 = sum(1 for (p, c, s, d, _h), v in pat.items()
+               if p == "ProfA" and c == "1A" and s == "Mat"
+                  and d == 1 and v == 1)
+    n_d2 = sum(1 for (p, c, s, d, _h), v in pat.items()
+               if p == "ProfA" and c == "1A" and s == "Mat"
+                  and d == 2 and v == 1)
+    n_total = sum(1 for (p, c, s, _d, _h), v in pat.items()
+                  if p == "ProfA" and c == "1A" and s == "Mat"
+                     and v == 1)
+    assert n_d1 == 2, f"day 1 should have 2h, got {n_d1}"
+    assert n_d2 == 2, f"day 2 should have 2h, got {n_d2}"
+    assert n_total == 4, f"weekly total should be 4h, got {n_total}"
+
+
+def test_seed_pattern_with_lock_no_double_count_after_FU1():
+    """Same as above but with a lock pre-placed. The lock counts
+    toward the day budget; total hours stay correct."""
+    import column_generation as cg  # type: ignore
+    profs, dc_value = _make_profs_and_dc()
+    locks = {("ProfA", "1A", "Mat", 1, 8),
+             ("ProfA", "1A", "Mat", 1, 9)}
+    pats = cg._seed_patterns(profs, dc_value, max_per_teacher=1,
+                              locks=locks)
+    pat = pats["ProfA"][0]
+    n_d1 = sum(1 for (p, c, s, d, _h), v in pat.items()
+               if p == "ProfA" and c == "1A" and s == "Mat"
+                  and d == 1 and v == 1)
+    n_d2 = sum(1 for (p, c, s, d, _h), v in pat.items()
+               if p == "ProfA" and c == "1A" and s == "Mat"
+                  and d == 2 and v == 1)
+    assert n_d1 == 2, f"day 1 (locked): expected 2h, got {n_d1}"
+    assert n_d2 == 2, f"day 2: expected 2h, got {n_d2}"
