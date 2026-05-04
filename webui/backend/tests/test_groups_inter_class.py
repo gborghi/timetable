@@ -240,3 +240,210 @@ def test_group_only_one_home_class():
                if k[1] == "2B" and v == 1}
     # Group not on 2B's home list -> 2B may have a class lesson at a
     # group slot. Don't assert non-overlap.
+
+
+def test_group_two_groups_distinct_slots():
+    """Two distinct groups in the same school, different home classes,
+    must be schedulable independently. Each group_slot count matches
+    its declared n_hours."""
+    profs = _profs_two_classes_24h_each()
+    profs["ProfSpa"] = {"classi": {}, "glibero": [6, 5, 4]}
+    profs["ProfTed"] = {"classi": {}, "glibero": [6, 5, 4]}
+    group_assignments = [
+        {"teacher_name": "ProfSpa", "group_id": 1,
+         "group_name": "_GruppoSpa_", "subject": "Spagnolo",
+         "n_hours": 2, "home_class_names": ["2A"]},
+        {"teacher_name": "ProfTed", "group_id": 2,
+         "group_name": "_GruppoTed_", "subject": "Tedesco",
+         "n_hours": 2, "home_class_names": ["2B"]},
+    ]
+    dc, sol = _solve(profs, group_assignments=group_assignments)
+    spa_n = sum(1 for k, v in sol.items()
+                if k[0] == "ProfSpa" and v == 1)
+    ted_n = sum(1 for k, v in sol.items()
+                if k[0] == "ProfTed" and v == 1)
+    assert spa_n == 2, f"Spagnolo: expected 2, got {spa_n}"
+    assert ted_n == 2, f"Tedesco: expected 2, got {ted_n}"
+
+
+def test_group_high_hours_distributed_across_days():
+    """5h group must distribute across multiple days (no day exceeds
+    MAX_PER_DAY_TRIPLE=2)."""
+    profs = _profs_two_classes_24h_each()
+    profs["ProfRec"] = {"classi": {}, "glibero": [6, 5, 4]}
+    group_assignments = [{
+        "teacher_name": "ProfRec",
+        "group_id": 5, "group_name": "_GruppoRec_",
+        "subject": "Recupero",
+        "n_hours": 5, "home_class_names": ["2A"],
+    }]
+    dc, sol = _solve(profs, group_assignments=group_assignments,
+                     time_a=5, time_b=5)
+    grp_n = sum(1 for k, v in sol.items()
+                if k[0] == "ProfRec" and v == 1)
+    assert grp_n == 5, f"expected 5 hours, got {grp_n}"
+    # No day with > 2 hours of the group
+    by_day: dict[int, int] = {}
+    for k, v in sol.items():
+        if k[0] == "ProfRec" and v == 1:
+            by_day[k[3]] = by_day.get(k[3], 0) + 1
+    for d, n in by_day.items():
+        assert n <= 2, f"day {d} has {n} group hours (> MAX_PER_DAY_TRIPLE)"
+
+
+def test_group_with_only_one_home_class_no_2B_busy():
+    """When a group's home_class_names is just ['2A'], 2B's
+    schedule is NOT affected by the group at all."""
+    profs = _profs_two_classes_24h_each()
+    profs["ProfRec"] = {"classi": {}, "glibero": [6, 5, 4]}
+    group_assignments = [{
+        "teacher_name": "ProfRec",
+        "group_id": 1, "group_name": "_GruppoRec_",
+        "subject": "Recupero", "n_hours": 2,
+        "home_class_names": ["2A"],
+    }]
+    dc, sol = _solve(profs, group_assignments=group_assignments)
+    n_2b = sum(1 for k, v in sol.items()
+               if k[1] == "2B" and v == 1)
+    # 2B's curriculum is 13h -> exactly 13 occupied slots
+    assert n_2b == 13, f"2B should have 13 lesson slots, got {n_2b}"
+
+
+def test_group_zero_hours_skipped():
+    """A group_assignment with n_hours=0 produces no group slots
+    (the constraint sum_d == 0 forces all day_count to 0)."""
+    profs = _profs_two_classes_24h_each()
+    profs["ProfX"] = {"classi": {}, "glibero": [6, 5, 4]}
+    group_assignments = [{
+        "teacher_name": "ProfX",
+        "group_id": 9, "group_name": "_GruppoX_",
+        "subject": "X", "n_hours": 0,
+        "home_class_names": ["2A"],
+    }]
+    dc, sol = _solve(profs, group_assignments=group_assignments)
+    grp_n = sum(1 for k, v in sol.items()
+                if k[0] == "ProfX" and v == 1)
+    assert grp_n == 0, f"expected 0 group hours, got {grp_n}"
+
+
+def test_group_hours_stay_within_class_capacity():
+    """Group hours plus home_class direct hours must fit within
+    6 slots/day. Verified per-day capacity constraint enforces this."""
+    profs = _profs_two_classes_24h_each()
+    profs["ProfRec"] = {"classi": {}, "glibero": [6, 5, 4]}
+    group_assignments = [{
+        "teacher_name": "ProfRec",
+        "group_id": 1, "group_name": "_GruppoRec_",
+        "subject": "Recupero", "n_hours": 2,
+        "home_class_names": ["2A"],
+    }]
+    dc, sol = _solve(profs, group_assignments=group_assignments)
+    # For each day, count total slots used by 2A (regular + group)
+    by_day_2a: dict[int, set] = {}
+    for k, v in sol.items():
+        if v != 1:
+            continue
+        if k[1] == "2A":
+            by_day_2a.setdefault(k[3], set()).add(k[4])
+        if k[0] == "ProfRec":          # group slot
+            by_day_2a.setdefault(k[3], set()).add(k[4])
+    for d, slots in by_day_2a.items():
+        assert len(slots) <= 6, (
+            f"day {d}: 2A has {len(slots)} slots used (> 6)")
+
+
+def test_group_n_hours_too_many_infeasible():
+    """If group n_hours alone exceeds 6 days * MAX_PER_DAY_TRIPLE = 12,
+    Phase A is infeasible (too many hours to fit in a week)."""
+    profs = _profs_two_classes_24h_each()
+    profs["ProfX"] = {"classi": {}, "glibero": [6, 5, 4]}
+    group_assignments = [{
+        "teacher_name": "ProfX",
+        "group_id": 1, "group_name": "_GruppoX_",
+        "subject": "X", "n_hours": 13,
+        "home_class_names": ["2A"],
+    }]
+    with pytest.raises(RuntimeError):
+        _solve(profs, group_assignments=group_assignments)
+
+
+def test_group_overload_home_class_infeasible():
+    """A group whose home_class is already at full curriculum
+    capacity (6h every day) cannot fit -- INFEASIBLE."""
+    # 2A at 6h/day for 6 days = 36h; group hours have nowhere to go.
+    profs = {
+        f"Prof{c}": {"classi": {"2A": {f"S{c}": {"ore": 6}}},
+                      "glibero": [6, 5, 4]}
+        for c in "ABCDEF"
+    }
+    profs["ProfX"] = {"classi": {}, "glibero": [6, 5, 4]}
+    # 2A is fully booked (36h every day=6) -- adding any group hour
+    # exceeds the per-day capacity of 6 slots.
+    group_assignments = [{
+        "teacher_name": "ProfX",
+        "group_id": 1, "group_name": "_GruppoX_",
+        "subject": "X", "n_hours": 1,
+        "home_class_names": ["2A"],
+    }]
+    with pytest.raises(RuntimeError):
+        _solve(profs, group_assignments=group_assignments)
+
+
+def test_group_three_home_classes():
+    """Group with 3 home_classes: 2A + 2B + 2C. The hour at which
+    the group runs sees all three home classes "occupied"."""
+    profs = _profs_two_classes_24h_each()
+    # Add a 3rd class 2C with same curriculum
+    profs["ProfMat"]["classi"]["2C"] = {"Matematica": {"ore": 4}}
+    profs["ProfIta"]["classi"]["2C"] = {"Italiano": {"ore": 4}}
+    profs["ProfSto"]["classi"]["2C"] = {"Storia": {"ore": 3}}
+    profs["ProfMot"]["classi"]["2C"] = {"Scienzemotorie": {"ore": 2}}
+    profs["ProfSpa"] = {"classi": {}, "glibero": [6, 5, 4]}
+    group_assignments = [{
+        "teacher_name": "ProfSpa",
+        "group_id": 1, "group_name": "_GruppoSpa_",
+        "subject": "Spagnolo", "n_hours": 2,
+        "home_class_names": ["2A", "2B", "2C"],
+    }]
+    dc, sol = _solve(profs, group_assignments=group_assignments,
+                     time_a=5, time_b=5)
+    grp_dh = {(k[3], k[4]) for k, v in sol.items()
+              if k[0] == "ProfSpa" and v == 1}
+    assert len(grp_dh) == 2
+    for cl in ("2A", "2B", "2C"):
+        busy = {(k[3], k[4]) for k, v in sol.items()
+                if k[1] == cl and v == 1}
+        assert not (grp_dh & busy), (
+            f"{cl} has a regular lesson clashing with group at "
+            f"{grp_dh & busy}")
+
+
+def test_group_with_potenziamento_combined():
+    """Group + potenziamento for the same teacher works: ProfX has
+    2h group + 3h potenziamento. Potenziamento is class-less; group
+    has home class 2A. Both are scheduled correctly."""
+    profs = _profs_two_classes_24h_each()
+    profs["ProfX"] = {"classi": {}, "glibero": [6, 5, 4]}
+    group_assignments = [{
+        "teacher_name": "ProfX",
+        "group_id": 1, "group_name": "_GruppoX_",
+        "subject": "Spagnolo", "n_hours": 2,
+        "home_class_names": ["2A"],
+    }]
+    pot_assignments = [{
+        "teacher_name": "ProfX",
+        "subject": "Potenziamento", "n_hours": 3,
+    }]
+    dc, sol = _solve(
+        profs, group_assignments=group_assignments,
+        potenziamento_assignments=pot_assignments,
+        time_a=5, time_b=5,
+    )
+    n_grp = sum(1 for k, v in sol.items()
+                if k[0] == "ProfX" and k[1] == "_GruppoX_" and v == 1)
+    assert n_grp == 2, f"expected 2 group slots, got {n_grp}"
+    # potenziamento is in dc_value via __pot__ namespacing
+    pot_total = sum(v for k, v in dc.items()
+                    if isinstance(k, tuple) and len(k) == 3
+                    and k[0] == "__pot__" and k[1] == "ProfX")
+    assert pot_total == 3, f"expected 3 pot hours, got {pot_total}"
