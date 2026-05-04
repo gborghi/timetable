@@ -130,13 +130,21 @@ def test_heavy_diagnostic_is_async(client, path, body):
     )
 
 
-def test_hall_check_stays_sync_and_fast(client):
-    """Hall pre-check is INTENTIONALLY sync, but must be fast
-    enough (< 2s on the dev DB) for the inline button on PhaseACard
-    to feel responsive."""
+def test_hall_check_sync_path_stays_fast(client):
+    """Hall pre-check exposes BOTH a default async path (returns
+    {run_id}) and an opt-in inline path (sync=true, returns the full
+    diagnostic dict). The inline path powers the green/red button on
+    PhaseACard and MUST be fast enough to feel responsive (< 2s on
+    the dev DB).
+
+    Renamed from `test_hall_check_stays_sync_and_fast`: hall-check is
+    no longer sync by DEFAULT (commit 9568218 made it async unless
+    sync=true), but the sync path still exists and still has a budget.
+    """
     t0 = time.time()
     r = client.post(
-        "/api/diagnostics/hall-check", json={"n_samples": 256},
+        "/api/diagnostics/hall-check",
+        json={"n_samples": 256, "sync": True},
     )
     dt_ms = (time.time() - t0) * 1000.0
     assert r.status_code == 200, r.text[:200]
@@ -145,6 +153,23 @@ def test_hall_check_stays_sync_and_fast(client):
     assert "ok" in res
     assert "n_classes" in res
     assert "n_teachers" in res
+
+
+def test_hall_check_default_is_async(client):
+    """The default POST (no sync flag) must spawn an async run and
+    return {run_id} within the same 1s budget as the other heavy
+    diagnostics. Guards against accidentally re-defaulting to sync."""
+    t0 = time.time()
+    r = client.post("/api/diagnostics/hall-check", json={"n_samples": 256})
+    dt_ms = (time.time() - t0) * 1000.0
+    assert r.status_code == 200, r.text[:200]
+    assert dt_ms < 1000, (
+        f"hall-check (async path) took {dt_ms:.0f}ms - it must be ASYNC."
+    )
+    res = r.json()
+    assert "run_id" in res, (
+        f"hall-check default must return run_id; got keys {list(res.keys())}"
+    )
 
 
 # ----- Cumulative tab-switch budget ---------------------------------
