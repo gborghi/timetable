@@ -10,41 +10,71 @@ from ..db import get_db
 router = APIRouter(prefix="/api/assignments", tags=["assignments"])
 
 
+def _assignment_dict(a, t, c):
+    """Shared serialization. `c` may be None for is_potenziamento rows."""
+    return {
+        "id": a.id,
+        "teacher_id": a.teacher_id,
+        "teacher_name": t.name,
+        "class_id": a.class_id,
+        "class_name": c.name if c else None,
+        "subject": a.subject,
+        "hours": a.hours,
+        "locked": a.locked,
+        # Task C1 flags:
+        "coteach_group_id": a.coteach_group_id,
+        "is_support": bool(a.is_support),
+        "is_potenziamento": bool(a.is_potenziamento),
+    }
+
+
 @router.get("")
 def list_assignments(db: Session = Depends(get_db)):
-    """Return assignments with denormalized teacher/class names."""
+    """Return assignments with denormalized teacher/class names.
+    Includes Task C1 flags: coteach_group_id, is_support,
+    is_potenziamento. Potenziamento rows have class_id=None and
+    class_name=None."""
     teachers = {t.id: t for t in db.query(models.Teacher).all()}
     classes = {c.id: c for c in db.query(models.SchoolClass).all()}
     rows = db.query(models.Assignment).all()
     out = []
     for a in rows:
         t = teachers.get(a.teacher_id)
-        c = classes.get(a.class_id)
-        if t is None or c is None:
+        if t is None:
             continue
-        out.append({
-            "id": a.id,
-            "teacher_id": a.teacher_id,
-            "teacher_name": t.name,
-            "class_id": a.class_id,
-            "class_name": c.name,
-            "subject": a.subject,
-            "hours": a.hours,
-            "locked": a.locked,
-        })
+        c = classes.get(a.class_id) if a.class_id is not None else None
+        # Skip rows with missing class UNLESS this is potenziamento
+        # (where class_id is intentionally NULL).
+        if c is None and not a.is_potenziamento:
+            continue
+        out.append(_assignment_dict(a, t, c))
     return out
 
 
 @router.get("/by-class")
 def assignments_grouped_by_class(db: Session = Depends(get_db)):
-    """Group: class -> [{subject, teacher, hours, locked}, ...]."""
+    """Group: class -> [{subject, teacher, hours, locked, ...}, ...].
+    Potenziamento rows are returned under the synthetic key
+    '__potenziamento__' so the UI can show them in a dedicated
+    section."""
     teachers = {t.id: t for t in db.query(models.Teacher).all()}
     classes = {c.id: c for c in db.query(models.SchoolClass).all()}
     out: dict[str, list[dict]] = {c.name: [] for c in classes.values()}
+    out["__potenziamento__"] = []
     for a in db.query(models.Assignment).all():
         t = teachers.get(a.teacher_id)
-        c = classes.get(a.class_id)
-        if t is None or c is None:
+        if t is None:
+            continue
+        c = classes.get(a.class_id) if a.class_id is not None else None
+        if a.is_potenziamento or c is None:
+            out["__potenziamento__"].append({
+                "id": a.id,
+                "subject": a.subject,
+                "teacher": t.name,
+                "hours": a.hours,
+                "locked": a.locked,
+                "is_potenziamento": True,
+            })
             continue
         out.setdefault(c.name, []).append({
             "id": a.id,
@@ -52,6 +82,9 @@ def assignments_grouped_by_class(db: Session = Depends(get_db)):
             "teacher": t.name,
             "hours": a.hours,
             "locked": a.locked,
+            "coteach_group_id": a.coteach_group_id,
+            "is_support": bool(a.is_support),
+            "is_potenziamento": False,
         })
     return out
 

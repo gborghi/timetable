@@ -80,8 +80,10 @@
   }
 
   $: classNames = Object.keys(byClass).filter((c) =>
-    !filter || c.toLowerCase().includes(filter.toLowerCase())
+    c !== '__potenziamento__'
+    && (!filter || c.toLowerCase().includes(filter.toLowerCase()))
   ).sort();
+  $: potenziamentoRows = byClass['__potenziamento__'] || [];
 
   // Hours delta if the edit gets accepted: current row.hours moves from
   // the OLD teacher to the NEW one. We show this info in the dropdown
@@ -232,7 +234,17 @@
           <tbody>
             {#each byClass[cn] as row}
               <tr>
-                <td>{row.subject}</td>
+                <td>
+                  {row.subject}
+                  {#if row.coteach_group_id != null}
+                    <span class="pill-blue !text-[10px]"
+                      title="Compresenza (lab/codocenza)">COTEACH</span>
+                  {/if}
+                  {#if row.is_support}
+                    <span class="pill-amber !text-[10px]"
+                      title="Sostegno (DVA)">SOST</span>
+                  {/if}
+                </td>
                 <td>{row.teacher}</td>
                 <td class="text-center">{row.hours}</td>
                 <td class="whitespace-nowrap">
@@ -254,6 +266,34 @@
       </div>
     {/each}
   </div>
+
+  {#if potenziamentoRows.length > 0}
+    <div class="card p-4 border-2 border-purple-300 bg-purple-50">
+      <h3 class="mb-2">
+        Potenziamento (Legge 107)
+        <span class="text-xs text-ink-500 ml-2">
+          {potenziamentoRows.length} cattedre senza classe
+        </span>
+      </h3>
+      <table class="tbl">
+        <thead><tr><th>Docente</th><th>Materia</th><th>Ore</th></tr></thead>
+        <tbody>
+          {#each potenziamentoRows as row}
+            <tr>
+              <td>
+                {row.teacher}
+                <span class="pill !text-[10px]"
+                  style="background:#e9d5ff;color:#581c87;"
+                  title="Ore di potenziamento (Legge 107)">POT</span>
+              </td>
+              <td>{row.subject}</td>
+              <td class="text-center">{row.hours}</td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+    </div>
+  {/if}
 </div>
 
 <Modal open={!!editing} title="Cambia docente" onClose={() => (editing = null)}>
