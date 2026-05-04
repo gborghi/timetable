@@ -81,9 +81,13 @@
 
   $: classNames = Object.keys(byClass).filter((c) =>
     c !== '__potenziamento__'
+    && !c.startsWith('__group_')
     && (!filter || c.toLowerCase().includes(filter.toLowerCase()))
   ).sort();
   $: potenziamentoRows = byClass['__potenziamento__'] || [];
+  $: groupSectionKeys = Object.keys(byClass)
+    .filter((k) => k.startsWith('__group_'))
+    .sort();
 
   // Hours delta if the edit gets accepted: current row.hours moves from
   // the OLD teacher to the NEW one. We show this info in the dropdown
@@ -294,6 +298,36 @@
       </table>
     </div>
   {/if}
+
+  {#each groupSectionKeys as key}
+    {@const groupName = key.replace(/^__group_(.+)__$/, '$1')}
+    {@const rows = byClass[key] || []}
+    <div class="card p-4 border-2 border-cyan-300 bg-cyan-50">
+      <h3 class="mb-2">
+        Gruppo: {groupName}
+        <span class="text-xs text-ink-500 ml-2">
+          {rows.length} {rows.length === 1 ? 'cattedra' : 'cattedre'} di gruppo (Task C3)
+        </span>
+      </h3>
+      <table class="tbl">
+        <thead><tr><th>Docente</th><th>Materia</th><th>Ore</th></tr></thead>
+        <tbody>
+          {#each rows as row}
+            <tr>
+              <td>
+                {row.teacher}
+                <span class="pill !text-[10px]"
+                  style="background:#cffafe;color:#155e75;"
+                  title="Cattedra agganciata a uno StudyGroup invece di una classe">GRP</span>
+              </td>
+              <td>{row.subject}</td>
+              <td class="text-center">{row.hours}</td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+    </div>
+  {/each}
 </div>
 
 <Modal open={!!editing} title="Cambia docente" onClose={() => (editing = null)}>
