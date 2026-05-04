@@ -406,9 +406,11 @@ def dissociate_events_batch(payload: EventBatchIn,
 def lock_event(assignment_id: int, payload: EventLockIn,
                db: Session = Depends(get_db)):
     """Toggle (or explicitly set) the lock flag on an Assignment.
-    Locked events are preserved by the optimizer (Phase B / meta) when
-    the appropriate honoring is enabled (see optimization.py
-    `_restore_locked_lessons`)."""
+    Locked events are honoured natively by every solver path: Phase A
+    pins their day-count floor, Phase B pins their slot, ALNS / VNS /
+    SA / TS / ILS / Lagrangian destroy operators refuse to touch
+    them, column generation pre-places them in every pattern, and
+    the classroom assignment step forces the locked classroom_name."""
     a = db.get(models.Assignment, assignment_id)
     if a is None:
         raise HTTPException(404, "cattedra non trovata")
