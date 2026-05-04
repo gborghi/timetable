@@ -22,9 +22,15 @@
   const SENECA_LATIN = 'Omnia, Lucili, aliena sunt, tempus tantum nostrum est.';
   const SENECA_IT = 'Tutto, Lucilio, ci viene da altri; soltanto il tempo e\' nostro.';
 
-  // Top-level nav: 6 entries. Three of them ("Anagrafica",
-  // "Pianificazione", "Esecuzione") are dropdowns that group
-  // related sub-pages; the others are direct links.
+  // Top-level nav: 8 entries. Anagrafica, Pianificazione, Gestione e
+  // Esecuzione sono dropdown che raggruppano sotto-pagine; le altre
+  // sono link diretti. Vincoli sta sotto Pianificazione (e' un'azione
+  // della fase di pianificazione, non un capitolo a parte). Orario
+  // sale a tab standalone perche' e' la pagina che si visita di gran
+  // lunga piu' spesso. Eventi (ex Monitor) e' standalone perche' e'
+  // il pannello di run real-time, indipendente dalla pipeline di
+  // ottimizzazione. Gestione raggruppa tutto cio' che riguarda la
+  // gestione operativa post-orario (assenze, supplenze, ...).
   const navGroups = [
     { kind: 'link', href: '/', label: 'Dashboard', exact: true },
     { kind: 'menu', label: 'Anagrafica', children: [
@@ -37,19 +43,21 @@
       { href: '/classrooms', label: 'Aule'      },
     ] },
     { kind: 'menu', label: 'Pianificazione', children: [
-      { href: '/coteaching',        label: 'Compresenze'         },
-      { href: '/assignments',       label: 'Cattedre'            },
-      { href: '/schedule',          label: 'Orario'              },
+      { href: '/coteaching',  label: 'Compresenze' },
+      { href: '/assignments', label: 'Cattedre'    },
+      { href: '/constraints', label: 'Vincoli'     },
+    ] },
+    { kind: 'link', href: '/schedule', label: 'Orario' },
+    { kind: 'menu', label: 'Gestione', children: [
       { href: '/assenze-supplenze', label: 'Assenze e supplenze' },
     ] },
-    { kind: 'link', href: '/constraints', label: 'Vincoli' },
     { kind: 'menu', label: 'Esecuzione', children: [
-      { href: '/optimize',    label: 'Workflow'     },
-      { href: '/runs',        label: 'Runs'         },
-      { href: '/monitor',     label: 'Monitor'      },
-      { href: '/diagnostics', label: 'Statistiche'  },
+      { href: '/optimize',    label: 'Workflow'    },
+      { href: '/runs',        label: 'Runs'        },
+      { href: '/diagnostics', label: 'Statistiche' },
     ] },
-    { kind: 'link', href: '/import', label: 'Import bulk' },
+    { kind: 'link', href: '/monitor', label: 'Eventi' },
+    { kind: 'link', href: '/import',  label: 'Import bulk' },
   ];
 
   onMount(() => {

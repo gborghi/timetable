@@ -435,7 +435,7 @@
 
 <div class="space-y-4">
   <div class="flex items-baseline gap-3 flex-wrap">
-    <h1>Monitor</h1>
+    <h1>Eventi</h1>
     {#if summary}
       <span class="text-sm text-ink-500">
         {summary.n_events} eventi totali
