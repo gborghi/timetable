@@ -87,6 +87,18 @@ def _build_export_zip(*, schema_only: bool = False) -> tuple[bytes, dict]:
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         # Raw SQLite file (when applicable). Fast atomic restore path.
         if db_mod.IS_SQLITE and db_mod.DB_PATH and os.path.exists(db_mod.DB_PATH):
+            # WAL mode keeps recently-committed pages in `.db-wal` until
+            # the next checkpoint. Force a TRUNCATE checkpoint so every
+            # committed page is folded into the main .db file before we
+            # snapshot it; otherwise the export could miss the latest
+            # writes.
+            try:
+                with db_mod.engine.connect() as conn:
+                    conn.exec_driver_sql("PRAGMA wal_checkpoint(TRUNCATE)")
+            except Exception:
+                # Non-fatal: a missing/older WAL just means there's
+                # nothing to checkpoint. Carry on with the snapshot.
+                pass
             with open(db_mod.DB_PATH, "rb") as f:
                 z.writestr("database.db", f.read())
         # Per-table CSVs (always for documentation/portability)
@@ -170,6 +182,19 @@ def _restore_zip(blob: bytes) -> dict:
     try:
         if os.path.exists(db_path):
             shutil.copy2(db_path, backup_path)
+        # WAL mode side effect: SQLite leaves `.db-wal` and `.db-shm`
+        # sidecar files next to the main .db. After a successful
+        # dispose() the sidecars belong to the OLD database; if we
+        # leave them on disk SQLite will re-apply their pages on top
+        # of the freshly written .db at the next open and corrupt
+        # the import. Remove them before swapping.
+        for suffix in ("-wal", "-shm"):
+            sidecar = db_path + suffix
+            if os.path.exists(sidecar):
+                try:
+                    os.remove(sidecar)
+                except OSError:
+                    pass
         with open(db_path, "wb") as f:
             f.write(new_db)
     except Exception as e:

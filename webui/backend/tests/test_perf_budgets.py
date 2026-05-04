@@ -39,6 +39,17 @@ def client():
     return TestClient(app)
 
 
+# Diagnostics that must respond async ({run_id} within 1s). Defined
+# before the warmup fixture so the fixture can reuse the same list to
+# pre-warm every variant before the timed runs.
+ASYNC_DIAG_ENDPOINTS = [
+    ("/api/diagnostics/montecarlo", {"n_samples": 100}),
+    ("/api/diagnostics/bipartite", {"mode": "classes"}),
+    ("/api/diagnostics/correlations", {}),
+    ("/api/diagnostics/distributions", {}),
+]
+
+
 @pytest.fixture(scope="module", autouse=True)
 def _warmup_diagnostic_endpoints(client):
     """Pay the cold-start cost (SQLAlchemy connection pool, GIL
@@ -52,7 +63,21 @@ def _warmup_diagnostic_endpoints(client):
     occasionally push `correlations-body2` (the third parametrized
     variant) over budget when it follows two other heavy POSTs.
 
+    We also force a TRUNCATE checkpoint on the SQLite WAL: when this
+    module runs at the tail of a long pytest session, the WAL may
+    have grown several MB from earlier test mutations, slowing every
+    subsequent read until the next auto-checkpoint. Truncating it
+    here gives the perf tests the same starting state as a freshly
+    started process.
+
     We discard the response: this is purely a warmup."""
+    try:
+        from backend import db as _db
+        if _db.IS_SQLITE:
+            with _db.engine.connect() as _c:
+                _c.exec_driver_sql("PRAGMA wal_checkpoint(TRUNCATE)")
+    except Exception:
+        pass
     try:
         client.post("/api/diagnostics/distributions", json={})
     except Exception:
@@ -101,13 +126,7 @@ def test_list_endpoint_within_budget(client, path, budget_ms):
 # (10-30s on a real school) -- the bug Giovanni hit. These tests
 # enforce that POST /api/diagnostics/<x> returns within 1 second
 # with a `run_id` field, NOT the full result inline.
-
-ASYNC_DIAG_ENDPOINTS = [
-    ("/api/diagnostics/montecarlo", {"n_samples": 100}),
-    ("/api/diagnostics/bipartite", {"mode": "classes"}),
-    ("/api/diagnostics/correlations", {}),
-    ("/api/diagnostics/distributions", {}),
-]
+# (ASYNC_DIAG_ENDPOINTS is defined above the warmup fixture.)
 
 
 @pytest.mark.parametrize("path,body", ASYNC_DIAG_ENDPOINTS)

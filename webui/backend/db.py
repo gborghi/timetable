@@ -17,7 +17,7 @@ SQLite ALTER TABLE working. No code change needed when switching.
 from __future__ import annotations
 
 import os
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -61,6 +61,39 @@ else:
     _engine_kwargs["pool_pre_ping"] = True   # auto-reconnect on stale conns
 
 engine = create_engine(DB_URL, **_engine_kwargs)
+
+
+if IS_SQLITE:
+    # WAL (Write-Ahead Logging) lets readers run concurrently with a
+    # single writer instead of blocking on the writer's transaction.
+    # This unblocks the "click through tabs while a diagnostic is
+    # running" scenario where the heavy diagnostic threads commit
+    # large `runs.metrics_json` payloads on a separate connection.
+    #
+    # synchronous=NORMAL is the standard companion: it skips the
+    # extra fsync after every commit. Crash safety is preserved (WAL
+    # durability is preserved across process kills); only abrupt
+    # power loss can lose the very last few committed transactions,
+    # acceptable for our single-school dev workflow.
+    #
+    # Side effect: SQLite now creates `.db-wal` and `.db-shm` sidecar
+    # files alongside `timetable.db`. Code that copies the .db file
+    # directly (export/import in routers/dashboard.py) checkpoints
+    # before the read and clears stale sidecars before the write.
+    @event.listens_for(engine, "connect")
+    def _set_sqlite_pragmas(dbapi_connection, _conn_record):
+        cur = dbapi_connection.cursor()
+        try:
+            cur.execute("PRAGMA journal_mode=WAL")
+            cur.execute("PRAGMA synchronous=NORMAL")
+            # Auto-checkpoint every 100 pages (~400KB at 4KB page_size)
+            # instead of the 1000-page default. Smaller threshold means
+            # the WAL stays compact even under sustained writes from
+            # the diagnostic background threads -- a large WAL slows
+            # readers because each read consults the WAL for visibility.
+            cur.execute("PRAGMA wal_autocheckpoint=100")
+        finally:
+            cur.close()
 
 
 class Base(DeclarativeBase):
