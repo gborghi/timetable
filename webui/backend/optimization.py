@@ -493,6 +493,7 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
             potenziamento_assignments = (
                 engine_io.potenziamento_assignments_from_db(db))
             parallel_groups = engine_io.parallel_groups_for_solver(db)
+            group_assignments = engine_io.group_assignments_for_solver(db)
         if locked_snap:
             print(f"[phaseB] {len(locked_snap)} locked lessons "
                   f"({'native CP-SAT' if not use_decomposition else 'snapshot/restore'} path)")
@@ -508,6 +509,9 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
         if parallel_groups:
             print(f"[phaseB] {len(parallel_groups)} parallel groups "
                   f"(intra-class)")
+        if group_assignments:
+            print(f"[phaseB] {len(group_assignments)} group "
+                  f"assignments (inter-class StudyGroup)")
         if not profs:
             raise RuntimeError(
                 "Nessun assegnamento prof->classe; esegui prima "
@@ -536,6 +540,7 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
             support_assignments=support_assignments or None,
             potenziamento_assignments=potenziamento_assignments or None,
             parallel_groups=parallel_groups or None,
+            group_assignments=group_assignments or None,
         )
         with open(os.path.join(ws, "phase_a_dc.pkl"), "wb") as f:
             pickle.dump(dc_value, f)
@@ -644,6 +649,7 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                     coteach_groups=coteach_groups or None,
                     support_assignments=support_assignments or None,
                     parallel_groups=parallel_groups or None,
+                    group_assignments=group_assignments or None,
                 )
                 if out is None and locked_by_day.get(d):
                     raise RuntimeError(
@@ -2170,6 +2176,54 @@ def validate_coteach_sostegno_potenziamento(db: Session) -> list[str]:
                 f"potenziamento {tn}: {total} ore > 30 (cap "
                 f"settimanale; 5 ore/giorno x 6 giorni)"
             )
+
+    # Task C3: group assignments validations.
+    groups_by_id = {g.id: g for g in db.query(models.StudyGroup).all()}
+    students_by_id = {s.id: s for s in db.query(models.Student).all()}
+    for a in db.query(models.Assignment).filter(
+        models.Assignment.group_id != None  # noqa: E711
+    ).all():
+        t = teachers_by_id.get(a.teacher_id)
+        tn = t.name if t else f"#{a.teacher_id}"
+        # XOR with class_id
+        if a.class_id is not None:
+            violations.append(
+                f"gruppo {tn}: ha sia class_id={a.class_id} che "
+                f"group_id={a.group_id}; XOR (esattamente una delle "
+                f"due valorizzata)."
+            )
+        if a.group_id not in groups_by_id:
+            violations.append(
+                f"gruppo {tn}: group_id={a.group_id} inesistente."
+            )
+            continue
+        g = groups_by_id[a.group_id]
+        # Group must have at least one member
+        members = db.query(models.GroupMembership).filter(
+            models.GroupMembership.group_id == g.id
+        ).all()
+        if not members:
+            violations.append(
+                f"gruppo '{g.name}' (Assignment di {tn}): nessuno "
+                f"studente assegnato. Aggiungi membri al gruppo "
+                f"prima di creare un'Assignment di gruppo."
+            )
+        # All members must have a home class
+        bad = [m.student_id for m in members
+               if students_by_id.get(m.student_id) is None
+               or students_by_id[m.student_id].class_id is None]
+        if bad:
+            violations.append(
+                f"gruppo '{g.name}': {len(bad)} studenti senza "
+                f"classe-madre; il solver non puo' propagare "
+                f"class-busy."
+            )
+        # Hours sanity
+        if (a.hours or 0) <= 0:
+            violations.append(
+                f"gruppo '{g.name}' (Assignment di {tn}): hours="
+                f"{a.hours} non valido (deve essere > 0)."
+            )
     return violations
 
 
@@ -3169,12 +3223,17 @@ def run_decomposition_temporal(*, time_a: float = 60.0,
         locked_by_day = _locked_slots_by_day(locked_snap)
         with SessionLocal() as _db_co:
             coteach_groups = engine_io.coteach_groups_for_solver(_db_co)
+            group_assignments = engine_io.group_assignments_for_solver(
+                _db_co)
         if locked_snap:
             print(f"[temporal] native lock path: {len(locked_snap)} "
                   f"locked lessons fed to solver")
         if coteach_groups:
             print(f"[temporal] {len(coteach_groups)} coteach groups "
                   f"fed to solver")
+        if group_assignments:
+            print(f"[temporal] {len(group_assignments)} group "
+                  f"assignments fed to solver")
         result = dec_t.run_temporal_pipeline(
             profs_pkl,
             parallel=parallel,
@@ -3190,6 +3249,7 @@ def run_decomposition_temporal(*, time_a: float = 60.0,
             locked_day_count=locked_dc or None,
             locked_by_day=locked_by_day or None,
             coteach_groups=coteach_groups or None,
+            group_assignments=group_assignments or None,
         )
         update_run(rid, progress=0.85)
 
