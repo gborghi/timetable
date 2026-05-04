@@ -49,7 +49,8 @@ HOURS = meta.HOURS
 
 # ---------------- Pattern generation (subproblem) ----------------
 
-def _seed_patterns(profs: dict, dc_value: dict, max_per_teacher: int = 3
+def _seed_patterns(profs: dict, dc_value: dict, max_per_teacher: int = 3,
+                   locks: set | None = None
                    ) -> dict[str, list[dict]]:
     """Build a small initial pattern catalog from `dc_value` (Phase-A
     output), one or more "shifted" patterns per teacher.
@@ -61,7 +62,18 @@ def _seed_patterns(profs: dict, dc_value: dict, max_per_teacher: int = 3
     that don't conflict with previously-placed lessons. Then we
     rotate the start hour by 1, 2, 3 to obtain `max_per_teacher`
     deterministic variants.
+
+    `locks` (optional): a set of (p, cl, subj, day, hour) tuples
+    that MUST appear in every generated pattern. They are pre-placed
+    before the greedy fill so the rest of the schedule wraps around
+    them. Callers are responsible for keeping `dc_value` consistent
+    with the locks (i.e. day_count >= n_locked_in_day).
     """
+    locks = locks or set()
+    locks_by_teacher: dict[str, list[tuple]] = {}
+    for (p, cl, s, d, h) in locks:
+        locks_by_teacher.setdefault(p, []).append((cl, s, d, h))
+
     out: dict[str, list[dict]] = {}
     profs_list = sorted(profs.keys())
     for p in profs_list:
@@ -78,6 +90,12 @@ def _seed_patterns(profs: dict, dc_value: dict, max_per_teacher: int = 3
             pat: dict = {}
             occupied_t: set = set()       # (p, d, h)
             occupied_c: set = set()       # (cl, d, h)
+            # Pre-place the teacher's locks. The greedy fill below
+            # treats those slots as occupied.
+            for (cl_l, s_l, d_l, h_l) in locks_by_teacher.get(p, []):
+                pat[(p, cl_l, s_l, d_l, h_l)] = 1
+                occupied_t.add((p, d_l, h_l))
+                occupied_c.add((cl_l, d_l, h_l))
             for (pp, cl, subj, _) in triples:
                 # Determine the day this triple was for: encode in DC key
                 d = None
@@ -88,7 +106,14 @@ def _seed_patterns(profs: dict, dc_value: dict, max_per_teacher: int = 3
                 if d is None:
                     continue
                 hours_to_place = dc_value.get((pp, cl, subj, d), 0)
-                placed = 0
+                # Subtract any locked hours already in the pattern for
+                # this triple-day so we don't double-count.
+                already = sum(
+                    1 for (cl_l, s_l, d_l, _h_l)
+                    in locks_by_teacher.get(p, [])
+                    if cl_l == cl and s_l == subj and d_l == d
+                )
+                placed = already
                 for h_idx in range(len(HOURS)):
                     h = HOURS[(h_idx + offset) % len(HOURS)]
                     if (pp, d, h) in occupied_t or (cl, d, h) in occupied_c:
@@ -218,12 +243,21 @@ def _solve_master(patterns_by_teacher: dict[str, list[dict]],
 # ---------------- Top-level driver ----------------
 
 def _diversified_seed(profs: dict, dc_value: dict,
-                      n_variants: int, rng_seed: int = 0
+                      n_variants: int, rng_seed: int = 0,
+                      locks: set | None = None
                       ) -> dict[str, list[dict]]:
     """Like _seed_patterns but with `n_variants` per teacher and a
     randomized triple ordering so each variant explores a different
-    placement. Used to enrich the catalog at each CG iteration."""
+    placement. Used to enrich the catalog at each CG iteration.
+
+    `locks` (optional): pre-placed in every generated pattern so the
+    enrichment never produces a column that violates a lock."""
     import random
+    locks = locks or set()
+    locks_by_teacher: dict[str, list[tuple]] = {}
+    for (p, cl, s, d, h) in locks:
+        locks_by_teacher.setdefault(p, []).append((cl, s, d, h))
+
     rng = random.Random(rng_seed)
     out: dict[str, list[dict]] = {}
     profs_list = sorted(profs.keys())
@@ -241,8 +275,18 @@ def _diversified_seed(profs: dict, dc_value: dict,
             pat: dict = {}
             occupied_t: set = set()
             occupied_c: set = set()
+            # Pre-place this teacher's locks.
+            for (cl_l, s_l, d_l, h_l) in locks_by_teacher.get(p, []):
+                pat[(p, cl_l, s_l, d_l, h_l)] = 1
+                occupied_t.add((p, d_l, h_l))
+                occupied_c.add((cl_l, d_l, h_l))
             for (pp, cl, subj, hours_to_place, d) in shuffled:
-                placed = 0
+                already = sum(
+                    1 for (cl_l, s_l, d_l, _h_l)
+                    in locks_by_teacher.get(p, [])
+                    if cl_l == cl and s_l == subj and d_l == d
+                )
+                placed = already
                 for h_idx in range(len(HOURS)):
                     h = HOURS[(h_idx + offset) % len(HOURS)]
                     if ((pp, d, h) in occupied_t or
@@ -262,7 +306,8 @@ def _diversified_seed(profs: dict, dc_value: dict,
 
 def _completion_solver(initial_sol: dict, profs: dict, dc_value: dict,
                        time_limit: float = 30.0,
-                       workers: int = 4) -> dict | None:
+                       workers: int = 4,
+                       locked_by_day: dict | None = None) -> dict | None:
     """Completion solver. When the master LP assembly leaves any
     (cl, subj, day) under-covered, this routine simply runs the
     standard Phase B day-solver for every day from scratch (using
@@ -290,6 +335,7 @@ def _completion_solver(initial_sol: dict, profs: dict, dc_value: dict,
         out, _status = cv2.solve_phase_b_for_day(
             d, profs, classes_v, triples, class_profs, dc_value,
             time_limit=time_limit, workers=workers, log=False,
+            locked_slots_for_day=(locked_by_day or {}).get(d),
         )
         if out is None:
             return None
@@ -303,7 +349,9 @@ def run_column_generation(profs: dict, dc_value: dict,
                           max_iterations: int = 5,
                           completion_time_limit: float = 30.0,
                           completion_workers: int = 4,
-                          log: bool = True
+                          log: bool = True,
+                          locks: set | None = None,
+                          locked_by_day: dict | None = None,
                           ) -> tuple[dict | None, dict]:
     """Iterative Column Generation with master LP + diversified
     pattern enrichment + integer recovery + completion fallback.
@@ -356,7 +404,8 @@ def run_column_generation(profs: dict, dc_value: dict,
 
     # Step 1: seed
     patterns = _seed_patterns(profs, dc_value,
-                              max_per_teacher=patterns_per_teacher)
+                              max_per_teacher=patterns_per_teacher,
+                              locks=locks)
     info["n_patterns_total_initial"] = sum(len(v) for v in patterns.values())
     if info["n_patterns_total_initial"] == 0:
         info["duration_s"] = time.time() - t0
@@ -389,7 +438,8 @@ def run_column_generation(profs: dict, dc_value: dict,
         # Diversify: add `patterns_per_teacher` new variants per teacher
         new = _diversified_seed(profs, dc_value,
                                 n_variants=patterns_per_teacher,
-                                rng_seed=it * 1000)
+                                rng_seed=it * 1000,
+                                locks=locks)
         for t, plist in new.items():
             existing = patterns.setdefault(t, [])
             for pat in plist:
@@ -436,6 +486,7 @@ def run_column_generation(profs: dict, dc_value: dict,
             sol, profs, dc_value,
             time_limit=completion_time_limit,
             workers=completion_workers,
+            locked_by_day=locked_by_day,
         )
         if completed is not None and meta.is_hard_feasible(
                 completed, profs, verbose=False):

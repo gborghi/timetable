@@ -1124,6 +1124,7 @@ def run_column_generation(*, time_budget_s: float = 60.0,
         import metaheuristics as meta  # type: ignore
         import column_generation as cg  # type: ignore
         with SessionLocal() as db:
+            locked_snap = _snapshot_locked_lessons(db)
             profs = engine_io.profs_dict_from_db(db)
             active = engine_io.get_active_solution(db)
             if active is None:
@@ -1132,6 +1133,18 @@ def run_column_generation(*, time_budget_s: float = 60.0,
                                     "attiva (Phase A) come baseline.")
             sol = engine_io.lessons_to_solution_dict(db, active.id)
         dc_value = _restore_dc_from_solution(sol)
+        # Native locks: pattern generation pre-places them, completion
+        # solver gets per-day locks, master LP coverage stays valid.
+        cg_locks = {(d["teacher_name"], d["class_name"],
+                      d["subject"], int(d["day"]), int(d["hour"]))
+                     for d in locked_snap
+                     if d.get("day") is not None
+                        and d.get("hour") is not None} or None
+        cg_locked_by_day = _locked_slots_by_day(locked_snap) or None
+        if cg_locks:
+            print(f"[cg] native lock path: {len(cg_locks)} locked "
+                  f"keys pre-placed in patterns; completion solver "
+                  f"receives per-day constraint set.")
         update_run(rid_inner, progress=0.1)
         with _progress_ticker(rid_inner, time_budget_s,
                                start=0.1, end=0.95):
@@ -1141,6 +1154,8 @@ def run_column_generation(*, time_budget_s: float = 60.0,
                 patterns_per_teacher=patterns_per_teacher,
                 max_iterations=max_iterations,
                 log=log,
+                locks=cg_locks,
+                locked_by_day=cg_locked_by_day,
             )
         if new_sol is None or not info.get("feasible_after_assembly"):
             update_run(rid_inner, progress=1.0,
@@ -1158,6 +1173,11 @@ def run_column_generation(*, time_budget_s: float = 60.0,
                 metrics={**m, **info, "feasible": True},
                 make_active=True,
             )
+            n_touched = _apply_locked_classrooms(db, sid, locked_snap)
+            if n_touched:
+                db.commit()
+                print(f"[cg] re-applied classroom on "
+                      f"{n_touched} locked lessons (native path)")
         update_run(rid_inner, solution_id=sid, obj_value=float(v),
                     metrics={**m, **info, "feasible": True},
                     progress=1.0)
