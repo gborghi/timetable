@@ -81,6 +81,12 @@ def run_lagrangian(sol: dict, profs: dict, dc_value: dict,
     `cpsat_v2_timetable.py`). Instead it tracks lambda values that
     a future full implementation can plug in.
 
+    `locks` (optional): set of (p, cl, s, d, h) tuples that must
+    remain at value 1. The inner SA refines under those constraints
+    (it filters destroy candidates by lock); the subgradient also
+    excludes locked bridge slots, otherwise the multipliers
+    diverge against an unmovable floor.
+
     Returns (best_sol, info).
     """
     t0 = time.time()
@@ -108,19 +114,37 @@ def run_lagrangian(sol: dict, profs: dict, dc_value: dict,
     best_sol = meta.deepcopy_sol(sol)
     best_val, _ = meta.compute_soft(best_sol, profs)
 
+    # FU-5: when locks are active, the locked slots are IMMOVABLE.
+    # The subgradient counts violations the local search could
+    # remove; counting locked slots would push the multipliers up
+    # against an unmovable floor and diverge. Exclude them from
+    # the violation tally.
+    if locks:
+        n_locked_bridge = sum(
+            1 for k_ in locks
+            if k_[0] in {b[0] for b in bridges}
+        )
+        if n_locked_bridge:
+            info["warnings"].append(
+                f"{n_locked_bridge} locked slots on bridge teachers "
+                f"are excluded from the subgradient")
+
     for k in range(max_iter):
         if time.time() - t0 > time_budget_s:
             info["warnings"].append("time budget exhausted")
             break
         # Subgradient: violation of each bridge's constraint at the
         # current primal. For the SKELETON we use a coarse proxy:
-        # count of non-zero bridge teacher slots.
+        # count of non-zero bridge teacher slots, EXCLUDING locked
+        # ones (they are immovable for SA and would push the
+        # multiplier to diverge against a floor).
         violation = {}
         for b in bridges:
             t, ca, cb = b
             cnt = sum(
                 1 for k_, v_ in best_sol.items()
                 if v_ and k_[0] == t
+                and (locks is None or k_ not in locks)
             )
             violation[b] = float(cnt)
         # Update multipliers
