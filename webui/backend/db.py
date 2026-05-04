@@ -357,6 +357,9 @@ def _apply_lightweight_migrations() -> None:
                 ("is_potenziamento",
                  "ALTER TABLE assignments ADD COLUMN "
                  "is_potenziamento INTEGER NOT NULL DEFAULT 0"),
+                ("parallel_group_id",
+                 "ALTER TABLE assignments ADD COLUMN "
+                 "parallel_group_id INTEGER"),
             ):
                 if not has_column("assignments", col):
                     conn.execute(text(ddl))
@@ -370,6 +373,9 @@ def _apply_lightweight_migrations() -> None:
                 "CREATE INDEX IF NOT EXISTS "
                 "ix_assignments_is_potenziamento "
                 "ON assignments (is_potenziamento)",
+                "CREATE INDEX IF NOT EXISTS "
+                "ix_assignments_parallel_group_id "
+                "ON assignments (parallel_group_id)",
             ):
                 conn.execute(text(stmt))
             # We DO NOT drop uq_assign_cl_subj on existing dev DBs

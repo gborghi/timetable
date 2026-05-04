@@ -296,6 +296,49 @@ def support_assignments_from_db(db: Session) -> list[dict]:
     return out
 
 
+def parallel_groups_for_solver(db: Session) -> list[dict]:
+    """Task C2: return the list of intra-class parallel groups
+    (e.g. religione + alternativa). Each entry:
+      {
+        'group_id': int,
+        'class_name': str,
+        'members': [{teacher_name, subject, hours}, ...]
+      }
+
+    Built from Assignments grouped by (parallel_group_id, class_id).
+    Skipped silently if a group has fewer than 2 members.
+    """
+    out: list[dict] = []
+    teachers_by_id = {t.id: t for t in db.query(models.Teacher).all()}
+    classes_by_id = {c.id: c for c in db.query(models.SchoolClass).all()}
+    by_group: dict[tuple[int, int], list] = {}
+    for a in db.query(models.Assignment).filter(
+        models.Assignment.parallel_group_id != None  # noqa: E711
+    ).all():
+        if a.class_id is None:
+            continue
+        by_group.setdefault(
+            (a.parallel_group_id, a.class_id), []).append(a)
+    for (gid, cid), members in by_group.items():
+        if len(members) < 2:
+            continue
+        cl = classes_by_id.get(cid)
+        if cl is None:
+            continue
+        out.append({
+            "group_id": gid,
+            "class_name": cl.name,
+            "members": [
+                {"teacher_name": teachers_by_id[m.teacher_id].name,
+                 "subject": m.subject,
+                 "hours": int(m.hours or 0)}
+                for m in members
+                if m.teacher_id in teachers_by_id
+            ],
+        })
+    return out
+
+
 def potenziamento_assignments_from_db(db: Session) -> list[dict]:
     """Return the list of potenziamento (class-less) assignments.
       [{'teacher_name': str, 'subject': str, 'n_hours': int}]

@@ -430,6 +430,13 @@ class Assignment(Base):
         comment="true: ore di potenziamento (Legge 107); class_id is "
                 "NULL; hours are scheduled but produce no Lesson row"
     )
+    parallel_group_id: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, index=True,
+        comment="Task C2: Assignments with the same parallel_group_id "
+                "and same class_id are taught in parallel (e.g. "
+                "religione + alternativa): they occupy the same slot "
+                "but the class counts as busy ONCE."
+    )
     teacher: Mapped["Teacher"] = relationship()
     school_class: Mapped["SchoolClass"] = relationship()
     coteach_group: Mapped["CoteachGroup | None"] = relationship(

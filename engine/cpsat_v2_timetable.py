@@ -179,7 +179,8 @@ def solve_phase_a(profs, classes, triples, class_profs,
                   locked_day_count=None,
                   coteach_groups=None,
                   support_assignments=None,
-                  potenziamento_assignments=None):
+                  potenziamento_assignments=None,
+                  parallel_groups=None):
     """Risolve Phase A. Se `locked_day_count` e\` valorizzato, e\` un
     dict (prof, class, subject, day) -> int che impone un FLOOR sul
     numero di ore di quella cattedra nel giorno indicato. Le ore non
@@ -208,6 +209,27 @@ def solve_phase_a(profs, classes, triples, class_profs,
         for sa in support_assignments
     }
     potenziamento_assignments = list(potenziamento_assignments or [])
+    parallel_groups = list(parallel_groups or [])
+    # parallel_subj_to_busy_key: (class_name, subject) -> stable key
+    # used by Phase B's class-busy aggregator. Each parallel group's
+    # members share the same key, so they count as ONE class
+    # occupation. Defaults to the subject string for non-parallel.
+    parallel_subj_to_busy_key: dict[tuple[str, str], str] = {}
+    # parallel_secondary_triples: (teacher, class, subject) of every
+    # parallel group member EXCEPT the first one; excluded from
+    # cl_day_load + ore_per_classe so the class hours are counted
+    # once per parallel slot (the first member contributes; the
+    # others "ride along" with day_count tied via the constraint
+    # below).
+    parallel_secondary_triples: set[tuple[str, str, str]] = set()
+    for pg in parallel_groups:
+        key = f"__par__{pg['group_id']}"
+        members = pg.get("members", [])
+        for m in members:
+            parallel_subj_to_busy_key[(pg["class_name"], m["subject"])] = key
+        for m in members[1:]:
+            parallel_secondary_triples.add(
+                (m["teacher_name"], pg["class_name"], m["subject"]))
 
     # Variabili int [0..MAX_PER_DAY_TRIPLE]
     day_count = {}                             # (prof, cl, subj, day) -> IntVar
@@ -274,6 +296,26 @@ def solve_phase_a(profs, classes, triples, class_profs,
         for t in codocs:
             coteach_codoc_triples.add((t, gcl, gsub))
 
+    # Parallel groups (intra-class): the n parallel Assignments
+    # marciano insieme, both in number-of-hours-per-day and in
+    # actual slot. Phase A: tie day_count vars; Phase B will tie
+    # the slot vars and aggregate the class-busy correctly.
+    for pg in parallel_groups:
+        cl_name = pg["class_name"]
+        members = pg.get("members", [])
+        if len(members) < 2:
+            continue
+        m_keys = [(m["teacher_name"], cl_name, m["subject"])
+                  for m in members]
+        for d in DAYS:
+            usable = [(t, c, s) for (t, c, s) in m_keys
+                      if (t, c, s, d) in day_count]
+            if len(usable) < 2:
+                continue
+            ref = day_count[(*usable[0], d)]
+            for k in usable[1:]:
+                model.Add(day_count[(*k, d)] == ref)
+
     # Per (prof, cl, day): max MAX_PER_DAY_PROF_CL
     triples_by_prof_cl = defaultdict(list)
     for (p, cl, subj, ore) in triples:
@@ -308,16 +350,17 @@ def solve_phase_a(profs, classes, triples, class_profs,
     #   (HARD-1) "se classe > 24 ore settimanali, no day = 3" =>
     #            ridondante con (HARD-2): {0, [4, max]} esclude 3.
     #   Equivalenza pratica: cl_day_load in {0, 4, 5, 6}.
-    # Codoc and SUPPORT triples are excluded from cl_day_load:
-    # codoc hours are already counted via the principal; sostegno
-    # hours follow the class' other lessons (the shadow constraint
-    # in Phase B forces support slots to coincide with non-support
-    # ones; they don't add a fresh class-hour demand).
+    # Codoc, SUPPORT and PARALLEL-SECONDARY triples are excluded from
+    # cl_day_load: codoc hours are already counted via the principal;
+    # sostegno hours follow the class' other lessons; parallel
+    # members ride along with the first member.
     triples_by_cl = defaultdict(list)
     for (p, cl, subj, ore) in triples:
         if (p, cl, subj) in coteach_codoc_triples:
             continue
         if (p, cl, subj) in support_triples_set:
+            continue
+        if (p, cl, subj) in parallel_secondary_triples:
             continue
         triples_by_cl[cl].append((p, subj))
     cl_day_load = {}
@@ -352,13 +395,14 @@ def solve_phase_a(profs, classes, triples, class_profs,
         model.Add(n_sixth_hour == 0)
 
     # vincolo settimanale: sum_d load = ore curriculum totali della classe
-    # Codoc + sostegno triples excluded (codoc already in principal;
-    # sostegno shadows other lessons).
+    # Codoc + sostegno + parallel-secondary triples excluded.
     ore_per_classe = defaultdict(int)
     for (p, cl, subj, ore) in triples:
         if (p, cl, subj) in coteach_codoc_triples:
             continue
         if (p, cl, subj) in support_triples_set:
+            continue
+        if (p, cl, subj) in parallel_secondary_triples:
             continue
         ore_per_classe[cl] += ore
     # Support triples follow the class load: per day, support hours
@@ -716,7 +760,8 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
                           enforce_no_holes=True,
                           locked_slots_for_day=None,
                           coteach_groups=None,
-                          support_assignments=None):
+                          support_assignments=None,
+                          parallel_groups=None):
     r"""Risolve il sotto-problema di un singolo giorno.
 
     Se enforce_no_holes=True (default) impone ai profili di classe la
@@ -748,6 +793,13 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
         (sa["teacher_name"], sa["class_name"], sa["subject"])
         for sa in support_assignments
     }
+    parallel_groups = list(parallel_groups or [])
+    parallel_subj_to_busy_key: dict[tuple[str, str], str] = {}
+    for pg in parallel_groups:
+        key = f"__par__{pg['group_id']}"
+        for m in pg.get("members", []):
+            parallel_subj_to_busy_key[(pg["class_name"],
+                                        m["subject"])] = key
     for (p, cl, subj, ore) in triples:
         # Phase A output is dense (one entry per (p,cl,subj,day) over the
         # 6 days), but partial / column-generation pipelines may pass a
@@ -811,6 +863,24 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
                 model.Add(slot[(t, gcl, gsub, h)] >= cv)
         model.Add(sum(coslot[(gid, h)] for h in HOURS) == n_today)
 
+    # Parallel groups (intra-class): tie member slots so the n
+    # parallel Assignments occupy the same hour exactly.
+    for pg in parallel_groups:
+        cl_name = pg["class_name"]
+        members = pg.get("members", [])
+        if len(members) < 2:
+            continue
+        m_keys = [(m["teacher_name"], cl_name, m["subject"])
+                  for m in members]
+        for h in HOURS:
+            usable = [k for k in m_keys
+                      if (k[0], k[1], k[2], h) in slot]
+            if len(usable) < 2:
+                continue
+            ref = slot[(usable[0][0], usable[0][1], usable[0][2], h)]
+            for k in usable[1:]:
+                model.Add(slot[(k[0], k[1], k[2], h)] == ref)
+
     # No overlap prof
     for p in {pp for (pp, _, _, _) in triples_active}:
         for h in HOURS:
@@ -833,20 +903,27 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
     for cl in cls_in_day:
         present = []
         for h in HOURS:
-            subjects_in_cl = {ss for (_, cc, ss, _)
-                              in triples_active if cc == cl}
+            # Group slots by busy_key: parallel-group members share
+            # the same key (so they count as ONE class occupation),
+            # while regular subjects use the subject string itself.
+            keys_by_busy: dict[str, list] = {}
+            for (p, cc, ss, _) in triples_active:
+                if cc != cl:
+                    continue
+                if (p, cl, ss) in support_triples_set:
+                    continue
+                bk = parallel_subj_to_busy_key.get((cl, ss), ss)
+                keys_by_busy.setdefault(bk, []).append(
+                    slot[(p, cl, ss, h)])
             subj_busy_vars = []
-            for s in subjects_in_cl:
-                keys_s = [slot[(p, cl, s, h)]
-                          for (p, cc, ss, _) in triples_active
-                          if cc == cl and ss == s
-                          and (p, cl, s) not in support_triples_set]
+            for bk, keys_s in keys_by_busy.items():
                 if not keys_s:
                     continue
                 if len(keys_s) == 1:
                     subj_busy_vars.append(keys_s[0])
                 else:
-                    sb = model.NewBoolVar(f"sb_{cl}_{s}_{day}_{h}")
+                    sb = model.NewBoolVar(
+                        f"sb_{cl}_{bk}_{day}_{h}")
                     model.AddMaxEquality(sb, keys_s)
                     subj_busy_vars.append(sb)
             pr = model.NewBoolVar(f"pr_{cl}_{day}_{h}")

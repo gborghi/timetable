@@ -185,6 +185,9 @@ def _apply_migrations_on(engine):
                 ("is_potenziamento",
                  "ALTER TABLE assignments ADD COLUMN "
                  "is_potenziamento INTEGER NOT NULL DEFAULT 0"),
+                ("parallel_group_id",
+                 "ALTER TABLE assignments ADD COLUMN "
+                 "parallel_group_id INTEGER"),
             ):
                 if not has_column("assignments", col):
                     conn.execute(text(ddl))

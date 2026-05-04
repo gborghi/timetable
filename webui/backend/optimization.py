@@ -492,6 +492,7 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
             support_assignments = engine_io.support_assignments_from_db(db)
             potenziamento_assignments = (
                 engine_io.potenziamento_assignments_from_db(db))
+            parallel_groups = engine_io.parallel_groups_for_solver(db)
         if locked_snap:
             print(f"[phaseB] {len(locked_snap)} locked lessons "
                   f"({'native CP-SAT' if not use_decomposition else 'snapshot/restore'} path)")
@@ -504,6 +505,9 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
         if potenziamento_assignments:
             print(f"[phaseB] {len(potenziamento_assignments)} "
                   f"potenziamento assignments")
+        if parallel_groups:
+            print(f"[phaseB] {len(parallel_groups)} parallel groups "
+                  f"(intra-class)")
         if not profs:
             raise RuntimeError(
                 "Nessun assegnamento prof->classe; esegui prima "
@@ -531,6 +535,7 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
             coteach_groups=coteach_groups or None,
             support_assignments=support_assignments or None,
             potenziamento_assignments=potenziamento_assignments or None,
+            parallel_groups=parallel_groups or None,
         )
         with open(os.path.join(ws, "phase_a_dc.pkl"), "wb") as f:
             pickle.dump(dc_value, f)
@@ -630,7 +635,7 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                     }
                     full_solution.update(out)
         else:
-            # monolithic per day -- native locks + coteach + sostegno
+            # monolithic per day -- locks + coteach + sostegno + parallel
             for d in DAYS:
                 out, status = cv2.solve_phase_b_for_day(
                     d, profs, classes, triples, class_profs, dc_value,
@@ -638,6 +643,7 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                     locked_slots_for_day=locked_by_day.get(d, []),
                     coteach_groups=coteach_groups or None,
                     support_assignments=support_assignments or None,
+                    parallel_groups=parallel_groups or None,
                 )
                 if out is None and locked_by_day.get(d):
                     raise RuntimeError(
