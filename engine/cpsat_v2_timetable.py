@@ -175,8 +175,15 @@ def build_indices(profs):
 # PHASE A: assegnazione GIORNO
 # -----------------------------
 def solve_phase_a(profs, classes, triples, class_profs,
-                  time_limit=30, workers=8, log=True):
+                  time_limit=30, workers=8, log=True,
+                  locked_day_count=None):
+    """Risolve Phase A. Se `locked_day_count` e\` valorizzato, e\` un
+    dict (prof, class, subject, day) -> int che impone un FLOOR sul
+    numero di ore di quella cattedra nel giorno indicato. Le ore non
+    coperte dai lock restano libere (il vincolo settimanale
+    sum_d day_count == ore resta intatto)."""
     model = cp_model.CpModel()
+    locked_day_count = locked_day_count or {}
 
     # Variabili int [0..MAX_PER_DAY_TRIPLE]
     day_count = {}                             # (prof, cl, subj, day) -> IntVar
@@ -190,6 +197,19 @@ def solve_phase_a(profs, classes, triples, class_profs,
         model.Add(
             sum(day_count[(p, cl, subj, d)] for d in DAYS) == ore
         )
+
+    # Lock floors: every (p, c, s, d) with locked Lessons must place
+    # at least n_locked hours in that day. The solver is free to add
+    # the remaining (ore - sum_d n_locked) hours where it wants.
+    for (p, cl, subj, d), n_lock in locked_day_count.items():
+        if n_lock <= 0:
+            continue
+        if (p, cl, subj, d) not in day_count:
+            # Triple unknown to Phase A: skip rather than crash; the
+            # caller is expected to keep the triple list consistent
+            # with the lock set.
+            continue
+        model.Add(day_count[(p, cl, subj, d)] >= int(n_lock))
 
     # Per (prof, cl, day): max MAX_PER_DAY_PROF_CL
     triples_by_prof_cl = defaultdict(list)
@@ -509,6 +529,13 @@ def solve_phase_a(profs, classes, triples, class_profs,
     elapsed = time.time() - t0
     print(f"\n[phaseA] status={solver.StatusName(status)} elapsed={elapsed:.1f}s")
     if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        if locked_day_count:
+            raise RuntimeError(
+                "Phase A INFEASIBLE: i lock attivi sono incompatibili "
+                "con i vincoli correnti. Rimuovi o adatta i lock "
+                "(es. sblocca eventi nel monitor) e ritenta. "
+                f"Lock attivi: {len(locked_day_count)} cattedra-giorno."
+            )
         raise RuntimeError("Phase A: nessuna soluzione")
     print(
         f"[phaseA] obj={solver.ObjectiveValue():.0f} "
@@ -546,17 +573,24 @@ def solve_phase_a(profs, classes, triples, class_profs,
 # -----------------------------
 def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
                           dc_value, time_limit=10, workers=4, log=False,
-                          enforce_no_holes=True):
+                          enforce_no_holes=True,
+                          locked_slots_for_day=None):
     r"""Risolve il sotto-problema di un singolo giorno.
 
     Se enforce_no_holes=True (default) impone ai profili di classe la
     contiguita\` dalle 8. Se phase A ha distribuito troppo tight i
     giorni puo\` rendersi necessario rilassare questo vincolo per
     quel giorno (vedi main: fallback automatico).
+
+    Se `locked_slots_for_day` e\` valorizzato, e\` un iterable di
+    tuple (prof, class, subject, hour) che devono valere 1 (cioe\`
+    occupati). Sono i lock nativi: il solver li tratta come
+    constraint e li sfrutta per potare lo spazio di ricerca.
     """
     model = cp_model.CpModel()
     slot = {}                                  # (p, cl, subj, h) -> Bool
     triples_active = []
+    locked_slots_for_day = list(locked_slots_for_day or [])
     for (p, cl, subj, ore) in triples:
         # Phase A output is dense (one entry per (p,cl,subj,day) over the
         # 6 days), but partial / column-generation pipelines may pass a
@@ -574,6 +608,19 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
         model.Add(
             sum(slot[(p, cl, subj, h)] for h in HOURS) == cnt
         )
+
+    # Native lock constraints: force the matching slot var to 1.
+    # If the lock points at a triple Phase A produced 0 hours for, the
+    # slot var doesn't exist -- skip with a warning rather than crash;
+    # the caller is responsible for keeping the lock set consistent
+    # with the dc_value.
+    for (p, cl, subj, h) in locked_slots_for_day:
+        key = (p, cl, subj, h)
+        if key not in slot:
+            print(f"[phaseB.day{day}] WARN locked slot {key} not in "
+                  f"model (triple inactive that day); ignoring lock.")
+            continue
+        model.Add(slot[key] == 1)
 
     # No overlap prof
     for p in {pp for (pp, _, _, _) in triples_active}:

@@ -480,15 +480,16 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
     run_id = create_run("phase_b", "Schedulazione orario", None, params)
 
     def target(rid: int):
-        # Snapshot locked lessons BEFORE running anything: the
-        # optimizer doesn't natively know about Assignment.locked, so
-        # we re-impose those lessons after the run.
+        # Read locked Lessons BEFORE running anything. The native-lock
+        # CP-SAT path (monolithic only for now) feeds them to the
+        # solver as constraints; the decomposed path still relies on
+        # snapshot/restore -- see TODO below.
         with SessionLocal() as db:
             locked_snap = _snapshot_locked_lessons(db)
             profs = engine_io.profs_dict_from_db(db)
         if locked_snap:
-            print(f"[phaseB] {len(locked_snap)} locked lessons will be "
-                  f"restored after the run.")
+            print(f"[phaseB] {len(locked_snap)} locked lessons "
+                  f"({'native CP-SAT' if not use_decomposition else 'snapshot/restore'} path)")
         if not profs:
             raise RuntimeError(
                 "Nessun assegnamento prof->classe; esegui prima "
@@ -504,10 +505,15 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
         print(f"[phaseB] {len(profs)} profs, {len(classes)} classes, "
               f"{len(triples)} triples")
         update_run(rid, progress=0.05)
-        # Phase A inside the timetable: day_count
+        # Phase A inside the timetable: day_count. Pass locked floor
+        # only on the monolithic path -- the decomposed pipeline is
+        # not yet wired for native locks (TODO).
+        locked_dc = (_locked_day_count_from_snapshot(locked_snap)
+                     if not use_decomposition else None)
         dc_value = cv2.solve_phase_a(
             profs, classes, triples, class_profs,
             time_limit=time_a, workers=workers, log=log,
+            locked_day_count=locked_dc,
         )
         with open(os.path.join(ws, "phase_a_dc.pkl"), "wb") as f:
             pickle.dump(dc_value, f)
@@ -603,12 +609,20 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                     }
                     full_solution.update(out)
         else:
-            # monolithic per day
+            # monolithic per day -- native locks
+            locked_by_day = _locked_slots_by_day(locked_snap)
             for d in DAYS:
                 out, status = cv2.solve_phase_b_for_day(
                     d, profs, classes, triples, class_profs, dc_value,
                     time_limit=time_mono, workers=workers, log=log,
+                    locked_slots_for_day=locked_by_day.get(d, []),
                 )
+                if out is None and locked_by_day.get(d):
+                    raise RuntimeError(
+                        f"Phase B (giorno {d}) INFEASIBLE: i lock di "
+                        f"quel giorno sono incompatibili con i vincoli "
+                        f"correnti. Rimuovi o adatta lock e ritenta."
+                    )
                 if out is not None:
                     full_solution.update(out)
 
@@ -626,10 +640,22 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                 metrics={**m, "feasible": feasible},
                 make_active=True,
             )
-            n_restored = _restore_locked_lessons(db, sid, locked_snap)
-            if n_restored:
-                db.commit()
-                print(f"[phaseB] restored {n_restored} locked lessons")
+            if use_decomposition:
+                # Decomposed path: snapshot/restore is still the only
+                # way the lock survives. TODO: native locks for
+                # decomposed pipeline (see decomposition_spectral_v2).
+                n_touched = _restore_locked_lessons(db, sid, locked_snap)
+                if n_touched:
+                    db.commit()
+                    print(f"[phaseB] restored {n_touched} locked lessons")
+            else:
+                # Native-lock path: the solver placed the lessons; we
+                # only re-apply classroom_name + cotaught_with.
+                n_touched = _apply_locked_classrooms(db, sid, locked_snap)
+                if n_touched:
+                    db.commit()
+                    print(f"[phaseB] re-applied classroom on "
+                          f"{n_touched} locked lessons (native path)")
         rooms_metrics: dict[str, Any] = {}
         if optimize_rooms:
             update_run(rid, progress=0.95)
@@ -1792,6 +1818,75 @@ def _progress_ticker(rid: int, budget_s: float, *,
     finally:
         stop_evt.set()
         bump_thread.join(timeout=2.0)
+
+
+def _locked_day_count_from_snapshot(snapshot: list[dict]
+                                     ) -> dict[tuple, int]:
+    """Aggregate a Lesson-level snapshot into a Phase A floor:
+    {(teacher_name, class_name, subject, day) -> n_locked_in_that_day}.
+    Used by the native-lock CP-SAT path: each entry becomes a
+    `model.Add(day_count[k] >= n)` constraint."""
+    out: dict[tuple, int] = {}
+    for snap in snapshot:
+        if snap.get("day") is None or snap.get("hour") is None:
+            continue
+        k = (snap["teacher_name"], snap["class_name"],
+             snap["subject"], int(snap["day"]))
+        out[k] = out.get(k, 0) + 1
+    return out
+
+
+def _locked_slots_by_day(snapshot: list[dict]
+                          ) -> dict[int, list[tuple]]:
+    """Group a Lesson-level snapshot by day into the
+    `(prof, class, subject, hour)` tuples consumed by
+    solve_phase_b_for_day's `locked_slots_for_day` parameter."""
+    out: dict[int, list[tuple]] = {}
+    for snap in snapshot:
+        if snap.get("day") is None or snap.get("hour") is None:
+            continue
+        d = int(snap["day"])
+        out.setdefault(d, []).append((
+            snap["teacher_name"], snap["class_name"],
+            snap["subject"], int(snap["hour"]),
+        ))
+    return out
+
+
+def _apply_locked_classrooms(db: Session, solution_id: int,
+                              snapshot: list[dict]) -> int:
+    """After a NATIVE-lock solve, the day/hour of each locked Lesson
+    is already correct (the solver enforced it). This helper just
+    re-applies the locked classroom_name and cotaught_with attributes
+    to the matching Lesson rows. No deletion, no relocation -- the
+    solver did the heavy lifting.
+    """
+    if not snapshot:
+        return 0
+    n_touched = 0
+    for snap in snapshot:
+        if snap.get("day") is None or snap.get("hour") is None:
+            continue
+        l = db.query(models.Lesson).filter(
+            models.Lesson.solution_id == solution_id,
+            models.Lesson.teacher_name == snap["teacher_name"],
+            models.Lesson.class_name == snap["class_name"],
+            models.Lesson.subject == snap["subject"],
+            models.Lesson.day == int(snap["day"]),
+            models.Lesson.hour == int(snap["hour"]),
+        ).first()
+        if l is None:
+            # Should not happen with native locks; if it does, the
+            # solver returned INFEASIBLE earlier or an upstream error
+            # dropped the Lesson. Skip silently and let the caller
+            # decide based on the run's status.
+            continue
+        if snap.get("classroom_name"):
+            l.classroom_name = snap["classroom_name"]
+        if snap.get("cotaught_with"):
+            l.cotaught_with = snap["cotaught_with"]
+        n_touched += 1
+    return n_touched
 
 
 def _snapshot_locked_lessons(db: Session) -> list[dict]:
