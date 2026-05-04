@@ -221,11 +221,18 @@ def coteach_groups_for_solver(db: Session) -> list[dict]:
         'n_hours': int,
         'required': bool,
         'weight': float,
-        'teachers': [teacher_name1, teacher_name2, ...]
+        'teachers': [principal_name, codoc_name1, codoc_name2, ...]
       }
 
     Members are derived from Assignment.coteach_group_id back-FK.
     Skipped silently if the group has fewer than 2 members.
+
+    Convention enforced here: `teachers[0]` is the PRINCIPAL (the
+    member with the most hours; ties broken alphabetically for
+    determinism). Members[1:] are the CO-TEACHERS whose Assignment
+    hours are exactly the n_hours of compresenza. The CP-SAT model
+    in cpsat_v2_timetable.solve_phase_a relies on this ordering to
+    apply day_count[principal] >= coday vs day_count[codoc] == coday.
     """
     out: list[dict] = []
     teachers_by_id = {t.id: t for t in db.query(models.Teacher).all()}
@@ -239,9 +246,15 @@ def coteach_groups_for_solver(db: Session) -> list[dict]:
         cl = classes_by_id.get(g.class_id)
         if cl is None:
             continue
+        # Sort by hours DESC (principal first); ties broken by
+        # teacher name for determinism.
+        members_sorted = sorted(
+            members,
+            key=lambda a: (-int(a.hours or 0),
+                            teachers_by_id[a.teacher_id].name),
+        )
         teacher_names = [teachers_by_id[a.teacher_id].name
-                         for a in members
-                         if a.teacher_id in teachers_by_id]
+                         for a in members_sorted]
         out.append({
             "group_id": g.id,
             "class_name": cl.name,

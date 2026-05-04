@@ -88,7 +88,49 @@ def test_coteach_groups_for_solver(app_with_temp_db):
         assert g["subject"] == "Chimica"
         assert g["n_hours"] == 2
         assert g["required"] is True
-        assert sorted(g["teachers"]) == ["ProfA", "ProfB"]
+        # In _seed_school both ProfA and ProfB have 4 weekly hours
+        # (a symmetric coteach). Order is deterministic via name
+        # ascending after the hours-desc sort.
+        assert g["teachers"] == ["ProfA", "ProfB"]
+    finally:
+        s.close()
+
+
+def test_coteach_groups_principal_ordered_by_hours(app_with_temp_db):
+    """FU: members[0] must be the teacher with most hours
+    (the principal); ordering matters because the CP-SAT model
+    treats members[0] vs members[1:] differently."""
+    _, SessionLocal = app_with_temp_db
+    from backend import models, engine_io
+    s = SessionLocal()
+    try:
+        teaA = models.Teacher(name="ProfA")     # codoc, 2h
+        teaB = models.Teacher(name="ProfB")     # principal, 6h
+        cls = models.SchoolClass(name="2A", n_students=20)
+        s.add_all([teaA, teaB, cls])
+        s.flush()
+        group = models.CoteachGroup(
+            class_id=cls.id, subject="Scienze",
+            n_hours=2, required=True, weight=100.0,
+        )
+        s.add(group)
+        s.flush()
+        # Insert ProfA (codoc) FIRST, then ProfB (principal). Without
+        # sorting, the engine_io output would have ProfA at index 0,
+        # which would mis-classify the principal.
+        s.add(models.Assignment(
+            teacher_id=teaA.id, class_id=cls.id, subject="Scienze",
+            hours=2, coteach_group_id=group.id,
+        ))
+        s.add(models.Assignment(
+            teacher_id=teaB.id, class_id=cls.id, subject="Scienze",
+            hours=6, coteach_group_id=group.id,
+        ))
+        s.commit()
+        groups = engine_io.coteach_groups_for_solver(s)
+        assert len(groups) == 1
+        # ProfB has more hours -> principal -> first.
+        assert groups[0]["teachers"] == ["ProfB", "ProfA"]
     finally:
         s.close()
 
