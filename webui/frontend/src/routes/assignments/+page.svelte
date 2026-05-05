@@ -11,6 +11,7 @@
 
   // teachers qualified for the subject of the row being edited
   let teachersForSubject = [];
+  let allGroups = [];                // [{id, name}]
 
   // load panel
   let loadInfo = null;     // {teachers:[], n_over, n_under, n_total}
@@ -20,6 +21,11 @@
   onMount(async () => {
     await reload();
     allSubjects = (await api.get('/api/subjects')).map((s) => s.name);
+    try {
+      allGroups = await api.get('/api/groups');
+    } catch (e) {
+      allGroups = [];
+    }
   });
 
   async function reload() {
@@ -29,13 +35,20 @@
   }
 
   async function startEdit(cls, row) {
+    // For group rows, `cls` is the synthetic '__group_<name>__' key
+    const isGroupRow = cls.startsWith('__group_');
+    const groupName = isGroupRow
+      ? cls.replace(/^__group_(.+)__$/, '$1')
+      : null;
     editing = {
-      class_name: cls,
+      class_name: isGroupRow ? '' : cls,
       subject: row.subject,
       teacher_name: row.teacher,
       hours: row.hours,
       locked: row.locked || false,
       _existing: row.id,
+      target_kind: isGroupRow ? 'group' : 'class',
+      group_name: groupName,
     };
     teachersForSubject = [];
     try {
@@ -51,11 +64,31 @@
 
   async function save() {
     try {
+      // Client-side XOR validation (target_kind=class|group).
+      const tk = editing.target_kind || 'class';
+      if (tk === 'group') {
+        if (!editing.group_name) {
+          flash('Seleziona un gruppo', 'error');
+          return;
+        }
+        if (!editing.hours || editing.hours <= 0) {
+          flash('Inserisci ore > 0 per il gruppo', 'error');
+          return;
+        }
+      } else {
+        if (!editing.class_name) {
+          flash('Seleziona una classe', 'error');
+          return;
+        }
+      }
       const r = await api.put('/api/assignments/manual', {
-        class_name: editing.class_name,
+        class_name: editing.class_name || '',
         subject: editing.subject,
         teacher_name: editing.teacher_name,
-        locked: editing.locked
+        locked: editing.locked,
+        target_kind: tk,
+        group_name: tk === 'group' ? editing.group_name : null,
+        hours: tk === 'group' ? editing.hours : null,
       });
       if (r.accepted) {
         flash('Cattedra aggiornata', 'success');
@@ -313,7 +346,8 @@
         <thead><tr><th>Docente</th><th>Materia</th><th>Ore</th></tr></thead>
         <tbody>
           {#each rows as row}
-            <tr>
+            <tr class="cursor-pointer hover:bg-cyan-100"
+                on:click={() => startEdit(key, row)}>
               <td>
                 {row.teacher}
                 <span class="pill !text-[10px]"
@@ -333,11 +367,42 @@
 <Modal open={!!editing} title="Cambia docente" onClose={() => (editing = null)}>
   {#if editing}
     <div class="grid grid-cols-2 gap-3">
-      <div class="field">
-        <label>Classe</label>
-        <input value={editing.class_name} disabled/>
+      <div class="field col-span-2">
+        <label>Target</label>
+        <div class="flex gap-2 items-center">
+          <label class="inline-flex items-center gap-1">
+            <input type="radio" bind:group={editing.target_kind}
+                   value="class"/>
+            classe
+          </label>
+          <label class="inline-flex items-center gap-1">
+            <input type="radio" bind:group={editing.target_kind}
+                   value="group"/>
+            gruppo (StudyGroup)
+          </label>
+        </div>
+        {#if editing.target_kind === 'group'}
+          <div class="mt-2">
+            <label class="text-xs text-ink-500">Gruppo</label>
+            <select bind:value={editing.group_name}>
+              <option value="">-- seleziona --</option>
+              {#each allGroups as g}
+                <option value={g.name}>{g.name}</option>
+              {/each}
+            </select>
+            <label class="text-xs text-ink-500 mt-1">Ore (settimanali)</label>
+            <input type="number" min="1" max="30"
+                   bind:value={editing.hours}
+                   class="w-20"/>
+          </div>
+        {:else}
+          <div class="mt-2">
+            <label class="text-xs text-ink-500">Classe</label>
+            <input value={editing.class_name} disabled/>
+          </div>
+        {/if}
       </div>
-      <div class="field">
+      <div class="field col-span-2">
         <label>Materia</label>
         <input value={editing.subject} disabled/>
       </div>

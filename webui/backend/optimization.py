@@ -400,8 +400,59 @@ def run_assignment(time_limit_s: float, workers: int, log: bool,
 
 
 def manual_assignment(db: Session, class_name: str, subject: str,
-                      teacher_name: str, locked: bool = True
+                      teacher_name: str, locked: bool = True,
+                      *, target_kind: str = "class",
+                      group_name: str | None = None,
+                      hours: int | None = None,
                       ) -> tuple[bool, str, models.Assignment | None]:
+    """Create/replace an Assignment for a (target, subject) pair.
+
+    Task C3: target_kind='group' creates a group-targeted Assignment
+    (Assignment.group_id set, class_id=None). Hours come from the
+    explicit `hours` parameter (group-target Assignments don't go
+    through ClassSubject); the caller is responsible for matching
+    the StudyGroup's subject_hours."""
+    if target_kind == "group":
+        if not group_name:
+            return False, "target_kind=group richiede group_name", None
+        if hours is None or hours <= 0:
+            return (False,
+                    "target_kind=group richiede hours > 0", None)
+        g = db.query(models.StudyGroup).filter(
+            models.StudyGroup.name == group_name
+        ).first()
+        if g is None:
+            return (False,
+                    f"Gruppo {group_name} inesistente", None)
+        t = db.query(models.Teacher).filter(
+            models.Teacher.name == teacher_name
+        ).first()
+        if t is None:
+            return False, f"Docente {teacher_name} inesistente", None
+        teacher_subjects = {ts.subject for ts in t.subjects}
+        if teacher_subjects and subject not in teacher_subjects:
+            return (False,
+                    f"Il docente {teacher_name} non insegna "
+                    f"{subject}", None)
+        existing = db.query(models.Assignment).filter(
+            models.Assignment.group_id == g.id,
+            models.Assignment.teacher_id == t.id,
+            models.Assignment.subject == subject,
+        ).first()
+        if existing is not None:
+            existing.hours = int(hours)
+            existing.locked = locked
+            new = existing
+        else:
+            new = models.Assignment(
+                class_id=None, group_id=g.id, teacher_id=t.id,
+                subject=subject, hours=int(hours),
+                locked=locked,
+            )
+            db.add(new)
+        db.commit()
+        return True, "ok", new
+    # Default: target_kind='class'
     cl = db.query(models.SchoolClass).filter(
         models.SchoolClass.name == class_name
     ).first()

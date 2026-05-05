@@ -720,12 +720,20 @@ class MoveLessonOut(BaseModel):
 
 
 class ManualAssignmentIn(BaseModel):
-    """Replace the teacher of a (class, subject) pair. Hours come from the
-    class subject definition."""
-    class_name: str
+    """Replace the teacher of a (class, subject) or (group, subject)
+    pair. Hours come from the class subject definition (for class
+    target) or from `hours` (for group target).
+
+    target_kind defaults to 'class' for backward-compat. When
+    target_kind='group' the payload must include `group_name` AND
+    `hours`; class_name is ignored."""
+    class_name: str = ""
     subject: str
     teacher_name: str
     locked: bool = True
+    target_kind: str = "class"  # 'class' | 'group'
+    group_name: str | None = None
+    hours: int | None = None  # required when target_kind='group'
 
 
 class ManualAssignmentOut(BaseModel):

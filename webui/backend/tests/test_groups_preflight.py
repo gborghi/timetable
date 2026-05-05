@@ -122,6 +122,69 @@ def test_group_zero_hours_violates(client):
         db.close()
 
 
+def test_manual_assignment_to_group_target(client):
+    """Task C3: PUT /api/assignments/manual with target_kind='group'
+    creates an Assignment with group_id set + class_id=None."""
+    from backend import models
+    db = next(client.app.dependency_overrides[
+        next(iter(client.app.dependency_overrides))]())
+    try:
+        t = models.Teacher(name="ProfSpa")
+        cl = models.SchoolClass(name="2A")
+        g = models.StudyGroup(name="_GruppoSpa_", kind="language")
+        db.add_all([t, cl, g])
+        db.flush()
+        s = models.Student(first_name="Anna", last_name="Rossi",
+                            class_id=cl.id)
+        db.add(s)
+        db.flush()
+        db.add(models.GroupMembership(group_id=g.id, student_id=s.id))
+        db.commit()
+    finally:
+        db.close()
+
+    r = client.put("/api/assignments/manual", json={
+        "class_name": "",
+        "subject": "Spagnolo",
+        "teacher_name": "ProfSpa",
+        "locked": False,
+        "target_kind": "group",
+        "group_name": "_GruppoSpa_",
+        "hours": 3,
+    })
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["accepted"] is True, body
+    assert body["new_assignment"]["group_name"] == "_GruppoSpa_"
+    assert body["new_assignment"]["class_name"] is None
+    assert body["new_assignment"]["hours"] == 3
+
+
+def test_manual_assignment_group_missing_group_name(client):
+    """target_kind=group without group_name -> rejected."""
+    from backend import models
+    db = next(client.app.dependency_overrides[
+        next(iter(client.app.dependency_overrides))]())
+    try:
+        db.add(models.Teacher(name="ProfSpa"))
+        db.commit()
+    finally:
+        db.close()
+    r = client.put("/api/assignments/manual", json={
+        "class_name": "",
+        "subject": "Spagnolo",
+        "teacher_name": "ProfSpa",
+        "locked": False,
+        "target_kind": "group",
+        "group_name": None,
+        "hours": 2,
+    })
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["accepted"] is False
+    assert "group_name" in body["reason"]
+
+
 def test_group_valid_passes(client):
     from backend import models
     from backend.optimization import (

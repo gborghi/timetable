@@ -117,17 +117,25 @@ def manual_assignment(payload: schemas.ManualAssignmentIn,
     ok, reason, new = optimization.manual_assignment(
         db, payload.class_name, payload.subject,
         payload.teacher_name, locked=payload.locked,
+        target_kind=payload.target_kind,
+        group_name=payload.group_name,
+        hours=payload.hours,
     )
     out = {"accepted": ok, "reason": reason}
     if ok and new is not None:
         teacher = db.get(models.Teacher, new.teacher_id)
-        sclass = db.get(models.SchoolClass, new.class_id)
+        sclass = (db.get(models.SchoolClass, new.class_id)
+                  if new.class_id is not None else None)
+        sgroup = (db.get(models.StudyGroup, new.group_id)
+                  if new.group_id is not None else None)
         out["new_assignment"] = {
             "id": new.id,
             "teacher_id": new.teacher_id,
             "teacher_name": teacher.name if teacher else "?",
             "class_id": new.class_id,
-            "class_name": sclass.name if sclass else "?",
+            "class_name": sclass.name if sclass else None,
+            "group_id": new.group_id,
+            "group_name": sgroup.name if sgroup else None,
             "subject": new.subject,
             "hours": new.hours,
             "locked": new.locked,
