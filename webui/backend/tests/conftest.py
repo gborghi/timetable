@@ -25,6 +25,35 @@ if WEBUI_DIR not in sys.path:
     sys.path.insert(0, WEBUI_DIR)
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _ensure_live_db_schema():
+    """Ensure the live (dev) DB at webui/data/timetable.db has the
+    canonical schema before any test runs.
+
+    Why: tests in test_perf_budgets.py, test_leaks.py and
+    test_telemetry.py read/write the live DB directly (perf budgets
+    are meant to reflect realistic data volumes, telemetry helpers
+    use module-level SessionLocal). The FastAPI app calls init_db()
+    in its lifespan context manager, but bare `TestClient(app)` (no
+    `with`) does NOT fire lifespan -- so without this fixture, the
+    live DB stays empty and those tests crash with
+    "no such table: <X>".
+
+    init_db() is idempotent (Base.metadata.create_all + light
+    additive migrations), so running it once per session is safe
+    even when the dev DB is already populated by a running uvicorn.
+    """
+    try:
+        from backend.db import init_db
+        init_db()
+    except Exception:
+        # If we can't init the live DB (locked by another process,
+        # missing path, etc), let individual tests surface a
+        # specific error rather than aborting the whole session.
+        pass
+    yield
+
+
 @pytest.fixture
 def temp_db_url(tmp_path):
     """A fresh sqlite:/// URL on a tmp_path file."""
