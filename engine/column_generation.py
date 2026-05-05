@@ -1801,6 +1801,204 @@ def _pricing_subproblem_class_day(
     return (column, rc) if rc < -eps else (None, rc)
 
 
+def _pricing_subproblem_day(
+    day: int, profs: dict, dc_value: dict,
+    lambda_cover: dict, mu_class: dict, mu_teacher: dict,
+    *,
+    time_limit: float = 5.0,
+    workers: int = 2,
+    locks: set | None = None,
+    group_assignments: list | None = None,
+    eps: float = 1e-6,
+) -> tuple[dict | None, float]:
+    """CP-SAT pricer for the day granularity (master variant 2).
+
+    Builds a partial pattern for ALL classes on ONE day -- the
+    largest non-curriculum granularity. The output column places
+    every (t, cl, s) cattedra-day with positive demand on `day`,
+    optimised against the LP duals.
+
+    CP-SAT is ALWAYS invoked. Greedy provides a warm-start hint.
+
+    Reduced cost minimisation (integer-scaled, SCALE=100):
+      Minimize sum_(t,cl,s,h) [-lam_int*slot]
+             + mu_class_int * any_slot_at(cl, day, h)
+             + mu_teacher_int * any_slot_at(t, day, h)
+             + PENALTY_SIXTH * slot_at_h13
+    """
+    from ortools.sat.python import cp_model
+
+    classes = _classes_with_demand(profs, dc_value, group_assignments)
+    if not classes:
+        return None, 0.0
+
+    # Collect all (t, cl, s, q_on_day) demand quintuples.
+    quads: list[tuple[str, str, str, int]] = []  # (t, cl, s, q)
+    for cl in classes:
+        for (t, s) in _teachers_for_class(cl, profs, dc_value,
+                                            group_assignments):
+            q = int(dc_value.get((t, cl, s, day), 0))
+            if q > 0:
+                quads.append((t, cl, s, q))
+    if not quads:
+        return None, 0.0
+
+    # Greedy WARM-START: place each (t, cl, s) in the first
+    # non-conflicting hour, respecting class no-overlap and
+    # teacher no-overlap on this day.
+    hint_set: set = set()  # (t, cl, s, h)
+    occ_cl_h: dict[str, set] = {}  # class -> set of h used
+    occ_t_h: dict[str, set] = {}   # teacher -> set of h used
+    locks_match = [(p, cl_l, s_l, d_l, h_l)
+                    for (p, cl_l, s_l, d_l, h_l) in (locks or ())
+                    if d_l == day]
+    for (p, cl_l, s_l, _d, h_l) in locks_match:
+        hint_set.add((p, cl_l, s_l, h_l))
+        occ_cl_h.setdefault(cl_l, set()).add(h_l)
+        occ_t_h.setdefault(p, set()).add(h_l)
+    for (t, cl, s, q) in quads:
+        already = sum(1 for (p, cl_x, sx, _d, _h) in locks_match
+                       if p == t and cl_x == cl and sx == s)
+        placed = already
+        for h in HOURS:
+            if placed >= q:
+                break
+            if h in occ_cl_h.get(cl, set()):
+                continue
+            if h in occ_t_h.get(t, set()):
+                continue
+            hint_set.add((t, cl, s, h))
+            occ_cl_h.setdefault(cl, set()).add(h)
+            occ_t_h.setdefault(t, set()).add(h)
+            placed += 1
+
+    model = cp_model.CpModel()
+    slot: dict[tuple, cp_model.IntVar] = {}
+    for (t, cl, s, _q) in quads:
+        for h in HOURS:
+            v = model.NewBoolVar(f"slot_{t}_{cl}_{s}_{day}_{h}")
+            slot[(t, cl, s, h)] = v
+            model.AddHint(v, 1 if (t, cl, s, h) in hint_set else 0)
+
+    # Cattedra-hours-on-day equality.
+    for (t, cl, s, q) in quads:
+        model.Add(sum(slot[(t, cl, s, h)] for h in HOURS) == q)
+
+    # Class no-overlap on this day.
+    classes_here = sorted({cl for (_t, cl, _s, _q) in quads})
+    for cl in classes_here:
+        for h in HOURS:
+            terms = [slot[(t, cl, s, h)]
+                      for (t, cl_x, s, _q) in quads
+                      if cl_x == cl if (t, cl, s, h) in slot]
+            seen = set()
+            uniq = []
+            for v in terms:
+                if id(v) not in seen:
+                    seen.add(id(v))
+                    uniq.append(v)
+            if uniq:
+                model.Add(sum(uniq) <= 1)
+
+    # Teacher no-overlap on this day.
+    teachers_here = sorted({t for (t, _cl, _s, _q) in quads})
+    for t in teachers_here:
+        for h in HOURS:
+            terms = [slot[(t, cl, s, h)]
+                      for (tt, cl, s, _q) in quads
+                      if tt == t if (t, cl, s, h) in slot]
+            seen = set()
+            uniq = []
+            for v in terms:
+                if id(v) not in seen:
+                    seen.add(id(v))
+                    uniq.append(v)
+            if uniq:
+                model.Add(sum(uniq) <= 1)
+
+    # Locks (in-scope) forced.
+    for (p, cl_l, s_l, _d, h_l) in locks_match:
+        v = slot.get((p, cl_l, s_l, h_l))
+        if v is not None:
+            model.Add(v == 1)
+
+    # Objective.
+    obj_terms: list = []
+    for (t, cl, s, _q) in quads:
+        lam = float(lambda_cover.get((t, cl, s, day), 0.0))
+        lam_int = int(round(lam * _SCALE))
+        for h in HOURS:
+            v = slot[(t, cl, s, h)]
+            if lam_int != 0:
+                obj_terms.append(-lam_int * v)
+            if h == _SIXTH_HOUR:
+                obj_terms.append(_PENALTY_SIXTH * v)
+    # Class no-overlap mu penalty (per-class on this day).
+    for cl in classes_here:
+        for h in HOURS:
+            mu_cl = float(mu_class.get((cl, day, h), 0.0))
+            mu_int = int(round(mu_cl * _SCALE))
+            if mu_int == 0:
+                continue
+            terms = [slot[(t, cl, s, h)]
+                      for (t, cl_x, s, _q) in quads
+                      if cl_x == cl if (t, cl, s, h) in slot]
+            seen = set()
+            uniq = []
+            for v in terms:
+                if id(v) not in seen:
+                    seen.add(id(v))
+                    uniq.append(v)
+            if uniq:
+                any_v = model.NewBoolVar(f"any_cl_{cl}_{day}_{h}")
+                model.Add(any_v <= sum(uniq))
+                for u in uniq:
+                    model.Add(any_v >= u)
+                obj_terms.append(mu_int * any_v)
+    # Teacher no-overlap mu penalty (per-teacher on this day).
+    for t in teachers_here:
+        for h in HOURS:
+            mu_t = float(mu_teacher.get((t, day, h), 0.0))
+            mu_int = int(round(mu_t * _SCALE))
+            if mu_int == 0:
+                continue
+            terms = [slot[(t, cl, s, h)]
+                      for (tt, cl, s, _q) in quads
+                      if tt == t if (t, cl, s, h) in slot]
+            seen = set()
+            uniq = []
+            for v in terms:
+                if id(v) not in seen:
+                    seen.add(id(v))
+                    uniq.append(v)
+            if uniq:
+                any_v = model.NewBoolVar(f"any_t_{t}_{day}_{h}")
+                model.Add(any_v <= sum(uniq))
+                for u in uniq:
+                    model.Add(any_v >= u)
+                obj_terms.append(mu_int * any_v)
+
+    if obj_terms:
+        model.Minimize(sum(obj_terms))
+
+    solver = cp_model.CpSolver()
+    solver.parameters.max_time_in_seconds = float(time_limit)
+    solver.parameters.num_search_workers = int(workers)
+    solver.parameters.log_search_progress = False
+    status = solver.Solve(model)
+    if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        return None, 0.0
+
+    column: dict = {}
+    for (t, cl, s, _q) in quads:
+        for h in HOURS:
+            if solver.Value(slot[(t, cl, s, h)]):
+                column[(t, cl, s, day, h)] = 1
+
+    rc = _compute_rc_dw(column, lambda_cover, mu_class, mu_teacher)
+    return (column, rc) if rc < -eps else (None, rc)
+
+
 # ---------------- BP loop: dispatcher + driver ----------------
 
 _BP_GRANULARITIES = (
@@ -1810,8 +2008,9 @@ _BP_GRANULARITIES = (
     "teacher-day",
     "class",
     "class-day",
-    # Pricers for the remaining granularities (steps 3g-3h):
-    #   day, curriculum.
+    "day",
+    # Pricer for the remaining granularity (step 3h):
+    #   curriculum.
 )
 
 # Granularities whose columns are MULTI-teacher partial patterns
@@ -1876,6 +2075,8 @@ def _enumerate_pricing_keys(granularity: str, profs: dict,
                             cl, profs, dc_value, group_assignments)):
                     out.append((cl, d))
         return sorted(out)
+    if granularity == "day":
+        return list(DAYS)
     raise NotImplementedError(
         f"granularity {granularity!r} pricing not yet implemented")
 
@@ -1961,6 +2162,15 @@ def _solve_pricing_dw(granularity: str, key,
         class_name, day = key
         return _pricing_subproblem_class_day(
             class_name, day, profs, dc_value,
+            lambda_cover, mu_class, mu_teacher,
+            time_limit=time_limit, workers=workers,
+            locks=locks, group_assignments=group_assignments,
+            eps=eps,
+        )
+    if granularity == "day":
+        day = key
+        return _pricing_subproblem_day(
+            day, profs, dc_value,
             lambda_cover, mu_class, mu_teacher,
             time_limit=time_limit, workers=workers,
             locks=locks, group_assignments=group_assignments,
