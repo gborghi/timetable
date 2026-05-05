@@ -37,6 +37,11 @@
 \usepackage[scaled=0.92]{lato}
 \usepackage[scaled=0.95]{inconsolata}
 \usepackage{microtype}
+% Make underscore literal everywhere (not a math subscript). The
+% English chapter stubs reference Python identifiers like
+% dc_value, model.add_hint, max_active_columns directly in body
+% text -- this avoids manual escaping every occurrence.
+\usepackage{underscore}
 
 % ---------- Geometria di pagina ----------
 \usepackage[a4paper,

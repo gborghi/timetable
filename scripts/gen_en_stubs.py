@@ -217,6 +217,9 @@ for name, (en_title, summary) in CHAPTERS.items():
     if os.path.exists(path):
         continue
     label = "ch:" + name + "_en"
+    # Escape underscores for LaTeX \texttt (which doesn't apply
+    # verbatim treatment to its argument).
+    name_tex = name.replace("_", r"\_")
     body = (
         f"\\chapter{{{en_title}}}\n"
         f"\\label{{{label}}}\n\n"
@@ -225,7 +228,7 @@ for name, (en_title, summary) in CHAPTERS.items():
         f"\\textit{{This chapter is an English summary of the "
         f"corresponding Italian chapter. The full text remains "
         f"in the Italian edition "
-        f"(\\texttt{{docs/manual/chapters/{name}.tex}}). "
+        f"(\\texttt{{docs/manual/chapters/{name_tex}.tex}}). "
         f"For the implementation references see the engine "
         f"modules in \\texttt{{engine/}} and the API "
         f"documentation at \\texttt{{docs/api.md}}.}}\n"
