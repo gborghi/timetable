@@ -185,12 +185,25 @@ def profs_dict_from_db(db: Session) -> dict[str, Any]:
     out: dict[str, Any] = {}
     teachers = {t.id: t for t in db.query(models.Teacher).all()}
     classes = {c.id: c for c in db.query(models.SchoolClass).all()}
+    studygroups = {sg.id: sg for sg in db.query(models.StudyGroup).all()}
     for a in db.query(models.Assignment).all():
         if a.is_potenziamento:
             continue
         t = teachers.get(a.teacher_id)
+        if t is None:
+            continue
+        # Task C3: group-targeted Assignments (group_id set) are
+        # NOT inserted into profs.classi -- the solver receives them
+        # via group_assignments_for_solver as a separate channel.
+        # The augmentation logic in cv2.solve_phase_a creates the
+        # day_count vars from group_assignments, NOT from profs.
+        if a.group_id is not None:
+            # Ensure the prof appears in `out` with an empty classi
+            # so glibero / availability hooks still apply.
+            out.setdefault(t.name, {"classi": {}, "glibero": []})
+            continue
         cl = classes.get(a.class_id)
-        if t is None or cl is None:
+        if cl is None:
             continue
         node = out.setdefault(t.name, {"classi": {}, "glibero": []})
         node["classi"].setdefault(cl.name, {})[a.subject] = {"ore": a.hours}
@@ -237,14 +250,30 @@ def coteach_groups_for_solver(db: Session) -> list[dict]:
     out: list[dict] = []
     teachers_by_id = {t.id: t for t in db.query(models.Teacher).all()}
     classes_by_id = {c.id: c for c in db.query(models.SchoolClass).all()}
+    studygroups_by_id = {
+        sg.id: sg for sg in db.query(models.StudyGroup).all()
+    }
     for g in db.query(models.CoteachGroup).all():
         members = [a for a in db.query(models.Assignment).filter(
             models.Assignment.coteach_group_id == g.id
         ).all() if a.teacher_id in teachers_by_id]
         if len(members) < 2:
             continue
-        cl = classes_by_id.get(g.class_id)
-        if cl is None:
+        # Task C3: a CoteachGroup can target either a class
+        # (g.class_id) or a StudyGroup (g.group_id). Resolve to the
+        # solver-side label (class_name OR group_name).
+        target_label: str | None = None
+        if g.group_id is not None:
+            sg = studygroups_by_id.get(g.group_id)
+            if sg is None:
+                continue
+            target_label = sg.name
+        elif g.class_id is not None:
+            cl = classes_by_id.get(g.class_id)
+            if cl is None:
+                continue
+            target_label = cl.name
+        else:
             continue
         # Sort by hours DESC (principal first); ties broken by
         # teacher name for determinism.
@@ -257,7 +286,7 @@ def coteach_groups_for_solver(db: Session) -> list[dict]:
                          for a in members_sorted]
         out.append({
             "group_id": g.id,
-            "class_name": cl.name,
+            "class_name": target_label,
             "subject": g.subject,
             "n_hours": int(g.n_hours),
             "required": bool(g.required),
@@ -271,27 +300,51 @@ def support_assignments_from_db(db: Session) -> list[dict]:
     """Return the list of sostegno (shadow) assignments. Each entry:
       {
         'teacher_name': str, 'class_name': str,
-        'subject': str (typically 'sostegno'), 'n_hours': int
+        'subject': str (typically 'sostegno'), 'n_hours': int,
+        'is_group_target': bool  # True if class_name is actually a
+                                  # StudyGroup name (Task C3 sostegno
+                                  # following a student in a group).
       }
-    These rows have is_support=True and a class_id set. The solver
-    uses them to add `slot[sost,X,sost,h] <= OR(slot[*,X,*,h] for
-    not-support)` and to NOT count the sostegno slot in class-busy.
+    These rows have is_support=True and either class_id (regular
+    sostegno on a class) or group_id (Task C3: sostegno follows the
+    student in a StudyGroup). The solver uses them to add
+    `slot[sost,X,sost,h] <= OR(slot[*,X,*,h] for not-support)` for
+    class-target, or `slot[sost,G,sost,h] <= group_busy[G,h]` for
+    group-target, and to NOT count the sostegno slot in class-busy.
     """
     out: list[dict] = []
     teachers_by_id = {t.id: t for t in db.query(models.Teacher).all()}
     classes_by_id = {c.id: c for c in db.query(models.SchoolClass).all()}
+    studygroups_by_id = {
+        sg.id: sg for sg in db.query(models.StudyGroup).all()
+    }
     for a in db.query(models.Assignment).filter(
         models.Assignment.is_support == True  # noqa: E712
     ).all():
         t = teachers_by_id.get(a.teacher_id)
-        cl = classes_by_id.get(a.class_id)
-        if t is None or cl is None:
+        if t is None:
+            continue
+        target_label: str | None = None
+        is_group = False
+        if a.group_id is not None:
+            sg = studygroups_by_id.get(a.group_id)
+            if sg is None:
+                continue
+            target_label = sg.name
+            is_group = True
+        elif a.class_id is not None:
+            cl = classes_by_id.get(a.class_id)
+            if cl is None:
+                continue
+            target_label = cl.name
+        else:
             continue
         out.append({
             "teacher_name": t.name,
-            "class_name": cl.name,
+            "class_name": target_label,
             "subject": a.subject,
             "n_hours": int(a.hours),
+            "is_group_target": is_group,
         })
     return out
 

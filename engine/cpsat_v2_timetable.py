@@ -436,10 +436,31 @@ def solve_phase_a(profs, classes, triples, class_profs,
     # Support triples follow the class load: per day, support hours
     # cannot exceed cl_day_load (the support teacher cannot be in
     # class on a day where the class has no lessons).
+    # Task C3: a sostegno can target a StudyGroup (is_group_target);
+    # in that case the bound is "<= sum of day_count of non-support
+    # group triples for that group on day d" -- the prof follows the
+    # student into the group lessons.
     for sa in support_assignments:
         sp = sa["teacher_name"]
         sc = sa["class_name"]
         ss = sa["subject"]
+        if sa.get("is_group_target"):
+            for d in DAYS:
+                key = (sp, sc, ss, d)
+                if key not in day_count:
+                    continue
+                group_day_terms = [
+                    day_count[(pp, cc, ss2, d)]
+                    for (pp, cc, ss2, _) in triples
+                    if cc == sc
+                       and (pp, cc, ss2) in group_triples_set
+                       and (pp, cc, ss2) not in support_triples_set
+                ]
+                if not group_day_terms:
+                    model.Add(day_count[key] == 0)
+                else:
+                    model.Add(day_count[key] <= sum(group_day_terms))
+            continue
         if (sc, 1) not in cl_day_load:
             continue
         for d in DAYS:
@@ -460,6 +481,8 @@ def solve_phase_a(profs, classes, triples, class_profs,
     # be infeasible (no room to schedule both regular lessons and
     # group lessons in the 6 available slots, and the group prevents
     # the home class from running another lesson at the group slot).
+    # Sostegno on group is excluded: it shadows a non-support group
+    # lesson, doesn't add a new occupied slot.
     for cl in classes:
         if (cl, 1) not in cl_day_load:
             continue
@@ -467,6 +490,8 @@ def solve_phase_a(profs, classes, triples, class_profs,
             (ga["teacher_name"], ga["group_name"], ga["subject"])
             for ga in group_assignments
             if cl in ga.get("home_class_names", [])
+            and (ga["teacher_name"], ga["group_name"],
+                  ga["subject"]) not in support_triples_set
         ]
         if not home_group_keys:
             continue
@@ -1020,8 +1045,13 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
                 keys_by_busy.setdefault(bk, []).append(
                     slot[(p, cl, ss, h)])
             # Add group slots for groups whose home_classes include cl.
+            # Sostegno triples on a group are EXCLUDED here: the
+            # support follows the lesson, doesn't add a fresh
+            # class-busy slot. Same exclusion as class-target sostegno.
             for (gp, gcl, gss, _) in triples_active:
                 if (gp, gcl, gss) not in group_triples_set:
+                    continue
+                if (gp, gcl, gss) in support_triples_set:
                     continue
                 if cl not in group_home_classes.get((gp, gcl, gss), []):
                     continue
@@ -1074,18 +1104,39 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
             model.Add(present[h11_idx] == 1)
 
     # Shadow (sostegno): for every support triple, the support
-    # slot at h must imply the class is busy with a non-support
-    # subject at h. slot[(sost, X, sost, h)] <= pr[X, h]. If pr
-    # for that (class, hour) does not exist (the class has no
-    # other subjects mapped to a non-support pr_var that day),
-    # force the support slot to 0.
+    # slot at h must imply the target is busy with a non-support
+    # subject/lesson at h. Two flavors:
+    #   - class-target: slot[sost, X, sost, h] <= pr_per_cl_h[X, h]
+    #     (existing behavior; X is a real class).
+    #   - group-target (Task C3): slot[sost, G, sost, h] <=
+    #     OR(slot[*, G, *, h] for non-support members of G). The
+    #     prof follows the student into the group lessons.
     for sa in support_assignments:
         sp = sa["teacher_name"]
         sc = sa["class_name"]
         ss = sa["subject"]
+        is_group = sa.get("is_group_target", False)
         for h in HOURS:
             sk = slot.get((sp, sc, ss, h))
             if sk is None:
+                continue
+            if is_group:
+                grp_busy_keys = [
+                    slot[(p, c2, s2, h)]
+                    for (p, c2, s2, _) in triples_active
+                    if c2 == sc
+                       and (p, c2, s2) in group_triples_set
+                       and (p, c2, s2) not in support_triples_set
+                ]
+                if not grp_busy_keys:
+                    model.Add(sk == 0)
+                elif len(grp_busy_keys) == 1:
+                    model.Add(sk <= grp_busy_keys[0])
+                else:
+                    gb = model.NewBoolVar(
+                        f"grpbusy_{sc}_{day}_{h}")
+                    model.AddMaxEquality(gb, grp_busy_keys)
+                    model.Add(sk <= gb)
                 continue
             cp = pr_per_cl_h.get((sc, h))
             if cp is None:
