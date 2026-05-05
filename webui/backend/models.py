@@ -643,6 +643,146 @@ class AppState(Base):
     value: Mapped[str] = mapped_column(Text, default="")
 
 
+# ---------- Plessi (school sites / campuses) ----------
+
+
+class Plesso(TenantMixin, TimestampMixin, Base):
+    """A physical site of an Istituto: 'Sede Centrale',
+    'Succursale Via Garibaldi', 'Plesso ITT Via Marconi', etc.
+
+    Each Classroom belongs to at most one Plesso (NULL = default
+    site). Inter-plesso movement is governed by:
+      - PlessoCommutingRule: rules between PAIRS of plessi
+        keyed by entity_kind (teacher / class / group), with an
+        optional entity_id override and priority.
+      - PlessoEntityPolicy: per-entity policies that apply
+        WITHIN a single entity's schedule (single_plesso_per_day
+        or single_plesso_total).
+    """
+    __tablename__ = "plessi"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(
+        String(120), unique=True, index=True,
+        comment="display name, e.g. 'Sede Centrale'"
+    )
+    code: Mapped[str] = mapped_column(
+        String(16), unique=True, index=True,
+        comment="short code, e.g. 'C', 'S1', 'ITT'"
+    )
+    address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class PlessoCommutingRule(TenantMixin, TimestampMixin, Base):
+    """Rule that constrains the movement of a teacher / class /
+    group between TWO plessi when they have consecutive lessons
+    on opposite sides.
+
+    Rule resolution (when applying to entity E moving from
+    plesso A to B in adjacent slots):
+      1. If a rule exists with entity_id=E.id, use it.
+      2. Otherwise use the kind-wide rule (entity_id NULL) for
+         entity_kind matching E's kind.
+      3. Otherwise: no constraint (any movement allowed).
+    Higher `priority` wins among ties.
+
+    `min_gap_hours` = number of empty slots required between the
+    two lessons. 0 means adjacent lessons are OK; 1 requires one
+    empty slot in between, etc.
+
+    `allowed_break_only`: if true, the move is permitted ONLY
+    when the empty gap straddles the school break (between
+    `break_start_hour` and `break_end_hour`).
+
+    `symmetric` (default true): if true the rule applies to both
+    A->B and B->A.
+    """
+    __tablename__ = "plesso_commuting_rules"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    from_plesso_id: Mapped[int] = mapped_column(
+        ForeignKey("plessi.id", ondelete="CASCADE"), index=True)
+    to_plesso_id: Mapped[int] = mapped_column(
+        ForeignKey("plessi.id", ondelete="CASCADE"), index=True)
+    entity_kind: Mapped[str] = mapped_column(
+        String(16), index=True,
+        comment="'teacher' | 'class' | 'group'"
+    )
+    entity_id: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, index=True,
+        comment="polymorphic FK; NULL = applies to all entities of "
+                "this kind"
+    )
+    min_gap_hours: Mapped[int] = mapped_column(Integer, default=0)
+    allowed_break_only: Mapped[bool] = mapped_column(
+        Boolean, default=False)
+    break_start_hour: Mapped[int | None] = mapped_column(
+        Integer, nullable=True)
+    break_end_hour: Mapped[int | None] = mapped_column(
+        Integer, nullable=True)
+    symmetric: Mapped[bool] = mapped_column(Boolean, default=True)
+    priority: Mapped[int] = mapped_column(Integer, default=0)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    __table_args__ = (
+        UniqueConstraint(
+            "from_plesso_id", "to_plesso_id",
+            "entity_kind", "entity_id",
+            name="uq_plesso_commuting_rule"),
+    )
+
+
+class PlessoEntityPolicy(TenantMixin, TimestampMixin, Base):
+    """Per-entity (teacher or class) global policy for plesso
+    selection across the whole schedule.
+
+    `policy`:
+      - 'any': no restriction (default; only commuting rules apply)
+      - 'single_plesso_per_day': for each day, all the entity's
+        lessons must be in the SAME plesso (a teacher cannot
+        bounce between sites within one day).
+      - 'single_plesso_total': across the WHOLE week, all the
+        entity's lessons must be in one plesso. If `plesso_id` is
+        non-null that plesso is forced; if NULL the solver picks
+        any plesso uniformly.
+
+    Rule resolution: per-entity (entity_id non-NULL) overrides the
+    kind-wide policy (entity_id NULL). Higher `priority` wins
+    among ties.
+
+    Note: groups are NOT in this table -- group-level policies
+    are derived from the policies of the group's member entities
+    by the solver (or the group's logical plesso assignment, if
+    any).
+    """
+    __tablename__ = "plesso_entity_policies"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    entity_kind: Mapped[str] = mapped_column(
+        String(16), index=True,
+        comment="'teacher' | 'class'"
+    )
+    entity_id: Mapped[int | None] = mapped_column(
+        Integer, nullable=True, index=True,
+        comment="polymorphic FK; NULL = kind-wide default"
+    )
+    policy: Mapped[str] = mapped_column(
+        String(32), default="any",
+        comment="'any' | 'single_plesso_per_day' | "
+                "'single_plesso_total'"
+    )
+    plesso_id: Mapped[int | None] = mapped_column(
+        ForeignKey("plessi.id", ondelete="SET NULL"),
+        nullable=True, index=True,
+        comment="for single_plesso_total only; NULL means the "
+                "solver picks any plesso uniformly"
+    )
+    priority: Mapped[int] = mapped_column(Integer, default=0)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    __table_args__ = (
+        UniqueConstraint(
+            "entity_kind", "entity_id", "policy",
+            name="uq_plesso_entity_policy"),
+    )
+
+
 # ---------- Classrooms (aule) ----------
 
 
@@ -650,6 +790,12 @@ class Classroom(TenantMixin, TimestampMixin, Base):
     __tablename__ = "classrooms"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    plesso_id: Mapped[int | None] = mapped_column(
+        ForeignKey("plessi.id", ondelete="SET NULL"),
+        nullable=True, index=True,
+        comment="the plesso this classroom is located in; NULL "
+                "means 'default site' (no plesso constraint)"
+    )
     kind: Mapped[str] = mapped_column(
         String(32), default="standard",
         comment="standard / lab_chimica / lab_fisica / lab_informatica / "

@@ -423,3 +423,19 @@ def _apply_lightweight_migrations() -> None:
             # dev DB run `alembic upgrade head` once.
         # Coteach_groups table is created by Base.metadata.create_all
         # on init_db() (it's a brand-new table). No DDL needed here.
+
+        # PLESSI: add classrooms.plesso_id (the plessi /
+        # plesso_commuting_rules / plesso_entity_policies tables
+        # are themselves brand-new and get created by
+        # Base.metadata.create_all; only the FK column on
+        # classrooms needs a per-DB additive migration).
+        if insp.has_table("classrooms") and not has_column(
+                "classrooms", "plesso_id"):
+            conn.execute(text(
+                "ALTER TABLE classrooms ADD COLUMN plesso_id INTEGER"
+            ))
+            conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS "
+                "ix_classrooms_plesso_id "
+                "ON classrooms (plesso_id)"
+            ))

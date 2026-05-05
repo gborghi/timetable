@@ -235,6 +235,14 @@ def _apply_migrations_on(engine):
                     "ALTER TABLE lessons ADD COLUMN "
                     "group_name VARCHAR(120)"
                 ))
+        # PLESSI: classrooms.plesso_id (Plesso/CommutingRule/
+        # EntityPolicy tables are created by Base.metadata.create_all
+        # so they don't need an explicit migration here).
+        if insp.has_table("classrooms") and not has_column(
+                "classrooms", "plesso_id"):
+            conn.execute(text(
+                "ALTER TABLE classrooms ADD COLUMN plesso_id INTEGER"
+            ))
 
 
 @pytest.fixture
