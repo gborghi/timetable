@@ -802,14 +802,138 @@ def _pricing_subproblem_teacher_class_subject(
     return None, rc
 
 
+def _pricing_subproblem_teacher_subject(
+    teacher: str, subject: str, profs: dict, dc_value: dict,
+    lambda_duals: dict, mu_t: float,
+    *,
+    time_limit: float = 5.0,
+    workers: int = 2,
+    locks: set | None = None,
+    group_assignments: list | None = None,
+    eps: float = 1e-6,
+) -> tuple[dict | None, float]:
+    """CP-SAT pricer for the teacher-subject granularity.
+
+    Optimises the (teacher, *, subject, *, *) slice -- ALL classes
+    in which the teacher teaches `subject`, across all (d, h). The
+    teacher's OTHER subjects (taught in other classes too) are
+    greedy-placed first and locked.
+
+    When useful: teachers with disciplinary specialisation that
+    teach the same subject in multiple classes can have their
+    weekly load REbalanced across classes without affecting their
+    other subjects.
+    """
+    from ortools.sat.python import cp_model
+
+    pairs_by_t = _profs_iter_with_groups(profs, group_assignments)
+    pairs = pairs_by_t.get(teacher, [])
+    classes_for_subj = sorted({cl for (cl, s) in pairs if s == subject})
+    if not classes_for_subj:
+        return None, 0.0
+
+    # Greedy-place EVERYTHING, then rip out the (teacher, *, subject)
+    # entries: those are CP-SAT's playground.
+    base_pat, occ_t, occ_c = _greedy_base_pattern(
+        teacher, profs, dc_value,
+        skip_classes=set(), locks=locks,
+        group_assignments=group_assignments,
+    )
+    keys_to_drop = [k for k in base_pat.keys()
+                    if k[0] == teacher and k[2] == subject]
+    for k in keys_to_drop:
+        del base_pat[k]
+        _, cl, _, d, h = k
+        occ_t.discard((teacher, d, h))
+        occ_c.discard((cl, d, h))
+
+    # Per-(class, day) demand for the (t, *, s) slice.
+    triples: list[tuple[str, int, int]] = []  # (cl, d, q)
+    for cl in classes_for_subj:
+        for d in DAYS:
+            q = int(dc_value.get((teacher, cl, subject, d), 0))
+            if q > 0:
+                triples.append((cl, d, q))
+    if not triples:
+        rc = _compute_rc(base_pat, teacher, lambda_duals, mu_t, profs)
+        return (base_pat, rc) if rc < -eps else (None, rc)
+
+    model = cp_model.CpModel()
+    slot: dict[tuple, cp_model.IntVar] = {}
+    for (cl, d, _q) in triples:
+        for h in HOURS:
+            v = model.NewBoolVar(f"slot_{teacher}_{cl}_{subject}_{d}_{h}")
+            if (teacher, d, h) in occ_t or (cl, d, h) in occ_c:
+                model.Add(v == 0)
+            slot[(cl, d, h)] = v
+
+    # Cattedra-hours equality per (cl, d).
+    for (cl, d, q) in triples:
+        model.Add(sum(slot[(cl, d, h)] for h in HOURS) == q)
+
+    # Teacher no-overlap on (d, h): at most one of the new slot vars
+    # can be active per (d, h) (they all belong to teacher t).
+    for d in DAYS:
+        for h in HOURS:
+            terms = [slot[(cl, d, h)] for (cl, d2, _q) in triples
+                      if d2 == d if (cl, d, h) in slot]
+            seen = set()
+            uniq = []
+            for v in terms:
+                if id(v) not in seen:
+                    seen.add(id(v))
+                    uniq.append(v)
+            if uniq:
+                model.Add(sum(uniq) <= 1)
+
+    # Locks for (t, *, s, d, h).
+    for (p, cl_l, s_l, d_l, h_l) in (locks or ()):
+        if p != teacher or s_l != subject:
+            continue
+        v = slot.get((cl_l, d_l, h_l))
+        if v is not None:
+            model.Add(v == 1)
+
+    obj_terms: list = []
+    for (cl, d, _q) in triples:
+        lam = float(lambda_duals.get(
+            (teacher, cl, subject, d), 0.0))
+        lam_int = int(round(lam * _SCALE))
+        for h in HOURS:
+            v = slot[(cl, d, h)]
+            if lam_int != 0:
+                obj_terms.append(-lam_int * v)
+            if h == _SIXTH_HOUR:
+                obj_terms.append(_PENALTY_SIXTH * v)
+    if obj_terms:
+        model.Minimize(sum(obj_terms))
+
+    solver = cp_model.CpSolver()
+    solver.parameters.max_time_in_seconds = float(time_limit)
+    solver.parameters.num_search_workers = int(workers)
+    solver.parameters.log_search_progress = False
+    status = solver.Solve(model)
+    if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        return None, 0.0
+
+    full_pat = dict(base_pat)
+    for (cl, d, _q) in triples:
+        for h in HOURS:
+            if solver.Value(slot[(cl, d, h)]):
+                full_pat[(teacher, cl, subject, d, h)] = 1
+    rc = _compute_rc(full_pat, teacher, lambda_duals, mu_t, profs)
+    return (full_pat, rc) if rc < -eps else (None, rc)
+
+
 # ---------------- BP loop: dispatcher + driver ----------------
 
 _BP_GRANULARITIES = (
     "teacher-class",
     "teacher-class-subject",
+    "teacher-subject",
     # Pricers for additional granularities arrive in subsequent
-    # commits (steps 3c-3h):
-    #   teacher-subject, teacher-day,
+    # commits (steps 3d-3h):
+    #   teacher-day,
     #   class, class-day, day, curriculum.
 )
 
@@ -839,6 +963,17 @@ def _enumerate_pricing_keys(granularity: str, profs: dict,
                 if any(dc_value.get((t, cl, s, d), 0) > 0
                         for d in DAYS):
                     out.append((t, cl, s))
+        return sorted(out)
+    if granularity == "teacher-subject":
+        out = []
+        for t, pairs in pairs_by_t.items():
+            subjects = sorted({s for (_cl, s) in pairs})
+            for s in subjects:
+                if any(dc_value.get((t, cl, s, d), 0) > 0
+                        for (cc, ss) in pairs if ss == s
+                        for cl in [cc]
+                        for d in DAYS):
+                    out.append((t, s))
         return sorted(out)
     raise NotImplementedError(
         f"granularity {granularity!r} pricing not yet implemented")
@@ -870,6 +1005,16 @@ def _solve_pricing(granularity: str, key,
         mu_t = float(mu_duals.get(teacher, 0.0))
         return _pricing_subproblem_teacher_class_subject(
             teacher, class_name, subject, profs, dc_value,
+            lambda_duals, mu_t,
+            time_limit=time_limit, workers=workers,
+            locks=locks, group_assignments=group_assignments,
+            eps=eps,
+        )
+    if granularity == "teacher-subject":
+        teacher, subject = key
+        mu_t = float(mu_duals.get(teacher, 0.0))
+        return _pricing_subproblem_teacher_subject(
+            teacher, subject, profs, dc_value,
             lambda_duals, mu_t,
             time_limit=time_limit, workers=workers,
             locks=locks, group_assignments=group_assignments,

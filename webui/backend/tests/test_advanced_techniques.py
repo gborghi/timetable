@@ -434,6 +434,54 @@ def test_bp_loop_with_teacher_class_subject_granularity():
         assert obj_bp <= obj_id + 1e-6
 
 
+def test_bp_pricing_subproblem_teacher_subject_smoke():
+    """teacher-subject pricer: with strong lambda on (T1, 1A, Mat, 1)
+    the (t, *, Mat, *, *) slice gets re-optimised across 1A and 1B
+    while the OTHER teachers' slots are left untouched."""
+    import column_generation as cg
+    profs = _two_class_profs()
+    dc_value = _two_class_dc()
+    lambda_duals = {("T1", "1A", "Mat", 1): 100.0}
+    pat, rc = cg._pricing_subproblem_teacher_subject(
+        "T1", "Mat", profs, dc_value,
+        lambda_duals, mu_t=0.0,
+        time_limit=2.0, workers=1,
+    )
+    assert pat is not None, f"pricer returned None, rc={rc}"
+    assert rc < 0.0, f"expected rc<0, got {rc}"
+    # All 8 hours of T1's Mat (4 in 1A day1 + 4 in 1B day2) present.
+    placed = sum(1 for (p, _c, s, _d, _h), v in pat.items()
+                 if v and p == "T1" and s == "Mat")
+    assert placed == 8
+
+
+def test_bp_loop_with_teacher_subject_granularity():
+    """End-to-end BP with granularity=teacher-subject must reach a
+    HARD-feasible solution and not regress soft cost."""
+    import column_generation as cg
+    profs = _two_class_profs()
+    dc_value = _two_class_dc()
+    sol_id, info_id = cg.run_column_generation(
+        profs, dc_value, time_budget_s=20.0,
+        patterns_per_teacher=2, max_iterations=2, log=False,
+        mode="iterative-diversified", granularity="teacher",
+    )
+    sol_bp, info_bp = cg.run_column_generation(
+        profs, dc_value, time_budget_s=20.0,
+        patterns_per_teacher=2, max_iterations=2, log=False,
+        mode="branch-and-price", granularity="teacher-subject",
+        bp_max_iterations=3, pricer_time_limit=2.0, pricer_workers=1,
+    )
+    assert info_bp["granularity"] == "teacher-subject"
+    assert "bp_terminated_reason" in info_bp
+    assert (info_bp["feasible_after_assembly"]
+            or info_bp["feasible_after_completion"])
+    obj_id = info_id["master_obj_final"]
+    obj_bp = info_bp["master_obj_final"]
+    if obj_id is not None and obj_bp is not None:
+        assert obj_bp <= obj_id + 1e-6
+
+
 def test_bp_loop_runs_and_stays_feasible():
     """End-to-end BP run with mode=branch-and-price and
     granularity=teacher-class on the 2-class scaffold must:
