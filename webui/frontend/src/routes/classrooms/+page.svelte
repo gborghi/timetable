@@ -62,12 +62,17 @@
     palestra: 1, biblioteca: 1, aula_speciale: 1
   };
   let busyGen = false;
+  let plessi = [];
 
   onMount(async () => {
     try {
       allSubjects = (await subjectsSvc.list()).map((s) => s.name).sort();
       allClasses = (await classesSvc.list()).map((c) => c.name).sort();
     } catch { /* */ }
+    try {
+      const r = await fetch('/api/plessi');
+      if (r.ok) plessi = await r.json();
+    } catch { plessi = []; }
     await reloadTags();
   });
 
@@ -114,7 +119,7 @@
       _new: true, name: '', kind: 'standard',
       capacity: 30, multi_class: false, multi_class_max: 1,
       multi_class_pref: 1, multi_class_pref_weight: 10,
-      notes: '',
+      notes: '', plesso_id: null,
       subject_prefs: [], class_prefs: [], unavailability: [],
       tags: [],
     };
@@ -393,6 +398,14 @@
       </div>
       <div class="field"><label>Capienza</label><input type="number" bind:value={editing.capacity}/></div>
       <div class="field"><label>Note</label><input bind:value={editing.notes}/></div>
+      <div class="field"><label>Plesso</label>
+        <select bind:value={editing.plesso_id}>
+          <option value={null}>(nessuno)</option>
+          {#each (plessi || []) as p}
+            <option value={p.id}>{p.code} - {p.name}</option>
+          {/each}
+        </select>
+      </div>
     </div>
 
     <div class="mt-4 grid grid-cols-3 gap-3 items-end">

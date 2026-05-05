@@ -47,6 +47,7 @@ from backend.routers import (  # noqa: E402
     logical,
     monitor,
     optimize,
+    plessi,
     saved_views,
     schedule,
     students,
@@ -123,6 +124,7 @@ app.include_router(assignments.router)
 app.include_router(dataset.router)
 app.include_router(schedule.router)
 app.include_router(optimize.router)
+app.include_router(plessi.router)
 app.include_router(logical.router)
 app.include_router(curricula.router)
 app.include_router(students.router)

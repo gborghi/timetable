@@ -41,6 +41,7 @@
       { href: '/groups',     label: 'Gruppi'    },
       { href: '/subjects',   label: 'Materie'   },
       { href: '/classrooms', label: 'Aule'      },
+      { href: '/plessi',     label: 'Plessi'    },
     ] },
     { kind: 'menu', label: 'Pianificazione', children: [
       { href: '/coteaching',  label: 'Compresenze' },

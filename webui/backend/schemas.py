@@ -782,6 +782,7 @@ class ClassroomBase(BaseModel):
     multi_class_pref: int = 1
     multi_class_pref_weight: float = 10.0
     notes: str | None = None
+    plesso_id: int | None = None
     # Free-form tags ("lab", "fisica", "matematica", "scientifico", ...).
     # Stored as a many-to-many on the backend; surfaced as a list of
     # tag-name strings in the API for simplicity.
@@ -799,6 +800,66 @@ class ClassroomOut(ClassroomBase):
     subject_prefs: list[ClassroomSubjectPrefIn] = Field(default_factory=list)
     class_prefs: list[ClassroomClassPrefIn] = Field(default_factory=list)
     unavailability: list[UnavailabilitySlot] = Field(default_factory=list)
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ---------- Plessi (school sites) ----------
+
+
+class PlessoBase(BaseModel):
+    name: str
+    code: str
+    address: str | None = None
+    notes: str | None = None
+
+
+class PlessoIn(PlessoBase):
+    pass
+
+
+class PlessoOut(PlessoBase):
+    id: int
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PlessoCommutingRuleBase(BaseModel):
+    from_plesso_id: int
+    to_plesso_id: int
+    entity_kind: str   # 'teacher' | 'class' | 'group'
+    entity_id: int | None = None
+    min_gap_hours: int = 0
+    allowed_break_only: bool = False
+    break_start_hour: int | None = None
+    break_end_hour: int | None = None
+    symmetric: bool = True
+    priority: int = 0
+    notes: str | None = None
+
+
+class PlessoCommutingRuleIn(PlessoCommutingRuleBase):
+    pass
+
+
+class PlessoCommutingRuleOut(PlessoCommutingRuleBase):
+    id: int
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PlessoEntityPolicyBase(BaseModel):
+    entity_kind: str   # 'teacher' | 'class'
+    entity_id: int | None = None
+    policy: str = "any"   # 'any' | 'single_plesso_per_day' | 'single_plesso_total'
+    plesso_id: int | None = None
+    priority: int = 0
+    notes: str | None = None
+
+
+class PlessoEntityPolicyIn(PlessoEntityPolicyBase):
+    pass
+
+
+class PlessoEntityPolicyOut(PlessoEntityPolicyBase):
+    id: int
     model_config = ConfigDict(from_attributes=True)
 
 

@@ -23,6 +23,7 @@ def _to_out(c: models.Classroom) -> schemas.ClassroomOut:
         multi_class_pref=c.multi_class_pref,
         multi_class_pref_weight=c.multi_class_pref_weight,
         notes=c.notes,
+        plesso_id=c.plesso_id,
         tags=tags,
         subject_prefs=[
             schemas.ClassroomSubjectPrefIn(
@@ -157,6 +158,7 @@ def _apply(r: models.Classroom, p: schemas.ClassroomIn, db: Session):
     r.multi_class_pref = p.multi_class_pref
     r.multi_class_pref_weight = p.multi_class_pref_weight
     r.notes = p.notes
+    r.plesso_id = p.plesso_id
     if r.id is not None:
         db.query(models.ClassroomSubjectPreference).filter(
             models.ClassroomSubjectPreference.classroom_id == r.id
