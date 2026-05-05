@@ -2729,6 +2729,14 @@ def _apply_rooms_to_solution(sid: int, *, time_limit_s: float,
     from classroom_assignment import (  # type: ignore
         solve_classroom_assignment, greedy_classroom_assignment,
     )
+    try:
+        from plessi_constraints import (  # type: ignore
+            load_plessi_data,
+        )
+    except ImportError:
+        from engine.plessi_constraints import (  # type: ignore
+            load_plessi_data,
+        )
     with SessionLocal() as db:
         lessons = engine_io.lessons_for_classroom_step(db, sid)
         rooms = engine_io.classrooms_dicts_from_db(db)
@@ -2736,6 +2744,7 @@ def _apply_rooms_to_solution(sid: int, *, time_limit_s: float,
         # locked Lessons that have a classroom_name and force the
         # solver to assign that room to that lesson.
         locked_snap = _snapshot_locked_lessons(db)
+        plessi_data = load_plessi_data(db)
     locked_classrooms = [
         (d["class_name"], d["subject"], int(d["day"]), int(d["hour"]),
          d["classroom_name"])
@@ -2756,6 +2765,7 @@ def _apply_rooms_to_solution(sid: int, *, time_limit_s: float,
         lessons, rooms, time_limit_s=time_limit_s,
         workers=workers, log=log,
         locked_classrooms=locked_classrooms or None,
+        plessi_data=plessi_data,
     )
     if result is None:
         print(f"[{log_prefix}] CP-SAT infeasible ({status}); fallback greedy")
@@ -2782,6 +2792,14 @@ def run_classroom_assignment(time_limit_s: float, workers: int, log: bool,
         from classroom_assignment import (  # type: ignore
             solve_classroom_assignment, greedy_classroom_assignment,
         )
+        try:
+            from plessi_constraints import (  # type: ignore
+                load_plessi_data,
+            )
+        except ImportError:
+            from engine.plessi_constraints import (  # type: ignore
+                load_plessi_data,
+            )
         with SessionLocal() as db:
             active = engine_io.get_active_solution(db)
             if active is None:
@@ -2791,6 +2809,7 @@ def run_classroom_assignment(time_limit_s: float, workers: int, log: bool,
             lessons = engine_io.lessons_for_classroom_step(db, active.id)
             rooms = engine_io.classrooms_dicts_from_db(db)
             locked_snap = _snapshot_locked_lessons(db)
+            plessi_data = load_plessi_data(db)
         locked_classrooms = [
             (d["class_name"], d["subject"], int(d["day"]), int(d["hour"]),
              d["classroom_name"])
@@ -2811,6 +2830,7 @@ def run_classroom_assignment(time_limit_s: float, workers: int, log: bool,
             lessons, rooms, time_limit_s=time_limit_s,
             workers=workers, log=log,
             locked_classrooms=locked_classrooms or None,
+            plessi_data=plessi_data,
         )
         if result is None:
             print(f"[rooms] CP-SAT infeasible ({status}); fallback greedy")

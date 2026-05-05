@@ -109,6 +109,7 @@ def solve_classroom_assignment(
     workers: int = 4,
     log: bool = False,
     locked_classrooms: list[tuple] | None = None,
+    plessi_data=None,
 ) -> tuple[dict | None, str]:
     """Returns (mapping, status_name). mapping is None if infeasible.
 
@@ -225,6 +226,50 @@ def solve_classroom_assignment(
             continue
         model.Add(var == 1)
 
+    # Plessi constraints (commuting rules + entity policies for
+    # teachers). Builds teacher_for_lesson on the fly so the helper
+    # can group decisions by (teacher, day, hour).
+    n_pl_commute = 0
+    n_pl_policy = 0
+    if plessi_data is not None and getattr(
+            plessi_data, "classroom_to_plesso", None):
+        teacher_for_lesson: dict[tuple, list[str]] = {}
+        for L in lessons:
+            key = (L["class"], L["subject"],
+                   int(L["day"]), int(L["hour"]))
+            t_list = teacher_for_lesson.setdefault(key, [])
+            if L.get("teacher"):
+                t_list.append(L["teacher"])
+            for ct in L.get("co_teachers") or []:
+                if ct and ct not in t_list:
+                    t_list.append(ct)
+        days_set = sorted({k[2] for k in lesson_keys})
+        hours_set = sorted({k[3] for k in lesson_keys})
+        try:
+            from plessi_constraints import (  # type: ignore
+                add_plesso_commuting_constraints_classroom_assignment,
+                add_plesso_entity_policy_constraints_classroom_assignment,
+            )
+        except ImportError:
+            from engine.plessi_constraints import (  # type: ignore
+                add_plesso_commuting_constraints_classroom_assignment,
+                add_plesso_entity_policy_constraints_classroom_assignment,
+            )
+        n_pl_commute = (
+            add_plesso_commuting_constraints_classroom_assignment(
+                model, x, eligible, plessi_data,
+                teacher_for_lesson=teacher_for_lesson,
+                days=days_set, hours=hours_set,
+            )
+        )
+        n_pl_policy = (
+            add_plesso_entity_policy_constraints_classroom_assignment(
+                model, x, eligible, plessi_data,
+                teacher_for_lesson=teacher_for_lesson,
+                days=days_set,
+            )
+        )
+
     # Bonus terms (negative because we minimize -bonus)
     bonus_terms: list[Any] = []
     for key in lesson_keys:
@@ -267,6 +312,8 @@ def solve_classroom_assignment(
         f"[classroom] status={solver.StatusName(status)} "
         f"elapsed={elapsed:.1f}s lessons={len(lesson_keys)} "
         f"rooms={len(rooms)}"
+        + (f" plessi(commute={n_pl_commute}, policy={n_pl_policy})"
+           if (n_pl_commute or n_pl_policy) else "")
     )
     return out, solver.StatusName(status)
 

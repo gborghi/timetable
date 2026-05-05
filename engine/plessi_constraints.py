@@ -249,6 +249,191 @@ def _adjacent_violates_rule(
     return False
 
 
+# ---------- Classroom-assignment integration ----------
+#
+# The function above (`add_plesso_commuting_constraints_for_teacher`)
+# is for the case where slots are decision vars and classrooms are
+# already fixed. The helpers below are for the opposite direction:
+# the classroom-assignment CP-SAT, where (class, subject, day, hour)
+# slots are FIXED (they come from the timetable solution) and the
+# decision is which room to use. In this regime we tighten directly
+# on the room-choice variables `x[(lesson_key, room_name)]`.
+
+def add_plesso_commuting_constraints_classroom_assignment(
+    model,
+    x: dict,
+    eligible: dict,
+    plessi: PlessiData,
+    *,
+    teacher_for_lesson: dict[tuple, list[str]],
+    days: Iterable[int],
+    hours: Iterable[int],
+) -> int:
+    """Forbid (room_a, room_b) pairs where the SAME teacher would
+    cross plessi at adjacent hours (h, h+1) on the same day and a
+    commuting rule says that's not allowed.
+
+    `x`: ``(lesson_key, room_name) -> BoolVar`` -- the room-choice
+    decision variables. ``lesson_key`` is ``(class, subject, day,
+    hour)``.
+    `eligible`: ``lesson_key -> list[room_name]`` -- the rooms that
+    can host that lesson (built by the caller after the HARD
+    eligibility filter).
+    `teacher_for_lesson`: ``lesson_key -> list[str]`` -- principal
+    plus co-teachers for that slot.
+
+    Returns the number of pair-forbid constraints emitted (useful for
+    diagnostics).
+    """
+    if not plessi.commuting_rules:
+        return 0
+
+    by_t_d_h: dict[tuple[str, int, int], list[tuple]] = {}
+    for key, t_list in teacher_for_lesson.items():
+        cl, subj, d, h = key
+        for t_name in t_list:
+            by_t_d_h.setdefault((t_name, d, h), []).append(key)
+
+    days_list = sorted(set(days))
+    hours_list = sorted(set(hours))
+
+    n_emitted = 0
+    teachers = sorted({t for (t, _, _) in by_t_d_h})
+    for t_name in teachers:
+        teacher_id = plessi.teacher_name_to_id.get(t_name)
+        for d in days_list:
+            for i, h_a in enumerate(hours_list[:-1]):
+                h_b = hours_list[i + 1]
+                keys_a = by_t_d_h.get((t_name, d, h_a), [])
+                keys_b = by_t_d_h.get((t_name, d, h_b), [])
+                if not keys_a or not keys_b:
+                    continue
+                for key_a in keys_a:
+                    for room_a in eligible.get(key_a, []):
+                        pl_a = plessi.classroom_to_plesso.get(room_a)
+                        if pl_a is None:
+                            continue
+                        for key_b in keys_b:
+                            for room_b in eligible.get(key_b, []):
+                                pl_b = plessi.classroom_to_plesso.get(
+                                    room_b)
+                                if pl_b is None or pl_b == pl_a:
+                                    continue
+                                rule = resolve_commuting_rule(
+                                    plessi, pl_a, pl_b,
+                                    "teacher", teacher_id)
+                                if rule is None:
+                                    continue
+                                if not _adjacent_violates_rule(
+                                        rule, h_a, h_b):
+                                    continue
+                                va = x.get((key_a, room_a))
+                                vb = x.get((key_b, room_b))
+                                if va is None or vb is None:
+                                    continue
+                                model.AddBoolOr(
+                                    [va.Not(), vb.Not()])
+                                n_emitted += 1
+    return n_emitted
+
+
+def add_plesso_entity_policy_constraints_classroom_assignment(
+    model,
+    x: dict,
+    eligible: dict,
+    plessi: PlessiData,
+    *,
+    teacher_for_lesson: dict[tuple, list[str]],
+    days: Iterable[int],
+) -> int:
+    """Apply teacher entity policies on the classroom-assignment CP-SAT.
+
+    Implemented:
+      - ``single_plesso_per_day``: per (teacher, day), at most one
+        plesso may host that teacher's lessons.
+      - ``single_plesso_total``: every room hosting any of that
+        teacher's lessons must lie in ``policy.plesso_id``.
+      - ``any``: no constraint emitted.
+
+    Class-side and group-side policies are TODO; they require the
+    class_name -> id and group_name -> id maps and a similar pattern
+    grouped by (class, day) instead of (teacher, day).
+
+    Returns the number of constraints / variables emitted.
+    """
+    if not plessi.entity_policies:
+        return 0
+
+    by_t_d: dict[tuple[str, int], list[tuple]] = {}
+    for key, t_list in teacher_for_lesson.items():
+        cl, subj, d, h = key
+        for t_name in t_list:
+            by_t_d.setdefault((t_name, d), []).append(key)
+
+    days_list = sorted(set(days))
+    n_emitted = 0
+    teachers = sorted({t for (t, _) in by_t_d})
+
+    for t_name in teachers:
+        teacher_id = plessi.teacher_name_to_id.get(t_name)
+        policy = resolve_entity_policy(plessi, "teacher", teacher_id)
+        if policy is None or policy.policy == "any":
+            continue
+
+        if policy.policy == "single_plesso_total":
+            target = policy.plesso_id
+            for d in days_list:
+                for key in by_t_d.get((t_name, d), []):
+                    for room in eligible.get(key, []):
+                        pl = plessi.classroom_to_plesso.get(room)
+                        if pl is None or pl == target:
+                            continue
+                        var = x.get((key, room))
+                        if var is not None:
+                            model.Add(var == 0)
+                            n_emitted += 1
+            continue
+
+        if policy.policy == "single_plesso_per_day":
+            # Per (teacher, day, plesso) indicator: 1 iff this
+            # teacher uses that plesso on that day. Cap sum <= 1.
+            for d in days_list:
+                keys_today = by_t_d.get((t_name, d), [])
+                if not keys_today:
+                    continue
+                # Collect all plessi reachable today
+                plessi_today: set[int] = set()
+                for key in keys_today:
+                    for room in eligible.get(key, []):
+                        pl = plessi.classroom_to_plesso.get(room)
+                        if pl is not None:
+                            plessi_today.add(pl)
+                if len(plessi_today) <= 1:
+                    continue
+                ind = {}
+                for pl in plessi_today:
+                    iv = model.NewBoolVar(
+                        f"plday_{t_name}_{d}_{pl}")
+                    ind[pl] = iv
+                # Link: x[(key, room)] => ind[plesso(room)] = 1
+                for key in keys_today:
+                    for room in eligible.get(key, []):
+                        pl = plessi.classroom_to_plesso.get(room)
+                        if pl is None:
+                            continue
+                        var = x.get((key, room))
+                        if var is None:
+                            continue
+                        model.Add(ind[pl] >= var)
+                        n_emitted += 1
+                model.Add(sum(ind.values()) <= 1)
+                n_emitted += 1
+            continue
+        # Unknown policy: ignore (validated upstream).
+
+    return n_emitted
+
+
 # ---------- DB-side loader (kept thin for testability) ----------
 
 def load_plessi_data(db) -> PlessiData:
