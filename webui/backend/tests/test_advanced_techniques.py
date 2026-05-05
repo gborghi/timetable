@@ -288,6 +288,147 @@ def test_cg_granularity_auto_suggestion_covers_new_options():
         assert got in _CG_GRANULARITIES
 
 
+def _two_class_profs():
+    """Two-class scaffold for the teacher-class pricer test.
+
+    Teacher T1 covers Mat in both 1A and 1B; T2 covers Ita in both.
+    Each cattedra is 4 hrs/week distributed Mat=4 in day 1,
+    Ita=4 in day 2 -- enough to exercise the pricer over multiple
+    classes without HARD infeasibility."""
+    return {
+        "T1": {
+            "classi": {"1A": {"Mat": {"ore": 4}},
+                        "1B": {"Mat": {"ore": 4}}},
+            "glibero": [6],
+            "max_hours": 18,
+        },
+        "T2": {
+            "classi": {"1A": {"Ita": {"ore": 4}},
+                        "1B": {"Ita": {"ore": 4}}},
+            "glibero": [6],
+            "max_hours": 18,
+        },
+    }
+
+
+def _two_class_dc():
+    """Day-counts that match _two_class_profs.
+
+    Spread Mat for each class across DIFFERENT days so the
+    greedy base for one class never collides with the CP-SAT
+    placement of the other (T1 has 4+4=8 hours of Mat per week
+    and a school day is 7 hours, so they MUST live on
+    distinct days)."""
+    return {
+        ("T1", "1A", "Mat", 1): 4,   # 1A Mat on day 1
+        ("T1", "1B", "Mat", 2): 4,   # 1B Mat on day 2 (separate day)
+        ("T2", "1A", "Ita", 3): 4,   # 1A Ita on day 3
+        ("T2", "1B", "Ita", 4): 4,   # 1B Ita on day 4
+    }
+
+
+def test_bp_pricing_subproblem_teacher_class_smoke():
+    """Direct call to the teacher-class pricer with synthetic duals
+    must produce a non-empty pattern that respects the cattedra
+    hours of (T1, 1A, Mat) and avoids slot conflicts."""
+    import column_generation as cg
+    profs = _two_class_profs()
+    dc_value = _two_class_dc()
+    # Strong positive lambda on (T1, 1A, Mat, 1) -> the pricer is
+    # rewarded for placing those 4 hours; any feasible placement
+    # gives rc <= -4*lambda + sixth_penalty (small).
+    lambda_duals = {("T1", "1A", "Mat", 1): 100.0}
+    mu_t = 0.0
+    pat, rc = cg._pricing_subproblem_teacher_class(
+        "T1", "1A", profs, dc_value,
+        lambda_duals, mu_t,
+        time_limit=2.0, workers=1,
+    )
+    assert pat is not None, f"pricer returned None, rc={rc}"
+    assert rc < 0.0, f"expected rc<0 with strong lambda, got {rc}"
+    # The pattern must place exactly 4 hours of (T1, 1A, Mat, 1).
+    placed_T1_1A_Mat_d1 = sum(
+        1 for (p, c, s, d, _h), v in pat.items()
+        if v and p == "T1" and c == "1A" and s == "Mat" and d == 1
+    )
+    assert placed_T1_1A_Mat_d1 == 4, (
+        f"expected 4 (T1,1A,Mat,d=1) slots, got {placed_T1_1A_Mat_d1}")
+    # And it must also cover the OTHER class greedy-placement.
+    placed_T1_1B_Mat = sum(
+        1 for (p, c, s, _d, _h), v in pat.items()
+        if v and p == "T1" and c == "1B" and s == "Mat"
+    )
+    assert placed_T1_1B_Mat == 4, (
+        f"expected 4 (T1,1B,Mat) slots from greedy base, got "
+        f"{placed_T1_1B_Mat}")
+
+
+def test_bp_pricing_subproblem_returns_none_when_no_improvement():
+    """With zero duals everywhere, the pricer's reduced cost is
+    >= 0 (only sixth-hour penalty contributes), so no improving
+    column can be returned."""
+    import column_generation as cg
+    profs = _two_class_profs()
+    dc_value = _two_class_dc()
+    pat, rc = cg._pricing_subproblem_teacher_class(
+        "T1", "1A", profs, dc_value,
+        lambda_duals={}, mu_t=0.0,
+        time_limit=2.0, workers=1,
+    )
+    assert pat is None, "no improving column expected with zero duals"
+    assert rc >= -1e-6, f"rc should be non-negative, got {rc}"
+
+
+def test_bp_loop_runs_and_stays_feasible():
+    """End-to-end BP run with mode=branch-and-price and
+    granularity=teacher-class on the 2-class scaffold must:
+      - actually invoke the BP loop (info['bp_iterations_done'] > 0
+        OR a graceful 'no_improving_column' termination at iter 1)
+      - return a HARD-feasible solution (via assembly or
+        completion fallback)
+      - not regress the soft cost vs iterative-diversified."""
+    import column_generation as cg
+    profs = _two_class_profs()
+    dc_value = _two_class_dc()
+    sol_id, info_id = cg.run_column_generation(
+        profs, dc_value,
+        time_budget_s=20.0,
+        patterns_per_teacher=2,
+        max_iterations=2,
+        log=False,
+        mode="iterative-diversified",
+        granularity="teacher",
+    )
+    sol_bp, info_bp = cg.run_column_generation(
+        profs, dc_value,
+        time_budget_s=20.0,
+        patterns_per_teacher=2,
+        max_iterations=2,
+        log=False,
+        mode="branch-and-price",
+        granularity="teacher-class",
+        bp_max_iterations=3,
+        pricer_time_limit=2.0,
+        pricer_workers=1,
+    )
+    # The BP loop ran and reported its termination reason.
+    assert info_bp["mode"] == "branch-and-price"
+    assert info_bp["granularity"] == "teacher-class"
+    assert "bp_terminated_reason" in info_bp, (
+        f"BP loop did not run; info keys = {list(info_bp.keys())}")
+    # HARD feasibility (assembly OR completion).
+    assert (info_bp["feasible_after_assembly"]
+            or info_bp["feasible_after_completion"]), (
+        f"BP solution not HARD-feasible; warnings={info_bp['warnings']}")
+    # BP must not be WORSE than iterative-diversified on this small
+    # instance (it can be equal, since the catalog is tiny).
+    obj_id = info_id["master_obj_final"]
+    obj_bp = info_bp["master_obj_final"]
+    if obj_id is not None and obj_bp is not None:
+        assert obj_bp <= obj_id + 1e-6, (
+            f"BP regressed soft cost: BP={obj_bp}, ID={obj_id}")
+
+
 def test_cg_frontend_dropdown_options_are_valid():
     """All <option value=...> entries in the granularity dropdown
     must be values the backend recognises. Catches drift between

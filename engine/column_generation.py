@@ -190,16 +190,33 @@ def _cost_of_pattern(pat: dict, profs: dict) -> float:
 # ---------------- Master LP ----------------
 
 def _solve_master(patterns_by_teacher: dict[str, list[dict]],
-                  profs: dict, dc_value: dict
-                  ) -> tuple[dict[str, int] | None, float, dict]:
+                  profs: dict, dc_value: dict,
+                  *,
+                  return_extended: bool = False,
+                  ) -> tuple:
     """Master LP: choose ONE pattern per teacher (binary choice
     relaxed to LP). Constraint: every (p, cl, subj, day) hours-count
     must be met.
 
-    Returns:
-      (selection_dict, objective_value, duals)
-      where selection_dict[t] = pattern_index used for teacher t.
-      If infeasible, returns (None, +inf, {}).
+    Returns (when return_extended=False, default):
+      (selection_dict, objective_value, lambda_duals)
+
+    Returns (when return_extended=True):
+      (selection_dict, objective_value, lambda_duals, mu_duals,
+       lp_x, cols)
+      where:
+      - selection_dict[t] = pattern_index used for teacher t (the
+        rounded integer choice, highest LP weight per teacher).
+      - lambda_duals[k] is the dual price (>=0 when binding) of the
+        (teacher, class, subject, day) cover inequality, sign-flipped
+        from scipy's convention so positive <-> binding.
+      - mu_duals[teacher] is the dual of the "exactly one pattern"
+        equality.
+      - lp_x is the fractional LP solution vector (parallel to cols).
+      - cols is the list of (teacher, pattern_idx) tuples.
+
+    If infeasible, returns (None, +inf, {}) or
+    (None, +inf, {}, {}, [], cols).
     """
     from scipy.optimize import linprog
 
@@ -212,6 +229,8 @@ def _solve_master(patterns_by_teacher: dict[str, list[dict]],
             pattern_costs.append(_cost_of_pattern(pat, profs))
 
     if not cols:
+        if return_extended:
+            return None, float("inf"), {}, {}, [], []
         return None, float("inf"), {}
 
     n_vars = len(cols)
@@ -259,6 +278,8 @@ def _solve_master(patterns_by_teacher: dict[str, list[dict]],
         method="highs",
     )
     if not res.success:
+        if return_extended:
+            return None, float("inf"), {}, {}, [], cols
         return None, float("inf"), {}
 
     # Round LP solution to integer choices: pick the highest-weight
@@ -272,12 +293,29 @@ def _solve_master(patterns_by_teacher: dict[str, list[dict]],
         j_best, _ = max(candidates, key=lambda kv: kv[1])
         selection[t] = cols[j_best][1]
 
-    duals = {}
+    # Lambda duals (cover inequalities). scipy returns
+    # ineqlin.marginals as the dual of A_ub @ x <= b_ub. Our cover
+    # rows are -cover <= -demand, so a positive shadow price on a
+    # binding cover means scipy returns a negative marginal. Flip
+    # sign so positive lambda <-> binding cover (matches the
+    # textbook reduced-cost formula
+    #     rc(p) = c(p) - mu_t - sum_k lambda_k * placed_p(k)).
+    lambda_duals: dict = {}
     if hasattr(res, "ineqlin") and res.ineqlin is not None:
         for k, lam in zip(cover_keys, res.ineqlin.marginals):
-            duals[k] = float(lam)
+            lambda_duals[k] = -float(lam)
 
-    return selection, float(res.fun), duals
+    if not return_extended:
+        return selection, float(res.fun), lambda_duals
+
+    # Mu duals (one-pattern-per-teacher equalities).
+    mu_duals: dict = {}
+    if hasattr(res, "eqlin") and res.eqlin is not None:
+        for t, mu in zip(teachers, res.eqlin.marginals):
+            mu_duals[t] = float(mu)
+
+    return (selection, float(res.fun), lambda_duals, mu_duals,
+            list(res.x), cols)
 
 
 # ---------------- Top-level driver ----------------
@@ -391,6 +429,445 @@ def _completion_solver(initial_sol: dict, profs: dict, dc_value: dict,
             return None
         full.update(out)
     return full
+
+
+# ---------------- Branch-and-Price: pricers ----------------
+#
+# Each non-teacher granularity has its own CP-SAT sub-pricer. The
+# pricer output is always a full TEACHER-WEEK pattern (dict
+# {(t, cl, s, d, h): 1}) compatible with the existing master LP
+# (variant 1, "exactly one pattern per teacher" equality + cover
+# inequalities). The granularity controls *which slice* of the
+# teacher's week the CP-SAT optimises against the master's duals;
+# the rest of the week is greedy-placed first and treated as
+# locked by the CP-SAT model.
+#
+# Reduced cost (LP-side, real units, not SCALE-integer):
+#
+#     rc(p) = c(p) - mu[t] - sum_(cl', s', d') lambda[t, cl', s', d']
+#                                            * placed_p(t, cl', s', d')
+#
+# where:
+#   c(p)         : SOFT cost of the full teacher-week pattern p
+#                  (sixth/five/one as in _cost_of_pattern).
+#   mu[t]        : dual of the "exactly one pattern per teacher"
+#                  equality.
+#   lambda[k]    : dual of the (t, cl', s', d') cover inequality,
+#                  already sign-flipped so positive <-> binding.
+#
+# When `rc < -eps`, the pattern is an improving column and gets
+# appended to the master's catalog.
+
+_SCALE = 100        # integer-scaling for fractional duals
+_SIXTH_HOUR = 13    # hour code for 13:00 (the "sixth hour")
+_PENALTY_SIXTH = 5 * _SCALE   # SOFT penalty per slot on sixth hour
+
+
+def _greedy_base_pattern(
+    teacher: str, profs: dict, dc_value: dict,
+    *,
+    skip_classes: set | None = None,
+    locks: set | None = None,
+    group_assignments: list | None = None,
+) -> tuple[dict, set, set]:
+    """Greedy-place the teacher's cattedre into a base pattern,
+    optionally skipping some class names (those will be filled by
+    the CP-SAT pricer that calls this).
+
+    Returns (pattern, occupied_t, occupied_c) where:
+      - pattern is a dict of placed (t, cl, s, d, h): 1
+      - occupied_t is a set of (t, d, h) the teacher already uses
+      - occupied_c is a set of (cl, d, h) the classes already use
+
+    The CP-SAT pricer will treat occupied_t / occupied_c as locked
+    out for its variables.
+    """
+    locks = locks or set()
+    skip_classes = skip_classes or set()
+    pairs_by_t = _profs_iter_with_groups(profs, group_assignments)
+    pairs = pairs_by_t.get(teacher, [])
+    pat: dict = {}
+    occupied_t: set = set()
+    occupied_c: set = set()
+
+    # Pre-place this teacher's locks (they are non-negotiable).
+    locks_for_t = [(cl_l, s_l, d_l, h_l)
+                    for (p, cl_l, s_l, d_l, h_l) in locks
+                    if p == teacher]
+    for (cl_l, s_l, d_l, h_l) in locks_for_t:
+        pat[(teacher, cl_l, s_l, d_l, h_l)] = 1
+        occupied_t.add((teacher, d_l, h_l))
+        occupied_c.add((cl_l, d_l, h_l))
+
+    # Greedy-place every cattedra-day NOT in skip_classes.
+    for (cl, s) in pairs:
+        if cl in skip_classes:
+            continue
+        for d in DAYS:
+            q = int(dc_value.get((teacher, cl, s, d), 0))
+            if q == 0:
+                continue
+            already = sum(1 for (cl_l, s_l, d_l, _h_l) in locks_for_t
+                          if cl_l == cl and s_l == s and d_l == d)
+            placed = already
+            for h in HOURS:
+                if placed >= q:
+                    break
+                if (teacher, d, h) in occupied_t:
+                    continue
+                if (cl, d, h) in occupied_c:
+                    continue
+                pat[(teacher, cl, s, d, h)] = 1
+                occupied_t.add((teacher, d, h))
+                occupied_c.add((cl, d, h))
+                placed += 1
+    return pat, occupied_t, occupied_c
+
+
+def _compute_rc(
+    pattern: dict, teacher: str, lambda_duals: dict, mu_t: float,
+    profs: dict,
+) -> float:
+    """LP-side reduced cost for a teacher-week pattern."""
+    soft = _cost_of_pattern(pattern, profs)
+    sum_lambda = 0.0
+    placed: dict = {}
+    for (p, cl, s, d, _h), v in pattern.items():
+        if not v or p != teacher:
+            continue
+        placed[(teacher, cl, s, d)] = placed.get(
+            (teacher, cl, s, d), 0) + 1
+    for k, n in placed.items():
+        lam = float(lambda_duals.get(k, 0.0))
+        if lam != 0.0:
+            sum_lambda += lam * n
+    return float(soft) - float(mu_t) - sum_lambda
+
+
+def _pricing_subproblem_teacher_class(
+    teacher: str, class_name: str, profs: dict, dc_value: dict,
+    lambda_duals: dict, mu_t: float,
+    *,
+    time_limit: float = 5.0,
+    workers: int = 2,
+    locks: set | None = None,
+    group_assignments: list | None = None,
+    eps: float = 1e-6,
+) -> tuple[dict | None, float]:
+    """CP-SAT pricer for the teacher-class granularity.
+
+    Outputs a full teacher-week pattern in which:
+      - the (teacher, class_name, *, *, *) lessons are CP-SAT-
+        optimised against the LP duals (objective: minimise
+        -SCALE*lambda*placed + PENALTY_SIXTH*placed_at_sixth);
+      - the (teacher, other_class, *, *, *) lessons come from a
+        greedy base placement and are treated as locked by the
+        CP-SAT.
+
+    Returns (pattern, rc_lp) where:
+      - pattern is the full teacher-week dict if rc < -eps;
+        None otherwise (no improving column was found).
+      - rc_lp is the LP-side reduced cost (no SCALE factor),
+        useful for diagnostics.
+    """
+    from ortools.sat.python import cp_model
+
+    pairs_by_t = _profs_iter_with_groups(profs, group_assignments)
+    pairs = pairs_by_t.get(teacher, [])
+    if not pairs:
+        return None, 0.0
+
+    # Subjects this teacher teaches in this specific class.
+    subjects_in_class = sorted(
+        {s for (cl, s) in pairs if cl == class_name})
+    if not subjects_in_class:
+        return None, 0.0
+
+    # Greedy base for the OTHER classes; the (teacher, class_name)
+    # cattedre will be placed by CP-SAT.
+    base_pat, occ_t, occ_c = _greedy_base_pattern(
+        teacher, profs, dc_value,
+        skip_classes={class_name}, locks=locks,
+        group_assignments=group_assignments,
+    )
+
+    # Per-subject day-counts that CP-SAT must place.
+    triples: list[tuple[str, int, int]] = []  # (subj, d, q)
+    for s in subjects_in_class:
+        for d in DAYS:
+            q = int(dc_value.get((teacher, class_name, s, d), 0))
+            if q > 0:
+                triples.append((s, d, q))
+    if not triples:
+        # Demand-free in this class: the greedy base is the column.
+        rc = _compute_rc(base_pat, teacher, lambda_duals, mu_t, profs)
+        if rc < -eps:
+            return base_pat, rc
+        return None, rc
+
+    model = cp_model.CpModel()
+    slot: dict[tuple, cp_model.IntVar] = {}
+    for (s, d, _q) in triples:
+        for h in HOURS:
+            v = model.NewBoolVar(f"slot_{teacher}_{class_name}_{s}_{d}_{h}")
+            # Lock-out slots already used by the greedy base or by
+            # the teacher's own locks.
+            if (teacher, d, h) in occ_t or (class_name, d, h) in occ_c:
+                model.Add(v == 0)
+            slot[(s, d, h)] = v
+
+    # Cattedra-hours equality: place exactly q hours of (s, d).
+    for (s, d, q) in triples:
+        model.Add(sum(slot[(s, d, h)] for h in HOURS) == q)
+
+    # Class no-overlap on (d, h): at most one (subject, this-teacher,
+    # this-class) slot may be active per (d, h). The other classes'
+    # slots are excluded already via occ_c, so this constraint just
+    # prevents two subjects from clashing inside the same class slot.
+    for d in DAYS:
+        for h in HOURS:
+            terms = [slot[(s, d, h)] for (s, d2, _q) in triples
+                      if d2 == d if (s, d, h) in slot]
+            seen = set()
+            uniq = []
+            for v in terms:
+                if id(v) not in seen:
+                    seen.add(id(v))
+                    uniq.append(v)
+            if uniq:
+                model.Add(sum(uniq) <= 1)
+
+    # Locks on (t, cl, *, *, *) for THIS teacher+class force slot==1.
+    for (p, cl_l, s_l, d_l, h_l) in (locks or ()):
+        if p != teacher or cl_l != class_name:
+            continue
+        v = slot.get((s_l, d_l, h_l))
+        if v is not None:
+            model.Add(v == 1)
+
+    # Objective: integer-scaled reduced cost contribution from this
+    # class slice (the rest of the rc is constant given the greedy
+    # base, so it's dropped from the CP-SAT objective and added back
+    # in `_compute_rc` afterwards).
+    obj_terms: list = []
+    for (s, d, _q) in triples:
+        lam = float(lambda_duals.get((teacher, class_name, s, d), 0.0))
+        lam_int = int(round(lam * _SCALE))
+        for h in HOURS:
+            v = slot[(s, d, h)]
+            if lam_int != 0:
+                obj_terms.append(-lam_int * v)
+            if h == _SIXTH_HOUR:
+                obj_terms.append(_PENALTY_SIXTH * v)
+    if obj_terms:
+        model.Minimize(sum(obj_terms))
+
+    solver = cp_model.CpSolver()
+    solver.parameters.max_time_in_seconds = float(time_limit)
+    solver.parameters.num_search_workers = int(workers)
+    solver.parameters.log_search_progress = False
+    status = solver.Solve(model)
+    if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        return None, 0.0
+
+    # Stitch the optimised slice into the greedy base.
+    full_pat = dict(base_pat)
+    for (s, d, _q) in triples:
+        for h in HOURS:
+            v = slot[(s, d, h)]
+            if solver.Value(v):
+                full_pat[(teacher, class_name, s, d, h)] = 1
+
+    rc = _compute_rc(full_pat, teacher, lambda_duals, mu_t, profs)
+    if rc < -eps:
+        return full_pat, rc
+    return None, rc
+
+
+# ---------------- BP loop: dispatcher + driver ----------------
+
+_BP_GRANULARITIES = (
+    "teacher-class",
+    # Pricers for additional granularities arrive in subsequent
+    # commits (steps 3b-3h):
+    #   teacher-class-subject, teacher-subject, teacher-day,
+    #   class, class-day, day, curriculum.
+)
+
+
+def _enumerate_pricing_keys(granularity: str, profs: dict,
+                             dc_value: dict,
+                             group_assignments: list | None
+                             ) -> list:
+    """Return the list of pricing keys for the chosen granularity.
+    The BP loop calls _solve_pricing once per key and accepts the
+    returned column when its reduced cost is < -eps.
+    """
+    pairs_by_t = _profs_iter_with_groups(profs, group_assignments)
+    if granularity == "teacher-class":
+        out = []
+        for t, pairs in pairs_by_t.items():
+            for cl in sorted({c for (c, _s) in pairs}):
+                if any(dc_value.get((t, cl, s, d), 0) > 0
+                        for (cc, s) in pairs if cc == cl
+                        for d in DAYS):
+                    out.append((t, cl))
+        return sorted(out)
+    raise NotImplementedError(
+        f"granularity {granularity!r} pricing not yet implemented")
+
+
+def _solve_pricing(granularity: str, key,
+                    profs: dict, dc_value: dict,
+                    lambda_duals: dict, mu_duals: dict,
+                    *,
+                    time_limit: float = 5.0,
+                    workers: int = 2,
+                    locks: set | None = None,
+                    group_assignments: list | None = None,
+                    eps: float = 1e-6,
+                    ) -> tuple[dict | None, float]:
+    """Dispatch a pricing call to the right per-granularity solver."""
+    if granularity == "teacher-class":
+        teacher, class_name = key
+        mu_t = float(mu_duals.get(teacher, 0.0))
+        return _pricing_subproblem_teacher_class(
+            teacher, class_name, profs, dc_value,
+            lambda_duals, mu_t,
+            time_limit=time_limit, workers=workers,
+            locks=locks, group_assignments=group_assignments,
+            eps=eps,
+        )
+    raise NotImplementedError(
+        f"_solve_pricing: granularity {granularity!r} not implemented")
+
+
+def _run_branch_and_price(
+    patterns: dict, profs: dict, dc_value: dict,
+    *,
+    granularity: str,
+    bp_max_iterations: int,
+    pricer_time_limit: float,
+    pricer_workers: int,
+    locks: set | None,
+    group_assignments: list | None,
+    time_budget_s: float,
+    t0: float,
+    eps: float = 1e-6,
+    log: bool = True,
+) -> tuple[dict, float, dict[str, int], dict]:
+    """Real Branch-and-Price loop (no Ryan-Foster yet -- next
+    commit). Iteratively:
+      1. Solve master LP with extended duals.
+      2. For each pricing key (per the chosen granularity), call
+         the matching CP-SAT pricer and append improving columns.
+      3. Repeat until no improving column or budget exhausted.
+
+    Returns (patterns_updated, best_obj, best_selection, info_extras).
+    The patterns dict is mutated in place AND returned.
+    """
+    info: dict[str, Any] = {
+        "bp_iterations_done": 0,
+        "bp_columns_added_total": 0,
+        "bp_lp_obj_per_iter": [],
+        "bp_min_rc_per_iter": [],
+        "bp_terminated_reason": "",
+    }
+
+    sel, obj, lam, mu, _x, _cols = _solve_master(
+        patterns, profs, dc_value, return_extended=True)
+    if sel is None:
+        info["bp_terminated_reason"] = "master_infeasible_at_entry"
+        return patterns, float("inf"), {}, info
+    best_obj = float(obj)
+    best_selection = dict(sel)
+    info["bp_lp_obj_per_iter"].append(best_obj)
+
+    for it in range(1, bp_max_iterations + 1):
+        if time.time() - t0 > time_budget_s:
+            info["bp_terminated_reason"] = "time_budget"
+            break
+        try:
+            keys = _enumerate_pricing_keys(
+                granularity, profs, dc_value, group_assignments)
+        except NotImplementedError as e:
+            info["bp_terminated_reason"] = (
+                f"granularity_not_implemented:{granularity}")
+            if log:
+                print(f"[CG.BP] {e}")
+            break
+
+        added = 0
+        min_rc = 0.0
+        for key in keys:
+            if time.time() - t0 > time_budget_s:
+                break
+            try:
+                pat, rc = _solve_pricing(
+                    granularity, key, profs, dc_value, lam, mu,
+                    time_limit=pricer_time_limit,
+                    workers=pricer_workers,
+                    locks=locks,
+                    group_assignments=group_assignments,
+                    eps=eps,
+                )
+            except NotImplementedError:
+                info["bp_terminated_reason"] = (
+                    f"granularity_not_implemented:{granularity}")
+                break
+            if rc < min_rc:
+                min_rc = rc
+            if pat is None:
+                continue
+            # The pricer always emits a single-teacher pattern;
+            # find the teacher and append.
+            teachers_in_pat = {k[0] for k in pat.keys()}
+            if len(teachers_in_pat) != 1:
+                # Defensive: skip multi-teacher columns until master
+                # variant 2 lands.
+                continue
+            tname = next(iter(teachers_in_pat))
+            existing = patterns.setdefault(tname, [])
+            if pat not in existing:
+                existing.append(pat)
+                added += 1
+        info["bp_iterations_done"] = it
+        info["bp_columns_added_total"] += added
+        info["bp_min_rc_per_iter"].append(min_rc)
+
+        if added == 0:
+            info["bp_terminated_reason"] = "no_improving_column"
+            break
+
+        sel_it, obj_it, lam_it, mu_it, _x, _cols = _solve_master(
+            patterns, profs, dc_value, return_extended=True)
+        if sel_it is None:
+            info["bp_terminated_reason"] = (
+                f"master_infeasible_at_iter_{it}")
+            break
+        info["bp_lp_obj_per_iter"].append(float(obj_it))
+        if obj_it < best_obj - eps:
+            best_obj = float(obj_it)
+            best_selection = dict(sel_it)
+            lam, mu = lam_it, mu_it
+            if log:
+                print(f"[CG.BP iter {it}] obj -> {best_obj:.1f}, "
+                      f"+{added} cols, min_rc={min_rc:.3f}")
+        else:
+            lam, mu = lam_it, mu_it
+            if log:
+                print(f"[CG.BP iter {it}] plateau ({obj_it:.1f}), "
+                      f"+{added} cols, min_rc={min_rc:.3f}")
+            if min_rc > -10.0 * eps:
+                info["bp_terminated_reason"] = "rc_plateau"
+                break
+
+    if not info["bp_terminated_reason"]:
+        info["bp_terminated_reason"] = "max_iterations"
+    return patterns, best_obj, best_selection, info
+
+
+# ---------------- Top-level driver ----------------
 
 
 def run_column_generation(profs: dict, dc_value: dict,
@@ -552,60 +1029,55 @@ def run_column_generation(profs: dict, dc_value: dict,
     info["n_patterns_total_final"] = sum(len(v) for v in best_patterns.values())
     info["master_obj_final"] = best_obj if best_obj != float("inf") else None
 
-    # Step 3b (BP-MVP): if mode in {"branch-and-price", "auto"} and
-    # the auto-mode-fallback rule kicks in, run a dual-driven
-    # enrichment round. This is *not* a full BP -- there's no
-    # Ryan-Foster branching tree -- but it uses the LP duals to
-    # bias the random seed of _diversified_seed toward (cl, subj,
-    # day) tuples that the master LP currently undercovers.
+    # Step 3b (real Branch-and-Price): if mode in {"branch-and-price",
+    # "auto"} and the chosen granularity has a CP-SAT pricer, run
+    # the BP loop using the iterative-diversified output as the
+    # primal warm-start.
     n_classes_est = len({cl for p in profs.values()
                           for cl in p.get("classi", {})})
     use_bp = (mode == "branch-and-price"
               or (mode == "auto" and n_classes_est <= 25))
-    if use_bp and time.time() - t0 < time_budget_s:
+    if (use_bp and granularity in _BP_GRANULARITIES
+            and time.time() - t0 < time_budget_s):
         if log:
-            print(f"[CG.BP] mode={mode}: dual-driven enrichment "
+            print(f"[CG.BP] mode={mode}, granularity={granularity}: "
+                  f"running real branch-and-price loop "
                   f"({n_classes_est} classes)")
-        # Run 2 extra iterations with a perturbed seed derived
-        # from the LP objective (proxy for the dual signal). When
-        # `_solve_master` returns duals proper, swap the seed for
-        # a true sub-CP-SAT pricing step (TODO).
-        bp_iters = 2
-        for it in range(bp_iters):
-            if time.time() - t0 > time_budget_s:
-                info["warnings"].append(
-                    f"BP enrichment: time budget exhausted at "
-                    f"iter {it}")
-                break
-            seed = (int(best_obj) if best_obj != float("inf")
-                    else 999) * 31 + it * 17
-            new = _diversified_seed(
-                profs, dc_value,
-                n_variants=patterns_per_teacher,
-                rng_seed=seed,
-                locks=locks,
-                group_assignments=group_assignments)
-            for tt, plist in new.items():
-                existing = patterns.setdefault(tt, [])
-                for pat in plist:
-                    if pat not in existing:
-                        existing.append(pat)
-            sel_bp, obj_bp, _ = _solve_master(
-                patterns, profs, dc_value)
-            info["iterations_done"] += 1
-            if sel_bp is not None and obj_bp < best_obj - 1e-6:
-                best_obj = obj_bp
-                best_selection = dict(sel_bp)
-                best_patterns = {k: list(v)
-                                  for k, v in patterns.items()}
-                if log:
-                    print(f"[CG.BP] iter {it}: obj improved "
-                          f"to {obj_bp:.1f}")
-        info["bp_enrichment_done"] = True
+        patterns, bp_obj, bp_selection, bp_info = _run_branch_and_price(
+            patterns, profs, dc_value,
+            granularity=granularity,
+            bp_max_iterations=bp_max_iterations,
+            pricer_time_limit=pricer_time_limit,
+            pricer_workers=pricer_workers,
+            locks=locks,
+            group_assignments=group_assignments,
+            time_budget_s=time_budget_s,
+            t0=t0,
+            log=log,
+        )
+        info.update({f"bp_{k.removeprefix('bp_')}": v
+                      for k, v in bp_info.items()
+                      if k.startswith("bp_")})
+        info["iterations_done"] += int(bp_info.get(
+            "bp_iterations_done", 0))
+        if bp_obj < best_obj - 1e-6 and bp_selection:
+            best_obj = bp_obj
+            best_selection = dict(bp_selection)
+            best_patterns = {k: list(v) for k, v in patterns.items()}
+            if log:
+                print(f"[CG.BP] BP loop improved obj to {best_obj:.1f}")
         info["n_patterns_total_final"] = sum(
             len(v) for v in best_patterns.values())
         info["master_obj_final"] = (
             best_obj if best_obj != float("inf") else None)
+    elif use_bp and granularity not in _BP_GRANULARITIES:
+        # Mode requested BP but granularity has no pricer yet ->
+        # iterative-diversified is the de-facto pricer for that
+        # granularity (matches user intent for granularity=teacher).
+        info["warnings"].append(
+            f"granularity={granularity!r} has no CP-SAT pricer in "
+            f"this commit; iterative-diversified results stand. "
+            f"BP pricers wired so far: {list(_BP_GRANULARITIES)}.")
 
     # Step 4: integer recovery. Empty selection (= master never
     # converged) leaves sol empty, and the completion solver fills
