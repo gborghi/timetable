@@ -36,8 +36,11 @@ if [[ "$QUICK" -eq 0 ]]; then
   lualatex -interaction=nonstopmode -halt-on-error "$TEX" >/dev/null
 fi
 
-# Cleanup intermediate artefacts (PDF stays)
-rm -f "${JOB}".{aux,log,toc,out,bcf,run.xml,idx,ind,ilg,bbl,blg,lof,lot} \
+# Cleanup intermediate artefacts (PDF stays). We keep .aux + .bbl
+# so a subsequent quick `lualatex manual.tex` (without biber) still
+# resolves citations -- nuking them was confusing users who edited
+# a chapter and re-ran lualatex by hand.
+rm -f "${JOB}".{log,toc,out,bcf,run.xml,idx,ind,ilg,blg,lof,lot} \
       "${JOB}"-blx.bib
 
 if [[ -f "${JOB}.pdf" ]]; then

@@ -69,6 +69,14 @@ docs/*.out
 docs/*.fls
 docs/*.fdb_latexmk
 docs/*.synctex.gz
+docs/*.bbl
+docs/*.bcf
+docs/*.blg
+docs/*.idx
+docs/*.ilg
+docs/*.ind
+docs/*.run.xml
+docs/*-blx.bib
 
 # Secrets / keys (do NOT commit)
 *.pem
