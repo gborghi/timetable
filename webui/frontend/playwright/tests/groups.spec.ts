@@ -33,10 +33,14 @@ test.beforeEach(async ({ request }) => {
 test('create a study group via /groups', async ({ page }) => {
   await page.goto('/groups');
   await page.getByRole('button', { name: /Nuovo gruppo/i }).click();
-  // Fill the first text input in the modal
-  const nameInput = page.locator('input[type="text"]').first();
+  // The modal inputs don't carry explicit type=text; use the
+  // wrapper `.field input` selector instead.
+  const nameInput = page.locator('.field input').first();
   await nameInput.fill(TEST_GROUP_NAME);
-  await page.getByRole('button', { name: /^Salva$/i }).click();
+  // Multiple "Salva" buttons (header has "Salva vista"); use
+  // exact match to hit the modal's primary button.
+  await page.getByRole('button', { name: 'Salva', exact: true })
+    .click();
   // Verify the new group appears in the list
   await expect(page.getByText(TEST_GROUP_NAME)).toBeVisible();
 });

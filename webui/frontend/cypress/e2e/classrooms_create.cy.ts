@@ -32,13 +32,15 @@ beforeEach(() => {
 describe('/classrooms CRUD', () => {
   it('creates a new room via the UI and lists it', () => {
     cy.visit('/classrooms');
-    cy.contains('button', /Nuova|Aggiungi/).first().click();
-    // Fill the name (first text input in the modal)
-    cy.get('input[type="text"]').first().clear().type(TEST_ROOM_NAME);
-    // Capacity (look for a number input)
+    // The page may render multiple elements containing "Nuova"
+    // (header text + button); narrow with the button class.
+    cy.get('button.btn-primary').contains(/Nuova aula/).click();
+    // Fill the modal: the first .field input is the room name,
+    // capacity is a number input.
+    cy.get('.field input').first().clear().type(TEST_ROOM_NAME);
     cy.get('input[type="number"]').first().clear().type('28');
-    // Save
-    cy.contains('button', /Salva|Crea|OK/).click();
+    // The Save button is also btn-primary inside the modal.
+    cy.contains('button', /^Salva$/).click();
     cy.contains(TEST_ROOM_NAME).should('be.visible');
   });
 });

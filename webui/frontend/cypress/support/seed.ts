@@ -66,33 +66,45 @@ export function seedMiniScenario(): Cypress.Chainable<MiniScenario> {
     });
   }).then((r) => {
     out.classrooms.push({ id: r.body.id, name: r.body.name });
-    // Classes
+    // Classes -- include the 4 subjects each cattedra will need,
+    // so /api/assignments/manual can attach a teacher to them.
+    const classSubjects = [
+      { subject: 'Matematica', hours_per_week: 4 },
+      { subject: 'Italiano', hours_per_week: 4 },
+      { subject: 'Storia', hours_per_week: 3 },
+      { subject: 'Scienzenaturali', hours_per_week: 2 },
+    ];
     return cy.request('POST', `${BACKEND}/api/classes`, {
       name: '3A', year: 3, section: 'A',
       curriculum: 'Scientifico', n_students: 22,
-      subjects: {}, unavailability: [],
+      subjects: classSubjects, unavailability: [],
     });
   }).then((r) => {
     out.classes.push({ id: r.body.id, name: r.body.name });
+    const classSubjects = [
+      { subject: 'Matematica', hours_per_week: 4 },
+      { subject: 'Italiano', hours_per_week: 4 },
+      { subject: 'Storia', hours_per_week: 3 },
+      { subject: 'Scienzenaturali', hours_per_week: 2 },
+    ];
     return cy.request('POST', `${BACKEND}/api/classes`, {
       name: '4A', year: 4, section: 'A',
       curriculum: 'Scientifico', n_students: 28,
-      subjects: {}, unavailability: [],
+      subjects: classSubjects, unavailability: [],
     });
   }).then((r) => {
     out.classes.push({ id: r.body.id, name: r.body.name });
-    // Teachers (4 with different subject groups)
+    // Teachers (4 with different subject groups). Minimal
+    // payload: name + group + max_hours.
     const teacherSpecs = [
-      ['Prof Mat', 'A027', 'Matematica'],
-      ['Prof Ita', 'A012', 'Italiano'],
-      ['Prof Sto', 'A019', 'Storia'],
-      ['Prof Sci', 'A050', 'Scienzenaturali'],
+      ['Prof Mat', 'A027'],
+      ['Prof Ita', 'A012'],
+      ['Prof Sto', 'A019'],
+      ['Prof Sci', 'A050'],
     ];
-    return cy.wrap(teacherSpecs).each(([name, group, _subj]) => {
+    return cy.wrap(teacherSpecs).each(([name, group]) => {
       cy.request('POST', `${BACKEND}/api/teachers`, {
-        name, group, max_hours: 18, free_day: null,
-        glibero_pref: [], unavailability: [],
-        compatible_classes: [], compatible_curricula: [],
+        name, group, max_hours: 18,
       }).then((r) => {
         out.teachers.push({ id: r.body.id, name: r.body.name });
       });
@@ -101,32 +113,38 @@ export function seedMiniScenario(): Cypress.Chainable<MiniScenario> {
 }
 
 /**
- * Seed via /api/dataset/import-profile + Phase A. Heavier than
- * seedMiniScenario(): yields a real school with curricula +
- * classrooms + students + a complete `Assignment` row set, ready
- * for a Phase B run.
+ * Seed via /api/dataset/mock + Phase A. Heavier than
+ * seedMiniScenario(): yields a real mock school with curricula +
+ * classrooms + a complete `Assignment` row set, ready for a
+ * Phase B run.
  *
  * Used by FU-D (launch-solver) and FU-E (conflict-pill) which
  * need a populated DB the solver can actually consume.
+ *
+ * The mock endpoint kicks off an async run; we poll its status
+ * via waitForRun before firing the assignment run.
  */
 export function seedSmallProfileAndRunPhaseA(
-    timeoutSeconds = 90,
+    timeoutSeconds = 180,
     pollMs = 2000): Cypress.Chainable {
   return clearDataset().then(() => {
+    // /api/dataset/mock returns {run_id} -- async generation.
     return cy.request({
       method: 'POST',
-      url: `${BACKEND}/api/dataset/import-profile`,
+      url: `${BACKEND}/api/dataset/mock`,
       body: {
         profile: 'small',
-        seed_curricula: true,
-        seed_classrooms: true,
-        seed_students: true,
+        mode: 'tight',
         margin: 0.25,
       },
       timeout: 60000,
     });
+  }).then((r) => {
+    const runId = r.body.run_id;
+    return waitForRun(runId, 60, pollMs);
   }).then(() => {
-    // Phase A (assignment criterion=balance_weight)
+    // Phase A (assignment) -- runs synchronously in a background
+    // thread, returns {run_id}.
     return cy.request({
       method: 'POST',
       url: `${BACKEND}/api/optimize/assignment`,

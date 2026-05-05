@@ -31,8 +31,11 @@ services:
     volumes:
       - backend-tmp:/tmp/pitantum-test
     healthcheck:
+      # `localhost` resolves to ::1 (IPv6) inside the alpine/slim
+      # base images we use; the apps listen on IPv4 only, so the
+      # probe must hit 127.0.0.1 explicitly.
       test: ["CMD-SHELL", "python -c 'import urllib.request; \
-            urllib.request.urlopen(\"http://localhost:8000/api/health\")' || exit 1"]
+            urllib.request.urlopen(\"http://127.0.0.1:8000/api/health\")' || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 30
@@ -55,7 +58,9 @@ services:
       backend:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://localhost:5173/ || exit 1"]
+      # See backend note: localhost == ::1 in alpine, vite only
+      # listens on IPv4 0.0.0.0.
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:5173/ || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 30

@@ -15,7 +15,12 @@
 FROM node:20-alpine AS deps
 WORKDIR /app
 COPY webui/frontend/package.json webui/frontend/package-lock.json ./
-RUN npm ci --no-audit --no-fund
+# `npm install` instead of `ci` because the host npm (10.8 / 11.x)
+# may have written lockfile entries the container's npm 10.x finds
+# missing (peer-dep transitives differ across npm versions). The
+# install reconciles + still respects the lockfile for everything
+# it can match.
+RUN npm install --no-audit --no-fund
 
 
 FROM node:20-alpine AS dev

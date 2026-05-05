@@ -45,13 +45,13 @@ describe('/groups CRUD', () => {
   it('creates a new study group via the UI', () => {
     cy.visit('/groups');
     cy.contains('button', 'Nuovo gruppo').click();
-    // Modal should open
-    cy.get('.modal, [role="dialog"], .field').should('exist');
-    // Fill the name input
-    cy.get('input[type="text"]').first().clear().type(TEST_GROUP_NAME);
-    // Save
-    cy.contains('button', 'Salva').click();
-    // The new group appears in the list
+    // Modal opens; .field input is the Nome input.
+    cy.get('.field input').first().clear().type(TEST_GROUP_NAME);
+    // Multiple elements contain "Salva" text (e.g. the page
+    // header's "Salva vista"); scope to the modal overlay so we
+    // hit the modal's primary action button.
+    cy.get('[role="presentation"]').contains('button',
+      /^Salva( |$)/).click();
     cy.contains(TEST_GROUP_NAME).should('be.visible');
   });
 });

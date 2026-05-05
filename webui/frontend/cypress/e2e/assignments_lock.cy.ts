@@ -50,8 +50,10 @@ describe('/assignments lock toggle workflow', () => {
     // .btn !text-xs button next to the teacher name; we target
     // by aria-label / title containing "lock", with a fallback to
     // "lucchetto".
-    cy.get('button[aria-label*="lock" i], button[title*="lock" i], '
-      + 'button[title*="lucchetto" i]')
+    // The lock button has aria-label/title in Italian ("Blocca"/
+    // "Sblocca cattedra X per Y"). Match either variant.
+    cy.get('button[aria-label*="Blocca" i], '
+      + 'button[title="Blocca"], button[title="Sblocca"]')
       .first().click();
 
     // Verify via API that an Assignment was locked.
@@ -64,8 +66,10 @@ describe('/assignments lock toggle workflow', () => {
     });
 
     // Click again to unlock.
-    cy.get('button[aria-label*="lock" i], button[title*="lock" i], '
-      + 'button[title*="lucchetto" i]')
+    // The lock button has aria-label/title in Italian ("Blocca"/
+    // "Sblocca cattedra X per Y"). Match either variant.
+    cy.get('button[aria-label*="Blocca" i], '
+      + 'button[title="Blocca"], button[title="Sblocca"]')
       .first().click();
 
     cy.request(`${BACKEND}/api/assignments`).then((r) => {

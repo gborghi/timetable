@@ -25,11 +25,16 @@ test.beforeEach(async ({ request }) => {
 
 test('create a classroom via /classrooms', async ({ page }) => {
   await page.goto('/classrooms');
-  // Click the first "Nuova" / "Aggiungi" button
-  await page.getByRole('button', { name: /Nuova|Aggiungi/i })
-    .first().click();
-  await page.locator('input[type="text"]').first().fill(TEST_ROOM_NAME);
+  // The page has multiple "Nuova/Salva" elements; use the
+  // .btn-primary class to scope to the canonical buttons.
+  await page.locator('button.btn-primary')
+    .filter({ hasText: /Nuova aula/ }).click();
+  await page.locator('.field input').first().fill(TEST_ROOM_NAME);
   await page.locator('input[type="number"]').first().fill('28');
-  await page.getByRole('button', { name: /Salva|Crea|OK/i }).click();
+  // The Save button is also btn-primary inside the modal.
+  // Use exact match on "Salva" to skip the page header's
+  // "Salva vista".
+  await page.getByRole('button', { name: 'Salva', exact: true })
+    .click();
   await expect(page.getByText(TEST_ROOM_NAME)).toBeVisible();
 });

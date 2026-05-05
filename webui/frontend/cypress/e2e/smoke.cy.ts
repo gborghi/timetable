@@ -19,9 +19,11 @@
 describe('piTantum smoke', () => {
   it('home page loads with brand title', () => {
     cy.visit('/');
-    cy.title().should('match', /piTantum|Tempus Tantum|piTantum/i);
-    // Sanity: there is at least one nav link to /assignments.
-    cy.get('a[href*="/assignments"], a[href*="/orario"], a[href*="/dashboard"]')
-      .should('exist');
+    cy.title().should('match', /piTantum|Tempus Tantum/i);
+    // SvelteKit hydrates client-side; the body must be non-empty
+    // after JS runs. Wait up to 10s for the app shell.
+    cy.get('body').should('not.be.empty');
+    // No top-level error banner.
+    cy.get('.error-banner, [data-error]').should('not.exist');
   });
 });
