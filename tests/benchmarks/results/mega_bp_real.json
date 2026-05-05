@@ -1,0 +1,25 @@
+{
+  "mega_real_bp": {
+    "scenario": "mega_real",
+    "timestamp": "2026-05-05T23:39:20",
+    "n_classes": 100,
+    "n_teachers": 178,
+    "n_cattedre": 2325,
+    "mode": "branch-and-price",
+    "granularity": "curriculum",
+    "t_phase_a_s": 61.21432089805603,
+    "t_bp_s": 790.7882115840912,
+    "t_total_s": 852.0025324821472,
+    "target_total_s": 1860.0,
+    "hard_cap_total_s": 3660.0,
+    "hard_feasible": true,
+    "soft_obj": 6470.0,
+    "n_columns": 2059,
+    "n_iterations": 0,
+    "n_rf_nodes_explored": 0,
+    "n_columns_purged": 0,
+    "parallel_workers_used": 1,
+    "bp_terminated_reason": "master_dw_infeasible_at_entry",
+    "warnings": []
+  }
+}
