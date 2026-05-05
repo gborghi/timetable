@@ -1,3 +1,35 @@
+# REST API (English summary)
+
+All UI actions are mediated by REST endpoints under `/api/...`.
+Major resource families:
+
+- `/api/teachers`, `/api/classes`, `/api/classrooms`,
+  `/api/subjects`, `/api/curricula`, `/api/students`,
+  `/api/groups` -- CRUD on the entities the solver consumes.
+- `/api/assignments` -- read + manual edit of the teacher →
+  class cattedra; lock toggles (`/lock/<id>`).
+- `/api/optimize/*` -- async solver pipelines: `assignment`
+  (Phase A), `phase-b`, `decomposition/<method>`, `meta/<stage>`,
+  `cg`, `place-event`, `full-pipeline`. Each returns a `run_id`
+  to poll via `/api/optimize/runs/<id>`.
+- `/api/monitor/*` -- event-row listings powering the /monitor
+  UI (event-rows, summary, conflicts).
+- `/api/bulk/events/{dry-run,apply}` -- bulk operations from
+  /monitor (set_classroom, clear_classroom, set_lock).
+- `/api/dataset/{state,clear,mock,import-profile,upload-pickle}`
+  -- data lifecycle.
+- `/api/diagnostics/*` -- async statistics (montecarlo,
+  bipartite, correlations, distributions).
+- `/api/health` -- liveness probe (200 OK + version).
+
+Schemas: `webui/backend/schemas.py` (Pydantic v2). OpenAPI JSON:
+`GET /openapi.json`.
+
+The Italian source reference follows below; full English
+translation is pending.
+
+---
+
 # API REST: come dialogare con piTantum dall'esterno
 
 Tutto quello che la web app fa (creare un docente, lanciare il

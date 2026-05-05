@@ -1,3 +1,35 @@
+# Architecture (English summary)
+
+piTantum is a three-tier system: a CP-SAT solver core
+(`engine/`), a FastAPI + SQLite backend (`webui/backend/`), and
+a SvelteKit frontend (`webui/frontend/`). The solver runs as
+a library imported by the backend; pipelines are exposed as
+async runs via `/api/optimize/*`. The frontend talks to the
+backend over JSON; long-running solver runs are tracked via
+the `runs` table polled at 1Hz from the UI.
+
+Solver pipelines (in `engine/`):
+- `cpsat_v2_assignment.py`: Phase A (teacher → class
+  assignment).
+- `cpsat_v2_timetable.py`: Phase A (timetabling, day_count) +
+  Phase B (per-day slot placement). Native locks + C1/C2/C3
+  constraints.
+- `decomposition_temporal.py`: 6-day parallel decomposition.
+- `decomposition_spectral_v2.py` (+ curriculum/metis): cluster
+  classes, solve sub-problems, ricucitura.
+- `column_generation.py`: master LP + diversified pattern
+  enrichment + completion fallback. `mode="branch-and-price"`
+  scaffold for future scalability work.
+- `metaheuristics.py`, `alns.py`, `vns.py`, `lagrangian.py`:
+  post-processing on a HARD-feasible seed solution.
+
+For the formal description (in Italian) of every component,
+read on. A full English translation of this document is
+pending; see [`README.md`](../README.md) for the bilingual
+project overview.
+
+---
+
 # Architettura: i tre piani del sistema piTantum
 
 Per dare un'idea di insieme di com'e' fatto piTantum, si puo'

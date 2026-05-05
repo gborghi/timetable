@@ -1,3 +1,33 @@
+# Data model (English summary)
+
+Core entities (SQLAlchemy 2.0 models in
+`webui/backend/models.py`):
+
+- `Teacher`, `SchoolClass`, `Subject`, `Classroom`, `Curriculum`,
+  `Student`.
+- `Assignment` (teacher → class/group cattedra; carries `locked`,
+  `coteach_group_id`, `is_support`, `is_potenziamento`,
+  `parallel_group_id`, `group_id`).
+- `CoteachGroup` (Task C1: shared compresenza grouping; can
+  target a `class_id` or a `group_id` -- XOR).
+- `StudyGroup` + `GroupMembership` + `GroupSubjectHours`
+  (Task C3: cross-class study groups).
+- `Solution`, `Lesson` (per-slot output of the solver;
+  `Lesson.group_name` for C3).
+- `*Unavailability`, `*Preference` matrices (5-state:
+  allowed/soft/hard/preferred/enforced).
+- `LogicalUnavailability`, `CurriculumLogicalConstraint`,
+  `GeneralConstraint` (4-kind DSL constraints: hard / soft /
+  preferred / enforced).
+- `Run` (async run row with `status`, `metrics_json`,
+  `current_step`).
+- `SubjectGroupWeight` (Phase A objective inputs).
+
+The Italian source reference follows below; full English
+translation is pending.
+
+---
+
 # Modello dati: come piTantum rappresenta la scuola
 
 Per fare il suo lavoro, piTantum ha bisogno di "vedere" la scuola

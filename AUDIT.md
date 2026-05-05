@@ -1,3 +1,16 @@
+# piTantum — Audit (English summary)
+
+This audit is based on a code-reading pass with line-precise
+evidence (`path:lineno`). Anything not directly measured is
+labelled *(non testato / not measured)*. The synthesis maps
+realistic Italian-school scenarios onto the codebase as it
+stands.
+
+The Italian source follows below; an English translation pass
+is pending.
+
+---
+
 # piTantum — Audit generale
 
 Audit basato su lettura del codice, evidenze citate con `path:lineno`. Tutto
