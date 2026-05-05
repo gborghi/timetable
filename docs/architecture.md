@@ -19,7 +19,23 @@ Solver pipelines (in `engine/`):
   classes, solve sub-problems, ricucitura.
 - `column_generation.py`: master LP + diversified pattern
   enrichment + completion fallback. `mode="branch-and-price"`
-  scaffold for future scalability work.
+  is fully wired with all scalability techniques:
+  - **9 CP-SAT pricers** at granularities `teacher`,
+    `teacher-day`, `teacher-class`, `teacher-class-subject`,
+    `teacher-subject`, `class`, `class-day`, `day`, `curriculum`.
+    Each pricer is the FUNDAMENTAL minimisation; greedy supplies
+    a `model.add_hint` warm-start only.
+  - **Two master LPs**: variant 1 (per-teacher equality, used for
+    `teacher-*` granularities) and variant 2 (Dantzig-Wolfe with
+    cover + class-overlap + teacher-overlap inequalities, used
+    for `class-*`, `day`, `curriculum`).
+  - **Ryan-Foster recursive tree** with Achterberg pair score and
+    LP-bound pruning, depth + node caps.
+  - **Box-step dual stabilization** to smooth oscillating duals.
+  - **Column management** with reduced-cost-age purge (default
+    pool cap 10K columns, EWMA over 20 iterations).
+  - **Parallel pricing** via `ProcessPoolExecutor` (default
+    `cpu_count() // 2` workers).
 - `metaheuristics.py`, `alns.py`, `vns.py`, `lagrangian.py`:
   post-processing on a HARD-feasible seed solution.
 

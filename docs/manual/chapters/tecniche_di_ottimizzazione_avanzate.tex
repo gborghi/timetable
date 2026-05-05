@@ -33,12 +33,46 @@ sincrono pre-Phase-A. Tre controlli:
 Esposto in \emph{tre} punti UI: bottone inline in PhaseACard,
 riga in AdvancedTechniquesCard, sezione del tab Statistiche.
 
-\section{Column Generation (Dantzig-Wolfe)}
+\section{Column Generation e Branch-and-Price avanzato}
 
-\texttt{experiments/column\_generation.py}. Master LP via
-\texttt{scipy.linprog} HiGHS; sotto-problema per docente.
-Skeleton single-iteration per scuole molto grandi ($>200$
-classi). Default OFF nella pipeline.
+\texttt{engine/column\_generation.py}. Master LP via
+\texttt{scipy.linprog} HiGHS; otto pricer CP-SAT dedicati a
+granularit\`a diverse (\texttt{teacher}, \texttt{teacher-day},
+\texttt{teacher-class}, \texttt{teacher-class-subject},
+\texttt{teacher-subject}, \texttt{class}, \texttt{class-day},
+\texttt{day}, \texttt{curriculum}); modalit\`a
+\texttt{branch-and-price} con tutte le quattro tecniche di
+scalabilit\`a per istanze MEGA:
+
+\begin{itemize}
+\item \textbf{Ryan-Foster recursive tree} con scoring di
+   Achterberg sui pair frazionari, best-first search con prune
+   sul lower bound, cap a profondit\`a 20 / 1000 nodi.
+\item \textbf{Box-step dual stabilization}
+   $\pi_{\text{blend}} = (1-\alpha)\pi_{\text{stable}}
+   + \alpha\pi_{\text{raw}}$ con $\alpha=0{,}2$.
+\item \textbf{Column management}: EWMA del reduced cost per
+   colonna su 20 iter, purge delle peggiori quando il pool
+   eccede 10\,000 colonne (preservando le seed e quelle in
+   basis).
+\item \textbf{Parallel pricing} via
+   \texttt{ProcessPoolExecutor} (default $\lfloor
+   \texttt{os.cpu\_count()}/2 \rfloor$ worker).
+\end{itemize}
+
+\subsection*{Numeri misurati (benchmark sintetico MEGA)}
+
+Vedi \texttt{tests/benchmarks/test\_bp\_mega.py}. Su uno
+scenario sintetico mega\_100 (100 classi, 100 docenti,
+4 materie, $\sim$400 cattedre) la pipeline raggiunge
+HARD-feasibility in \textbf{5{,}22 s} con
+\texttt{granularity=curriculum} e tutte le tecniche di
+scalabilit\`a abilitate. Su uno scenario mega\_50 (50 classi,
+48 docenti, 200 cattedre) il tempo \`e \textbf{1{,}93 s}. Lo
+scenario sintetico e' strutturalmente facile (cattedre come
+blocchi di 4 ore in singoli giorni); su istanze reali con
+distribuzione giornaliera meno regolare l'obiettivo di
+calibrazione \`e 30 minuti per il MEGA, hard cap 60 minuti.
 
 \section{Lagrangian Relaxation}
 

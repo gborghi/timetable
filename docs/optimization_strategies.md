@@ -219,66 +219,135 @@ al numero di classi della scuola attiva: <15 classi -> 'teacher',
 `teacher-subject`, `class-day`, `day`) sono accessibili solo
 manualmente.
 
-Le granularita' non ancora implementate nell'engine vengono
-accettate dal payload e mappate a 'teacher' con un warning di log;
-i pricers CP-SAT dedicati arrivano in commit separati (vedi
-roadmap qui sotto).
+### Branch-and-Price completo (mode='branch-and-price')
 
-### Cosa serve per il vero Branch-and-Price (roadmap)
+Tutte e 9 le granularita' sono ora wirate end-to-end (UI -> schema
+-> router -> backend -> engine -> CP-SAT pricer). L'engine usa due
+master LP a seconda della granularita':
 
-La specifica completa data da Giovanni richiede:
+- **Master variant 1** (`_solve_master`, scipy.linprog HiGHS):
+  per le 4 granularita' teacher-based (`teacher`, `teacher-day`,
+  `teacher-class`, `teacher-class-subject`, `teacher-subject`).
+  Vincolo `sum_p x[t,p] = 1` per ogni docente: il pricer emette
+  un pattern settimanale completo per il docente, dove SOLO la
+  fetta della granularita' (es. la classe per `teacher-class`) e'
+  ottimizzata da CP-SAT, il resto e' greedy-piazzato come contesto.
+- **Master variant 2** (`_solve_master_dw`, Dantzig-Wolfe puro):
+  per le 4 granularita' multi-docente (`class`, `class-day`,
+  `day`, `curriculum`). Niente equality per docente; al posto:
+  - **cover** `sum_col x*placed_col(t,cl,s,d) >= demand(t,cl,s,d)`
+  - **class no-overlap** `sum_col x*occupies(cl,d,h) <= 1`
+  - **teacher no-overlap** `sum_col x*occupies(t,d,h) <= 1`
+  Il pricer emette un pattern parziale (multi-docente) che il
+  master combina via set-packing greedy nel recovery integer.
 
-1. **Master LP** ristrutturato: invece dell'attuale
-   "ogni pattern di docente t copre tutta la domanda di t"
-   (che rende i duali su (t, cl, subj, d) invarianti per i
-   pattern dello stesso docente), il master deve permettere
-   pattern parziali e accumulare la copertura via somma.
-2. **Sub-problema CP-SAT con duali** per ciascuna granularita':
-   - `teacher`: variabili `x[(cl, subj, d, h)]`, obiettivo
-     `cost_pattern - lambda_t - sum_(cl,subj,d) mu * coverage`,
-     vincoli di no-overlap docente.
-   - `class`: variabili per ciascuna lezione della classe,
-     vincoli di copertura monte ore.
-   - `day`: variabili per il giorno, vincoli di non-overlap
-     classe e docente, obiettivo guidato dai duali.
-   - `curriculum` (per indirizzo): un sub-CP-SAT per ciascun
-     indirizzo della scuola (Scientifico, Classico, Linguistico,
-     ITIS Informatica, ...). Il sub copre internamente le
-     ore-cattedra dei docenti che insegnano principalmente in
-     quell'indirizzo e di tutte le sue classi. I docenti-ponte
-     (chi insegna in piu' indirizzi -- inglese, motorie, religione
-     tipicamente) sono modellati come constraint del master che
-     coordinano tra patterns di indirizzi diversi via duali. E'
-     la granularita' naturale per scuole italiane medio-grandi,
-     dove la disgiunzione fra i pool di docenti per materie
-     d'indirizzo (greco/latino solo nel classico, scienze
-     applicate solo nello scientifico-applicate, ecc.) rende i
-     sub-problemi piccoli e le interazioni bridge-only.
+#### Pricing loop con tutte le tecniche di scalabilita'
 
-   La granularita' `curriculum` segue lo schema classico di
-   Vanderbeck per Dantzig-Wolfe applicato a problemi di
-   scheduling con **struttura bloccata** (block-angular): il
-   problema globale si decompone in blocchi indipendenti
-   (gli indirizzi) collegati da poche variabili globali (i
-   docenti-ponte).
-3. **Iterative pricing loop**: master -> duali -> sub-CP-SAT
-   in parallelo -> nuovi pattern con reduced cost negativo ->
-   master, fino a convergenza.
-4. **Variable branching**: scegli `x_p` con `0 < x_p < 1`,
-   crea due rami (`x_p = 0` e `x_p = 1`), ricorri.
-5. **Ryan-Foster branching**: scegli (i, j) elementi tali che
-   `sum_{p covers both} x_p` sia frazionario; due rami "i e j
-   sempre insieme" / "i e j mai insieme". Stato di branching
-   da gestire con merge/separate hash maps.
-6. **Branch-and-bound tree**: ricorsione con bound tracking,
-   pruning quando il bound del nodo e' peggiore della miglior
-   intera trovata.
+```
+seed columns (iterative-diversified) ---+
+                                        |
+                                        v
+                            +------- Master LP solve ----+
+                            |     (variant 1 o variant 2) |
+                            |                             |
+        +--- duali stabilizzati (box-step) ---------------+
+        |     pi_blend = (1-alpha)*pi_stable + alpha*pi_raw
+        |     alpha=0.2, pi_stable aggiornato ogni iter
+        v
+   Pricing parallelo (ProcessPoolExecutor, cpu//2 worker)
+        |   per ogni key di granularita' indipendente:
+        |     greedy warm-start hint via model.add_hint
+        |     CP-SAT SEMPRE invocato (mai sostituito da greedy)
+        |     se rc < -eps: nuova colonna -> pool
+        v
+   Column management: rc EWMA su 20 iter
+        |   se pool > 10K colonne attive:
+        |     drop colonne con rc_avg piu' positivo (eccetto
+        |     seed e colonne con x>0)
+        |     re-solve master sul pool ridotto
+        v
+   Loop fino a no-improving-column o budget esaurito.
+   
+   Ryan-Foster branching tree (best-first, LP-bound prune):
+     1. trova pair (i,j) di slot (cl,d,h) frazionari (Achterberg)
+     2. branch "together": colonne devono coprire BOTH o NEITHER
+     3. branch "apart": nessuna colonna copre BOTH
+     4. ricorsivo, max_depth=20, max_nodes=1000
+   
+   Integer recovery (greedy set-packing) -> sol_dict
+   HARD-feasibility check; fallback a completion solver giorno-per-
+   giorno se assembly non chiude.
+```
 
-Stima realistica: 5-10 giorni di engineering OR focalizzato per
-chiudere correttamente. La struttura di `experiments/column_generation.py`
-e' pronta a essere estesa con un secondo path
-(`mode="branch-and-price"`), ma il refactor del master e' la
-parte invasiva.
+#### CP-SAT come minimizzazione fondamentale
+
+Per OGNI granularita', il sub-problem CP-SAT e' la minimizzazione
+fondamentale; il greedy serve esclusivamente come `model.add_hint`
+warm-start (acceleratore). Se CP-SAT non trova soluzione feasible
+entro il time-limit, il pricer ritorna `(None, 0.0)`: il greedy
+NON viene promosso a colonna in nessuna circostanza.
+
+Variabili e vincoli per ogni granularita' (tutti i pricer
+condividono il pattern: BoolVar per slot, cattedra-hours equality,
+no-overlap sui slot in scope, integer-scaled `-lam*slot +
+penalty_sixth` come obiettivo):
+
+| Granularita' | Variabili CP-SAT | Cosa ottimizza il pricer |
+|---|---|---|
+| `teacher-class` | slot[(s,d,h)] per s in subjects(t,cl) | tutti i slot di t in una classe |
+| `teacher-class-subject` | slot[(d,h)] per (t,cl,s) | una sola cattedra |
+| `teacher-subject` | slot[(cl,d,h)] per cl in classes(t,s) | (t,*,subj,*,*) |
+| `teacher-day` | slot[(cl,s,h)] per (cl,s) in catt(t,day) | un giorno del docente |
+| `class` | slot[(t,s,d,h)] per (t,s) in catt(cl) | settimana intera della classe |
+| `class-day` | slot[(t,s,h)] per (t,s) in catt(cl,day) | un giorno della classe |
+| `day` | slot[(t,cl,s,h)] tutti i (t,cl,s) del giorno | un giorno globale (multi-classe) |
+| `curriculum` | slot[(t,cl,s,d,h)] per cl in curriculum_id | settimana intera dell'indirizzo |
+
+#### Tecniche di scalabilita' per MEGA (100 classi)
+
+Tutte e 4 implementate e attive di default:
+
+1. **Ryan-Foster recursive tree**
+   (`_run_ryan_foster_tree`):
+   best-first node exploration con heap su LP-bound, pruning per
+   bound-vs-incumbent, max_depth=20, max_nodes=1000.
+   Achterberg pair score `s*(1-s)` su pair di slot (cl,d,h)
+   stessa-classe.
+
+2. **Box-step dual stabilization** (`_blend_duals`):
+   pi_blend = (1-alpha)*pi_stable + alpha*pi_raw con alpha=0.2.
+   Applicata sia al master variant 1 (lambda_cover, mu_teacher)
+   che al variant 2 (lambda_cover, mu_class, mu_teacher).
+
+3. **Column management** (`_maybe_purge_pool_dw`): EWMA del
+   reduced cost per colonna su 20 iter; quando il pool eccede
+   10K colonne, drop delle peggiori (rc_avg piu' positivo)
+   eccetto colonne in basis (x>0) e seed columns.
+
+4. **Parallel pricing** (`ProcessPoolExecutor`): default workers
+   = `os.cpu_count() // 2`, capped at n_keys. Fall-back graceful
+   a sequential se il pickle/spawn fallisce.
+
+#### Performance characteristics (numeri misurati)
+
+Smoke su `small` (10 classi, 19 docenti): 4 iter, 114 pattern
+finali, master obj=60, completion ha riempito i gap, 1662 celle,
+HARD-feasible al 100%, 25.8s wall.
+
+Benchmark sintetico MEGA-style (vedi
+`tests/benchmarks/test_bp_mega.py`):
+
+| Scala | Classi | Docenti | Cattedre | t_BP | HARD | obj | RF nodi |
+|---|---|---|---|---|---|---|---|
+| mega_50 | 50 | 48 | 200 | 1.93s | si | -- | 1 |
+| mega_100 | 100 | 100 | 400 | 5.22s | si | 0.0 | 1 |
+
+Lo scenario sintetico e' strutturalmente facile (ogni cattedra
+e' un blocco di 4 ore in un singolo giorno), quindi il LP master
+trova subito la soluzione integer. Su istanze reali con
+distribuzione giornaliera meno regolare la pipeline spende piu'
+tempo per iterazione, ma gli obiettivi 30-min/60-min restano i
+target di calibrazione.
 
 ### Auto-detect della granularita' (nella UI)
 
