@@ -803,6 +803,86 @@ def test_bp_loop_with_curriculum_granularity():
             or info_bp["feasible_after_completion"])
 
 
+def test_bp_ryan_foster_achterberg_pair_score_picks_fractional():
+    """The Achterberg pair-scorer must pick a same-class slot pair
+    whose pair-cover sum is fractional."""
+    import column_generation as cg
+    # Two columns, both with x=0.5, both covering the same (cl, d, h)
+    # pair -- pair-cover s = 0.5 + 0.5 = 1.0 -> NOT fractional, skip.
+    # Build columns where pair-cover sum is exactly 0.5 (fractional).
+    col_both = {("T1", "1A", "Mat", 1, 8): 1, ("T1", "1A", "Mat", 1, 9): 1}
+    col_only_a = {("T1", "1A", "Mat", 1, 8): 1}
+    col_only_b = {("T1", "1A", "Mat", 1, 9): 1}
+    columns = [col_both, col_only_a, col_only_b]
+    # Weights: x_both = 0.3, x_a = 0.7, x_b = 0.7 -> pair-cover = 0.3
+    lp_x = [0.3, 0.7, 0.7]
+    pair = cg._achterberg_pair_score(columns, lp_x)
+    assert pair is not None
+    a, b, score = pair
+    assert a[0] == "1A" and b[0] == "1A"  # same class
+    assert (a[1], a[2]) != (b[1], b[2])
+    # Score = 0.3 * 0.7 = 0.21
+    assert abs(score - 0.21) < 1e-3
+
+
+def test_bp_ryan_foster_achterberg_returns_none_when_integer():
+    """If LP weights are 0/1, no pair is fractional -> None."""
+    import column_generation as cg
+    columns = [{("T", "1A", "Mat", 1, 8): 1}]
+    lp_x = [1.0]
+    assert cg._achterberg_pair_score(columns, lp_x) is None
+
+
+def test_bp_filter_columns_together_apart():
+    """Together: columns with both or neither of the pair.
+    Apart: columns NOT covering both."""
+    import column_generation as cg
+    a = ("1A", 1, 8)
+    b = ("1A", 1, 9)
+    col_both = {("T", "1A", "Mat", 1, 8): 1, ("T", "1A", "Mat", 1, 9): 1}
+    col_only_a = {("T", "1A", "Mat", 1, 8): 1}
+    col_only_b = {("T", "1A", "Mat", 1, 9): 1}
+    col_neither = {("T", "1A", "Mat", 1, 10): 1}
+    cols = [col_both, col_only_a, col_only_b, col_neither]
+    together = cg._filter_columns_together(cols, a, b)
+    assert col_both in together
+    assert col_neither in together
+    assert col_only_a not in together
+    assert col_only_b not in together
+    apart = cg._filter_columns_apart(cols, a, b)
+    assert col_both not in apart
+    assert col_only_a in apart
+    assert col_only_b in apart
+    assert col_neither in apart
+
+
+def test_bp_ryan_foster_branching_invoked_in_pipeline():
+    """End-to-end: branching_strategy='ryan_foster' triggers the RF
+    branch step in the BP-DW pipeline. Even if the LP is already
+    integer (small scenario), info['rf_terminated_reason'] must be
+    populated, proving the RF code path was reached."""
+    import column_generation as cg
+    profs = _two_class_profs()
+    dc_value = _two_class_dc()
+    sol_bp, info_bp = cg.run_column_generation(
+        profs, dc_value, time_budget_s=30.0,
+        patterns_per_teacher=2, max_iterations=2, log=False,
+        mode="branch-and-price", granularity="class",
+        branching_strategy="ryan_foster",
+        bp_max_iterations=3, pricer_time_limit=2.0, pricer_workers=1,
+    )
+    assert info_bp["mode"] == "branch-and-price"
+    # Either an rf_pair was identified or rf_terminated_reason
+    # surfaces "lp_already_integer" -- both prove the RF branch
+    # function was called.
+    assert ("rf_pair" in info_bp
+            or "rf_terminated_reason" in info_bp), (
+        f"Ryan-Foster branching not invoked. info keys: "
+        f"{sorted(info_bp.keys())}")
+    assert (info_bp["feasible_after_assembly"]
+            or info_bp["feasible_after_completion"])
+
+
 def test_bp_pricers_use_addhint_warmstart():
     """Each CP-SAT pricer must invoke `model.AddHint(...)` at least
     once per call. This guarantees:

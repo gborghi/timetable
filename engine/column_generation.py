@@ -2551,6 +2551,188 @@ def _run_branch_and_price(
     return patterns, best_obj, best_selection, info
 
 
+# ---------------- Ryan-Foster branching (DW path) ----------------
+#
+# After the BP-DW loop converges to LP optimum, the fractional
+# weights x[col] can leave the LP solution non-integer. The
+# integer recovery via greedy set-packing may give a much worse
+# objective than the LP. Ryan-Foster branching closes the gap by
+# picking a pair of "elements" (slots in our case) that are
+# covered "fractionally together" by some columns, then exploring
+# two branches:
+#   - together: any selected column must cover BOTH or NEITHER
+#                of the pair. Columns covering exactly one are
+#                removed from the pool for this branch.
+#   - apart:    no selected column covers BOTH. Columns covering
+#                both are removed from the pool for this branch.
+#
+# Achterberg-style pair scoring: for a pair (i, j), let
+#   s(i, j) = sum_(p covers both i and j) x[p]
+# The "most fractional" pair maximises s(i, j) * (1 - s(i, j)),
+# which peaks at s = 0.5 (the LP is most divided on whether to
+# cover both).
+
+
+def _achterberg_pair_score(
+    columns: list[dict], lp_x: list[float],
+) -> tuple | None:
+    """Find the most fractional class-slot pair (i, j) in a DW LP
+    solution. Returns ((cl, d1, h1), (cl, d2, h2), score) or None
+    if no fractional pair exists (LP is already integer-tight).
+
+    Pairs are restricted to slots within the SAME class: branching
+    on cross-class pairs is much weaker because most columns don't
+    interact across classes.
+    """
+    eps = 1e-6
+    # Per-column class-slot incidence; only columns with x > 0.
+    col_slots: list[tuple[float, set]] = []
+    for j, col in enumerate(columns):
+        x = float(lp_x[j]) if j < len(lp_x) else 0.0
+        if x <= eps:
+            continue
+        slots = set()
+        for (_p, cl, _s, d, h), v in col.items():
+            if v:
+                slots.add((cl, d, h))
+        col_slots.append((x, slots))
+
+    # Aggregate pair-cover sums (only same-class pairs).
+    pair_sum: dict[tuple, float] = {}
+    for x, slots in col_slots:
+        slist = sorted(slots)
+        n = len(slist)
+        for i in range(n):
+            for k in range(i + 1, n):
+                a, b = slist[i], slist[k]
+                if a[0] != b[0]:
+                    continue  # not same class
+                pair_sum[(a, b)] = pair_sum.get((a, b), 0.0) + x
+
+    # Achterberg-style score: s * (1 - s).
+    best = None
+    for (a, b), s in pair_sum.items():
+        if s <= eps or s >= 1 - eps:
+            continue
+        score = s * (1 - s)
+        if best is None or score > best[2]:
+            best = (a, b, score)
+    return best
+
+
+def _filter_columns_together(
+    columns: list[dict],
+    item_a: tuple, item_b: tuple,
+) -> list[dict]:
+    """Keep columns that cover BOTH or NEITHER of (item_a, item_b).
+    item_a, item_b are (cl, d, h) tuples."""
+    out = []
+    for col in columns:
+        slots = set()
+        for (_p, cl, _s, d, h), v in col.items():
+            if v:
+                slots.add((cl, d, h))
+        ca = item_a in slots
+        cb = item_b in slots
+        if ca == cb:  # both true OR both false
+            out.append(col)
+    return out
+
+
+def _filter_columns_apart(
+    columns: list[dict],
+    item_a: tuple, item_b: tuple,
+) -> list[dict]:
+    """Keep columns that do NOT cover both (item_a, item_b)."""
+    out = []
+    for col in columns:
+        slots = set()
+        for (_p, cl, _s, d, h), v in col.items():
+            if v:
+                slots.add((cl, d, h))
+        if not (item_a in slots and item_b in slots):
+            out.append(col)
+    return out
+
+
+def _ryan_foster_branch_dw(
+    columns: list[dict], lp_x: list[float], profs: dict,
+    dc_value: dict,
+    *,
+    log: bool = True,
+) -> tuple[dict | None, dict]:
+    """One level of Ryan-Foster branching on the DW LP. After the
+    BP loop converges, find the most fractional class-slot pair
+    (Achterberg score), explore two branches (together / apart),
+    pick the better integer recovery.
+
+    Returns (sol_dict, branch_info) -- sol_dict is the better
+    integer-feasible solution from the two branches, or None if
+    neither produced anything HARD-feasible.
+    """
+    info: dict[str, Any] = {
+        "rf_pair": None,
+        "rf_score": None,
+        "rf_together_n_cols": 0,
+        "rf_apart_n_cols": 0,
+        "rf_together_obj": None,
+        "rf_apart_obj": None,
+    }
+    pair = _achterberg_pair_score(columns, lp_x)
+    if pair is None:
+        info["rf_terminated_reason"] = "lp_already_integer"
+        return None, info
+    item_a, item_b, score = pair
+    info["rf_pair"] = (item_a, item_b)
+    info["rf_score"] = float(score)
+
+    # Branch 1: together
+    cols_t = _filter_columns_together(columns, item_a, item_b)
+    info["rf_together_n_cols"] = len(cols_t)
+    sol_t = None
+    if cols_t:
+        res_t = _solve_master_dw(cols_t, dc_value)
+        if res_t[0] is not None:
+            lp_x_t, obj_t, _lam = res_t
+            sol_t = _integer_recover_dw(cols_t, lp_x_t, dc_value)
+            info["rf_together_obj"] = float(obj_t)
+
+    # Branch 2: apart
+    cols_a = _filter_columns_apart(columns, item_a, item_b)
+    info["rf_apart_n_cols"] = len(cols_a)
+    sol_a = None
+    if cols_a:
+        res_a = _solve_master_dw(cols_a, dc_value)
+        if res_a[0] is not None:
+            lp_x_a, obj_a, _lam = res_a
+            sol_a = _integer_recover_dw(cols_a, lp_x_a, dc_value)
+            info["rf_apart_obj"] = float(obj_a)
+
+    # Pick the better HARD-feasible solution.
+    candidates = []
+    for sol, label in ((sol_t, "together"), (sol_a, "apart")):
+        if not sol:
+            continue
+        if not meta.is_hard_feasible(sol, profs, verbose=False):
+            continue
+        v, _ = meta.compute_soft(sol, profs)
+        candidates.append((float(v), sol, label))
+    if not candidates:
+        info["rf_terminated_reason"] = "no_feasible_branch"
+        return None, info
+    candidates.sort(key=lambda x: x[0])
+    best = candidates[0]
+    info["rf_chosen_branch"] = best[2]
+    info["rf_chosen_obj"] = best[0]
+    if log:
+        print(f"[CG.BP-DW.RF] pair={item_a} ~ {item_b}, "
+              f"score={score:.3f}, "
+              f"together_obj={info['rf_together_obj']}, "
+              f"apart_obj={info['rf_apart_obj']}, "
+              f"chose '{best[2]}' (soft={best[0]:.1f})")
+    return best[1], info
+
+
 def _run_branch_and_price_dw(
     columns_initial: list[dict], profs: dict, dc_value: dict,
     *,
@@ -2725,6 +2907,7 @@ def run_column_generation(profs: dict, dc_value: dict,
                           group_assignments: list | None = None,
                           mode: str = "iterative-diversified",
                           granularity: str = "teacher",
+                          branching_strategy: str = "ryan_foster",
                           bp_max_iterations: int = 8,
                           pricer_time_limit: float = 5.0,
                           pricer_workers: int = 2,
@@ -2928,14 +3111,35 @@ def run_column_generation(profs: dict, dc_value: dict,
                       f"sol with soft={v_dw:.1f}")
             info["bp_dw_integer_obj"] = float(v_dw)
             info["bp_dw_integer_feasible"] = True
-            # If DW's integer recovery beats variant-1's selection
-            # (which we don't yet know -- rebuild it), use it.
-            # We propagate by short-circuiting steps 4/5 below.
-            info["feasible_after_assembly"] = True
             sol_dw_override = dw_sol
+            info["feasible_after_assembly"] = True
         else:
             info["bp_dw_integer_feasible"] = False
             sol_dw_override = None
+
+        # Ryan-Foster branching: one-level pair-branch on the most
+        # fractional class-slot pair (Achterberg score). If a branch
+        # produces a better HARD-feasible integer solution, override.
+        if (branching_strategy == "ryan_foster"
+                and time.time() - t0 < time_budget_s):
+            rf_sol, rf_info = _ryan_foster_branch_dw(
+                dw_columns, dw_lp_x, profs, dc_value, log=log)
+            info.update({k: v for k, v in rf_info.items()
+                          if k.startswith("rf_")})
+            if rf_sol is not None:
+                rf_v, _ = meta.compute_soft(rf_sol, profs)
+                cur_v = (info.get("bp_dw_integer_obj")
+                          if sol_dw_override else float("inf"))
+                if cur_v is None:
+                    cur_v = float("inf")
+                if rf_v < cur_v - 1e-6:
+                    if log:
+                        print(f"[CG.BP-DW.RF] adopting RF branch sol "
+                              f"(soft={rf_v:.1f} vs {cur_v:.1f})")
+                    sol_dw_override = rf_sol
+                    info["bp_dw_integer_obj"] = float(rf_v)
+                    info["bp_dw_integer_feasible"] = True
+                    info["feasible_after_assembly"] = True
         # If DW didn't yield a feasible integer sol, keep
         # variant-1's selection for the standard recovery path.
     elif (use_bp and granularity in _BP_GRANULARITIES
