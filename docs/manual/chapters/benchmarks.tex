@@ -345,6 +345,68 @@ Branch-and-Price.}
 \label{fig:bench-bp-cols}
 \end{figure}
 
+\subsection{MEGA reale: 100 classi, 178 docenti}
+\label{sec:bench-bp-mega-real}
+
+Il sintetico \`e calibrato per fitting; il MEGA \emph{reale}
+(la cui anagrafica vive in
+\texttt{engine/scripts/data/mega/\{school,profs\}\_mega.pkl}
+e si carica dal dashboard via
+\texttt{POST /api/dataset/import-profile?profile=mega}) presenta
+proporzioni significativamente piu' grandi:
+100 classi, \textbf{178 docenti}, \textbf{2325 entry
+cattedra-day} dopo Phase A. Il sorgente del benchmark \`e
+\texttt{tests/benchmarks/run\_mega\_real.py}.
+
+\begin{table}[h]
+\centering
+\sffamily\small
+\begin{tabular}{lr}
+\toprule
+Metrica & Valore \\
+\midrule
+Classi                & 100 \\
+Docenti               & 178 \\
+Cattedra-day entries  & 2\,325 \\
+Phase A wall          & 61{,}2\,s \\
+BP loop wall          & 790{,}8\,s \\
+\textbf{Totale wall}  & \textbf{852\,s (14{,}2 min)} \\
+HARD-feasibility      & si (via completion-solver fallback) \\
+Soft cost finale      & 6470 \\
+Colonne generate      & 2\,059 \\
+\bottomrule
+\end{tabular}
+\caption{Branch-and-Price su MEGA reale, granularit\`a
+\texttt{curriculum} con tutte le 4 tecniche di scalabilit\`a
+attive. Il totale rispetta abbondantemente il target di 30\,min
+e l'hard cap di 60\,min. Sorgente:
+\texttt{tests/benchmarks/results/bp\_scalability\_real.json}
+(prodotto rieseguendo il runner).}
+\label{tab:bench-bp-mega-real}
+\end{table}
+
+\paragraph{Osservazione importante.} In questo run il
+sotto-loop di vero Branch-and-Price \emph{non} si \`e iterato:
+\texttt{bp\_terminated\_reason = master\_dw\_infeasible\_at\_entry}.
+Il master variant 2 (Dantzig-Wolfe con cover + class-no-overlap +
+teacher-no-overlap come disuguaglianze HARD) risulta infeasibile
+gi\`a alla LP relaxation con il pool di seed (i pattern
+settimanali per docente prodotti dalla iterative-diversified),
+perche' due pattern di docenti diversi possono collidere sulla
+stessa coppia (classe, giorno, ora). La copertura HARD richiede
+$x_t \geq 1$ per ogni docente, mentre il class-no-overlap impone
+$\sum_t x_t \leq 1$ sui collisioni di classe. Risolvere questa
+collision strutturale richiede un seeding alternativo (colonne
+class-level invece che teacher-week) o il rilassamento dei
+no-overlap a soft. La HARD-feasibility \`e quindi raggiunta
+\emph{interamente} via il completion-solver per giorno (path
+sempre attivo come safety-net). Le tecniche di scalabilit\`a BP
+(Ryan-Foster, dual stabilization, column management,
+parallel pricing) restano implementate e testate
+sull'unit-test suite ma non vengono esercitate su MEGA reale
+con il seed attuale; un follow-up commit le attiver\`a tramite
+una pipeline di seed dedicata.
+
 \section{Quando il Branch-and-Price conviene}
 \label{sec:bench-bp-when}
 

@@ -116,6 +116,64 @@ for HUGE, 30\,min for MEGA).}
 \label{fig:bench-bp-cols-en}
 \end{figure}
 
+\subsection{Real MEGA: 100 classes, 178 teachers}
+\label{sec:bench-bp-mega-real-en}
+
+The synthetic scenario above is calibrated for fitting; the real
+MEGA registry (under
+\texttt{engine/scripts/data/mega/\{school,profs\}\_mega.pkl},
+loadable from the dashboard via
+\texttt{POST /api/dataset/import-profile?profile=mega}) is
+significantly larger: 100 classes, \textbf{178 teachers},
+\textbf{2325 cattedra-day entries} after Phase A. The benchmark
+source is \texttt{tests/benchmarks/run\_mega\_real.py}.
+
+\begin{table}[h]
+\centering
+\sffamily\small
+\begin{tabular}{lr}
+\toprule
+Metric & Value \\
+\midrule
+Classes               & 100 \\
+Teachers              & 178 \\
+Cattedra-day entries  & 2\,325 \\
+Phase A wall          & 61.2\,s \\
+BP loop wall          & 790.8\,s \\
+\textbf{Total wall}   & \textbf{852\,s (14.2 min)} \\
+HARD-feasibility      & yes (via completion-solver fallback) \\
+Final soft cost       & 6470 \\
+Columns generated     & 2\,059 \\
+\bottomrule
+\end{tabular}
+\caption{Branch-and-Price on real MEGA at granularity
+\texttt{curriculum} with all four scalability techniques
+enabled. The total meets the 30-minute target with margin and
+the 60-minute hard cap easily.}
+\label{tab:bench-bp-mega-real-en}
+\end{table}
+
+\paragraph{Important observation.} The Branch-and-Price inner
+loop did NOT iterate in this run:
+\texttt{bp\_terminated\_reason = master\_dw\_infeasible\_at\_entry}.
+The master variant 2 (Dantzig-Wolfe with cover +
+class-no-overlap + teacher-no-overlap as HARD inequalities) is
+infeasible at the LP relaxation level with the seed pool (the
+teacher-week patterns produced by iterative-diversified): two
+patterns of different teachers can place lessons in the same
+(class, day, hour). HARD cover requires $x_t \geq 1$ per teacher
+while class-no-overlap forces $\sum_t x_t \leq 1$ on the
+collision. Resolving this structural conflict needs an alternative
+seeding (class-level columns instead of teacher-week) or
+relaxing the no-overlap to a soft penalty. HARD-feasibility is
+therefore reached entirely via the per-day completion-solver
+fallback (always-on safety net). The BP scalability techniques
+(Ryan-Foster, dual stabilization, column management, parallel
+pricing) are implemented and tested on the unit-test suite but
+are not exercised on real MEGA with the current seeding; a
+follow-up commit will activate them with a dedicated seeding
+pipeline.
+
 \section{When Branch-and-Price is worth it}
 \label{sec:bench-bp-when-en}
 
