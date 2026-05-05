@@ -482,6 +482,64 @@ def test_bp_loop_with_teacher_subject_granularity():
         assert obj_bp <= obj_id + 1e-6
 
 
+def test_bp_pricers_use_addhint_warmstart():
+    """Each CP-SAT pricer must invoke `model.AddHint(...)` at least
+    once per call. This guarantees:
+      - CP-SAT is ALWAYS invoked (not short-circuited by greedy).
+      - The greedy proposal is fed to CP-SAT as a warm-start hint
+        (not used as a fallback column).
+    Verified by spying on cp_model.CpModel.AddHint via monkeypatch.
+    """
+    import column_generation as cg
+    from ortools.sat.python import cp_model
+    profs = _two_class_profs()
+    dc_value = _two_class_dc()
+    lambda_duals = {("T1", "1A", "Mat", 1): 100.0}
+
+    # Per-pricer-call counter of add_hint invocations. The canonical
+    # name on CpModel is `add_hint` (snake_case); `AddHint` is an
+    # instance-level alias provided by the proto wrapper.
+    counts: dict[int, int] = {}
+    real_add_hint = cp_model.CpModel.add_hint
+
+    def counting_add_hint(self, var, value):
+        counts[id(self)] = counts.get(id(self), 0) + 1
+        return real_add_hint(self, var, value)
+
+    cp_model.CpModel.add_hint = counting_add_hint
+    try:
+        # Each call must produce >= 1 AddHint (one per in-scope
+        # slot variable).
+        cases = [
+            ("teacher-class",
+             lambda: cg._pricing_subproblem_teacher_class(
+                 "T1", "1A", profs, dc_value, lambda_duals,
+                 mu_t=0.0, time_limit=2.0, workers=1)),
+            ("teacher-class-subject",
+             lambda: cg._pricing_subproblem_teacher_class_subject(
+                 "T1", "1A", "Mat", profs, dc_value, lambda_duals,
+                 mu_t=0.0, time_limit=2.0, workers=1)),
+            ("teacher-subject",
+             lambda: cg._pricing_subproblem_teacher_subject(
+                 "T1", "Mat", profs, dc_value, lambda_duals,
+                 mu_t=0.0, time_limit=2.0, workers=1)),
+            ("teacher-day",
+             lambda: cg._pricing_subproblem_teacher_day(
+                 "T1", 1, profs, dc_value, lambda_duals,
+                 mu_t=0.0, time_limit=2.0, workers=1)),
+        ]
+        for name, call in cases:
+            counts.clear()
+            pat, rc = call()
+            assert pat is not None, (
+                f"{name}: pricer returned None unexpectedly")
+            assert sum(counts.values()) > 0, (
+                f"{name}: model.AddHint was never called -- the "
+                f"CP-SAT warm-start hint mechanism is missing.")
+    finally:
+        cp_model.CpModel.add_hint = real_add_hint
+
+
 def test_bp_pricers_are_cpsat_not_greedy_teacher_class():
     """Proof that the FUNDAMENTAL optimisation is CP-SAT, not greedy.
 

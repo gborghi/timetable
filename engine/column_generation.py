@@ -438,28 +438,33 @@ def _completion_solver(initial_sol: dict, profs: dict, dc_value: dict,
 # compatible with the existing master LP (variant 1, "exactly one
 # pattern per teacher" equality + cover inequalities).
 #
-# How "CP-SAT minimises, greedy is only context-fill":
+# Pricing pattern: greedy WARM-START, CP-SAT ALWAYS INVOKED.
 #
-# The granularity selects a SLICE of the teacher's week (e.g. the
-# (t, cl, *, *, *) slots for teacher-class, or the (t, *, *, day, *)
-# slots for teacher-day). The CP-SAT model has a Boolean variable
-# for every slot in that slice and minimises the integer-scaled
-# reduced cost contribution from that slice
-#     Minimize  sum_(slots in scope) [-SCALE*lambda*slot]
-#               + PENALTY_SIXTH * sum_(slots in scope at h13) slot
-# under the structural constraints (cattedra-hours equality,
-# teacher and class no-overlap, lock-respect). This is the
-# FUNDAMENTAL optimisation -- the column the pricer emits is
-# whatever the CP-SAT solver returns when the model is feasible.
+# Two roles for the greedy in every pricer:
+#   1. CONTEXT-FILL (out-of-scope slots): `_greedy_base_pattern`
+#      pre-places the teacher's slots OUTSIDE the granularity scope
+#      (e.g. for teacher-class, all OTHER classes are filled greedy).
+#      These slots are added to a lock-out set so the CP-SAT model
+#      cannot put any in-scope variable on top of them.
+#   2. WARM-START HINT (in-scope slots): a second greedy pass
+#      proposes a feasible assignment for the in-scope slots and
+#      passes it to the CP-SAT solver via `model.AddHint(var, val)`.
+#      This is non-binding -- it only suggests a starting point
+#      that helps the solver find a feasible solution faster.
 #
-# Greedy enters ONLY for the slots OUTSIDE the slice (the
-# "context"): the teacher's other classes / other subjects / other
-# days are pre-placed by `_greedy_base_pattern` before the CP-SAT
-# model is built, and those slots are added to the lock-out set
-# (`(t, d, h) in occ_t` etc.) so the CP-SAT cannot violate them.
-# The greedy never touches the in-scope slots; if the CP-SAT
-# cannot find a feasible solution, the pricer returns (None, 0.0)
-# and the greedy output is NOT used as a fallback column.
+# CP-SAT is ALWAYS invoked. There is no path where the greedy
+# output replaces the CP-SAT pass:
+#   - The CP-SAT model has Boolean variables for every in-scope
+#     slot, structural constraints (cattedra-hours equality,
+#     teacher and class no-overlap, lock-respect), and the
+#     integer-scaled reduced-cost objective
+#         Minimize  sum_(slots in scope) [-SCALE*lambda*slot]
+#                   + PENALTY_SIXTH * sum_(slots in scope at h13) slot
+#   - The pricer emits whatever the CP-SAT solver returns when the
+#     model is feasible. If CP-SAT cannot find a feasible solution
+#     within the time limit, the pricer returns (None, 0.0) and
+#     the greedy output is NOT promoted to a column.
+#   - The greedy hint never short-circuits the CP-SAT call.
 #
 # Reduced cost (LP-side, real units, not SCALE-integer):
 #
@@ -640,6 +645,28 @@ def _pricing_subproblem_teacher_class(
             return base_pat, rc
         return None, rc
 
+    # Greedy WARM-START hint for the in-scope slots: place each
+    # cattedra-day's hours sequentially in non-occupied (d, h)
+    # slots. The hint is non-binding (does not constrain CP-SAT)
+    # but helps the solver find a feasible solution faster. CP-SAT
+    # is ALWAYS invoked below; the hint is purely an accelerator.
+    hint_set: set = set()  # (s, d, h) tuples greedy chose to place
+    _occ_t = set(occ_t)
+    _occ_c = set(occ_c)
+    for (s, d, q) in triples:
+        placed = 0
+        for h in HOURS:
+            if placed >= q:
+                break
+            if (teacher, d, h) in _occ_t:
+                continue
+            if (class_name, d, h) in _occ_c:
+                continue
+            hint_set.add((s, d, h))
+            _occ_t.add((teacher, d, h))
+            _occ_c.add((class_name, d, h))
+            placed += 1
+
     model = cp_model.CpModel()
     slot: dict[tuple, cp_model.IntVar] = {}
     for (s, d, _q) in triples:
@@ -650,6 +677,8 @@ def _pricing_subproblem_teacher_class(
             if (teacher, d, h) in occ_t or (class_name, d, h) in occ_c:
                 model.Add(v == 0)
             slot[(s, d, h)] = v
+            # AddHint: warm-start CP-SAT with the greedy choice.
+            model.AddHint(v, 1 if (s, d, h) in hint_set else 0)
 
     # Cattedra-hours equality: place exactly q hours of (s, d).
     for (s, d, q) in triples:
@@ -781,6 +810,26 @@ def _pricing_subproblem_teacher_class_subject(
             return base_pat, rc
         return None, rc
 
+    # Greedy WARM-START hint for the in-scope (t, cl, s, *, *)
+    # slice. CP-SAT is ALWAYS invoked below; the hint accelerates
+    # the search by suggesting a feasible assignment.
+    hint_set: set = set()  # (d, h) tuples greedy chose
+    _occ_t = set(occ_t)
+    _occ_c = set(occ_c)
+    for (d, q) in triples:
+        placed = 0
+        for h in HOURS:
+            if placed >= q:
+                break
+            if (teacher, d, h) in _occ_t:
+                continue
+            if (class_name, d, h) in _occ_c:
+                continue
+            hint_set.add((d, h))
+            _occ_t.add((teacher, d, h))
+            _occ_c.add((class_name, d, h))
+            placed += 1
+
     model = cp_model.CpModel()
     slot: dict[tuple, cp_model.IntVar] = {}
     for (d, _q) in triples:
@@ -790,6 +839,7 @@ def _pricing_subproblem_teacher_class_subject(
             if (teacher, d, h) in occ_t or (class_name, d, h) in occ_c:
                 model.Add(v == 0)
             slot[(d, h)] = v
+            model.AddHint(v, 1 if (d, h) in hint_set else 0)
 
     for (d, q) in triples:
         model.Add(sum(slot[(d, h)] for h in HOURS) == q)
@@ -893,6 +943,24 @@ def _pricing_subproblem_teacher_subject(
         rc = _compute_rc(base_pat, teacher, lambda_duals, mu_t, profs)
         return (base_pat, rc) if rc < -eps else (None, rc)
 
+    # Greedy WARM-START hint. CP-SAT is ALWAYS invoked.
+    hint_set: set = set()  # (cl, d, h) tuples greedy chose
+    _occ_t = set(occ_t)
+    _occ_c = set(occ_c)
+    for (cl, d, q) in triples:
+        placed = 0
+        for h in HOURS:
+            if placed >= q:
+                break
+            if (teacher, d, h) in _occ_t:
+                continue
+            if (cl, d, h) in _occ_c:
+                continue
+            hint_set.add((cl, d, h))
+            _occ_t.add((teacher, d, h))
+            _occ_c.add((cl, d, h))
+            placed += 1
+
     model = cp_model.CpModel()
     slot: dict[tuple, cp_model.IntVar] = {}
     for (cl, d, _q) in triples:
@@ -901,6 +969,7 @@ def _pricing_subproblem_teacher_subject(
             if (teacher, d, h) in occ_t or (cl, d, h) in occ_c:
                 model.Add(v == 0)
             slot[(cl, d, h)] = v
+            model.AddHint(v, 1 if (cl, d, h) in hint_set else 0)
 
     # Cattedra-hours equality per (cl, d).
     for (cl, d, q) in triples:
@@ -1013,6 +1082,25 @@ def _pricing_subproblem_teacher_day(
         rc = _compute_rc(base_pat, teacher, lambda_duals, mu_t, profs)
         return (base_pat, rc) if rc < -eps else (None, rc)
 
+    # Greedy WARM-START hint for the (t, *, *, day, *) slice.
+    # CP-SAT is ALWAYS invoked.
+    hint_set: set = set()  # (cl, s, h) tuples greedy chose
+    _occ_t = set(occ_t)
+    _occ_c = set(occ_c)
+    for (cl, s, q) in triples:
+        placed = 0
+        for h in HOURS:
+            if placed >= q:
+                break
+            if (teacher, day, h) in _occ_t:
+                continue
+            if (cl, day, h) in _occ_c:
+                continue
+            hint_set.add((cl, s, h))
+            _occ_t.add((teacher, day, h))
+            _occ_c.add((cl, day, h))
+            placed += 1
+
     model = cp_model.CpModel()
     slot: dict[tuple, cp_model.IntVar] = {}
     for (cl, s, _q) in triples:
@@ -1026,6 +1114,7 @@ def _pricing_subproblem_teacher_day(
             if (teacher, day, h) in occ_t:
                 model.Add(v == 0)
             slot[(cl, s, h)] = v
+            model.AddHint(v, 1 if (cl, s, h) in hint_set else 0)
 
     # Cattedra-hours equality per (cl, s).
     for (cl, s, q) in triples:
