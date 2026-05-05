@@ -143,29 +143,71 @@ def compute_soft(sol, profs):
 
 
 def is_hard_feasible(sol, profs, verbose=False,
-                     *, group_assignments=None):
+                     *, group_assignments=None,
+                     coteach_groups=None,
+                     parallel_groups=None,
+                     support_assignments=None):
     """Ritorna True se la soluzione rispetta tutti gli HARD.
 
-    Task C3: when `group_assignments` is provided, also validates:
-    - Each group_assignment has exactly n_hours scheduled.
-    - For each group lesson at (d, h), the home_classes of the
-      group don't have ANOTHER regular lesson at the same (d, h)
-      (mutually exclusive: group activity replaces regular class).
+    Task C1/C2/C3: optional checks for coteach (principal + codoc
+    occupy the same slot but the class counts as busy ONCE),
+    parallel intra-class (members share busy_key), sostegno
+    (excluded from class-busy), and group_assignments
+    (n_hours coverage + home_class busy mutual exclusion).
     """
     cls_set = sorted({c for p in profs.values() for c in p["classi"]})
     profs_set = sorted(profs.keys())
+    # Build sets of (class, subject) keys whose multiple-Assignment
+    # presence at the SAME slot is intentional (coteach + parallel
+    # intra). For these the cl_count should treat all participants
+    # as a single occupation.
+    coteach_keys: set[tuple[str, str]] = set()
+    for cg in (coteach_groups or []):
+        coteach_keys.add((cg.get("class_name"), cg.get("subject")))
+        # codocs may be on different (class, subject) but in C1
+        # convention they all share (class_name, subject).
+    parallel_busy_key: dict[tuple[str, str], str] = {}
+    for pg in (parallel_groups or []):
+        cl = pg.get("class_name")
+        gid = pg.get("group_id")
+        for m in pg.get("members", []):
+            parallel_busy_key[(cl, m.get("subject"))] = (
+                f"__par__{gid}")
+    support_keys: set[tuple[str, str, str]] = set()
+    for sa in (support_assignments or []):
+        support_keys.add(
+            (sa.get("teacher_name"), sa.get("class_name"),
+             sa.get("subject"))
+        )
     cls_h = class_day_hours(sol, cls_set)
     pd_h = prof_day_hours(sol, profs_set)
 
-    # Class no-overlap: per (cl, d, h) max 1 lezione
-    cl_count = defaultdict(int)
+    # Class no-overlap: per (cl, d, h) max 1 occupazione, dove
+    # principal+codoc di una compresenza condividono lo stesso slot
+    # ma contano come UNA, e i membri di un parallel group intra
+    # condividono la stessa busy_key. I sostegni sono esclusi dal
+    # class-busy (segue la lezione, non aggiunge slot).
+    cl_busy_keys: dict[tuple[str, int, int], set[str]] = defaultdict(set)
     for (p, cl, subj, d, h), v in sol.items():
-        if v == 1:
-            cl_count[(cl, d, h)] += 1
-    for k, c in cl_count.items():
-        if c > 1:
+        if v != 1:
+            continue
+        if (p, cl, subj) in support_keys:
+            continue                    # sostegno: not a class slot
+        # Resolve busy_key for this (cl, subj):
+        # - parallel intra members share __par__<gid>
+        # - coteach (principal + codoc) share the subject (single)
+        # - regular lessons use the subject string itself
+        if (cl, subj) in parallel_busy_key:
+            bkey = parallel_busy_key[(cl, subj)]
+        elif (cl, subj) in coteach_keys:
+            bkey = f"__cot__{cl}__{subj}"
+        else:
+            bkey = subj
+        cl_busy_keys[(cl, d, h)].add(bkey)
+    for k, keys in cl_busy_keys.items():
+        if len(keys) > 1:
             if verbose:
-                print(f"  CLASS-OVERLAP viol: {k} count={c}")
+                print(f"  CLASS-OVERLAP viol: {k} keys={keys}")
             return False
 
     # Prof no-overlap: per (p, d, h) max 1 lezione
