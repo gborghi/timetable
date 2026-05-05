@@ -639,6 +639,36 @@ il prof sia presente solo nei tre slot in cui il gruppo si
 riunisce, senza aggiungere ore di occupazione n\'e alla
 classe-madre n\'e al gruppo.
 
+\subsection{Pipeline e metaeuristiche con i gruppi}
+
+I gruppi inter-classe sono propagati a TUTTE le pipeline di
+ottimizzazione e a TUTTE le metaeuristiche. La tabella
+seguente riassume:
+\begin{itemize}
+\item \textbf{Phase B monolitica}: supporto nativo dei
+group\_slot.
+\item \textbf{Decomposizione temporale}: thread-through
+completo, scheduling per giorno in parallelo.
+\item \textbf{Decomposizione spettrale, curriculum, METIS}:
+quando ci sono gruppi, il sistema usa un percorso
+``forced-monolithic'' per giorno (mantiene la cache della
+distribuzione master ma salta gli stage A/B/C che non
+modellano i gruppi).
+\item \textbf{Column generation}: i pattern generati
+includono le ore-gruppo; il completion solver finale
+preserva n\_hours e l'invariante classe-madre.
+\item \textbf{LNS, SA, TS, ILS, ALNS, VNS, Lagrangian}: le
+mosse atomiche e le riparazioni CP-SAT rispettano i vincoli
+di gruppo. Una mossa che violerebbe l'esclusione mutua
+gruppo/classe-madre viene rifiutata.
+\end{itemize}
+
+In pratica: l'utente puo' configurare i gruppi una volta e
+poi rilanciare qualunque pipeline o metaeuristica senza
+preoccuparsi di rompere il vincolo di gruppo. La suite di
+test del sistema include casi end-to-end per ognuna delle
+8+ varianti.
+
 \section{Lock nativi: blindare lezioni gi\`a sistemate}
 
 Il pulsante a forma di lucchetto in \texttt{/assignments}

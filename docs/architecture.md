@@ -381,6 +381,10 @@ studente DVA dentro il gruppo.
 
 ### Pipeline supportate per C3
 
+Tutte le pipeline e i metodi di ottimizzazione propagano e
+preservano i `group_assignments`. La tabella sotto distingue il
+modo in cui ogni pipeline si comporta:
+
 | Pipeline                 | C3 fully native | Note                            |
 |--------------------------|-----------------|----------------------------------|
 | monolitica (Phase B)     | si              | path canonico                    |
@@ -388,11 +392,30 @@ studente DVA dentro il gruppo.
 | decomposition_spectral_v2| via mono        | force_mono_for_groups=True      |
 | decomposition_curriculum | via mono        | come sopra (loop condiviso)     |
 | decomposition_metis      | via mono        | come sopra (loop condiviso)     |
-| column_generation        | parziale        | usa la soluzione iniziale       |
-| ALNS / VNS / Lagrangian  | parziale        | rispettano locks; non rimodellano gruppi |
+| column_generation        | si              | seed/diversified pattern + completion solver C3-aware |
+| LNS / SA / TS / ILS      | si              | atomic moves + is_hard_feasible + CP repair C3-aware  |
+| ALNS                     | si              | repair operators forwardano i C3 params               |
+| VNS                      | si              | k-neighbourhoods forwardano i C3 params               |
+| Lagrangian               | si              | inner SA refinement riceve i C3 params               |
 
 `force_mono_for_groups`: quando `group_assignments` non e' vuoto,
 `run_partitioned_pipeline` (usata da curriculum + metis e dal
 fallback di spectral) fa partire `solve_monolithic_day` per ogni
 giorno, usando la cache `dc_value` del master ma saltando le tre
 fasi A/B/C che non modellano `group_slot` vars.
+
+**CG**: `_seed_patterns` e `_diversified_seed` ora costruiscono
+pattern anche per i prof di gruppo, fondendo `profs.classi` con i
+triple-gruppo via `_profs_iter_with_groups`. Il `_completion_solver`
+delega a `cv2.solve_phase_b_for_day` con tutti i C3 params.
+
+**Metaeuristiche**: `metaheuristics._cp_repair` ha un fast-path
+che, quando un qualunque C3 param e' presente, delega a
+`cv2.solve_phase_b_for_day` con `locked_slots_for_day` impostati
+sui placed-but-not-free. `is_hard_feasible` e' stato esteso con un
+controllo opzionale `group_assignments=` che valida n_hours
+coverage e mutua esclusione gruppo/classe-madre. Le mosse
+atomiche (`_swap_two_lessons_same_prof`,
+`_move_lesson_to_empty_slot`, `_swap_two_lessons_same_class`)
+accettano `group_assignments` e rifiutano gli swap che
+violerebbero gli invarianti di gruppo.
