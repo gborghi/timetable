@@ -482,6 +482,53 @@ def test_bp_loop_with_teacher_subject_granularity():
         assert obj_bp <= obj_id + 1e-6
 
 
+def test_bp_pricers_are_cpsat_not_greedy_teacher_class():
+    """Proof that the FUNDAMENTAL optimisation is CP-SAT, not greedy.
+
+    Strategy: the (T1, 1A, Mat, day=1, h=13) slot is the WORST
+    choice under the CP-SAT objective (PENALTY_SIXTH = 500 deters
+    it; lambda=100 only gives -10000 reward, so non-h13 slots are
+    strictly better). Greedy `_greedy_base_pattern` SKIPS the
+    in-scope class entirely -- it never places (T1, 1A, *) slots.
+    The in-scope class is filled ONLY by CP-SAT, and locks for the
+    in-scope class are forced via `model.Add(v == 1)`.
+
+    So if we lock h=13 of (T1, 1A, Mat, day=1) and the returned
+    pattern includes that exact slot, the only way it could have
+    landed there is via the CP-SAT lock-respect. A "greedy
+    fallback" would have put that slot at h=8.
+    """
+    import column_generation as cg
+    profs = _two_class_profs()
+    dc_value = _two_class_dc()
+    # Lock the (T1, 1A, Mat, day=1, h=13) slot. The CP-SAT model
+    # honours it via `model.Add(v == 1)`. The greedy never touches
+    # in-scope (T1, 1A, *) slots so it cannot place this lock.
+    lambda_duals = {("T1", "1A", "Mat", 1): 100.0}
+    locks = {("T1", "1A", "Mat", 1, 13)}
+    pat, rc = cg._pricing_subproblem_teacher_class(
+        "T1", "1A", profs, dc_value,
+        lambda_duals, mu_t=0.0,
+        time_limit=2.0, workers=1,
+        locks=locks,
+    )
+    assert pat is not None, f"pricer returned None, rc={rc}"
+    assert pat.get(("T1", "1A", "Mat", 1, 13)) == 1, (
+        "CP-SAT must have honoured the in-scope lock at h=13. "
+        "If this assertion fails, the pricer is short-circuiting "
+        "the CP-SAT model and falling back to a non-CP-SAT path. "
+        f"pattern (T1,1A,Mat,1,*): "
+        f"{[k for k in pat if k[:4]==('T1','1A','Mat',1)]}"
+    )
+    # And the rc must reflect the sixth-hour penalty for that slot
+    # (1 slot at h=13 -> +5 to soft cost, then -lambda*4 from cover):
+    #   rc = soft - mu - sum_lambda_placed
+    #   soft = 5*1 (sixth) + ... (other terms) -- with 4 hrs placed
+    #   sum_lambda = 100 * 4 = 400
+    #   so rc <= 5 - 0 - 400 = -395 (other soft terms only add).
+    assert rc < -300, f"rc should be strongly negative, got {rc}"
+
+
 def test_bp_pricing_subproblem_teacher_day_smoke():
     """teacher-day pricer rebuilds one day of T1's plan (day 1 has
     4 hrs of (T1, 1A, Mat) only -- no day-conflicts). Strong lambda

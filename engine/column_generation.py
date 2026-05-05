@@ -433,14 +433,46 @@ def _completion_solver(initial_sol: dict, profs: dict, dc_value: dict,
 
 # ---------------- Branch-and-Price: pricers ----------------
 #
-# Each non-teacher granularity has its own CP-SAT sub-pricer. The
-# pricer output is always a full TEACHER-WEEK pattern (dict
-# {(t, cl, s, d, h): 1}) compatible with the existing master LP
-# (variant 1, "exactly one pattern per teacher" equality + cover
-# inequalities). The granularity controls *which slice* of the
-# teacher's week the CP-SAT optimises against the master's duals;
-# the rest of the week is greedy-placed first and treated as
-# locked by the CP-SAT model.
+# Each granularity has its own CP-SAT sub-pricer. The pricer output
+# is always a full TEACHER-WEEK pattern (dict {(t, cl, s, d, h): 1})
+# compatible with the existing master LP (variant 1, "exactly one
+# pattern per teacher" equality + cover inequalities).
+#
+# How "CP-SAT minimises, greedy is only context-fill":
+#
+# The granularity selects a SLICE of the teacher's week (e.g. the
+# (t, cl, *, *, *) slots for teacher-class, or the (t, *, *, day, *)
+# slots for teacher-day). The CP-SAT model has a Boolean variable
+# for every slot in that slice and minimises the integer-scaled
+# reduced cost contribution from that slice
+#     Minimize  sum_(slots in scope) [-SCALE*lambda*slot]
+#               + PENALTY_SIXTH * sum_(slots in scope at h13) slot
+# under the structural constraints (cattedra-hours equality,
+# teacher and class no-overlap, lock-respect). This is the
+# FUNDAMENTAL optimisation -- the column the pricer emits is
+# whatever the CP-SAT solver returns when the model is feasible.
+#
+# Greedy enters ONLY for the slots OUTSIDE the slice (the
+# "context"): the teacher's other classes / other subjects / other
+# days are pre-placed by `_greedy_base_pattern` before the CP-SAT
+# model is built, and those slots are added to the lock-out set
+# (`(t, d, h) in occ_t` etc.) so the CP-SAT cannot violate them.
+# The greedy never touches the in-scope slots; if the CP-SAT
+# cannot find a feasible solution, the pricer returns (None, 0.0)
+# and the greedy output is NOT used as a fallback column.
+#
+# Reduced cost (LP-side, real units, not SCALE-integer):
+#
+#     rc(p) = c(p) - mu[t] - sum_(cl', s', d') lambda[t, cl', s', d']
+#                                            * placed_p(t, cl', s', d')
+#
+# where:
+#   c(p)         : SOFT cost of the full teacher-week pattern p
+#                  (sixth/five/one as in _cost_of_pattern).
+#   mu[t]        : dual of the "exactly one pattern per teacher"
+#                  equality.
+#   lambda[k]    : dual of the (t, cl', s', d') cover inequality,
+#                  already sign-flipped so positive <-> binding.
 #
 # Reduced cost (LP-side, real units, not SCALE-integer):
 #
@@ -490,10 +522,13 @@ def _greedy_base_pattern(
     occupied_t: set = set()
     occupied_c: set = set()
 
-    # Pre-place this teacher's locks (they are non-negotiable).
+    # Pre-place this teacher's locks for the OUT-OF-SCOPE classes
+    # (locks for the in-scope class are handled by the CP-SAT
+    # pricer that called us, so excluding them here prevents a
+    # double lock-in/lock-out conflict on the same slot).
     locks_for_t = [(cl_l, s_l, d_l, h_l)
                     for (p, cl_l, s_l, d_l, h_l) in locks
-                    if p == teacher]
+                    if p == teacher and cl_l not in skip_classes]
     for (cl_l, s_l, d_l, h_l) in locks_for_t:
         pat[(teacher, cl_l, s_l, d_l, h_l)] = 1
         occupied_t.add((teacher, d_l, h_l))
