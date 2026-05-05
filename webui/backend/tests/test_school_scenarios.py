@@ -305,3 +305,100 @@ def test_medio_meta_summary(liceo_medio_scenario):
         + cfg.n_lab_biologia + cfg.n_lab_informatica
         + cfg.n_palestre - 1
     )
+
+
+# ----------------------------------------------------------------------
+# istituto_tecnico (FU-A): big profile (~35 classes, ~74 teachers)
+# with denser C1/C2/C3 mix simulating a tecnico/professionale.
+# Total budget: ~8min for build + Phase A + Phase B + a quick ALNS
+# pass (the user-stated cap was 8min; the test asserts < 480s).
+# ----------------------------------------------------------------------
+
+@pytest.fixture(scope="module")
+def istituto_tecnico_scenario(tmp_path_factory):
+    """Build the istituto_tecnico once per module. Tuned to be
+    solvable in ~5-6min, leaving headroom for one post-pass."""
+    from backend.tests.scenarios import (
+        Scenario, istituto_tecnico,
+    )
+    engine, Session = _make_module_db_session(
+        tmp_path_factory, "itp")
+    db = Session()
+    try:
+        sc = Scenario.build(db, istituto_tecnico())
+        yield sc
+    finally:
+        db.close()
+        engine.dispose()
+
+
+@pytest.mark.slow
+def test_itp_phase_b_baseline(istituto_tecnico_scenario):
+    """ITP-like Phase B mono. Honest 8-minute budget for the full
+    pipeline: Phase A (45s timetabling cap) + 6 Phase B days
+    (35s/day cap) + assertion overhead."""
+    sc = istituto_tecnico_scenario
+    profs, *rest = sc.solver_inputs()
+    inputs = tuple(rest)
+    t0 = time.time()
+    dc, sol = _solve_phase_b_mono(
+        profs, inputs, time_a=60, time_b=35)
+    elapsed = time.time() - t0
+    print(f"\n[itp.phase_b] {elapsed:.1f}s -- {sc.meta.notes[0]}")
+    assert elapsed < 480.0, (
+        f"ITP phase_b too slow: {elapsed:.1f}s (budget 8min)")
+    _assert_basic_validity(sol, profs, inputs)
+
+
+@pytest.mark.slow
+def test_itp_phase_b_then_alns(istituto_tecnico_scenario):
+    """ITP Phase B + 10s ALNS. Validates that destroy + repair
+    operators preserve the dense C1+C2+C3 mix end-to-end."""
+    import alns as alns_mod                       # type: ignore
+    sc = istituto_tecnico_scenario
+    profs, *rest = sc.solver_inputs()
+    inputs = tuple(rest)
+    coteach, support, pot, par, grp = inputs
+    dc, sol = _solve_phase_b_mono(
+        profs, inputs, time_a=60, time_b=35)
+    t0 = time.time()
+    new_sol, _ = alns_mod.run_alns(
+        sol, profs, dc, 10.0, log=False, workers=2,
+        coteach_groups=coteach, support_assignments=support,
+        parallel_groups=par, group_assignments=grp,
+    )
+    print(f"\n[itp.alns] {time.time() - t0:.1f}s")
+    _assert_basic_validity(new_sol, profs, inputs)
+
+
+@pytest.mark.slow
+def test_itp_meta_summary(istituto_tecnico_scenario):
+    """Sanity: ITP yields a ~big school with the configured C1/C2/C3
+    counts (capped where necessary by the tight teacher pool).
+    """
+    sc = istituto_tecnico_scenario
+    cfg = sc.config
+    m = sc.meta
+    # big profile yields ~35 classes
+    assert m.n_classes >= 30, (
+        f"big profile should yield >=30 classes; got {m.n_classes}")
+    assert m.n_teachers >= 60, (
+        f"big profile should yield >=60 teachers; got {m.n_teachers}")
+    # Densities may be capped if there aren't enough lab Assignments
+    # OR enough classes for the requested number of parallels.
+    assert m.n_coteach_groups_class <= cfg.coteach_class_n
+    assert m.n_sostegno_class <= cfg.sostegno_n
+    assert m.n_potenziamento <= cfg.pot_n
+    assert m.n_parallel_intra <= cfg.parallel_intra_n
+    assert m.n_study_groups <= cfg.study_groups_n
+    # Density floor: at least HALF of the requested entities should
+    # be created (otherwise the factory is producing degenerate
+    # scenarios).
+    assert m.n_coteach_groups_class >= cfg.coteach_class_n // 2, (
+        f"too few coteach groups: {m.n_coteach_groups_class}/"
+        f"{cfg.coteach_class_n}")
+    assert m.n_classrooms >= (
+        cfg.n_lab_chimica + cfg.n_lab_fisica
+        + cfg.n_lab_biologia + cfg.n_lab_informatica
+        + cfg.n_palestre - 1
+    )
