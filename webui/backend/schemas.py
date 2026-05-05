@@ -511,24 +511,39 @@ class HallCheckIn(BaseModel):
 class ColumnGenerationIn(BaseModel):
     """Inputs for the async Column Generation run.
 
-    `granularity` selects the sub-problem unit: 'teacher' is the
-    only fully-implemented choice today; 'class', 'day' and
-    'curriculum' (per-indirizzo) are accepted but the backend
-    currently maps them to 'teacher' with a log warning, until
-    the full BnP refactor lands. 'auto' picks one based on the
-    number of classes in the active school (see backend logic).
+    `mode` selects the top-level scheme:
+        'iterative-diversified' (default, master LP + diversified
+        pattern enrichment + completion fallback);
+        'branch-and-price' (real Dantzig-Wolfe with per-granularity
+        CP-SAT pricing, see `granularity`);
+        'auto' (resolves to 'branch-and-price' for small schools,
+        'iterative-diversified' otherwise).
 
-    `branching_strategy` is accepted but the current implementation
-    does not perform integer branching: it relies on the iterative
-    master + completion fallback to recover a HARD-feasible integer
-    solution. Branch-and-price with Ryan-Foster / variable branching
-    is on the roadmap.
+    `granularity` selects the sub-problem unit when mode is
+    branch-and-price (or auto resolved to it). Supported values:
+        'auto', 'teacher', 'teacher-day', 'teacher-class',
+        'teacher-class-subject', 'teacher-subject', 'class',
+        'class-day', 'day', 'curriculum'.
+    'auto' is resolved server-side from the number of classes in
+    the active school. Granularities not yet wired in the engine
+    fall back to 'teacher' with a log warning.
+
+    `branching_strategy`: 'ryan_foster' or 'variable'. Used only
+    when `mode='branch-and-price'`.
     """
     time_budget_s: float = 60.0
     patterns_per_teacher: int = 3
-    granularity: str = "auto"  # 'auto' | 'teacher' | 'class' | 'day' | 'curriculum'
+    mode: str = "iterative-diversified"
+    # 'iterative-diversified' | 'branch-and-price' | 'auto'
+    granularity: str = "auto"
+    # 'auto' | 'teacher' | 'teacher-day' | 'teacher-class' |
+    # 'teacher-class-subject' | 'teacher-subject' | 'class' |
+    # 'class-day' | 'day' | 'curriculum'
     branching_strategy: str = "ryan_foster"  # 'ryan_foster' | 'variable'
     max_iterations: int = 5
+    bp_max_iterations: int = 8
+    pricer_time_limit: float = 5.0
+    pricer_workers: int = 2
     parallel: bool = True
     log: bool = True
 

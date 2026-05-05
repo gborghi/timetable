@@ -467,17 +467,20 @@ def launch_hall_check(payload: schemas.HallCheckIn):
 def launch_column_generation(payload: schemas.ColumnGenerationIn):
     """Async: starts a Column Generation alternative-Phase-B run.
 
-    granularity, branching_strategy, max_iterations and parallel
-    are accepted in the payload; only granularity='teacher' takes
-    effect today, the others are reserved for the full branch-and-
-    price refactor (see docs/optimization_strategies.md).
+    All fields of ColumnGenerationIn are forwarded to the engine.
+    `mode` selects iterative-diversified vs real branch-and-price;
+    `granularity` picks the BP sub-problem unit (see schema).
     """
     rid = optimization.run_column_generation(
         time_budget_s=payload.time_budget_s,
         patterns_per_teacher=payload.patterns_per_teacher,
+        mode=payload.mode,
         granularity=payload.granularity,
         branching_strategy=payload.branching_strategy,
         max_iterations=payload.max_iterations,
+        bp_max_iterations=payload.bp_max_iterations,
+        pricer_time_limit=payload.pricer_time_limit,
+        pricer_workers=payload.pricer_workers,
         parallel=payload.parallel,
         log=payload.log,
     )

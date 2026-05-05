@@ -1167,11 +1167,29 @@ def _suggest_cg_granularity(n_classes: int) -> str:
     return "curriculum"
 
 
+_CG_GRANULARITIES = (
+    "teacher",
+    "teacher-day",
+    "teacher-class",
+    "teacher-class-subject",
+    "teacher-subject",
+    "class",
+    "class-day",
+    "day",
+    "curriculum",
+)
+_CG_MODES = ("iterative-diversified", "branch-and-price", "auto")
+
+
 def run_column_generation(*, time_budget_s: float = 60.0,
                           patterns_per_teacher: int = 3,
+                          mode: str = "iterative-diversified",
                           granularity: str = "auto",
                           branching_strategy: str = "ryan_foster",
                           max_iterations: int = 5,
+                          bp_max_iterations: int = 8,
+                          pricer_time_limit: float = 5.0,
+                          pricer_workers: int = 2,
                           parallel: bool = True,
                           log: bool = True) -> int:
     """Async Column Generation pass. Behaves like an alternative
@@ -1180,19 +1198,22 @@ def run_column_generation(*, time_budget_s: float = 60.0,
     pattern enrichment + day-by-day completion fallback. Saved as
     a new Solution with kind='cg'.
 
-    The `granularity`, `branching_strategy`, `max_iterations` and
-    `parallel` parameters are accepted from the UI. Today the
-    only fully-wired path corresponds to granularity='teacher';
-    'class', 'day' and 'curriculum' (per-indirizzo) are accepted
-    but mapped to 'teacher' with a log warning until the full BnP
-    refactor lands. 'auto' is resolved server-side from the
-    number of classes in the active school.
+    `mode` is forwarded to the engine and selects iterative-
+    diversified vs branch-and-price (real BP with per-granularity
+    sub-CP-SAT pricing). `granularity` selects the BP sub-problem
+    unit when mode is branch-and-price (or auto-resolved to it).
+    Granularities not yet implemented in the engine fall back to
+    'teacher' with a log warning.
     """
     params = dict(time_budget_s=time_budget_s,
                   patterns_per_teacher=patterns_per_teacher,
+                  mode=mode,
                   granularity=granularity,
                   branching_strategy=branching_strategy,
                   max_iterations=max_iterations,
+                  bp_max_iterations=bp_max_iterations,
+                  pricer_time_limit=pricer_time_limit,
+                  pricer_workers=pricer_workers,
                   parallel=parallel,
                   log=log)
     # Resolve 'auto' immediately so the run row records the
@@ -1205,17 +1226,14 @@ def run_column_generation(*, time_budget_s: float = 60.0,
               f"'{suggested}' (n_classes={n_cls})")
         params["granularity_resolved"] = suggested
         granularity = suggested
-    if granularity not in (
-            "teacher", "class", "day", "curriculum"):
+    if granularity not in _CG_GRANULARITIES:
         print(f"[cg] WARNING: granularity={granularity!r} non "
               f"riconosciuta; uso 'teacher'")
         granularity = "teacher"
-    if granularity != "teacher":
-        print(f"[cg] WARNING: granularity={granularity!r} accetta "
-              f"il run ma il sub-CP-SAT corrispondente non e' "
-              f"ancora implementato (vedi roadmap in "
-              f"docs/optimization_strategies.md). Eseguo la "
-              f"variante iterative-diversified per docente.")
+    if mode not in _CG_MODES:
+        print(f"[cg] WARNING: mode={mode!r} non riconosciuta; "
+              f"uso 'iterative-diversified'")
+        mode = "iterative-diversified"
     if branching_strategy not in ("variable", "ryan_foster"):
         print(f"[cg] WARNING: branching_strategy={branching_strategy!r} "
               f"non riconosciuta")
@@ -1271,6 +1289,11 @@ def run_column_generation(*, time_budget_s: float = 60.0,
                 support_assignments=support_assignments or None,
                 parallel_groups=parallel_groups or None,
                 group_assignments=group_assignments or None,
+                mode=mode,
+                granularity=granularity,
+                bp_max_iterations=bp_max_iterations,
+                pricer_time_limit=pricer_time_limit,
+                pricer_workers=pricer_workers,
             )
         if new_sol is None or not info.get("feasible_after_assembly"):
             update_run(rid_inner, progress=1.0,

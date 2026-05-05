@@ -407,6 +407,10 @@ def run_column_generation(profs: dict, dc_value: dict,
                           parallel_groups: list | None = None,
                           group_assignments: list | None = None,
                           mode: str = "iterative-diversified",
+                          granularity: str = "teacher",
+                          bp_max_iterations: int = 8,
+                          pricer_time_limit: float = 5.0,
+                          pricer_workers: int = 2,
                           ) -> tuple[dict | None, dict]:
     """Iterative Column Generation with master LP + diversified
     pattern enrichment + integer recovery + completion fallback.
@@ -466,6 +470,10 @@ def run_column_generation(profs: dict, dc_value: dict,
     info: dict[str, Any] = {
         "kind": "column_generation",
         "mode": mode,
+        "granularity": granularity,
+        "bp_max_iterations": bp_max_iterations,
+        "pricer_time_limit": pricer_time_limit,
+        "pricer_workers": pricer_workers,
         "patterns_per_teacher_seed": patterns_per_teacher,
         "max_iterations": max_iterations,
         "duration_s": None,

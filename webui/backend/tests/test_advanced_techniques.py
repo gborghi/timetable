@@ -224,6 +224,48 @@ def test_cg_smoke_run_full():
     assert info["duration_s"] < 5.0
 
 
+def test_cg_plumbing_mode_and_granularity_reach_engine():
+    """Plumbing test: mode, granularity and BP-loop params passed
+    to run_column_generation must surface in the returned `info`
+    dict. Without this, the UI dropdown values silently disappear
+    before reaching the engine."""
+    import column_generation as cg
+    profs = _tiny_profs()
+    dc_value = {("T", "1A", "Mat", 1): 4}
+    sol, info = cg.run_column_generation(
+        profs, dc_value,
+        time_budget_s=2.0,
+        patterns_per_teacher=2,
+        log=False,
+        mode="branch-and-price",
+        granularity="teacher",
+        bp_max_iterations=3,
+        pricer_time_limit=2.0,
+        pricer_workers=1,
+    )
+    assert info["mode"] == "branch-and-price"
+    assert info["granularity"] == "teacher"
+    assert info["bp_max_iterations"] == 3
+    assert info["pricer_time_limit"] == 2.0
+    assert info["pricer_workers"] == 1
+
+
+def test_cg_schema_accepts_all_granularities():
+    """The pydantic schema must validate every supported
+    granularity + mode value without raising."""
+    from backend.schemas import ColumnGenerationIn
+    granularities = ("auto", "teacher", "teacher-day",
+                     "teacher-class", "teacher-class-subject",
+                     "teacher-subject", "class", "class-day",
+                     "day", "curriculum")
+    modes = ("iterative-diversified", "branch-and-price", "auto")
+    for g in granularities:
+        for m in modes:
+            payload = ColumnGenerationIn(mode=m, granularity=g)
+            assert payload.mode == m
+            assert payload.granularity == g
+
+
 # ---------- Lagrangian ----------
 
 def test_lagrangian_module_imports():
