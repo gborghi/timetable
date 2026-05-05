@@ -709,6 +709,100 @@ def test_bp_loop_with_day_granularity():
             or info_bp["feasible_after_completion"])
 
 
+def test_bp_pricing_subproblem_curriculum_smoke():
+    """curriculum pricer with no class_to_curriculum map treats
+    all demanded classes as a single 'curriculum' cluster -- the
+    pricer schedules everything in one big partial pattern."""
+    import column_generation as cg
+    profs = _two_class_profs()
+    dc_value = _two_class_dc()
+    lambda_cover = {("T1", "1A", "Mat", 1): 100.0,
+                     ("T1", "1B", "Mat", 2): 100.0,
+                     ("T2", "1A", "Ita", 3): 100.0,
+                     ("T2", "1B", "Ita", 4): 100.0}
+    col, rc = cg._pricing_subproblem_curriculum(
+        "_all", profs, dc_value,
+        lambda_cover, mu_class={}, mu_teacher={},
+        class_to_curriculum=None,
+        time_limit=2.0, workers=1,
+    )
+    assert col is not None, f"curriculum pricer returned None, rc={rc}"
+    assert rc < 0.0
+    # Multi-teacher AND multi-day.
+    teachers = {k[0] for k in col.keys()}
+    days = {k[3] for k in col.keys()}
+    assert {"T1", "T2"}.issubset(teachers)
+    assert len(days) >= 2  # spans multiple days
+    placed = sum(1 for v in col.values() if v)
+    # Total demand = 4*4 = 16
+    assert placed == 16
+
+
+def test_bp_pricing_subproblem_curriculum_with_map():
+    """When class_to_curriculum is provided, the pricer restricts
+    its scope to the requested curriculum_id only."""
+    import column_generation as cg
+    profs = _two_class_profs()
+    dc_value = _two_class_dc()
+    # Two curricula: 1A in 'sci', 1B in 'lin'.
+    c2c = {"1A": "sci", "1B": "lin"}
+    lambda_cover = {("T1", "1A", "Mat", 1): 100.0}
+    col, rc = cg._pricing_subproblem_curriculum(
+        "sci", profs, dc_value,
+        lambda_cover, mu_class={}, mu_teacher={},
+        class_to_curriculum=c2c,
+        time_limit=2.0, workers=1,
+    )
+    assert col is not None
+    classes_in_col = {k[1] for k in col.keys()}
+    assert classes_in_col == {"1A"}, (
+        f"curriculum 'sci' must contain only class 1A; got {classes_in_col}")
+
+
+def test_bp_pricing_subproblem_curriculum_uses_addhint():
+    import column_generation as cg
+    from ortools.sat.python import cp_model
+    profs = _two_class_profs()
+    dc_value = _two_class_dc()
+    lambda_cover = {("T1", "1A", "Mat", 1): 100.0}
+    counts = [0]
+    real = cp_model.CpModel.add_hint
+
+    def counting(self, var, value):
+        counts[0] += 1
+        return real(self, var, value)
+
+    cp_model.CpModel.add_hint = counting
+    try:
+        col, rc = cg._pricing_subproblem_curriculum(
+            "_all", profs, dc_value,
+            lambda_cover, mu_class={}, mu_teacher={},
+            class_to_curriculum=None,
+            time_limit=2.0, workers=1,
+        )
+        assert col is not None
+        assert counts[0] > 0
+    finally:
+        cp_model.CpModel.add_hint = real
+
+
+def test_bp_loop_with_curriculum_granularity():
+    import column_generation as cg
+    profs = _two_class_profs()
+    dc_value = _two_class_dc()
+    sol_bp, info_bp = cg.run_column_generation(
+        profs, dc_value, time_budget_s=30.0,
+        patterns_per_teacher=2, max_iterations=2, log=False,
+        mode="branch-and-price", granularity="curriculum",
+        bp_max_iterations=3, pricer_time_limit=2.0, pricer_workers=1,
+        class_to_curriculum={"1A": "sci", "1B": "lin"},
+    )
+    assert info_bp["granularity"] == "curriculum"
+    assert "bp_terminated_reason" in info_bp
+    assert (info_bp["feasible_after_assembly"]
+            or info_bp["feasible_after_completion"])
+
+
 def test_bp_pricers_use_addhint_warmstart():
     """Each CP-SAT pricer must invoke `model.AddHint(...)` at least
     once per call. This guarantees:
