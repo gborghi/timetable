@@ -883,6 +883,151 @@ def test_bp_ryan_foster_branching_invoked_in_pipeline():
             or info_bp["feasible_after_completion"])
 
 
+def _four_class_profs():
+    """A 4-class scaffold with 4 teachers each teaching one subject
+    in all 4 classes. Each (teacher, class) cattedra is 4 hrs per
+    week packed into ONE day (8-11) so the H1/H2/H3 class-day
+    constraints are trivially satisfied (consecutive, starts at 8,
+    presence at h=11).
+
+    Total weekly demand: 4 teachers x 4 classes x 4 hrs = 64 hrs.
+    Per-teacher: 4 classes x 4 hrs = 16 hrs (under max=18).
+    Per-class: 4 teachers x 4 hrs = 16 hrs spread over 4 different
+    days, one per teacher (each day = 4 consecutive hrs from one
+    teacher's cattedra)."""
+    return {
+        "T1": {
+            "classi": {cl: {"Mat": {"ore": 4}}
+                        for cl in ("1A", "1B", "2A", "2B")},
+            "glibero": [6], "max_hours": 18,
+        },
+        "T2": {
+            "classi": {cl: {"Ita": {"ore": 4}}
+                        for cl in ("1A", "1B", "2A", "2B")},
+            "glibero": [6], "max_hours": 18,
+        },
+        "T3": {
+            "classi": {cl: {"Sto": {"ore": 4}}
+                        for cl in ("1A", "1B", "2A", "2B")},
+            "glibero": [6], "max_hours": 18,
+        },
+        "T4": {
+            "classi": {cl: {"Ing": {"ore": 4}}
+                        for cl in ("1A", "1B", "2A", "2B")},
+            "glibero": [6], "max_hours": 18,
+        },
+    }
+
+
+def _four_class_dc():
+    """Each (teacher, class) cattedra is 4 hrs on a UNIQUE day.
+    Days assigned so no teacher visits two classes on the same day
+    (avoids teacher-overlap) and each class sees exactly 4 different
+    teachers on 4 different days (4 hrs/day = full 8-11 block).
+    """
+    rotation = {
+        "T1": {"1A": 1, "1B": 2, "2A": 3, "2B": 4},
+        "T2": {"1A": 5, "1B": 6, "2A": 1, "2B": 2},
+        "T3": {"1A": 2, "1B": 3, "2A": 4, "2B": 5},
+        "T4": {"1A": 6, "1B": 4, "2A": 5, "2B": 3},
+    }
+    subjects = {"T1": "Mat", "T2": "Ita", "T3": "Sto", "T4": "Ing"}
+    dc: dict = {}
+    for t, classes in rotation.items():
+        s = subjects[t]
+        for cl, d in classes.items():
+            dc[(t, cl, s, d)] = 4
+    return dc
+
+
+@pytest.mark.parametrize("granularity", [
+    "teacher",
+    "teacher-day",
+    "teacher-class",
+    "teacher-class-subject",
+    "teacher-subject",
+    "class",
+    "class-day",
+    "day",
+    "curriculum",
+])
+def test_bp_all_granularities_produce_hard_feasible(granularity):
+    """Integration: for each of the 9 granularities, mode=
+    branch-and-price on a 4-class scenario must produce a HARD-
+    feasible solution (assembly OR completion fallback)."""
+    import column_generation as cg
+    profs = _four_class_profs()
+    dc_value = _four_class_dc()
+    kwargs = dict(
+        time_budget_s=60.0,
+        patterns_per_teacher=2, max_iterations=2, log=False,
+        mode="branch-and-price", granularity=granularity,
+        bp_max_iterations=3, pricer_time_limit=3.0, pricer_workers=1,
+    )
+    if granularity == "curriculum":
+        kwargs["class_to_curriculum"] = {
+            "1A": "sci", "1B": "sci",
+            "2A": "lin", "2B": "lin",
+        }
+    sol, info = cg.run_column_generation(profs, dc_value, **kwargs)
+    assert info["mode"] == "branch-and-price"
+    assert info["granularity"] == granularity
+    assert (info["feasible_after_assembly"]
+            or info["feasible_after_completion"]), (
+        f"granularity {granularity}: not HARD-feasible. "
+        f"warnings={info['warnings']}")
+
+
+def test_bp_soft_cost_no_worse_than_iterative_diversified():
+    """End-to-end: BP must not regress soft cost vs iterative-
+    diversified on the 4-class scenario. Spot-check across two
+    granularities."""
+    import column_generation as cg
+    profs = _four_class_profs()
+    dc_value = _four_class_dc()
+    sol_id, info_id = cg.run_column_generation(
+        profs, dc_value, time_budget_s=60.0,
+        patterns_per_teacher=2, max_iterations=2, log=False,
+        mode="iterative-diversified", granularity="teacher",
+    )
+    obj_id = info_id["master_obj_final"]
+    for gran in ("teacher-class", "class"):
+        sol_bp, info_bp = cg.run_column_generation(
+            profs, dc_value, time_budget_s=60.0,
+            patterns_per_teacher=2, max_iterations=2, log=False,
+            mode="branch-and-price", granularity=gran,
+            bp_max_iterations=3, pricer_time_limit=3.0, pricer_workers=1,
+        )
+        obj_bp = info_bp["master_obj_final"]
+        if obj_id is None or obj_bp is None:
+            continue
+        assert obj_bp <= obj_id + 1e-3, (
+            f"BP@{gran} regressed soft cost: BP={obj_bp}, "
+            f"iter-div={obj_id}")
+
+
+def test_bp_with_locks_integration():
+    """Integration: BP with native locks must respect them and
+    still reach HARD-feasibility."""
+    import column_generation as cg
+    profs = _two_class_profs()
+    dc_value = _two_class_dc()
+    locks = {("T1", "1A", "Mat", 1, 8)}
+    sol_bp, info_bp = cg.run_column_generation(
+        profs, dc_value, time_budget_s=30.0,
+        patterns_per_teacher=2, max_iterations=2, log=False,
+        mode="branch-and-price", granularity="teacher-class",
+        bp_max_iterations=3, pricer_time_limit=2.0, pricer_workers=1,
+        locks=locks,
+    )
+    assert info_bp["mode"] == "branch-and-price"
+    assert (info_bp["feasible_after_assembly"]
+            or info_bp["feasible_after_completion"])
+    # The lock must appear in the final solution.
+    assert sol_bp.get(("T1", "1A", "Mat", 1, 8)) == 1, (
+        "BP solution must respect the native lock")
+
+
 def test_bp_pricers_use_addhint_warmstart():
     """Each CP-SAT pricer must invoke `model.AddHint(...)` at least
     once per call. This guarantees:

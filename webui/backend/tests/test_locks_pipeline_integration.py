@@ -217,6 +217,47 @@ def test_pipeline_column_generation_with_locks():
 
 
 @pytest.mark.slow
+@pytest.mark.parametrize("granularity", [
+    "teacher-class",
+    "class",
+])
+def test_pipeline_branch_and_price_with_locks(granularity):
+    """Run mode=branch-and-price with locks and verify the BP loop
+    respects them. Tested across one variant-1 granularity
+    (teacher-class) and one variant-2 granularity (class).
+    """
+    import column_generation as cg  # type: ignore
+    profs = _profs_minimal()
+    import cpsat_v2_timetable as cv2  # type: ignore
+    classes_v, triples, class_profs = cv2.build_indices(profs)
+    dc_value = cv2.solve_phase_a(
+        profs, classes_v, triples, class_profs,
+        time_limit=2, workers=2, log=False,
+        locked_day_count=_LOCKED_DC,
+    )
+    locks = {("ProfA", "1A", "Mat", 2, 8),
+             ("ProfA", "1A", "Mat", 2, 9)}
+    sol, info = cg.run_column_generation(
+        profs, dc_value, time_budget_s=8.0,
+        patterns_per_teacher=2, max_iterations=2,
+        completion_time_limit=2,
+        log=False, locks=locks,
+        locked_by_day=_LOCKED_BY_DAY,
+        mode="branch-and-price",
+        granularity=granularity,
+        bp_max_iterations=2,
+        pricer_time_limit=2.0,
+        pricer_workers=1,
+    )
+    assert sol is not None
+    assert info["mode"] == "branch-and-price"
+    assert info["granularity"] == granularity
+    for k in locks:
+        assert sol[k] == 1, (
+            f"BP@{granularity}: locked key {k} not in solution")
+
+
+@pytest.mark.slow
 def test_pipeline_classroom_assignment_with_lock():
     """Smoke test the classroom step in isolation with one locked
     classroom assignment."""
