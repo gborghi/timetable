@@ -827,6 +827,13 @@ def run_meta(stage: str, budget_s: float, workers: int, log: bool,
         with SessionLocal() as db:
             locked_snap = _snapshot_locked_lessons(db)
             profs = engine_io.profs_dict_from_db(db)
+            coteach_groups_meta = engine_io.coteach_groups_for_solver(db)
+            support_assignments_meta = (
+                engine_io.support_assignments_from_db(db))
+            parallel_groups_meta = engine_io.parallel_groups_for_solver(
+                db)
+            group_assignments_meta = engine_io.group_assignments_for_solver(
+                db)
             active = engine_io.get_active_solution(db)
             if active is None:
                 raise RuntimeError("Nessuna soluzione attiva; esegui prima "
@@ -877,22 +884,30 @@ def run_meta(stage: str, budget_s: float, workers: int, log: bool,
                           hard_violations_count=0,
                           placed_lessons_count=sum(int(v) for v in
                                                     sol.values()))
+            c3_kwargs = dict(
+                coteach_groups=coteach_groups_meta or None,
+                support_assignments=support_assignments_meta or None,
+                parallel_groups=parallel_groups_meta or None,
+                group_assignments=group_assignments_meta or None,
+            )
             if stage == "lns":
                 new_sol, _hist = meta.run_lns(
                     sol, profs, dc_value, budget_s,
                     classes_clusters=classes_clusters,
                     log=log, workers=workers, locks=locks_set,
+                    **c3_kwargs,
                 )
             elif stage == "sa":
                 new_sol = meta.run_sa(
                     sol, profs, dc_value, budget_s,
                     T0=sa_T0, alpha=sa_alpha, log=log,
-                    locks=locks_set,
+                    locks=locks_set, **c3_kwargs,
                 )
             elif stage == "ts":
                 new_sol = meta.run_tabu(
                     sol, profs, dc_value, budget_s,
                     tabu_size=tabu_size, log=log, locks=locks_set,
+                    **c3_kwargs,
                 )
             elif stage == "ils":
                 new_sol = meta.run_ils(
@@ -900,6 +915,7 @@ def run_meta(stage: str, budget_s: float, workers: int, log: bool,
                     classes_clusters=classes_clusters,
                     ts_budget_per_cycle=ts_budget_per_cycle,
                     n_cycles=n_cycles, log=log, locks=locks_set,
+                    **c3_kwargs,
                 )
             elif stage == "alns":
                 import alns as alns_mod  # type: ignore
@@ -910,7 +926,7 @@ def run_meta(stage: str, budget_s: float, workers: int, log: bool,
                     T0=alns_T0, alpha=alns_alpha,
                     enabled_destroy=alns_destroy,
                     enabled_repair=alns_repair,
-                    locks=locks_set,
+                    locks=locks_set, **c3_kwargs,
                 )
             elif stage == "vns":
                 import vns as vns_mod  # type: ignore
@@ -918,7 +934,7 @@ def run_meta(stage: str, budget_s: float, workers: int, log: bool,
                     sol, profs, dc_value, budget_s,
                     log=log,
                     enabled_neighbourhoods=vns_neighbourhoods,
-                    locks=locks_set,
+                    locks=locks_set, **c3_kwargs,
                 )
             elif stage == "lagrangian":
                 import lagrangian as lag_mod  # type: ignore
@@ -929,7 +945,7 @@ def run_meta(stage: str, budget_s: float, workers: int, log: bool,
                     tolerance=lagrangian_tolerance,
                     alpha_0=lagrangian_alpha_0,
                     classes_clusters=classes_clusters,
-                    log=log, locks=locks_set,
+                    log=log, locks=locks_set, **c3_kwargs,
                 )
             else:
                 raise RuntimeError(f"Unknown stage {stage}")
@@ -1216,6 +1232,11 @@ def run_column_generation(*, time_budget_s: float = 60.0,
             locked_snap = _snapshot_locked_lessons(db)
             profs = engine_io.profs_dict_from_db(db)
             coteach_groups = engine_io.coteach_groups_for_solver(db)
+            support_assignments = engine_io.support_assignments_from_db(
+                db)
+            parallel_groups = engine_io.parallel_groups_for_solver(db)
+            group_assignments = engine_io.group_assignments_for_solver(
+                db)
             active = engine_io.get_active_solution(db)
             if active is None:
                 raise RuntimeError("Phase B alternativa via Column "
@@ -1247,6 +1268,9 @@ def run_column_generation(*, time_budget_s: float = 60.0,
                 locks=cg_locks,
                 locked_by_day=cg_locked_by_day,
                 coteach_groups=coteach_groups or None,
+                support_assignments=support_assignments or None,
+                parallel_groups=parallel_groups or None,
+                group_assignments=group_assignments or None,
             )
         if new_sol is None or not info.get("feasible_after_assembly"):
             update_run(rid_inner, progress=1.0,

@@ -73,7 +73,11 @@ def run_lagrangian(sol: dict, profs: dict, dc_value: dict,
                    alpha_0: float = 1.0,
                    classes_clusters: dict[int, set[str]] | None = None,
                    log: bool = True,
-                   locks: set | None = None) -> tuple[dict, dict]:
+                   locks: set | None = None,
+                   coteach_groups=None,
+                   support_assignments=None,
+                   parallel_groups=None,
+                   group_assignments=None) -> tuple[dict, dict]:
     """Lagrangian relaxation skeleton.
 
     The skeleton runs `max_iter` subgradient steps but does NOT
@@ -162,12 +166,17 @@ def run_lagrangian(sol: dict, profs: dict, dc_value: dict,
                 best_sol, profs, dc_value,
                 max(2.0, time_budget_s / max(1, max_iter)),
                 T0=2.0, alpha=0.97, log=False, locks=locks,
+                coteach_groups=coteach_groups,
+                support_assignments=support_assignments,
+                parallel_groups=parallel_groups,
+                group_assignments=group_assignments,
             )
         except Exception:
             refined = best_sol
         v, _ = meta.compute_soft(refined, profs)
-        if v < best_val and meta.is_hard_feasible(refined, profs,
-                                                    verbose=False):
+        if v < best_val and meta.is_hard_feasible(
+                refined, profs, verbose=False,
+                group_assignments=group_assignments):
             best_sol = refined
             best_val = v
         info["iterations"].append({

@@ -142,8 +142,16 @@ def compute_soft(sol, profs):
     return val, metrics
 
 
-def is_hard_feasible(sol, profs, verbose=False):
-    """Ritorna True se la soluzione rispetta tutti gli HARD."""
+def is_hard_feasible(sol, profs, verbose=False,
+                     *, group_assignments=None):
+    """Ritorna True se la soluzione rispetta tutti gli HARD.
+
+    Task C3: when `group_assignments` is provided, also validates:
+    - Each group_assignment has exactly n_hours scheduled.
+    - For each group lesson at (d, h), the home_classes of the
+      group don't have ANOTHER regular lesson at the same (d, h)
+      (mutually exclusive: group activity replaces regular class).
+    """
     cls_set = sorted({c for p in profs.values() for c in p["classi"]})
     profs_set = sorted(profs.keys())
     cls_h = class_day_hours(sol, cls_set)
@@ -262,6 +270,52 @@ def is_hard_feasible(sol, profs, verbose=False):
                 if verbose: print(f"  HB viol: motorie {cl} d{d} hrs={hrs}")
                 return False
 
+    # Task C3: validate group_assignments invariants when provided.
+    if group_assignments:
+        for ga in group_assignments:
+            t = ga["teacher_name"]
+            gn = ga["group_name"]
+            sub = ga["subject"]
+            n = int(ga["n_hours"])
+            got = sum(
+                sol.get((t, gn, sub, d, h), 0)
+                for d in DAYS for h in HOURS
+            )
+            if got != n:
+                if verbose:
+                    print(f"  C3 group COVERAGE viol: {t}/{gn}/"
+                          f"{sub} want {n} got {got}")
+                return False
+        # Build the per-group home_class map and validate that each
+        # group lesson slot doesn't collide with a regular lesson
+        # in any home class.
+        home_by_grp_subj: dict[tuple[str, str], list[str]] = {}
+        for ga in group_assignments:
+            home_by_grp_subj.setdefault(
+                (ga["group_name"], ga["subject"]),
+                ga.get("home_class_names", []))
+        for (t, cl, subj, d, h), v in sol.items():
+            if v != 1:
+                continue
+            home = home_by_grp_subj.get((cl, subj))
+            if home is None:
+                continue          # not a group lesson
+            for home_cl in home:
+                # is there another (non-group) lesson on this home
+                # class at the same (d, h)?
+                conflict = any(
+                    sol.get((tt, home_cl, ss, d, h), 0) == 1
+                    for tt in profs_set
+                    for ss in profs.get(tt, {}).get(
+                        "classi", {}).get(home_cl, {}).keys()
+                )
+                if conflict:
+                    if verbose:
+                        print(f"  C3 home-class busy viol: group "
+                              f"{cl}/{subj} at ({d},{h}) but "
+                              f"home {home_cl} also busy")
+                    return False
+
     return True
 
 
@@ -283,7 +337,12 @@ def find_best_sol(sols, profs):
 # LNS: Large Neighborhood Search (uses CP-SAT)
 # ============================================================
 
-def _cp_repair(sol, profs, dc_value, free_keys, time_limit, workers=4):
+def _cp_repair(sol, profs, dc_value, free_keys, time_limit, workers=4,
+               *,
+               coteach_groups=None,
+               support_assignments=None,
+               parallel_groups=None,
+               group_assignments=None):
     """Risolve un sotto-problema CP-SAT in cui sono "libere" solo le
     variabili in `free_keys` (set di (p, cl, subj, d, h)) e tutto il
     resto e\` fissato a sol[k]. Riusa cv2.solve_phase_b_for_day con
@@ -293,12 +352,53 @@ def _cp_repair(sol, profs, dc_value, free_keys, time_limit, workers=4):
     Per semplicita\` operiamo per giorno: estraiamo i giorni unici
     dei free_keys, e per ciascuno richiamiamo una versione locale.
 
+    Task C3: when group_assignments / coteach_groups / etc. are
+    present, we delegate to cv2.solve_phase_b_for_day with locks
+    covering the non-free placed slots. The dedicated per-day model
+    below would otherwise miss the C3 constraints (group_slot,
+    home_class busy, group-coteach, group-sostegno).
+
     Restituisce (new_sol, success).
     """
     from ortools.sat.python import cp_model
     days_to_repair = sorted({k[3] for k in free_keys})
     new_sol = deepcopy_sol(sol)
     classes, triples, class_profs = cv2.build_indices(profs)
+
+    # C3 fast path: route the day through solve_phase_b_for_day
+    # (which already models groups + coteach + sostegno + parallel).
+    # Locks come from the placed slots that aren't in free_keys for
+    # that day.
+    has_c3 = bool(group_assignments) or bool(coteach_groups) \
+        or bool(support_assignments) or bool(parallel_groups)
+    if has_c3:
+        for day in days_to_repair:
+            free_in_day = {k for k in free_keys if k[3] == day}
+            # Build per-day locks: every placed (value==1) slot for
+            # this day that is NOT in free_keys is forced to 1.
+            locks_today = [
+                (p, cl, s, h)
+                for (p, cl, s, dd, h), v in new_sol.items()
+                if dd == day and int(v) == 1
+                   and (p, cl, s, dd, h) not in free_in_day
+            ]
+            out, _st = cv2.solve_phase_b_for_day(
+                day, profs, classes, triples, class_profs, dc_value,
+                time_limit=time_limit, workers=workers, log=False,
+                locked_slots_for_day=locks_today,
+                coteach_groups=coteach_groups,
+                support_assignments=support_assignments,
+                parallel_groups=parallel_groups,
+                group_assignments=group_assignments,
+            )
+            if out is None:
+                return None, False
+            # Replace the day's slots with the new assignment
+            for k in list(new_sol.keys()):
+                if k[3] == day:
+                    new_sol[k] = 0
+            new_sol.update(out)
+        return new_sol, True
 
     for day in days_to_repair:
         free_in_day = {k for k in free_keys if k[3] == day}
@@ -504,7 +604,12 @@ def neighborhood_cluster_day(sol, profs, classes_in_cluster, day):
 
 def run_lns(sol, profs, dc_value, time_budget_s,
             classes_clusters=None, log=True, workers=4,
-            adaptive=True, locks=None):
+            adaptive=True, locks=None,
+            *,
+            coteach_groups=None,
+            support_assignments=None,
+            parallel_groups=None,
+            group_assignments=None):
     """Esegui Large Neighborhood Search per `time_budget_s` secondi.
 
     Se `adaptive=True` (default), gli operator non sono scelti uniformi
@@ -581,7 +686,11 @@ def run_lns(sol, profs, dc_value, time_budget_s,
         if not free:
             continue
         new_sol, ok = _cp_repair(
-            best, profs, dc_value, free, time_local, workers=workers
+            best, profs, dc_value, free, time_local, workers=workers,
+            coteach_groups=coteach_groups,
+            support_assignments=support_assignments,
+            parallel_groups=parallel_groups,
+            group_assignments=group_assignments,
         )
         op_stats[op]["n_calls"] += 1
         if not ok:
@@ -619,7 +728,8 @@ def run_lns(sol, profs, dc_value, time_budget_s,
 # Mosse atomiche per SA / TS (preservano HARD)
 # ============================================================
 
-def _swap_two_lessons_same_prof(sol, profs, dc_value, rng, locks=None):
+def _swap_two_lessons_same_prof(sol, profs, dc_value, rng, locks=None,
+                                 *, group_assignments=None):
     """Tenta uno swap di 2 slot dello stesso prof (cambia hour).
     Restituisce nuova_sol o None se non valida.
 
@@ -644,13 +754,15 @@ def _swap_two_lessons_same_prof(sol, profs, dc_value, rng, locks=None):
             new_k2 = (k2[0], k2[1], k2[2], k2[3], k1[4])
             new_sol[new_k1] = 1
             new_sol[new_k2] = 1
-            if is_hard_feasible(new_sol, profs):
+            if is_hard_feasible(new_sol, profs,
+                                 group_assignments=group_assignments):
                 return new_sol
             return None
     return None
 
 
-def _move_lesson_to_empty_slot(sol, profs, dc_value, rng, locks=None):
+def _move_lesson_to_empty_slot(sol, profs, dc_value, rng, locks=None,
+                                *, group_assignments=None):
     """Sposta una singola lezione (p, cl, s, d, h) a (p, cl, s, d, h')
     con h' libero per il prof e per la classe.
 
@@ -670,12 +782,14 @@ def _move_lesson_to_empty_slot(sol, profs, dc_value, rng, locks=None):
             new_sol = dict(sol)
             new_sol[k] = 0
             new_sol[new_k] = 1
-            if is_hard_feasible(new_sol, profs):
+            if is_hard_feasible(new_sol, profs,
+                                 group_assignments=group_assignments):
                 return new_sol
     return None
 
 
-def _swap_two_lessons_same_class(sol, profs, dc_value, rng, locks=None):
+def _swap_two_lessons_same_class(sol, profs, dc_value, rng, locks=None,
+                                  *, group_assignments=None):
     """Swap fra due lezioni della stessa classe (potenzialmente prof
     diversi) in slot diversi nello stesso giorno.
 
@@ -698,7 +812,8 @@ def _swap_two_lessons_same_class(sol, profs, dc_value, rng, locks=None):
             new_k2 = (k2[0], k2[1], k2[2], k2[3], k1[4])
             new_sol[new_k1] = 1
             new_sol[new_k2] = 1
-            if is_hard_feasible(new_sol, profs):
+            if is_hard_feasible(new_sol, profs,
+                                 group_assignments=group_assignments):
                 return new_sol
     return None
 
@@ -715,7 +830,12 @@ ATOMIC_MOVES = [
 # ============================================================
 
 def run_sa(sol, profs, dc_value, time_budget_s,
-           T0=10.0, alpha=0.995, log=True, locks=None):
+           T0=10.0, alpha=0.995, log=True, locks=None,
+           *,
+           coteach_groups=None,
+           support_assignments=None,
+           parallel_groups=None,
+           group_assignments=None):
     rng = random.Random(123)
     best = dict(sol)
     cur = dict(sol)
@@ -730,7 +850,8 @@ def run_sa(sol, profs, dc_value, time_budget_s,
     while time.time() - t_start < time_budget_s:
         iter_count += 1
         move_fn = rng.choice(ATOMIC_MOVES)
-        new_sol = move_fn(cur, profs, dc_value, rng, locks=locks)
+        new_sol = move_fn(cur, profs, dc_value, rng, locks=locks,
+                          group_assignments=group_assignments)
         if new_sol is None:
             T *= alpha
             continue
@@ -757,7 +878,12 @@ def run_sa(sol, profs, dc_value, time_budget_s,
 # ============================================================
 
 def run_tabu(sol, profs, dc_value, time_budget_s,
-             tabu_size=80, log=True, locks=None):
+             tabu_size=80, log=True, locks=None,
+             *,
+             coteach_groups=None,
+             support_assignments=None,
+             parallel_groups=None,
+             group_assignments=None):
     rng = random.Random(456)
     best = dict(sol)
     cur = dict(sol)
@@ -775,7 +901,8 @@ def run_tabu(sol, profs, dc_value, time_budget_s,
         candidates = []
         for _ in range(30):
             move_fn = rng.choice(ATOMIC_MOVES)
-            new_sol = move_fn(cur, profs, dc_value, rng, locks=locks)
+            new_sol = move_fn(cur, profs, dc_value, rng, locks=locks,
+                              group_assignments=group_assignments)
             if new_sol is None:
                 continue
             new_val, _ = compute_soft(new_sol, profs)
@@ -819,7 +946,12 @@ def run_tabu(sol, profs, dc_value, time_budget_s,
 # ============================================================
 
 def _perturb(sol, profs, dc_value, rng,
-             classes_clusters=None, time_limit=15):
+             classes_clusters=None, time_limit=15,
+             *,
+             coteach_groups=None,
+             support_assignments=None,
+             parallel_groups=None,
+             group_assignments=None):
     """Perturbazione: prendi una zona e usa CP-SAT per re-randomizzare
     (mantiene HARD)."""
     # Strategia: scegli un cluster random + 2 giorni random e libera
@@ -837,7 +969,11 @@ def _perturb(sol, profs, dc_value, rng,
         days_chosen = rng.sample(DAYS, 2)
         free = {k for k in sol if k[3] in days_chosen}
     new_sol, ok = _cp_repair(
-        sol, profs, dc_value, free, time_limit, workers=4
+        sol, profs, dc_value, free, time_limit, workers=4,
+        coteach_groups=coteach_groups,
+        support_assignments=support_assignments,
+        parallel_groups=parallel_groups,
+        group_assignments=group_assignments,
     )
     return new_sol if ok else dict(sol)
 
@@ -845,7 +981,12 @@ def _perturb(sol, profs, dc_value, rng,
 def run_ils(sol, profs, dc_value, time_budget_s,
             classes_clusters=None, ts_budget_per_cycle=60,
             n_cycles=3, log=True, lns_kick=True,
-            lns_kick_budget=8.0, locks=None):
+            lns_kick_budget=8.0, locks=None,
+            *,
+            coteach_groups=None,
+            support_assignments=None,
+            parallel_groups=None,
+            group_assignments=None):
     """Iterated Local Search.
 
     Sequenza per ogni ciclo:
@@ -872,7 +1013,11 @@ def run_ils(sol, profs, dc_value, time_budget_s,
         if log:
             print(f"  [ILS cycle {cycle}] TS for {local_t:.0f}s")
         cur = run_tabu(cur, profs, dc_value, local_t, log=False,
-                       locks=locks)
+                       locks=locks,
+                       coteach_groups=coteach_groups,
+                       support_assignments=support_assignments,
+                       parallel_groups=parallel_groups,
+                       group_assignments=group_assignments)
         cur_val, _ = compute_soft(cur, profs)
         if cur_val < best_val:
             best = dict(cur)
@@ -892,11 +1037,20 @@ def run_ils(sol, profs, dc_value, time_budget_s,
                 min(lns_kick_budget, rem * 0.3),
                 classes_clusters=classes_clusters,
                 log=False, locks=locks,
+                coteach_groups=coteach_groups,
+                support_assignments=support_assignments,
+                parallel_groups=parallel_groups,
+                group_assignments=group_assignments,
             )
         else:
             if log:
                 print(f"  [ILS cycle {cycle}] perturb")
-            cur = _perturb(cur, profs, dc_value, rng, classes_clusters)
+            cur = _perturb(cur, profs, dc_value, rng,
+                           classes_clusters=classes_clusters,
+                           coteach_groups=coteach_groups,
+                           support_assignments=support_assignments,
+                           parallel_groups=parallel_groups,
+                           group_assignments=group_assignments)
     if log:
         print(f"  [ILS] {cycle} cycles, obj {init_val} -> {best_val} "
               f"({100.0 * (init_val - best_val) / max(init_val, 1):.1f}%)")

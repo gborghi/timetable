@@ -31,12 +31,14 @@ HOURS = meta.HOURS
 # ---------------- Neighbourhood 1: single swap ----------------
 
 def _n1_one_swap(sol, profs, dc_value, rng, budget_iter: int,
-                 best_val: float, locks=None):
+                 best_val: float, locks=None,
+                 *, group_assignments=None):
     """Try up to `budget_iter` 1-swaps of the same prof. Returns the
     first strictly-improving feasible neighbour, else None."""
     for _ in range(budget_iter):
         new_sol = meta._swap_two_lessons_same_prof(
-            sol, profs, dc_value, rng, locks=locks)
+            sol, profs, dc_value, rng, locks=locks,
+            group_assignments=group_assignments)
         if new_sol is None:
             continue
         v, _ = meta.compute_soft(new_sol, profs)
@@ -48,14 +50,17 @@ def _n1_one_swap(sol, profs, dc_value, rng, budget_iter: int,
 # ---------------- Neighbourhood 2: two paired swaps ----------------
 
 def _n2_two_swaps(sol, profs, dc_value, rng, budget_iter: int,
-                  best_val: float, locks=None):
+                  best_val: float, locks=None,
+                  *, group_assignments=None):
     for _ in range(budget_iter):
         s1 = meta._swap_two_lessons_same_prof(
-            sol, profs, dc_value, rng, locks=locks)
+            sol, profs, dc_value, rng, locks=locks,
+            group_assignments=group_assignments)
         if s1 is None:
             continue
         s2 = meta._swap_two_lessons_same_class(
-            s1, profs, dc_value, rng, locks=locks)
+            s1, profs, dc_value, rng, locks=locks,
+            group_assignments=group_assignments)
         candidate = s2 if s2 is not None else s1
         v, _ = meta.compute_soft(candidate, profs)
         if v < best_val:
@@ -66,20 +71,24 @@ def _n2_two_swaps(sol, profs, dc_value, rng, budget_iter: int,
 # ---------------- Neighbourhood 3: 3-chain ----------------
 
 def _n3_three_chain(sol, profs, dc_value, rng, budget_iter: int,
-                    best_val: float, locks=None):
+                    best_val: float, locks=None,
+                    *, group_assignments=None):
     """Compose 3 atomic moves; accept if the chain end is strictly
     better. The intermediate states need NOT be improving."""
     for _ in range(budget_iter):
         a = meta._move_lesson_to_empty_slot(
-            sol, profs, dc_value, rng, locks=locks)
+            sol, profs, dc_value, rng, locks=locks,
+            group_assignments=group_assignments)
         if a is None:
             continue
         b = meta._swap_two_lessons_same_prof(
-            a, profs, dc_value, rng, locks=locks)
+            a, profs, dc_value, rng, locks=locks,
+            group_assignments=group_assignments)
         if b is None:
             continue
         c = meta._swap_two_lessons_same_class(
-            b, profs, dc_value, rng, locks=locks)
+            b, profs, dc_value, rng, locks=locks,
+            group_assignments=group_assignments)
         candidate = c if c is not None else b
         v, _ = meta.compute_soft(candidate, profs)
         if v < best_val:
@@ -91,7 +100,8 @@ def _n3_three_chain(sol, profs, dc_value, rng, budget_iter: int,
 
 def _nk_kopt(sol, profs, dc_value, rng, budget_iter: int,
              best_val: float, k_min: int = 4, k_max: int = 6,
-             locks=None):
+             locks=None,
+             *, group_assignments=None):
     """k-opt is a chain of k atomic moves with k randomly chosen in
     [k_min, k_max]. Exposed-budget-bounded; very expensive per
     iteration so the budget is small."""
@@ -106,7 +116,8 @@ def _nk_kopt(sol, profs, dc_value, rng, budget_iter: int,
         ok = True
         for _ in range(k):
             mv = rng.choice(moves)
-            nxt = mv(cur, profs, dc_value, rng, locks=locks)
+            nxt = mv(cur, profs, dc_value, rng, locks=locks,
+                     group_assignments=group_assignments)
             if nxt is None:
                 ok = False
                 break
@@ -133,6 +144,11 @@ def run_vns(sol, profs, dc_value, time_budget_s,
             log: bool = True, rng_seed: int = 7,
             enabled_neighbourhoods: list[str] | None = None,
             locks: set | None = None,
+            *,
+            coteach_groups=None,
+            support_assignments=None,
+            parallel_groups=None,
+            group_assignments=None,
             ) -> tuple[dict, list]:
     """Variable Neighbourhood Search.
 
@@ -169,10 +185,12 @@ def run_vns(sol, profs, dc_value, time_budget_s,
                 break
             new_sol, new_val = fn(best, profs, dc_value, rng,
                                    budget_iter, best_val,
-                                   locks=locks)
+                                   locks=locks,
+                                   group_assignments=group_assignments)
             if new_sol is not None and new_val < best_val:
-                if not meta.is_hard_feasible(new_sol, profs,
-                                              verbose=False):
+                if not meta.is_hard_feasible(
+                        new_sol, profs, verbose=False,
+                        group_assignments=group_assignments):
                     history.append(dict(stage=name,
                                          status="hard_violation"))
                     continue

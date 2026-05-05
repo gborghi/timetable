@@ -49,8 +49,41 @@ HOURS = meta.HOURS
 
 # ---------------- Pattern generation (subproblem) ----------------
 
+def _profs_iter_with_groups(profs: dict,
+                             group_assignments: list | None
+                             ) -> dict[str, list[tuple[str, str]]]:
+    """Build a per-teacher iterator over (class_name, subject) pairs
+    that includes BOTH the regular class entries from
+    `profs[p].classi` AND the StudyGroup-targeted entries from
+    `group_assignments`. Returns dict[teacher_name -> list[(cl, s)]].
+
+    Task C3: CG patterns for group teachers were silently empty
+    because their `classi` is empty (the group hours arrive via
+    `group_assignments` and are augmented to the triples list inside
+    cv2.solve_phase_a only). Without this helper, _seed_patterns
+    skipped group teachers entirely.
+    """
+    out: dict[str, list[tuple[str, str]]] = {}
+    for p in sorted(profs.keys()):
+        pairs: list[tuple[str, str]] = []
+        for cl, sub_dict in (profs[p]["classi"]).items():
+            for subj in sub_dict.keys():
+                pairs.append((cl, subj))
+        out[p] = pairs
+    for ga in (group_assignments or []):
+        t = ga["teacher_name"]
+        cl = ga["group_name"]
+        s = ga["subject"]
+        pair = (cl, s)
+        existing = out.setdefault(t, [])
+        if pair not in existing:
+            existing.append(pair)
+    return out
+
+
 def _seed_patterns(profs: dict, dc_value: dict, max_per_teacher: int = 3,
-                   locks: set | None = None
+                   locks: set | None = None,
+                   group_assignments: list | None = None,
                    ) -> dict[str, list[dict]]:
     """Build a small initial pattern catalog from `dc_value` (Phase-A
     output), one or more "shifted" patterns per teacher.
@@ -75,7 +108,8 @@ def _seed_patterns(profs: dict, dc_value: dict, max_per_teacher: int = 3,
         locks_by_teacher.setdefault(p, []).append((cl, s, d, h))
 
     out: dict[str, list[dict]] = {}
-    profs_list = sorted(profs.keys())
+    pairs_by_t = _profs_iter_with_groups(profs, group_assignments)
+    profs_list = sorted(pairs_by_t.keys())
     for p in profs_list:
         # IMPORTANT: include the DAY in the triple. Earlier versions
         # carried only (p, cl, subj, count) and tried to rediscover
@@ -86,8 +120,7 @@ def _seed_patterns(profs: dict, dc_value: dict, max_per_teacher: int = 3,
         # (cattedra, day) pair gets exactly one greedy placement
         # for `count` hours.
         triples = [(p, cl, subj, d, dc_value.get((p, cl, subj, d), 0))
-                    for cl, sub_dict in (profs[p]["classi"]).items()
-                    for subj in sub_dict.keys()
+                    for (cl, subj) in pairs_by_t[p]
                     for d in DAYS]
         triples = [t for t in triples if t[4] > 0]
         if not triples:
@@ -247,7 +280,8 @@ def _solve_master(patterns_by_teacher: dict[str, list[dict]],
 
 def _diversified_seed(profs: dict, dc_value: dict,
                       n_variants: int, rng_seed: int = 0,
-                      locks: set | None = None
+                      locks: set | None = None,
+                      group_assignments: list | None = None,
                       ) -> dict[str, list[dict]]:
     """Like _seed_patterns but with `n_variants` per teacher and a
     randomized triple ordering so each variant explores a different
@@ -263,11 +297,11 @@ def _diversified_seed(profs: dict, dc_value: dict,
 
     rng = random.Random(rng_seed)
     out: dict[str, list[dict]] = {}
-    profs_list = sorted(profs.keys())
+    pairs_by_t = _profs_iter_with_groups(profs, group_assignments)
+    profs_list = sorted(pairs_by_t.keys())
     for p in profs_list:
         triples = [(p, cl, subj, dc_value.get((p, cl, subj, d), 0), d)
-                    for cl, sub_dict in (profs[p]["classi"]).items()
-                    for subj in sub_dict.keys()
+                    for (cl, subj) in pairs_by_t[p]
                     for d in DAYS]
         triples = [t for t in triples if t[3] > 0]
         patterns: list[dict] = []
@@ -311,7 +345,11 @@ def _completion_solver(initial_sol: dict, profs: dict, dc_value: dict,
                        time_limit: float = 30.0,
                        workers: int = 4,
                        locked_by_day: dict | None = None,
-                       coteach_groups: list | None = None) -> dict | None:
+                       coteach_groups: list | None = None,
+                       support_assignments: list | None = None,
+                       parallel_groups: list | None = None,
+                       group_assignments: list | None = None,
+                       ) -> dict | None:
     """Completion solver. When the master LP assembly leaves any
     (cl, subj, day) under-covered, this routine simply runs the
     standard Phase B day-solver for every day from scratch (using
@@ -341,6 +379,9 @@ def _completion_solver(initial_sol: dict, profs: dict, dc_value: dict,
             time_limit=time_limit, workers=workers, log=False,
             locked_slots_for_day=(locked_by_day or {}).get(d),
             coteach_groups=coteach_groups,
+            support_assignments=support_assignments,
+            parallel_groups=parallel_groups,
+            group_assignments=group_assignments,
         )
         if out is None:
             return None
@@ -358,6 +399,9 @@ def run_column_generation(profs: dict, dc_value: dict,
                           locks: set | None = None,
                           locked_by_day: dict | None = None,
                           coteach_groups: list | None = None,
+                          support_assignments: list | None = None,
+                          parallel_groups: list | None = None,
+                          group_assignments: list | None = None,
                           ) -> tuple[dict | None, dict]:
     """Iterative Column Generation with master LP + diversified
     pattern enrichment + integer recovery + completion fallback.
@@ -411,7 +455,8 @@ def run_column_generation(profs: dict, dc_value: dict,
     # Step 1: seed
     patterns = _seed_patterns(profs, dc_value,
                               max_per_teacher=patterns_per_teacher,
-                              locks=locks)
+                              locks=locks,
+                              group_assignments=group_assignments)
     info["n_patterns_total_initial"] = sum(len(v) for v in patterns.values())
     if info["n_patterns_total_initial"] == 0:
         info["duration_s"] = time.time() - t0
@@ -445,7 +490,8 @@ def run_column_generation(profs: dict, dc_value: dict,
         new = _diversified_seed(profs, dc_value,
                                 n_variants=patterns_per_teacher,
                                 rng_seed=it * 1000,
-                                locks=locks)
+                                locks=locks,
+                                group_assignments=group_assignments)
         for t, plist in new.items():
             existing = patterns.setdefault(t, [])
             for pat in plist:
@@ -494,6 +540,9 @@ def run_column_generation(profs: dict, dc_value: dict,
             workers=completion_workers,
             locked_by_day=locked_by_day,
             coteach_groups=coteach_groups,
+            support_assignments=support_assignments,
+            parallel_groups=parallel_groups,
+            group_assignments=group_assignments,
         )
         if completed is not None and meta.is_hard_feasible(
                 completed, profs, verbose=False):

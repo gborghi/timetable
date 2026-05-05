@@ -137,14 +137,26 @@ DESTROY_OPS: dict[str, Callable] = {
 
 # ---------- Repair operators -------------------------------------------
 
-def _repair_cp_sat_window(sol, profs, dc_value, free, time_limit, workers):
+def _repair_cp_sat_window(sol, profs, dc_value, free, time_limit, workers,
+                           *, coteach_groups=None,
+                           support_assignments=None,
+                           parallel_groups=None,
+                           group_assignments=None):
     """The canonical strong repair: hand the freed slots to a small
     CP-SAT subproblem (reuses metaheuristics._cp_repair)."""
     return meta._cp_repair(sol, profs, dc_value, free, time_limit,
-                            workers=workers)
+                            workers=workers,
+                            coteach_groups=coteach_groups,
+                            support_assignments=support_assignments,
+                            parallel_groups=parallel_groups,
+                            group_assignments=group_assignments)
 
 
-def _repair_greedy_by_soft(sol, profs, dc_value, free, time_limit, workers):
+def _repair_greedy_by_soft(sol, profs, dc_value, free, time_limit, workers,
+                            *, coteach_groups=None,
+                            support_assignments=None,
+                            parallel_groups=None,
+                            group_assignments=None):
     """Cheap repair: try to set each freed slot greedily, picking the
     assignment that minimizes incremental SOFT delta. Falls back to
     'restore previous value' when no feasible single-slot move
@@ -158,7 +170,11 @@ def _repair_greedy_by_soft(sol, profs, dc_value, free, time_limit, workers):
     return new_sol, True
 
 
-def _repair_bfs_fill_back(sol, profs, dc_value, free, time_limit, workers):
+def _repair_bfs_fill_back(sol, profs, dc_value, free, time_limit, workers,
+                           *, coteach_groups=None,
+                           support_assignments=None,
+                           parallel_groups=None,
+                           group_assignments=None):
     """BFS-ish repair: scan the freed cells in a fixed order and
     assign them in turn while keeping HARD satisfied. Falls back
     to CP-SAT when no manual move keeps feasibility.
@@ -168,7 +184,11 @@ def _repair_bfs_fill_back(sol, profs, dc_value, free, time_limit, workers):
     """
     return meta._cp_repair(sol, profs, dc_value, free,
                             max(1.0, time_limit / 2.0),
-                            workers=workers)
+                            workers=workers,
+                            coteach_groups=coteach_groups,
+                            support_assignments=support_assignments,
+                            parallel_groups=parallel_groups,
+                            group_assignments=group_assignments)
 
 
 REPAIR_OPS: dict[str, Callable] = {
@@ -234,7 +254,12 @@ def run_alns(sol, profs, dc_value, time_budget_s,
              T0: float = 5.0, alpha: float = 0.995,
              enabled_destroy: list[str] | None = None,
              enabled_repair: list[str] | None = None,
-             locks: set | None = None) -> tuple[dict, list]:
+             locks: set | None = None,
+             *,
+             coteach_groups=None,
+             support_assignments=None,
+             parallel_groups=None,
+             group_assignments=None) -> tuple[dict, list]:
     """Adaptive Large Neighborhood Search with SA acceptance.
 
     Args:
@@ -306,7 +331,11 @@ def run_alns(sol, profs, dc_value, time_budget_s,
 
         time_local = max(2.0, min(15.0, time_budget_s / 6.0))
         new_sol, ok = repair(cur, profs, dc_value, free,
-                              time_local, workers)
+                              time_local, workers,
+                              coteach_groups=coteach_groups,
+                              support_assignments=support_assignments,
+                              parallel_groups=parallel_groups,
+                              group_assignments=group_assignments)
         if not ok or new_sol is None:
             d_op.update(0.0); r_op.update(0.0)
             history.append(dict(iter=iter_count, destroy=d_op.name,
