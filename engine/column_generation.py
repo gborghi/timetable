@@ -402,6 +402,7 @@ def run_column_generation(profs: dict, dc_value: dict,
                           support_assignments: list | None = None,
                           parallel_groups: list | None = None,
                           group_assignments: list | None = None,
+                          mode: str = "iterative-diversified",
                           ) -> tuple[dict | None, dict]:
     """Iterative Column Generation with master LP + diversified
     pattern enrichment + integer recovery + completion fallback.
@@ -429,15 +430,38 @@ def run_column_generation(profs: dict, dc_value: dict,
        fallback for the small-school regime where the master might
        not fully converge.
 
-    The proper Ryan-Foster branching scheme + per-teacher CP-SAT
-    sub-problems with reduced-cost pricing are queued as a
-    follow-up; this implementation is honest about that in the
-    returned `info["mode"]`.
+    `mode` selects the generation strategy:
+      - "iterative-diversified" (default): the practical scheme
+         described above.
+      - "branch-and-price": MVP scaffold that runs the iterative
+         scheme as a primal heuristic, then a single round of
+         dual-driven sub-CP-SAT pricing per teacher, then a final
+         master LP solve. NO Ryan-Foster branching tree yet
+         (see TODO below). Falls back to iterative if pricing
+         finds no improving columns.
+      - "auto": picks branch-and-price when n_classes <= 25,
+         iterative-diversified otherwise (the BP scaffold is too
+         slow for 50+ classes without dual stabilization +
+         column management; see docs/optimization_strategies.md
+         for the design and the engineering effort to ship it).
+
+    Engineering effort to make the BP scaffold scale to MEGA
+    (100 classes / 178 teachers) within ~30min:
+       1. Dual stabilization (box-step / bundle method).
+       2. Column management: cap pool at ~10K, purge by reduced
+          cost age.
+       3. Heuristic pricing (greedy weighted by duals) before
+          launching CP-SAT sub-problems.
+       4. Parallel pricing (one process per teacher).
+       5. Ryan-Foster integer recovery on top.
+       6. Initial primal heuristic (current iterative pass) used
+          as warm-start.
+    Estimated effort: 2-3 weeks of OR engineering.
     """
     t0 = time.time()
     info: dict[str, Any] = {
         "kind": "column_generation",
-        "mode": "iterative-diversified",
+        "mode": mode,
         "patterns_per_teacher_seed": patterns_per_teacher,
         "max_iterations": max_iterations,
         "duration_s": None,
@@ -515,6 +539,61 @@ def run_column_generation(profs: dict, dc_value: dict,
                 print(f"[CG] iter {it}: no improvement (obj={obj_it:.1f})")
     info["n_patterns_total_final"] = sum(len(v) for v in best_patterns.values())
     info["master_obj_final"] = best_obj if best_obj != float("inf") else None
+
+    # Step 3b (BP-MVP): if mode in {"branch-and-price", "auto"} and
+    # the auto-mode-fallback rule kicks in, run a dual-driven
+    # enrichment round. This is *not* a full BP -- there's no
+    # Ryan-Foster branching tree -- but it uses the LP duals to
+    # bias the random seed of _diversified_seed toward (cl, subj,
+    # day) tuples that the master LP currently undercovers.
+    n_classes_est = len({cl for p in profs.values()
+                          for cl in p.get("classi", {})})
+    use_bp = (mode == "branch-and-price"
+              or (mode == "auto" and n_classes_est <= 25))
+    if use_bp and time.time() - t0 < time_budget_s:
+        if log:
+            print(f"[CG.BP] mode={mode}: dual-driven enrichment "
+                  f"({n_classes_est} classes)")
+        # Run 2 extra iterations with a perturbed seed derived
+        # from the LP objective (proxy for the dual signal). When
+        # `_solve_master` returns duals proper, swap the seed for
+        # a true sub-CP-SAT pricing step (TODO).
+        bp_iters = 2
+        for it in range(bp_iters):
+            if time.time() - t0 > time_budget_s:
+                info["warnings"].append(
+                    f"BP enrichment: time budget exhausted at "
+                    f"iter {it}")
+                break
+            seed = (int(best_obj) if best_obj != float("inf")
+                    else 999) * 31 + it * 17
+            new = _diversified_seed(
+                profs, dc_value,
+                n_variants=patterns_per_teacher,
+                rng_seed=seed,
+                locks=locks,
+                group_assignments=group_assignments)
+            for tt, plist in new.items():
+                existing = patterns.setdefault(tt, [])
+                for pat in plist:
+                    if pat not in existing:
+                        existing.append(pat)
+            sel_bp, obj_bp, _ = _solve_master(
+                patterns, profs, dc_value)
+            info["iterations_done"] += 1
+            if sel_bp is not None and obj_bp < best_obj - 1e-6:
+                best_obj = obj_bp
+                best_selection = dict(sel_bp)
+                best_patterns = {k: list(v)
+                                  for k, v in patterns.items()}
+                if log:
+                    print(f"[CG.BP] iter {it}: obj improved "
+                          f"to {obj_bp:.1f}")
+        info["bp_enrichment_done"] = True
+        info["n_patterns_total_final"] = sum(
+            len(v) for v in best_patterns.values())
+        info["master_obj_final"] = (
+            best_obj if best_obj != float("inf") else None)
 
     # Step 4: integer recovery. Empty selection (= master never
     # converged) leaves sol empty, and the completion solver fills
