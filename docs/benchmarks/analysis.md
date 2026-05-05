@@ -79,17 +79,21 @@ visits.
 Every combination starts with the same 30s Phase A timetabling
 budget (the per-day Phase B and the post-pass time budgets are
 the per-tool variable). On the small profile (`liceo_piccolo`,
-~10 classes, default tightness 0.5) the typical totals are:
+~10 classes, mixed tightness 0.18-0.40) measured 34 rows:
 
-| Combination | t_total median (s) | Soft cost median |
-|---|---:|---:|
-| phase_b           | ~52  | ~970 |
-| phase_b+lns       | ~61  | ~770 |
-| phase_b+sa        | ~55  | ~730 |
-| phase_b+alns      | ~57  | ~670 |
-| phase_b+vns       | ~72  | ~700 |
-| phase_b+lagrangian| ~60  | ~750 |
-| phase_b+cg        | ~70  | ~700 |
+| Combination | t_total mean (s) | t_total std | Soft cost mean |
+|---|---:|---:|---:|
+| phase_b            | 55.8 | 7.6 | 778 |
+| phase_b+lns        | 57.1 | 3.8 | 765 |
+| phase_b+sa         | 57.7 | 5.3 | 733 |
+| phase_b+alns       | 59.5 | 3.1 | 742 |
+| phase_b+vns        | 70.9 | 3.3 | 845 |
+| phase_b+lagrangian | 63.1 | 3.5 | 742 |
+
+(`phase_b+cg` excluded from the table -- the run hit a 422 in the
+master LP at tightness=0.5 due to a 3-tuple namespacing issue
+that has been fixed in commit-followup; CG numbers will land in
+the next batch.)
 
 The post-pass overhead (5-10s) is dominated by the Phase A budget
 (30s) and the per-day Phase B (8-15s/day x 6 days = 1-2min). The

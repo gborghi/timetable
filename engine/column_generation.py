@@ -225,7 +225,11 @@ def _solve_master(patterns_by_teacher: dict[str, list[dict]],
 
     # Inequality (lower-bound coverage of (p, cl, subj, day) hours via dc)
     # We use A_ub * x <= b_ub form, encoding -cover <= -demand.
-    cover_keys = [k for k, v in dc_value.items() if v > 0]
+    # dc_value also contains namespaced 3-tuples like
+    # ("__coday__", group_id, day) and ("__pot__", prof, day) which
+    # are NOT cattedra coverage targets -- skip them here.
+    cover_keys = [k for k, v in dc_value.items()
+                   if v > 0 and isinstance(k, tuple) and len(k) == 4]
     A_ub = []
     b_ub = []
     for k in cover_keys:
