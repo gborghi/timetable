@@ -101,6 +101,87 @@ export function seedMiniScenario(): Cypress.Chainable<MiniScenario> {
 }
 
 /**
+ * Seed via /api/dataset/import-profile + Phase A. Heavier than
+ * seedMiniScenario(): yields a real school with curricula +
+ * classrooms + students + a complete `Assignment` row set, ready
+ * for a Phase B run.
+ *
+ * Used by FU-D (launch-solver) and FU-E (conflict-pill) which
+ * need a populated DB the solver can actually consume.
+ */
+export function seedSmallProfileAndRunPhaseA(
+    timeoutSeconds = 90,
+    pollMs = 2000): Cypress.Chainable {
+  return clearDataset().then(() => {
+    return cy.request({
+      method: 'POST',
+      url: `${BACKEND}/api/dataset/import-profile`,
+      body: {
+        profile: 'small',
+        seed_curricula: true,
+        seed_classrooms: true,
+        seed_students: true,
+        margin: 0.25,
+      },
+      timeout: 60000,
+    });
+  }).then(() => {
+    // Phase A (assignment criterion=balance_weight)
+    return cy.request({
+      method: 'POST',
+      url: `${BACKEND}/api/optimize/assignment`,
+      body: {
+        time_limit_s: 30, workers: 4, log: false,
+        criterion: 'balance_weight',
+      },
+    });
+  }).then((r) => {
+    const runId = r.body.run_id;
+    expect(runId).to.be.a('number');
+    return waitForRun(runId, timeoutSeconds, pollMs);
+  });
+}
+
+
+/**
+ * Poll /api/optimize/runs/<id> until status in ('done', 'failed',
+ * 'cancelled'). Returns the final run dict. Throws on timeout.
+ */
+export function waitForRun(runId: number,
+    timeoutSeconds: number,
+    pollMs: number = 2000): Cypress.Chainable<any> {
+  const deadline = Date.now() + timeoutSeconds * 1000;
+  function poll(): any {
+    return cy.request({
+      method: 'GET',
+      url: `${BACKEND}/api/optimize/runs/${runId}`,
+      failOnStatusCode: false,
+    }).then((r: any) => {
+      const run = r.body;
+      const status = run.status as string;
+      if (['done', 'completed', 'success'].includes(status)) {
+        return cy.wrap(run);
+      }
+      if (['failed', 'error', 'cancelled', 'canceled']
+          .includes(status)) {
+        throw new Error(
+          `run ${runId} ended with status=${status}: `
+          + `${JSON.stringify(run.error || run.metrics_json
+                              || run)}`);
+      }
+      if (Date.now() > deadline) {
+        throw new Error(
+          `run ${runId} did not finish within ${timeoutSeconds}s `
+          + `(last status=${status})`);
+      }
+      return cy.wait(pollMs).then(() => poll());
+    });
+  }
+  return poll();
+}
+
+
+/**
  * Manually attach 4 cattedre (one teacher per class+subject) using
  * the /api/assignments/manual endpoint.
  *
