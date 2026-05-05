@@ -1190,6 +1190,434 @@ def _pricing_subproblem_teacher_day(
     return (full_pat, rc) if rc < -eps else (None, rc)
 
 
+# ---------------- Master LP variant 2 (DW with overlaps) ----------------
+#
+# Used by BP for granularities whose columns span MULTIPLE teachers
+# (class, class-day, day, curriculum). Each column is a partial
+# pattern (any subset of (t, cl, s, d, h) slots), and the LP picks
+# fractional weights subject to:
+#   - cover: sum_col x[col] * placed_col(k) >= demand[k] for each
+#     cattedra-day k = (t, cl, s, d).
+#   - class no-overlap: sum_col x[col] * occupies_col(cl, d, h) <= 1
+#     for each (cl, d, h).
+#   - teacher no-overlap: sum_col x[col] * occupies_col(t, d, h) <= 1
+#     for each (t, d, h).
+# No "exactly one pattern per teacher" equality (variant 1) -- the
+# overlap inequalities subsume it.
+#
+# Reduced cost for a partial pattern p (with the master2 duals
+# lambda_cover, mu_class, mu_teacher all sign-flipped so positive
+# <-> binding):
+#
+#     rc(p) = c(p) - sum_k lambda_cover[k] * placed_p(k)
+#                  + sum_(cl,d,h) mu_class[(cl,d,h)] * occupies_p(cl,d,h)
+#                  + sum_(t,d,h) mu_teacher[(t,d,h)] * occupies_p(t,d,h)
+#
+# A binding mu_class or mu_teacher pushes the pricer AWAY from
+# slots in that bottleneck.
+
+
+def _occupies_class_slot(col: dict, cl: str, d: int, h: int) -> int:
+    for (_p, cc, _s, dd, hh), v in col.items():
+        if v and cc == cl and dd == d and hh == h:
+            return 1
+    return 0
+
+
+def _occupies_teacher_slot(col: dict, t: str, d: int, h: int) -> int:
+    for (pp, _c, _s, dd, hh), v in col.items():
+        if v and pp == t and dd == d and hh == h:
+            return 1
+    return 0
+
+
+def _placed_in(col: dict, t: str, cl: str, s: str, d: int) -> int:
+    return sum(1 for (pp, cc, ss, dd, _h), v in col.items()
+               if v and pp == t and cc == cl and ss == s and dd == d)
+
+
+def _solve_master_dw(
+    columns: list[dict], dc_value: dict,
+    *,
+    return_extended: bool = False,
+) -> tuple:
+    """Master LP variant 2 (proper Dantzig-Wolfe).
+
+    `columns` is a flat list of partial pattern dicts. The LP picks
+    fractional weights x[col] in [0, 1] minimising sum c[col]*x[col]
+    subject to cover (>=) + class-no-overlap (<=) + teacher-no-overlap
+    (<=) inequalities.
+
+    Returns (when return_extended=False):
+      (lp_x, obj, lambda_cover_duals)
+    Returns (when return_extended=True):
+      (lp_x, obj, lambda_cover_duals, mu_class_duals, mu_teacher_duals,
+       cover_keys, class_keys, teacher_keys)
+
+    On infeasibility returns (None, +inf, {}, ...).
+    """
+    from scipy.optimize import linprog
+
+    n = len(columns)
+    if n == 0:
+        if return_extended:
+            return None, float("inf"), {}, {}, {}, [], [], []
+        return None, float("inf"), {}
+
+    pattern_costs = [_cost_of_pattern(c, {}) for c in columns]
+
+    cover_keys = [k for k, v in dc_value.items()
+                   if v > 0 and isinstance(k, tuple) and len(k) == 4]
+
+    class_set: set = set()
+    teacher_set: set = set()
+    for col in columns:
+        for (pp, cc, _s, dd, hh), v in col.items():
+            if v:
+                class_set.add((cc, dd, hh))
+                teacher_set.add((pp, dd, hh))
+    class_keys = sorted(class_set)
+    teacher_keys = sorted(teacher_set)
+
+    A_ub: list[list[float]] = []
+    b_ub: list[float] = []
+
+    # Cover (negated for >= demand).
+    for k in cover_keys:
+        (t, cl, s, d) = k
+        row = [-float(_placed_in(columns[j], t, cl, s, d))
+                for j in range(n)]
+        A_ub.append(row)
+        b_ub.append(-float(dc_value[k]))
+
+    # Class no-overlap.
+    for k in class_keys:
+        (cl, d, h) = k
+        row = [float(_occupies_class_slot(columns[j], cl, d, h))
+                for j in range(n)]
+        A_ub.append(row)
+        b_ub.append(1.0)
+
+    # Teacher no-overlap.
+    for k in teacher_keys:
+        (t, d, h) = k
+        row = [float(_occupies_teacher_slot(columns[j], t, d, h))
+                for j in range(n)]
+        A_ub.append(row)
+        b_ub.append(1.0)
+
+    bounds = [(0.0, 1.0) for _ in range(n)]
+    res = linprog(
+        c=pattern_costs,
+        A_ub=np.array(A_ub) if A_ub else None,
+        b_ub=np.array(b_ub) if b_ub else None,
+        bounds=bounds,
+        method="highs",
+    )
+    if not res.success:
+        if return_extended:
+            return (None, float("inf"), {}, {}, {},
+                    cover_keys, class_keys, teacher_keys)
+        return None, float("inf"), {}
+
+    lp_x = list(res.x)
+    obj = float(res.fun)
+
+    # Sign-flip all marginals so positive dual <-> binding constraint.
+    lambda_cover: dict = {}
+    mu_class: dict = {}
+    mu_teacher: dict = {}
+    if hasattr(res, "ineqlin") and res.ineqlin is not None:
+        marg = list(res.ineqlin.marginals)
+        n_cov = len(cover_keys)
+        n_cl = len(class_keys)
+        for i, k in enumerate(cover_keys):
+            lambda_cover[k] = -float(marg[i])
+        for i, k in enumerate(class_keys):
+            mu_class[k] = -float(marg[n_cov + i])
+        for i, k in enumerate(teacher_keys):
+            mu_teacher[k] = -float(marg[n_cov + n_cl + i])
+
+    if not return_extended:
+        return lp_x, obj, lambda_cover
+    return (lp_x, obj, lambda_cover, mu_class, mu_teacher,
+            cover_keys, class_keys, teacher_keys)
+
+
+def _compute_rc_dw(
+    pattern: dict, lambda_cover: dict, mu_class: dict, mu_teacher: dict,
+) -> float:
+    """LP-side reduced cost for a partial pattern under master
+    variant 2 (DW)."""
+    soft = _cost_of_pattern(pattern, {})
+    sum_lambda = 0.0
+    placed_cov: dict = {}
+    occ_class: set = set()
+    occ_teacher: set = set()
+    for (p, cl, s, d, h), v in pattern.items():
+        if not v:
+            continue
+        placed_cov[(p, cl, s, d)] = placed_cov.get((p, cl, s, d), 0) + 1
+        occ_class.add((cl, d, h))
+        occ_teacher.add((p, d, h))
+    for k, n in placed_cov.items():
+        sum_lambda += float(lambda_cover.get(k, 0.0)) * n
+    sum_mu_class = sum(float(mu_class.get(k, 0.0)) for k in occ_class)
+    sum_mu_teacher = sum(float(mu_teacher.get(k, 0.0)) for k in occ_teacher)
+    return soft - sum_lambda + sum_mu_class + sum_mu_teacher
+
+
+# ---------------- Per-class CP-SAT pricer ----------------
+
+
+def _classes_with_demand(profs: dict, dc_value: dict,
+                          group_assignments: list | None
+                          ) -> list[str]:
+    """All class names that have positive demand in dc_value."""
+    classes: set = set()
+    for k, v in dc_value.items():
+        if (v > 0 and isinstance(k, tuple) and len(k) == 4):
+            classes.add(k[1])
+    # Group classes (StudyGroup names) come from group_assignments.
+    for ga in (group_assignments or []):
+        classes.add(ga.get("group_name"))
+    return sorted(c for c in classes if c)
+
+
+def _teachers_for_class(class_name: str, profs: dict,
+                         dc_value: dict,
+                         group_assignments: list | None
+                         ) -> list[tuple[str, str]]:
+    """Return [(teacher, subject)] pairs that have positive demand
+    in `class_name`."""
+    pairs_by_t = _profs_iter_with_groups(profs, group_assignments)
+    out: list[tuple[str, str]] = []
+    for t, pairs in pairs_by_t.items():
+        for (cl, s) in pairs:
+            if cl != class_name:
+                continue
+            if any(dc_value.get((t, cl, s, d), 0) > 0 for d in DAYS):
+                out.append((t, s))
+    return out
+
+
+def _pricing_subproblem_class(
+    class_name: str, profs: dict, dc_value: dict,
+    lambda_cover: dict, mu_class: dict, mu_teacher: dict,
+    *,
+    time_limit: float = 5.0,
+    workers: int = 2,
+    locks: set | None = None,
+    group_assignments: list | None = None,
+    eps: float = 1e-6,
+) -> tuple[dict | None, float]:
+    """CP-SAT pricer for the `class` granularity (master variant 2).
+
+    Builds a partial pattern that schedules all the cattedre of
+    `class_name` (covering every (t, cl=class_name, s, d) demand)
+    in the (d, h) grid. The output is a MULTI-TEACHER column ready
+    to be added to master_dw.
+
+    CP-SAT is ALWAYS invoked. A greedy pass produces a feasible
+    initial assignment that is fed to the solver via add_hint as a
+    warm-start.
+
+    Reduced cost minimisation (integer-scaled, SCALE=100):
+      Minimize sum_(t,s,d,h) [-lam_cov*slot]
+             + sum_(d,h) mu_cl_int * any_slot_at_(d,h)
+             + sum_(t,d,h) mu_t_int * any_slot_at_(t,d,h)
+             + PENALTY_SIXTH * sum_(slots at h=13) slot
+    """
+    from ortools.sat.python import cp_model
+
+    pairs = _teachers_for_class(class_name, profs, dc_value,
+                                 group_assignments)
+    if not pairs:
+        return None, 0.0
+
+    # Build (t, s, d, q) demand list for this class.
+    quads: list[tuple[str, str, int, int]] = []
+    for (t, s) in pairs:
+        for d in DAYS:
+            q = int(dc_value.get((t, class_name, s, d), 0))
+            if q > 0:
+                quads.append((t, s, d, q))
+    if not quads:
+        return None, 0.0
+
+    # Greedy hint: place each (t, s, d) in the first non-conflicting
+    # (cl, d, h) and (t, d, h) slot. Since this is one class, the
+    # "occupied class slot" set guards against multiple teachers
+    # landing on the same (d, h) of class_name.
+    hint_set: set = set()  # (t, s, d, h)
+    occ_cl_local: set = set()  # (d, h) used by class
+    occ_t_local: dict[str, set] = {}  # teacher -> set of (d, h)
+    # Pre-place this class's locks (lock-in via CP-SAT).
+    locks_in_class = [(p, cl_l, s_l, d_l, h_l)
+                       for (p, cl_l, s_l, d_l, h_l) in (locks or ())
+                       if cl_l == class_name]
+    for (p, _cl_l, s_l, d_l, h_l) in locks_in_class:
+        hint_set.add((p, s_l, d_l, h_l))
+        occ_cl_local.add((d_l, h_l))
+        occ_t_local.setdefault(p, set()).add((d_l, h_l))
+    for (t, s, d, q) in quads:
+        # Already-locked count for this cattedra-day.
+        already = sum(1 for (p, _c, s_l, d_l, _h)
+                       in [(x[0], None, x[2], x[3], x[4])
+                            for x in locks_in_class]
+                       if p == t and s_l == s and d_l == d)
+        placed = already
+        for h in HOURS:
+            if placed >= q:
+                break
+            if (d, h) in occ_cl_local:
+                continue
+            if (d, h) in occ_t_local.get(t, set()):
+                continue
+            hint_set.add((t, s, d, h))
+            occ_cl_local.add((d, h))
+            occ_t_local.setdefault(t, set()).add((d, h))
+            placed += 1
+
+    # Build CP-SAT model.
+    model = cp_model.CpModel()
+    slot: dict[tuple, cp_model.IntVar] = {}
+    # One BoolVar per (t, s, d, h); only declared for demanded triples.
+    for (t, s, d, _q) in quads:
+        for h in HOURS:
+            v = model.NewBoolVar(f"slot_{t}_{class_name}_{s}_{d}_{h}")
+            slot[(t, s, d, h)] = v
+            model.AddHint(v, 1 if (t, s, d, h) in hint_set else 0)
+
+    # Cattedra-hours equality per (t, s, d).
+    for (t, s, d, q) in quads:
+        model.Add(sum(slot[(t, s, d, h)] for h in HOURS) == q)
+
+    # Class no-overlap: at most one (t, s) on the same (d, h).
+    for d in DAYS:
+        for h in HOURS:
+            terms = [slot[(t, s, d, h)] for (t, s, d2, _q) in quads
+                      if d2 == d if (t, s, d, h) in slot]
+            seen = set()
+            uniq = []
+            for v in terms:
+                if id(v) not in seen:
+                    seen.add(id(v))
+                    uniq.append(v)
+            if uniq:
+                model.Add(sum(uniq) <= 1)
+
+    # Within-class teacher no-overlap (a single teacher with multiple
+    # subjects in this class can't be in two slots at once).
+    teachers_here = sorted({t for (t, _s, _d, _q) in quads})
+    for t in teachers_here:
+        for d in DAYS:
+            for h in HOURS:
+                terms = [slot[(t, s, d, h)]
+                          for (tt, s, d2, _q) in quads
+                          if tt == t and d2 == d
+                             if (t, s, d, h) in slot]
+                seen = set()
+                uniq = []
+                for v in terms:
+                    if id(v) not in seen:
+                        seen.add(id(v))
+                        uniq.append(v)
+                if uniq:
+                    model.Add(sum(uniq) <= 1)
+
+    # Locks on (*, class_name, *, *, *) force slot==1.
+    for (p, _cl_l, s_l, d_l, h_l) in locks_in_class:
+        v = slot.get((p, s_l, d_l, h_l))
+        if v is not None:
+            model.Add(v == 1)
+
+    # Objective. For class no-overlap, the column DOES occupy
+    # (cl, d, h) for any non-empty (d, h) -- we encode this with an
+    # auxiliary OR boolvar. For teacher no-overlap, ditto per teacher.
+    obj_terms: list = []
+    # Cover reward (per (t, s, d), constant lambda across h).
+    for (t, s, d, _q) in quads:
+        lam = float(lambda_cover.get((t, class_name, s, d), 0.0))
+        lam_int = int(round(lam * _SCALE))
+        for h in HOURS:
+            v = slot[(t, s, d, h)]
+            if lam_int != 0:
+                obj_terms.append(-lam_int * v)
+            if h == _SIXTH_HOUR:
+                obj_terms.append(_PENALTY_SIXTH * v)
+
+    # Class no-overlap penalty: mu_class[(cl, d, h)] * any_slot_at(d, h).
+    for d in DAYS:
+        for h in HOURS:
+            mu_cl = float(mu_class.get((class_name, d, h), 0.0))
+            mu_int = int(round(mu_cl * _SCALE))
+            if mu_int == 0:
+                continue
+            terms = [slot[(t, s, d, h)] for (t, s, d2, _q) in quads
+                      if d2 == d if (t, s, d, h) in slot]
+            seen = set()
+            uniq = []
+            for v in terms:
+                if id(v) not in seen:
+                    seen.add(id(v))
+                    uniq.append(v)
+            if uniq:
+                # any_slot OR via an auxiliary BoolVar.
+                any_v = model.NewBoolVar(
+                    f"any_cl_{class_name}_{d}_{h}")
+                model.Add(any_v <= sum(uniq))
+                for u in uniq:
+                    model.Add(any_v >= u)
+                obj_terms.append(mu_int * any_v)
+
+    # Teacher no-overlap penalty: mu_teacher[(t, d, h)] * any_slot_for_t_at(d, h).
+    for t in teachers_here:
+        for d in DAYS:
+            for h in HOURS:
+                mu_t = float(mu_teacher.get((t, d, h), 0.0))
+                mu_int = int(round(mu_t * _SCALE))
+                if mu_int == 0:
+                    continue
+                terms = [slot[(t, s, d, h)]
+                          for (tt, s, d2, _q) in quads
+                          if tt == t and d2 == d
+                             if (t, s, d, h) in slot]
+                seen = set()
+                uniq = []
+                for v in terms:
+                    if id(v) not in seen:
+                        seen.add(id(v))
+                        uniq.append(v)
+                if uniq:
+                    any_v = model.NewBoolVar(
+                        f"any_t_{t}_{d}_{h}")
+                    model.Add(any_v <= sum(uniq))
+                    for u in uniq:
+                        model.Add(any_v >= u)
+                    obj_terms.append(mu_int * any_v)
+
+    if obj_terms:
+        model.Minimize(sum(obj_terms))
+
+    solver = cp_model.CpSolver()
+    solver.parameters.max_time_in_seconds = float(time_limit)
+    solver.parameters.num_search_workers = int(workers)
+    solver.parameters.log_search_progress = False
+    status = solver.Solve(model)
+    if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        return None, 0.0
+
+    column: dict = {}
+    for (t, s, d, _q) in quads:
+        for h in HOURS:
+            if solver.Value(slot[(t, s, d, h)]):
+                column[(t, class_name, s, d, h)] = 1
+
+    rc = _compute_rc_dw(column, lambda_cover, mu_class, mu_teacher)
+    return (column, rc) if rc < -eps else (None, rc)
+
+
 # ---------------- BP loop: dispatcher + driver ----------------
 
 _BP_GRANULARITIES = (
@@ -1197,10 +1625,14 @@ _BP_GRANULARITIES = (
     "teacher-class-subject",
     "teacher-subject",
     "teacher-day",
-    # Pricers for additional granularities arrive in subsequent
-    # commits (steps 3e-3h). Those need master variant 2:
-    #   class, class-day, day, curriculum.
+    "class",
+    # Pricers for the remaining granularities (steps 3f-3h):
+    #   class-day, day, curriculum.
 )
+
+# Granularities whose columns are MULTI-teacher partial patterns
+# and therefore require master variant 2 (DW with overlap ineqs).
+_BP_GRANULARITIES_DW = ("class", "class-day", "day", "curriculum")
 
 
 def _enumerate_pricing_keys(granularity: str, profs: dict,
@@ -1248,6 +1680,8 @@ def _enumerate_pricing_keys(granularity: str, profs: dict,
                         for (cl, s) in pairs):
                     out.append((t, d))
         return sorted(out)
+    if granularity == "class":
+        return _classes_with_demand(profs, dc_value, group_assignments)
     raise NotImplementedError(
         f"granularity {granularity!r} pricing not yet implemented")
 
@@ -1305,6 +1739,32 @@ def _solve_pricing(granularity: str, key,
         )
     raise NotImplementedError(
         f"_solve_pricing: granularity {granularity!r} not implemented")
+
+
+def _solve_pricing_dw(granularity: str, key,
+                      profs: dict, dc_value: dict,
+                      lambda_cover: dict, mu_class: dict,
+                      mu_teacher: dict,
+                      *,
+                      time_limit: float = 5.0,
+                      workers: int = 2,
+                      locks: set | None = None,
+                      group_assignments: list | None = None,
+                      eps: float = 1e-6,
+                      ) -> tuple[dict | None, float]:
+    """Dispatch a master-variant-2 (DW) pricing call. Used by BP for
+    granularities whose columns span multiple teachers."""
+    if granularity == "class":
+        class_name = key
+        return _pricing_subproblem_class(
+            class_name, profs, dc_value,
+            lambda_cover, mu_class, mu_teacher,
+            time_limit=time_limit, workers=workers,
+            locks=locks, group_assignments=group_assignments,
+            eps=eps,
+        )
+    raise NotImplementedError(
+        f"_solve_pricing_dw: granularity {granularity!r} not implemented")
 
 
 def _run_branch_and_price(
@@ -1430,6 +1890,162 @@ def _run_branch_and_price(
     if not info["bp_terminated_reason"]:
         info["bp_terminated_reason"] = "max_iterations"
     return patterns, best_obj, best_selection, info
+
+
+def _run_branch_and_price_dw(
+    columns_initial: list[dict], profs: dict, dc_value: dict,
+    *,
+    granularity: str,
+    bp_max_iterations: int,
+    pricer_time_limit: float,
+    pricer_workers: int,
+    locks: set | None,
+    group_assignments: list | None,
+    time_budget_s: float,
+    t0: float,
+    eps: float = 1e-6,
+    log: bool = True,
+) -> tuple[list[dict], list[float], dict]:
+    """Branch-and-price loop using master variant 2 (DW) for
+    granularities whose columns span multiple teachers (class,
+    class-day, day, curriculum).
+
+    `columns_initial` is the seed pool (e.g. the union of all
+    teacher-week patterns from the iterative-diversified primal
+    heuristic, each treated as a partial pattern).
+
+    Returns (columns, lp_x, info) -- the final column pool and
+    fractional LP weights. Integer recovery is the caller's job.
+    """
+    info: dict[str, Any] = {
+        "bp_iterations_done": 0,
+        "bp_columns_added_total": 0,
+        "bp_lp_obj_per_iter": [],
+        "bp_min_rc_per_iter": [],
+        "bp_terminated_reason": "",
+    }
+    columns = list(columns_initial)
+    lp_x = []
+
+    res = _solve_master_dw(columns, dc_value, return_extended=True)
+    if res[0] is None:
+        info["bp_terminated_reason"] = "master_dw_infeasible_at_entry"
+        return columns, lp_x, info
+    lp_x, best_obj, lam, mu_cl, mu_t, _ck, _clk, _tk = res
+    info["bp_lp_obj_per_iter"].append(best_obj)
+
+    for it in range(1, bp_max_iterations + 1):
+        if time.time() - t0 > time_budget_s:
+            info["bp_terminated_reason"] = "time_budget"
+            break
+        try:
+            keys = _enumerate_pricing_keys(
+                granularity, profs, dc_value, group_assignments)
+        except NotImplementedError as e:
+            info["bp_terminated_reason"] = (
+                f"granularity_not_implemented:{granularity}")
+            if log:
+                print(f"[CG.BP-DW] {e}")
+            break
+
+        added = 0
+        min_rc = 0.0
+        for key in keys:
+            if time.time() - t0 > time_budget_s:
+                break
+            try:
+                col, rc = _solve_pricing_dw(
+                    granularity, key, profs, dc_value,
+                    lam, mu_cl, mu_t,
+                    time_limit=pricer_time_limit,
+                    workers=pricer_workers,
+                    locks=locks,
+                    group_assignments=group_assignments,
+                    eps=eps,
+                )
+            except NotImplementedError:
+                info["bp_terminated_reason"] = (
+                    f"granularity_not_implemented:{granularity}")
+                break
+            if rc < min_rc:
+                min_rc = rc
+            if col is None:
+                continue
+            if col not in columns:
+                columns.append(col)
+                added += 1
+        info["bp_iterations_done"] = it
+        info["bp_columns_added_total"] += added
+        info["bp_min_rc_per_iter"].append(min_rc)
+
+        if added == 0:
+            info["bp_terminated_reason"] = "no_improving_column"
+            break
+
+        res = _solve_master_dw(columns, dc_value, return_extended=True)
+        if res[0] is None:
+            info["bp_terminated_reason"] = (
+                f"master_dw_infeasible_at_iter_{it}")
+            break
+        lp_x, obj, lam, mu_cl, mu_t, _ck, _clk, _tk = res
+        info["bp_lp_obj_per_iter"].append(float(obj))
+        if obj < best_obj - eps:
+            best_obj = float(obj)
+            if log:
+                print(f"[CG.BP-DW iter {it}] obj -> {best_obj:.1f}, "
+                      f"+{added} cols, min_rc={min_rc:.3f}")
+        else:
+            if log:
+                print(f"[CG.BP-DW iter {it}] plateau ({obj:.1f}), "
+                      f"+{added} cols, min_rc={min_rc:.3f}")
+            if min_rc > -10.0 * eps:
+                info["bp_terminated_reason"] = "rc_plateau"
+                break
+
+    if not info["bp_terminated_reason"]:
+        info["bp_terminated_reason"] = "max_iterations"
+    return columns, lp_x, info
+
+
+def _integer_recover_dw(columns: list[dict], lp_x: list[float],
+                         dc_value: dict
+                         ) -> dict:
+    """Greedy set-packing integer recovery from a fractional master2
+    LP solution. Pick columns in descending order of x[col]; accept
+    a column only if it doesn't violate class no-overlap or teacher
+    no-overlap. Stop when cover is met or all columns exhausted.
+    Return the assembled solution dict.
+    """
+    order = sorted(range(len(columns)),
+                    key=lambda i: -float(lp_x[i] if i < len(lp_x) else 0.0))
+    used_cl: set = set()  # (cl, d, h)
+    used_t: set = set()   # (t, d, h)
+    sol: dict = {}
+    for i in order:
+        col = columns[i]
+        # Check no-overlap for this column.
+        col_cl: set = set()
+        col_t: set = set()
+        ok = True
+        for (p, cl, _s, d, h), v in col.items():
+            if not v:
+                continue
+            if (cl, d, h) in used_cl or (cl, d, h) in col_cl:
+                ok = False
+                break
+            if (p, d, h) in used_t or (p, d, h) in col_t:
+                ok = False
+                break
+            col_cl.add((cl, d, h))
+            col_t.add((p, d, h))
+        if not ok:
+            continue
+        used_cl.update(col_cl)
+        used_t.update(col_t)
+        for k, v in col.items():
+            if v:
+                sol[k] = max(sol.get(k, 0), int(v))
+    return sol
 
 
 # ---------------- Top-level driver ----------------
@@ -1602,7 +2218,61 @@ def run_column_generation(profs: dict, dc_value: dict,
                           for cl in p.get("classi", {})})
     use_bp = (mode == "branch-and-price"
               or (mode == "auto" and n_classes_est <= 25))
-    if (use_bp and granularity in _BP_GRANULARITIES
+    if (use_bp and granularity in _BP_GRANULARITIES_DW
+            and time.time() - t0 < time_budget_s):
+        # DW path (master variant 2): for class / class-day / day /
+        # curriculum granularities. Columns are multi-teacher partial
+        # patterns; integer recovery is greedy set-packing.
+        if log:
+            print(f"[CG.BP-DW] mode={mode}, granularity={granularity}: "
+                  f"running master-2 branch-and-price loop "
+                  f"({n_classes_est} classes)")
+        # Seed the variant-2 column pool with the per-teacher
+        # patterns from the iterative-diversified phase (each is
+        # a valid partial pattern under variant 2).
+        seed_columns: list[dict] = []
+        for _t, plist in patterns.items():
+            for pat in plist:
+                if pat not in seed_columns:
+                    seed_columns.append(pat)
+        dw_columns, dw_lp_x, dw_info = _run_branch_and_price_dw(
+            seed_columns, profs, dc_value,
+            granularity=granularity,
+            bp_max_iterations=bp_max_iterations,
+            pricer_time_limit=pricer_time_limit,
+            pricer_workers=pricer_workers,
+            locks=locks,
+            group_assignments=group_assignments,
+            time_budget_s=time_budget_s,
+            t0=t0,
+            log=log,
+        )
+        info.update({k: v for k, v in dw_info.items()
+                      if k.startswith("bp_")})
+        info["iterations_done"] += int(dw_info.get(
+            "bp_iterations_done", 0))
+        info["bp_dw_n_columns"] = len(dw_columns)
+        # Integer recovery via greedy set-packing.
+        dw_sol = _integer_recover_dw(dw_columns, dw_lp_x, dc_value)
+        if dw_sol and meta.is_hard_feasible(dw_sol, profs,
+                                              verbose=False):
+            v_dw, _m_dw = meta.compute_soft(dw_sol, profs)
+            if log:
+                print(f"[CG.BP-DW] integer-recovered HARD-feasible "
+                      f"sol with soft={v_dw:.1f}")
+            info["bp_dw_integer_obj"] = float(v_dw)
+            info["bp_dw_integer_feasible"] = True
+            # If DW's integer recovery beats variant-1's selection
+            # (which we don't yet know -- rebuild it), use it.
+            # We propagate by short-circuiting steps 4/5 below.
+            info["feasible_after_assembly"] = True
+            sol_dw_override = dw_sol
+        else:
+            info["bp_dw_integer_feasible"] = False
+            sol_dw_override = None
+        # If DW didn't yield a feasible integer sol, keep
+        # variant-1's selection for the standard recovery path.
+    elif (use_bp and granularity in _BP_GRANULARITIES
             and time.time() - t0 < time_budget_s):
         if log:
             print(f"[CG.BP] mode={mode}, granularity={granularity}: "
@@ -1635,7 +2305,8 @@ def run_column_generation(profs: dict, dc_value: dict,
             len(v) for v in best_patterns.values())
         info["master_obj_final"] = (
             best_obj if best_obj != float("inf") else None)
-    elif use_bp and granularity not in _BP_GRANULARITIES:
+        sol_dw_override = None
+    elif use_bp and granularity not in _BP_GRANULARITIES + _BP_GRANULARITIES_DW:
         # Mode requested BP but granularity has no pricer yet ->
         # iterative-diversified is the de-facto pricer for that
         # granularity (matches user intent for granularity=teacher).
@@ -1644,16 +2315,20 @@ def run_column_generation(profs: dict, dc_value: dict,
             f"this commit; iterative-diversified results stand. "
             f"BP pricers wired so far: {list(_BP_GRANULARITIES)}.")
 
-    # Step 4: integer recovery. Empty selection (= master never
-    # converged) leaves sol empty, and the completion solver fills
-    # everything from scratch.
-    sol: dict = {}
-    for t, idx in best_selection.items():
-        if t not in best_patterns or idx >= len(best_patterns[t]):
-            continue
-        pat = best_patterns[t][idx]
-        for k, v in pat.items():
-            sol[k] = max(sol.get(k, 0), int(v))
+    # Step 4: integer recovery. The DW path may have produced its
+    # own HARD-feasible integer sol via greedy set-packing -- if so,
+    # use it directly. Otherwise fall back to the variant-1
+    # per-teacher selection assembly.
+    if locals().get("sol_dw_override") is not None:
+        sol = locals()["sol_dw_override"]
+    else:
+        sol = {}
+        for t, idx in best_selection.items():
+            if t not in best_patterns or idx >= len(best_patterns[t]):
+                continue
+            pat = best_patterns[t][idx]
+            for k, v in pat.items():
+                sol[k] = max(sol.get(k, 0), int(v))
 
     # Step 5: HARD feasibility check
     if meta.is_hard_feasible(sol, profs, verbose=False):

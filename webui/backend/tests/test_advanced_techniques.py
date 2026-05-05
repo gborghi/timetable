@@ -482,6 +482,106 @@ def test_bp_loop_with_teacher_subject_granularity():
         assert obj_bp <= obj_id + 1e-6
 
 
+def test_bp_master_dw_solves_smoke():
+    """Master variant 2 (DW) accepts a column pool of partial
+    patterns and returns LP weights + cover/class/teacher duals."""
+    import column_generation as cg
+    profs = _two_class_profs()
+    dc_value = _two_class_dc()
+    # Build a tiny pool of valid partial patterns (the iterative-
+    # diversified seed serves as a starting point).
+    seeds = cg._seed_patterns(profs, dc_value, max_per_teacher=2)
+    columns = []
+    for t, plist in seeds.items():
+        for pat in plist:
+            if pat not in columns:
+                columns.append(pat)
+    res = cg._solve_master_dw(columns, dc_value, return_extended=True)
+    lp_x, obj, lam_cov, mu_cl, mu_t, ck, clk, tk = res
+    assert lp_x is not None
+    assert obj >= 0
+    assert isinstance(lam_cov, dict)
+    assert isinstance(mu_cl, dict)
+    assert isinstance(mu_t, dict)
+
+
+def test_bp_pricing_subproblem_class_smoke():
+    """The class pricer produces a multi-teacher partial pattern
+    that covers ALL the demand in the chosen class."""
+    import column_generation as cg
+    profs = _two_class_profs()
+    dc_value = _two_class_dc()
+    # Strong positive lambda on (T1, 1A, Mat, 1) AND (T2, 1A, Ita, 3)
+    # so the pricer is rewarded for covering 1A's full week.
+    lambda_cover = {
+        ("T1", "1A", "Mat", 1): 100.0,
+        ("T2", "1A", "Ita", 3): 100.0,
+    }
+    col, rc = cg._pricing_subproblem_class(
+        "1A", profs, dc_value,
+        lambda_cover, mu_class={}, mu_teacher={},
+        time_limit=2.0, workers=1,
+    )
+    assert col is not None, f"class pricer returned None, rc={rc}"
+    assert rc < 0.0
+    # Multi-teacher: must include slots from both T1 and T2.
+    teachers = {k[0] for k in col.keys()}
+    assert {"T1", "T2"}.issubset(teachers), (
+        f"class column must cover multiple teachers; got {teachers}")
+    placed_T1 = sum(1 for (p, c, _s, _d, _h), v in col.items()
+                    if v and p == "T1" and c == "1A")
+    placed_T2 = sum(1 for (p, c, _s, _d, _h), v in col.items()
+                    if v and p == "T2" and c == "1A")
+    assert placed_T1 == 4
+    assert placed_T2 == 4
+
+
+def test_bp_pricing_subproblem_class_uses_addhint():
+    """The class pricer must invoke add_hint for the warm-start
+    (CP-SAT is always invoked, greedy is only a hint)."""
+    import column_generation as cg
+    from ortools.sat.python import cp_model
+    profs = _two_class_profs()
+    dc_value = _two_class_dc()
+    lambda_cover = {("T1", "1A", "Mat", 1): 100.0}
+    counts = [0]
+    real = cp_model.CpModel.add_hint
+
+    def counting(self, var, value):
+        counts[0] += 1
+        return real(self, var, value)
+
+    cp_model.CpModel.add_hint = counting
+    try:
+        col, rc = cg._pricing_subproblem_class(
+            "1A", profs, dc_value,
+            lambda_cover, mu_class={}, mu_teacher={},
+            time_limit=2.0, workers=1,
+        )
+        assert col is not None
+        assert counts[0] > 0, "class pricer must call add_hint"
+    finally:
+        cp_model.CpModel.add_hint = real
+
+
+def test_bp_loop_with_class_granularity():
+    """End-to-end BP with granularity=class must reach a HARD-
+    feasible solution."""
+    import column_generation as cg
+    profs = _two_class_profs()
+    dc_value = _two_class_dc()
+    sol_bp, info_bp = cg.run_column_generation(
+        profs, dc_value, time_budget_s=30.0,
+        patterns_per_teacher=2, max_iterations=2, log=False,
+        mode="branch-and-price", granularity="class",
+        bp_max_iterations=3, pricer_time_limit=2.0, pricer_workers=1,
+    )
+    assert info_bp["granularity"] == "class"
+    assert "bp_terminated_reason" in info_bp
+    assert (info_bp["feasible_after_assembly"]
+            or info_bp["feasible_after_completion"])
+
+
 def test_bp_pricers_use_addhint_warmstart():
     """Each CP-SAT pricer must invoke `model.AddHint(...)` at least
     once per call. This guarantees:
