@@ -2340,6 +2340,147 @@ def validate_coteach_sostegno_potenziamento(db: Session) -> list[str]:
     return violations
 
 
+def validate_plessi_rules(db: Session) -> list[str]:
+    """Validate the consistency of PLESSI configuration:
+
+    - Every PlessoCommutingRule references plessi that exist; if
+      `entity_id` is set it must match a row of the kind given by
+      `entity_kind`.
+    - `min_gap_hours >= 0`; `break_start_hour <= break_end_hour`
+      when both are set; if `allowed_break_only=True` then both
+      break hours must be set.
+    - PlessoEntityPolicy: `entity_id` (if set) refers to a teacher
+      or class depending on `entity_kind` (groups are NOT in this
+      table by design); `policy in {'any',
+      'single_plesso_per_day', 'single_plesso_total'}`; if
+      `policy == 'single_plesso_total'` and `plesso_id` is set the
+      plesso must exist.
+    - No two kind-wide rules for the same (from, to, kind) (this
+      is NOT enforced by the DB UNIQUE constraint because SQL
+      treats NULL entity_id as distinct).
+
+    Returns a list of human-readable Italian error messages
+    (empty on success).
+    """
+    violations: list[str] = []
+
+    plesso_ids = {
+        p.id for p in db.query(models.Plesso.id).all()
+    } if db.bind.dialect.has_table(db.connection(), "plessi") else set()
+    if not plesso_ids:
+        return violations  # No plessi configured: no rules to validate.
+
+    teacher_ids = {
+        t.id for t in db.query(models.Teacher.id).all()
+    }
+    class_ids = {
+        c.id for c in db.query(models.SchoolClass.id).all()
+    }
+    group_ids = {
+        g.id for g in db.query(models.StudyGroup.id).all()
+    } if hasattr(models, "StudyGroup") else set()
+
+    # PlessoCommutingRule checks.
+    rules = db.query(models.PlessoCommutingRule).all()
+    seen_kindwide: set[tuple] = set()
+    for r in rules:
+        if r.from_plesso_id not in plesso_ids:
+            violations.append(
+                f"commuting rule #{r.id}: from_plesso_id="
+                f"{r.from_plesso_id} non esiste")
+        if r.to_plesso_id not in plesso_ids:
+            violations.append(
+                f"commuting rule #{r.id}: to_plesso_id="
+                f"{r.to_plesso_id} non esiste")
+        if r.entity_kind not in ("teacher", "class", "group"):
+            violations.append(
+                f"commuting rule #{r.id}: entity_kind="
+                f"{r.entity_kind!r} non valido (atteso: "
+                f"teacher | class | group)")
+        if r.entity_id is not None:
+            ok = (
+                (r.entity_kind == "teacher"
+                 and r.entity_id in teacher_ids)
+                or (r.entity_kind == "class"
+                    and r.entity_id in class_ids)
+                or (r.entity_kind == "group"
+                    and r.entity_id in group_ids)
+            )
+            if not ok:
+                violations.append(
+                    f"commuting rule #{r.id}: entity_id="
+                    f"{r.entity_id} non trovato per kind "
+                    f"{r.entity_kind!r}")
+        if r.min_gap_hours is not None and r.min_gap_hours < 0:
+            violations.append(
+                f"commuting rule #{r.id}: min_gap_hours non puo' "
+                f"essere negativo ({r.min_gap_hours})")
+        if r.allowed_break_only:
+            if (r.break_start_hour is None
+                    or r.break_end_hour is None):
+                violations.append(
+                    f"commuting rule #{r.id}: allowed_break_only "
+                    f"richiede sia break_start_hour che "
+                    f"break_end_hour")
+            elif r.break_start_hour > r.break_end_hour:
+                violations.append(
+                    f"commuting rule #{r.id}: break_start_hour "
+                    f"({r.break_start_hour}) > break_end_hour "
+                    f"({r.break_end_hour})")
+        if r.entity_id is None:
+            key = (r.from_plesso_id, r.to_plesso_id, r.entity_kind)
+            if key in seen_kindwide:
+                violations.append(
+                    f"commuting rule #{r.id}: esiste gia' una "
+                    f"regola kind-wide per "
+                    f"(from={r.from_plesso_id}, "
+                    f"to={r.to_plesso_id}, kind={r.entity_kind})")
+            seen_kindwide.add(key)
+
+    # PlessoEntityPolicy checks.
+    policies = db.query(models.PlessoEntityPolicy).all()
+    for pol in policies:
+        if pol.entity_kind not in ("teacher", "class"):
+            violations.append(
+                f"entity policy #{pol.id}: entity_kind="
+                f"{pol.entity_kind!r} non valido (atteso: "
+                f"teacher | class)")
+        if pol.entity_id is not None:
+            ok = (
+                (pol.entity_kind == "teacher"
+                 and pol.entity_id in teacher_ids)
+                or (pol.entity_kind == "class"
+                    and pol.entity_id in class_ids)
+            )
+            if not ok:
+                violations.append(
+                    f"entity policy #{pol.id}: entity_id="
+                    f"{pol.entity_id} non trovato per kind "
+                    f"{pol.entity_kind!r}")
+        if pol.policy not in (
+                "any", "single_plesso_per_day",
+                "single_plesso_total"):
+            violations.append(
+                f"entity policy #{pol.id}: policy="
+                f"{pol.policy!r} non valida")
+        if pol.policy == "single_plesso_total":
+            if pol.plesso_id is not None and pol.plesso_id not in plesso_ids:
+                violations.append(
+                    f"entity policy #{pol.id}: plesso_id="
+                    f"{pol.plesso_id} non esiste "
+                    f"(per single_plesso_total)")
+        else:
+            if pol.plesso_id is not None:
+                violations.append(
+                    f"entity policy #{pol.id}: plesso_id e' "
+                    f"impostato ma policy="
+                    f"{pol.policy!r} non lo usa "
+                    f"(rimuovi plesso_id o usa "
+                    f"single_plesso_total)")
+
+    return violations
+
+
 def _preflight_lock_check() -> None:
     """Sync wrapper for the pre-flight check. Called by every
     run_xxx entry-point BEFORE create_run + start_thread, so a lock
@@ -2348,12 +2489,14 @@ def _preflight_lock_check() -> None:
     and short-lived.
 
     Also validates Task C1 invariants (coteach n_hours, sostegno
-    class_id, potenziamento total cap).
+    class_id, potenziamento total cap) AND the PLESSI configuration
+    (commuting rules + entity policies coherence).
     """
     with SessionLocal() as db:
         snap = _snapshot_locked_lessons(db)
         cs_violations = validate_coteach_sostegno_potenziamento(db)
-    violations = list(cs_violations)
+        plessi_violations = validate_plessi_rules(db)
+    violations = list(cs_violations) + list(plessi_violations)
     if snap:
         violations.extend(validate_locks_vs_constraints(snap))
     if violations:
