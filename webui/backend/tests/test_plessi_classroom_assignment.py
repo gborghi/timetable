@@ -189,6 +189,88 @@ def test_single_plesso_total_pins_to_target_plesso():
             f"{plessi.classroom_to_plesso[v]}) expected plesso 2")
 
 
+def test_class_commuting_rule_keeps_class_in_one_plesso():
+    """Class-kind commuting rule. Class 1A has Mate at h=8 (teacher
+    Rossi) and Sci at h=9 (teacher Bianchi). The class moves between
+    rooms. With a class-kind no-cross rule, both rooms must be in
+    the same plesso."""
+    import plessi_constraints as pc
+    from classroom_assignment import solve_classroom_assignment
+
+    lessons = [
+        {"teacher": "Rossi", "co_teachers": [], "class": "1A",
+         "subject": "Mate", "day": 1, "hour": 8},
+        {"teacher": "Bianchi", "co_teachers": [], "class": "1A",
+         "subject": "Sci", "day": 1, "hour": 9},
+    ]
+    plessi = _make_plessi(rules=[
+        pc.CommutingRule(
+            id=1, from_plesso_id=1, to_plesso_id=2,
+            entity_kind="class", entity_id=None,
+            min_gap_hours=1, symmetric=True),
+    ])
+    out, status = solve_classroom_assignment(
+        lessons, _basic_rooms(),
+        time_limit_s=5.0, workers=1, plessi_data=plessi)
+    assert out is not None, status
+    pl_a = plessi.classroom_to_plesso[out[("1A", "Mate", 1, 8)]]
+    pl_b = plessi.classroom_to_plesso[out[("1A", "Sci", 1, 9)]]
+    assert pl_a == pl_b, (
+        f"class 1A crosses plessi: {pl_a} -> {pl_b}")
+
+
+def test_class_single_plesso_total_pins_class_to_target():
+    """Class-kind single_plesso_total: class 1A is pinned to plesso
+    2 for the whole week."""
+    import plessi_constraints as pc
+    from classroom_assignment import solve_classroom_assignment
+
+    lessons = [
+        {"teacher": "Rossi", "co_teachers": [], "class": "1A",
+         "subject": "Mate", "day": 1, "hour": 8},
+        {"teacher": "Bianchi", "co_teachers": [], "class": "1A",
+         "subject": "Sci", "day": 3, "hour": 11},
+    ]
+    plessi = _make_plessi(policies=[
+        pc.EntityPolicy(
+            id=1, entity_kind="class", entity_id=100,  # 1A
+            policy="single_plesso_total", plesso_id=2),
+    ])
+    out, status = solve_classroom_assignment(
+        lessons, _basic_rooms(),
+        time_limit_s=5.0, workers=1, plessi_data=plessi)
+    assert out is not None, status
+    for k, v in out.items():
+        assert plessi.classroom_to_plesso[v] == 2, (
+            f"{k} -> {v} not in plesso 2")
+
+
+def test_class_single_plesso_per_day_pins_day_to_one_plesso():
+    """Class-kind single_plesso_per_day: same class on the same day
+    must end up in one plesso even with hour gaps."""
+    import plessi_constraints as pc
+    from classroom_assignment import solve_classroom_assignment
+
+    lessons = [
+        {"teacher": "Rossi", "co_teachers": [], "class": "1A",
+         "subject": "Mate", "day": 2, "hour": 8},
+        {"teacher": "Bianchi", "co_teachers": [], "class": "1A",
+         "subject": "Sci", "day": 2, "hour": 11},  # 3-hour gap
+    ]
+    plessi = _make_plessi(policies=[
+        pc.EntityPolicy(
+            id=1, entity_kind="class", entity_id=100,  # 1A
+            policy="single_plesso_per_day"),
+    ])
+    out, status = solve_classroom_assignment(
+        lessons, _basic_rooms(),
+        time_limit_s=5.0, workers=1, plessi_data=plessi)
+    assert out is not None, status
+    pl_a = plessi.classroom_to_plesso[out[("1A", "Mate", 2, 8)]]
+    pl_b = plessi.classroom_to_plesso[out[("1A", "Sci", 2, 11)]]
+    assert pl_a == pl_b
+
+
 def test_no_plessi_constraints_when_no_rules_no_policies():
     """When PlessiData has no rules and no policies, the solver
     behaves identically to plessi_data=None."""

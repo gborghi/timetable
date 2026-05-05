@@ -249,11 +249,15 @@ def solve_classroom_assignment(
             from plessi_constraints import (  # type: ignore
                 add_plesso_commuting_constraints_classroom_assignment,
                 add_plesso_entity_policy_constraints_classroom_assignment,
+                add_plesso_commuting_constraints_class_kind,
+                add_plesso_entity_policy_constraints_class_kind,
             )
         except ImportError:
             from engine.plessi_constraints import (  # type: ignore
                 add_plesso_commuting_constraints_classroom_assignment,
                 add_plesso_entity_policy_constraints_classroom_assignment,
+                add_plesso_commuting_constraints_class_kind,
+                add_plesso_entity_policy_constraints_class_kind,
             )
         n_pl_commute = (
             add_plesso_commuting_constraints_classroom_assignment(
@@ -261,11 +265,19 @@ def solve_classroom_assignment(
                 teacher_for_lesson=teacher_for_lesson,
                 days=days_set, hours=hours_set,
             )
+            + add_plesso_commuting_constraints_class_kind(
+                model, x, eligible, plessi_data,
+                days=days_set, hours=hours_set,
+            )
         )
         n_pl_policy = (
             add_plesso_entity_policy_constraints_classroom_assignment(
                 model, x, eligible, plessi_data,
                 teacher_for_lesson=teacher_for_lesson,
+                days=days_set,
+            )
+            + add_plesso_entity_policy_constraints_class_kind(
+                model, x, eligible, plessi_data,
                 days=days_set,
             )
         )

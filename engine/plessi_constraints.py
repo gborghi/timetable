@@ -434,6 +434,169 @@ def add_plesso_entity_policy_constraints_classroom_assignment(
     return n_emitted
 
 
+# ---------- Class-kind variants for classroom assignment ----------
+
+def add_plesso_commuting_constraints_class_kind(
+    model,
+    x: dict,
+    eligible: dict,
+    plessi: PlessiData,
+    *,
+    days: Iterable[int],
+    hours: Iterable[int],
+) -> int:
+    """Class-kind commuting constraints: forbid (room_a, room_b)
+    where the SAME class would cross plessi at adjacent hours and
+    a class-kind rule says no.
+
+    Each lesson_key carries its class as ``key[0]``, so no extra
+    mapping is needed.
+
+    Returns number of pair-forbid constraints emitted.
+    """
+    if not plessi.commuting_rules:
+        return 0
+    # Group lesson_keys by (class, day, hour).
+    by_c_d_h: dict[tuple[str, int, int], list[tuple]] = {}
+    for key in x:
+        # x is keyed by (lesson_key, room_name); skip the room
+        # dimension by using `eligible.keys()` instead.
+        pass
+    by_c_d_h = {}
+    for key in eligible.keys():
+        cl, subj, d, h = key
+        by_c_d_h.setdefault((cl, d, h), []).append(key)
+
+    days_list = sorted(set(days))
+    hours_list = sorted(set(hours))
+    n_emitted = 0
+
+    classes = sorted({k[0] for k in eligible.keys()})
+    for cl_name in classes:
+        class_id = plessi.class_name_to_id.get(cl_name)
+        for d in days_list:
+            for i, h_a in enumerate(hours_list[:-1]):
+                h_b = hours_list[i + 1]
+                keys_a = by_c_d_h.get((cl_name, d, h_a), [])
+                keys_b = by_c_d_h.get((cl_name, d, h_b), [])
+                if not keys_a or not keys_b:
+                    continue
+                for key_a in keys_a:
+                    for room_a in eligible.get(key_a, []):
+                        pl_a = plessi.classroom_to_plesso.get(room_a)
+                        if pl_a is None:
+                            continue
+                        for key_b in keys_b:
+                            for room_b in eligible.get(key_b, []):
+                                pl_b = plessi.classroom_to_plesso.get(
+                                    room_b)
+                                if pl_b is None or pl_b == pl_a:
+                                    continue
+                                rule = resolve_commuting_rule(
+                                    plessi, pl_a, pl_b,
+                                    "class", class_id)
+                                if rule is None:
+                                    continue
+                                if not _adjacent_violates_rule(
+                                        rule, h_a, h_b):
+                                    continue
+                                va = x.get((key_a, room_a))
+                                vb = x.get((key_b, room_b))
+                                if va is None or vb is None:
+                                    continue
+                                model.AddBoolOr(
+                                    [va.Not(), vb.Not()])
+                                n_emitted += 1
+    return n_emitted
+
+
+def add_plesso_entity_policy_constraints_class_kind(
+    model,
+    x: dict,
+    eligible: dict,
+    plessi: PlessiData,
+    *,
+    days: Iterable[int],
+) -> int:
+    """Class-kind entity policies on the classroom-assignment
+    CP-SAT.
+
+    Implemented:
+      - ``single_plesso_per_day``: per (class, day), at most one
+        plesso may host that class's lessons.
+      - ``single_plesso_total``: every room hosting any of that
+        class's lessons must lie in ``policy.plesso_id``.
+      - ``any``: no constraint.
+
+    Returns number of constraints / variables emitted.
+    """
+    if not plessi.entity_policies:
+        return 0
+
+    by_c_d: dict[tuple[str, int], list[tuple]] = {}
+    for key in eligible.keys():
+        cl, subj, d, h = key
+        by_c_d.setdefault((cl, d), []).append(key)
+
+    days_list = sorted(set(days))
+    n_emitted = 0
+    classes = sorted({k[0] for k in eligible.keys()})
+
+    for cl_name in classes:
+        class_id = plessi.class_name_to_id.get(cl_name)
+        policy = resolve_entity_policy(plessi, "class", class_id)
+        if policy is None or policy.policy == "any":
+            continue
+
+        if policy.policy == "single_plesso_total":
+            target = policy.plesso_id
+            for d in days_list:
+                for key in by_c_d.get((cl_name, d), []):
+                    for room in eligible.get(key, []):
+                        pl = plessi.classroom_to_plesso.get(room)
+                        if pl is None or pl == target:
+                            continue
+                        var = x.get((key, room))
+                        if var is not None:
+                            model.Add(var == 0)
+                            n_emitted += 1
+            continue
+
+        if policy.policy == "single_plesso_per_day":
+            for d in days_list:
+                keys_today = by_c_d.get((cl_name, d), [])
+                if not keys_today:
+                    continue
+                plessi_today: set[int] = set()
+                for key in keys_today:
+                    for room in eligible.get(key, []):
+                        pl = plessi.classroom_to_plesso.get(room)
+                        if pl is not None:
+                            plessi_today.add(pl)
+                if len(plessi_today) <= 1:
+                    continue
+                ind = {}
+                for pl in plessi_today:
+                    iv = model.NewBoolVar(
+                        f"plclday_{cl_name}_{d}_{pl}")
+                    ind[pl] = iv
+                for key in keys_today:
+                    for room in eligible.get(key, []):
+                        pl = plessi.classroom_to_plesso.get(room)
+                        if pl is None:
+                            continue
+                        var = x.get((key, room))
+                        if var is None:
+                            continue
+                        model.Add(ind[pl] >= var)
+                        n_emitted += 1
+                model.Add(sum(ind.values()) <= 1)
+                n_emitted += 1
+            continue
+        # Unknown policy: ignore (validated upstream).
+    return n_emitted
+
+
 # ---------- DB-side loader (kept thin for testability) ----------
 
 def load_plessi_data(db) -> PlessiData:
