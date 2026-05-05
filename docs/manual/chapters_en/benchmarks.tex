@@ -153,6 +153,36 @@ the 60-minute hard cap easily.}
 \label{tab:bench-bp-mega-real-en}
 \end{table}
 
+\paragraph{Comparison with iterative-diversified.} The
+\texttt{iterative-diversified} mode on the \emph{same} dataset
+finishes in \textbf{788\,s (13.1 min)} with soft cost
+\textbf{5860}. Both reach HARD-feasibility via the
+completion-solver fallback. ID is therefore marginally faster
+(by 64\,s) and produces a 10\% lower soft cost. The reason is
+operational: in the BP run the real Branch-and-Price inner loop
+did not iterate (see observation below), so the extra 64\,s
+of BP are overhead spent attempting to enter the loop with no
+result, before the same completion-solver fallback kicks in.
+
+\begin{table}[h]
+\centering
+\sffamily\small
+\begin{tabular}{lrrr}
+\toprule
+Mode & $t_{\text{total}}$ & Soft cost & HARD \\
+\midrule
+\texttt{iterative-diversified} & 788\,s (13.1 min) & 5860 & yes \\
+\texttt{branch-and-price}      & 852\,s (14.2 min) & 6470 & yes \\
+\bottomrule
+\end{tabular}
+\caption{BP vs iterative-diversified on the same real MEGA.
+BP has a 64\,s overhead to attempt the DW loop (which fails to
+enter via master\_dw\_infeasible\_at\_entry) and the final
+soft cost is 10\% worse because the completion-solver starts
+from a slightly different state.}
+\label{tab:bench-bp-vs-id-mega-real-en}
+\end{table}
+
 \paragraph{Important observation.} The Branch-and-Price inner
 loop did NOT iterate in this run:
 \texttt{bp\_terminated\_reason = master\_dw\_infeasible\_at\_entry}.

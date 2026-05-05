@@ -21,5 +21,19 @@
     "parallel_workers_used": 1,
     "bp_terminated_reason": "master_dw_infeasible_at_entry",
     "warnings": []
+  },
+  "mega_real_id": {
+    "scenario": "mega_real",
+    "timestamp": "2026-05-05T23:53:23",
+    "n_classes": 100,
+    "n_teachers": 178,
+    "n_cattedre": 2318,
+    "mode": "iterative-diversified",
+    "t_phase_a_s": 61.27635717391968,
+    "t_id_s": 726.7593863010406,
+    "t_total_s": 788.0357434749603,
+    "hard_feasible": true,
+    "soft_obj": 5860.0,
+    "warnings": []
   }
 }
