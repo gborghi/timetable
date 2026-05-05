@@ -582,6 +582,70 @@ def test_bp_loop_with_class_granularity():
             or info_bp["feasible_after_completion"])
 
 
+def test_bp_pricing_subproblem_class_day_smoke():
+    """class-day pricer outputs a partial pattern restricted to
+    a single (class, day) cell with all the demand on that day."""
+    import column_generation as cg
+    profs = _two_class_profs()
+    dc_value = _two_class_dc()
+    # 1A, day=1 has only (T1, Mat, 4) demand.
+    lambda_cover = {("T1", "1A", "Mat", 1): 100.0}
+    col, rc = cg._pricing_subproblem_class_day(
+        "1A", 1, profs, dc_value,
+        lambda_cover, mu_class={}, mu_teacher={},
+        time_limit=2.0, workers=1,
+    )
+    assert col is not None, f"class-day pricer returned None, rc={rc}"
+    assert rc < 0.0
+    # ALL slots must be on day 1 in class 1A.
+    assert all(c == "1A" and d == 1
+               for (_p, c, _s, d, _h), v in col.items() if v)
+    placed = sum(1 for v in col.values() if v)
+    assert placed == 4
+
+
+def test_bp_pricing_subproblem_class_day_uses_addhint():
+    import column_generation as cg
+    from ortools.sat.python import cp_model
+    profs = _two_class_profs()
+    dc_value = _two_class_dc()
+    lambda_cover = {("T1", "1A", "Mat", 1): 100.0}
+    counts = [0]
+    real = cp_model.CpModel.add_hint
+
+    def counting(self, var, value):
+        counts[0] += 1
+        return real(self, var, value)
+
+    cp_model.CpModel.add_hint = counting
+    try:
+        col, rc = cg._pricing_subproblem_class_day(
+            "1A", 1, profs, dc_value,
+            lambda_cover, mu_class={}, mu_teacher={},
+            time_limit=2.0, workers=1,
+        )
+        assert col is not None
+        assert counts[0] > 0
+    finally:
+        cp_model.CpModel.add_hint = real
+
+
+def test_bp_loop_with_class_day_granularity():
+    import column_generation as cg
+    profs = _two_class_profs()
+    dc_value = _two_class_dc()
+    sol_bp, info_bp = cg.run_column_generation(
+        profs, dc_value, time_budget_s=30.0,
+        patterns_per_teacher=2, max_iterations=2, log=False,
+        mode="branch-and-price", granularity="class-day",
+        bp_max_iterations=3, pricer_time_limit=2.0, pricer_workers=1,
+    )
+    assert info_bp["granularity"] == "class-day"
+    assert "bp_terminated_reason" in info_bp
+    assert (info_bp["feasible_after_assembly"]
+            or info_bp["feasible_after_completion"])
+
+
 def test_bp_pricers_use_addhint_warmstart():
     """Each CP-SAT pricer must invoke `model.AddHint(...)` at least
     once per call. This guarantees:
