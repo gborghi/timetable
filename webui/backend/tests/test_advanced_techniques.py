@@ -856,11 +856,93 @@ def test_bp_filter_columns_together_apart():
     assert col_neither in apart
 
 
+def test_bp_ryan_foster_tree_smoke():
+    """The recursive RF tree explores at least one node and either
+    finds an incumbent or returns None gracefully."""
+    import column_generation as cg
+    profs = _two_class_profs()
+    dc_value = _two_class_dc()
+    seeds = cg._seed_patterns(profs, dc_value, max_per_teacher=2)
+    columns = []
+    for plist in seeds.values():
+        for pat in plist:
+            if pat not in columns:
+                columns.append(pat)
+    sol, info = cg._run_ryan_foster_tree(
+        columns, profs, dc_value,
+        max_depth=5, max_nodes=20,
+        time_budget_s=10.0,
+    )
+    assert info["rf_tree_nodes_explored"] >= 1
+    assert info["rf_tree_terminated_reason"] in (
+        "queue_exhausted", "max_nodes", "max_depth", "time_budget")
+    if sol is not None:
+        assert info["rf_tree_incumbent_obj"] is not None
+
+
+def test_bp_ryan_foster_tree_max_nodes_caps_exploration():
+    """Setting max_nodes=1 must terminate after exactly 1 node."""
+    import column_generation as cg
+    profs = _two_class_profs()
+    dc_value = _two_class_dc()
+    seeds = cg._seed_patterns(profs, dc_value, max_per_teacher=2)
+    columns = [pat for plist in seeds.values() for pat in plist]
+    sol, info = cg._run_ryan_foster_tree(
+        columns, profs, dc_value,
+        max_depth=10, max_nodes=1, time_budget_s=10.0,
+    )
+    assert info["rf_tree_nodes_explored"] == 1
+    # Termination reason: either "max_nodes" if more nodes were
+    # queued but the cap kicked in, or "queue_exhausted" if 1 node
+    # was already enough.
+    assert info["rf_tree_terminated_reason"] in (
+        "max_nodes", "queue_exhausted")
+
+
+def test_bp_ryan_foster_tree_max_depth_caps_branching():
+    """Setting max_depth=0 must prevent any branching: only the
+    root node is explored, no children spawned."""
+    import column_generation as cg
+    profs = _two_class_profs()
+    dc_value = _two_class_dc()
+    seeds = cg._seed_patterns(profs, dc_value, max_per_teacher=2)
+    columns = [pat for plist in seeds.values() for pat in plist]
+    sol, info = cg._run_ryan_foster_tree(
+        columns, profs, dc_value,
+        max_depth=0, max_nodes=100, time_budget_s=10.0,
+    )
+    # max_depth=0 means: the root is processed but no children are
+    # spawned. So at most 1 node is explored.
+    assert info["rf_tree_nodes_explored"] <= 1
+    assert info["rf_tree_max_depth_reached"] == 0
+
+
+def test_bp_ryan_foster_tree_endtoend_via_pipeline():
+    """End-to-end: BP-DW + recursive RF tree via run_column_
+    generation. The info dict must surface the rf_tree_* keys
+    proving the tree code path was taken."""
+    import column_generation as cg
+    profs = _four_class_profs()
+    dc_value = _four_class_dc()
+    sol, info = cg.run_column_generation(
+        profs, dc_value, time_budget_s=30.0,
+        patterns_per_teacher=2, max_iterations=2, log=False,
+        mode="branch-and-price", granularity="class",
+        branching_strategy="ryan_foster",
+        bp_max_iterations=2, pricer_time_limit=2.0, pricer_workers=1,
+    )
+    assert "rf_tree_nodes_explored" in info, (
+        f"RF tree not invoked. info keys: {sorted(info.keys())}")
+    assert info["rf_tree_nodes_explored"] >= 1
+    assert (info["feasible_after_assembly"]
+            or info["feasible_after_completion"])
+
+
 def test_bp_ryan_foster_branching_invoked_in_pipeline():
-    """End-to-end: branching_strategy='ryan_foster' triggers the RF
-    branch step in the BP-DW pipeline. Even if the LP is already
-    integer (small scenario), info['rf_terminated_reason'] must be
-    populated, proving the RF code path was reached."""
+    """End-to-end: branching_strategy='ryan_foster' triggers the
+    full recursive RF tree in the BP-DW pipeline. info dict must
+    contain rf_tree_* keys proving the tree code path was reached.
+    """
     import column_generation as cg
     profs = _two_class_profs()
     dc_value = _two_class_dc()
@@ -872,13 +954,11 @@ def test_bp_ryan_foster_branching_invoked_in_pipeline():
         bp_max_iterations=3, pricer_time_limit=2.0, pricer_workers=1,
     )
     assert info_bp["mode"] == "branch-and-price"
-    # Either an rf_pair was identified or rf_terminated_reason
-    # surfaces "lp_already_integer" -- both prove the RF branch
-    # function was called.
-    assert ("rf_pair" in info_bp
-            or "rf_terminated_reason" in info_bp), (
-        f"Ryan-Foster branching not invoked. info keys: "
-        f"{sorted(info_bp.keys())}")
+    assert "rf_tree_nodes_explored" in info_bp, (
+        f"RF tree not invoked. info keys: {sorted(info_bp.keys())}")
+    assert info_bp["rf_tree_terminated_reason"] in (
+        "queue_exhausted", "max_nodes", "max_depth", "time_budget",
+        "root_infeasible")
     assert (info_bp["feasible_after_assembly"]
             or info_bp["feasible_after_completion"])
 

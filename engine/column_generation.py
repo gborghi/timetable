@@ -2666,6 +2666,10 @@ def _ryan_foster_branch_dw(
     (Achterberg score), explore two branches (together / apart),
     pick the better integer recovery.
 
+    Kept for backward compatibility / unit tests; the production
+    BP path uses `_run_ryan_foster_tree` (full recursive
+    branch-and-bound tree).
+
     Returns (sol_dict, branch_info) -- sol_dict is the better
     integer-feasible solution from the two branches, or None if
     neither produced anything HARD-feasible.
@@ -2731,6 +2735,158 @@ def _ryan_foster_branch_dw(
               f"apart_obj={info['rf_apart_obj']}, "
               f"chose '{best[2]}' (soft={best[0]:.1f})")
     return best[1], info
+
+
+def _run_ryan_foster_tree(
+    initial_columns: list[dict], profs: dict, dc_value: dict,
+    *,
+    max_depth: int = 20,
+    max_nodes: int = 1000,
+    time_budget_s: float = 60.0,
+    t0: float | None = None,
+    eps: float = 1e-6,
+    log: bool = True,
+) -> tuple[dict | None, dict]:
+    """Full recursive Ryan-Foster tree on the DW master LP.
+
+    Best-first node exploration: priority queue ordered by LP bound
+    (lower = explore first, since we minimise). Each node holds:
+      - column pool (subset of `initial_columns` after the branch
+        constraints applied)
+      - depth in the branching tree
+    At each node:
+      1. Solve master variant 2 LP -> (lp_x, lp_obj, duals).
+      2. If lp_obj >= incumbent: prune (bound-prune).
+      3. Try greedy set-packing integer recovery; if HARD-feasible
+         and beats incumbent -> update incumbent.
+      4. If LP is integer (Achterberg pair score = None) -> done
+         exploring this node.
+      5. Otherwise pick the most-fractional class-slot pair (i, j)
+         and spawn two child nodes:
+            - together: columns must cover BOTH or NEITHER of i, j
+            - apart:    no column covers BOTH
+         Each child is queued only if its LP bound is < incumbent.
+
+    Termination conditions (any one ends the tree):
+      - Queue empty (proven optimal under the column pool).
+      - max_nodes nodes explored.
+      - max_depth reached on every leaf.
+      - time_budget_s exhausted.
+
+    Returns (incumbent_sol, info) -- incumbent_sol is the best
+    HARD-feasible integer solution found, or None if the tree found
+    nothing better than the root LP.
+    """
+    import heapq
+
+    if t0 is None:
+        t0 = time.time()
+    info: dict[str, Any] = {
+        "rf_tree_nodes_explored": 0,
+        "rf_tree_nodes_pruned": 0,
+        "rf_tree_nodes_infeasible": 0,
+        "rf_tree_max_depth_reached": 0,
+        "rf_tree_incumbent_obj": None,
+        "rf_tree_incumbents_found": 0,
+        "rf_tree_terminated_reason": "",
+    }
+
+    # Initial LP solve at root.
+    res = _solve_master_dw(initial_columns, dc_value)
+    if res[0] is None:
+        info["rf_tree_terminated_reason"] = "root_infeasible"
+        return None, info
+
+    incumbent_sol = None
+    incumbent_obj = float("inf")
+
+    # Priority queue: (lp_bound, counter, columns, depth).
+    # `counter` breaks ties so heapq doesn't try to compare lists.
+    counter = 0
+    pq: list = [(float(res[1]), counter, list(initial_columns), 0)]
+
+    while pq:
+        if time.time() - t0 > time_budget_s:
+            info["rf_tree_terminated_reason"] = "time_budget"
+            break
+        if info["rf_tree_nodes_explored"] >= max_nodes:
+            info["rf_tree_terminated_reason"] = "max_nodes"
+            break
+
+        node_lb, _ctr, node_cols, depth = heapq.heappop(pq)
+        info["rf_tree_nodes_explored"] += 1
+        info["rf_tree_max_depth_reached"] = max(
+            info["rf_tree_max_depth_reached"], depth)
+
+        # Bound-prune: a node whose LP bound already exceeds the
+        # incumbent cannot produce a strictly better integer sol.
+        if node_lb >= incumbent_obj - eps:
+            info["rf_tree_nodes_pruned"] += 1
+            continue
+
+        # Re-solve master at this node (the queued bound came from a
+        # previous solve; an updated solve gives current duals + x).
+        node_res = _solve_master_dw(node_cols, dc_value)
+        if node_res[0] is None:
+            info["rf_tree_nodes_infeasible"] += 1
+            continue
+        lp_x, lp_obj, _lam = node_res
+
+        # Greedy set-packing integer recovery at this node.
+        rec_sol = _integer_recover_dw(node_cols, lp_x, dc_value)
+        if rec_sol and meta.is_hard_feasible(rec_sol, profs, verbose=False):
+            v, _ = meta.compute_soft(rec_sol, profs)
+            if float(v) < incumbent_obj - eps:
+                incumbent_obj = float(v)
+                incumbent_sol = rec_sol
+                info["rf_tree_incumbents_found"] += 1
+                if log:
+                    print(f"[RF tree] depth={depth} new incumbent "
+                          f"obj={incumbent_obj:.1f} "
+                          f"(node lp_obj={lp_obj:.1f})")
+
+        # Don't branch deeper than max_depth.
+        if depth >= max_depth:
+            continue
+
+        # Find a fractional class-slot pair to branch on.
+        pair = _achterberg_pair_score(node_cols, lp_x)
+        if pair is None:
+            continue  # LP integer at this node -> nothing to branch on
+        item_a, item_b, score = pair
+
+        for child_cols, label in (
+            (_filter_columns_together(node_cols, item_a, item_b), "tog"),
+            (_filter_columns_apart(node_cols, item_a, item_b), "apt"),
+        ):
+            if not child_cols:
+                continue
+            if time.time() - t0 > time_budget_s:
+                break
+            child_res = _solve_master_dw(child_cols, dc_value)
+            if child_res[0] is None:
+                info["rf_tree_nodes_infeasible"] += 1
+                continue
+            child_lb = float(child_res[1])
+            if child_lb >= incumbent_obj - eps:
+                info["rf_tree_nodes_pruned"] += 1
+                continue
+            counter += 1
+            heapq.heappush(
+                pq, (child_lb, counter, child_cols, depth + 1))
+
+    if not info["rf_tree_terminated_reason"]:
+        info["rf_tree_terminated_reason"] = "queue_exhausted"
+    info["rf_tree_incumbent_obj"] = (
+        incumbent_obj if incumbent_obj != float("inf") else None)
+    if log:
+        print(f"[RF tree] terminated: {info['rf_tree_terminated_reason']}, "
+              f"explored={info['rf_tree_nodes_explored']}, "
+              f"pruned={info['rf_tree_nodes_pruned']}, "
+              f"infeasible={info['rf_tree_nodes_infeasible']}, "
+              f"max_depth={info['rf_tree_max_depth_reached']}, "
+              f"incumbent={info['rf_tree_incumbent_obj']}")
+    return incumbent_sol, info
 
 
 def _run_branch_and_price_dw(
@@ -3117,13 +3273,19 @@ def run_column_generation(profs: dict, dc_value: dict,
             info["bp_dw_integer_feasible"] = False
             sol_dw_override = None
 
-        # Ryan-Foster branching: one-level pair-branch on the most
-        # fractional class-slot pair (Achterberg score). If a branch
-        # produces a better HARD-feasible integer solution, override.
+        # Ryan-Foster branching: full recursive tree (best-first
+        # node exploration, LP-bound pruning, max_depth/max_nodes
+        # caps). If any node's integer recovery produces a better
+        # HARD-feasible solution than the unbranched DW-greedy
+        # recovery, adopt it.
         if (branching_strategy == "ryan_foster"
                 and time.time() - t0 < time_budget_s):
-            rf_sol, rf_info = _ryan_foster_branch_dw(
-                dw_columns, dw_lp_x, profs, dc_value, log=log)
+            rf_sol, rf_info = _run_ryan_foster_tree(
+                dw_columns, profs, dc_value,
+                time_budget_s=time_budget_s,
+                t0=t0,
+                log=log,
+            )
             info.update({k: v for k, v in rf_info.items()
                           if k.startswith("rf_")})
             if rf_sol is not None:
@@ -3134,7 +3296,7 @@ def run_column_generation(profs: dict, dc_value: dict,
                     cur_v = float("inf")
                 if rf_v < cur_v - 1e-6:
                     if log:
-                        print(f"[CG.BP-DW.RF] adopting RF branch sol "
+                        print(f"[CG.BP-DW.RF] adopting RF tree sol "
                               f"(soft={rf_v:.1f} vs {cur_v:.1f})")
                     sol_dw_override = rf_sol
                     info["bp_dw_integer_obj"] = float(rf_v)
