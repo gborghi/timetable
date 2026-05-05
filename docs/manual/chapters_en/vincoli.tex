@@ -6,3 +6,158 @@ HARD: no overlap (teacher in one class at a time, class with one teacher per slo
 \medskip
 \noindent
 \textit{This chapter is an English summary of the corresponding Italian chapter. The full text remains in the Italian edition (\texttt{docs/manual/chapters/vincoli.tex}). For the implementation references see the engine modules in \texttt{engine/} and the API documentation at \texttt{docs/api.md}.}
+
+\section{Plessi: multiple sites in the same school}
+\label{sec:plessi_en}
+
+In Italy many secondary schools are spread across multiple
+physical sites -- the \emph{Sede Centrale} (main building),
+one or more \emph{succursali} (branch buildings, e.g.
+\emph{Succursale Via Garibaldi}), or a dedicated
+\emph{plesso} for a specific track (e.g. \emph{Plesso ITT}
+for the technical track). Moving teachers or classes
+between sites during the day costs real time and introduces
+constraints that cannot be modelled with H1/H2/H3 alone.
+
+The \textbf{Plessi} module (tab \texttt{/plessi}) handles:
+\begin{itemize}
+\item \textbf{site registry} (name, code, address);
+\item \textbf{classroom $\to$ plesso} association (each
+classroom belongs to exactly one site);
+\item two kinds of behavioural rules:
+\textbf{commuting rules} (minimum gap to move between two
+sites) and \textbf{entity policies} (global constraints on
+how many sites a teacher or class may attend).
+\end{itemize}
+
+\subsection{Commuting rules: the gap between two sites}
+
+A commuting rule applies to an ordered pair
+\texttt{(from\_plesso, to\_plesso)} and specifies the
+minimum number of hours that must separate two consecutive
+lessons of the same entity when the classroom changes site.
+Relevant fields:
+
+\begin{itemize}
+\item \texttt{from\_plesso\_id}, \texttt{to\_plesso\_id}:
+the site pair.
+\item \texttt{entity\_kind}: who is affected
+(\texttt{teacher}, \texttt{class}, \texttt{group}).
+\item \texttt{entity\_id}: optional -- if NULL the rule is
+\emph{kind-wide} (applies to every teacher / class / group);
+if set it applies only to that specific entity.
+\item \texttt{min\_gap\_hours}: minimum number of empty
+hours required between the last lesson at site A and the
+first lesson at site B.
+\item \texttt{symmetric}: if \texttt{true} the rule applies
+in the opposite direction (B$\to$A) as well.
+\item \texttt{priority}: tie-breaker when several rules
+overlap.
+\end{itemize}
+
+Typical Italian example: between \emph{Sede Centrale} and
+\emph{Succursale Via Garibaldi} a 60-minute travel time is
+required. The matching rule is
+\texttt{(Centrale, Garibaldi, kind=teacher,
+entity\_id=NULL, min\_gap\_hours=1, symmetric=true)}: no
+teacher may have a lesson at Garibaldi at h=9 if they have
+one at Centrale at h=8.
+
+Rule resolution always applies \emph{specific beats
+generic}: if a rule with \texttt{entity\_id=42} exists for
+teacher Rossi, it overrides the kind-wide rule. Among rules
+of equal specificity, higher \texttt{priority} wins.
+
+\subsection{Entity policies: per-person global constraints}
+
+An entity policy is a \emph{global} constraint (not tied to
+a specific site pair) on the behaviour of a teacher or
+class. Three policies are supported:
+
+\begin{itemize}
+\item \texttt{any} -- no global constraint, only commuting
+rules apply. This is the default.
+\item \texttt{single\_plesso\_per\_day} -- on any given day
+the entity may have lessons in at most one site. Stricter
+than commuting rules: even with a 1-hour gap, switching
+sites mid-day is forbidden.
+\item \texttt{single\_plesso\_total} -- the entity attends
+\emph{only} site \texttt{plesso\_id} for the entire week.
+Every classroom assigned to that entity must belong to
+that site.
+\end{itemize}
+
+Concrete Italian examples:
+
+\begin{itemize}
+\item \emph{Teacher Rossi does not want mid-day site
+switches}: the office creates a policy
+\texttt{(entity\_kind=teacher, entity\_id=Rossi,
+policy=single\_plesso\_per\_day)}. On Monday all of
+Rossi's hours are at Centrale; on Tuesday all at
+Garibaldi; never a mixed day.
+\item \emph{Class 3A (technical track) attends only Plesso
+ITT}: policy \texttt{(entity\_kind=class,
+entity\_id=3A, policy=single\_plesso\_total,
+plesso\_id=ITT)}. Every classroom that hosts 3A lessons
+must belong to Plesso ITT.
+\item \emph{All teachers, by default, avoid mid-day site
+switches}: policy \texttt{(entity\_kind=teacher,
+entity\_id=NULL, policy=single\_plesso\_per\_day)} --
+applies to every teacher except those with a more
+specific override.
+\end{itemize}
+
+Entity policies follow the same \emph{specific beats
+generic} rule (per-entity override), then \texttt{priority}.
+
+\subsection{Pre-run validation}
+
+Before launching the optimisation the system runs a battery
+of checks on the plessi data
+(\texttt{validate\_plessi\_rules}). If anything is
+inconsistent the run is rejected with a list of violations.
+What is checked:
+
+\begin{itemize}
+\item empty or duplicate plesso code;
+\item commuting rule referencing a non-existent plesso;
+\item commuting rule with negative \texttt{min\_gap\_hours}
+or larger than the day length;
+\item duplicate kind-wide commuting rule (same site pair,
+same kind, NULL entity\_id, defined twice);
+\item \texttt{single\_plesso\_total} entity policy with no
+\texttt{plesso\_id} or with a non-existent site;
+\item entity policy with an unknown \texttt{policy} value;
+\item override for a non-existent entity (deleted teacher
+or class).
+\end{itemize}
+
+The \texttt{GET /api/plessi/validate} endpoint lets the UI
+display a live ``plessi config OK / N issues'' badge.
+
+\subsection{CP-SAT implementation}
+
+At solver level, commuting rules become \emph{pairwise}
+constraints on the classroom-assignment variables:
+
+\[
+\forall (h_a, h_b)\ \text{adjacent such that}\
+\text{room}(t, d, h_a) \in P_A,\
+\text{room}(t, d, h_b) \in P_B:\
+h_b - h_a \geq \text{min\_gap}_{P_A \to P_B}.
+\]
+
+Entity policies become counter constraints:
+\texttt{single\_plesso\_per\_day} is
+$\sum_{P} \mathbf{1}[\exists h:\,\text{room}(t,d,h) \in P]
+\leq 1$ for each day $d$;
+\texttt{single\_plesso\_total} fixes the domain of the
+classroom variables to the target site only.
+
+All such constraints are \emph{hard} by default. The
+roadmap envisages a \emph{soft} variant with penalty for
+sporadic emergency overrides (e.g. last-minute substitute
+teaching), but the current version treats every plesso
+constraint as HARD.
+

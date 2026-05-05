@@ -727,3 +727,163 @@ anomalie. Pu\`o correggerle dai tab pertinenti
 (\texttt{/assignments}, \texttt{/groups},
 \texttt{/coteaching}) e rilanciare.
 
+\section{Plessi: pi\`u sedi nello stesso istituto}
+\label{sec:plessi}
+
+In Italia molti istituti scolastici sono distribuiti su pi\`u
+sedi fisiche -- la \emph{Sede Centrale}, una o pi\`u
+\emph{succursali} (per esempio \emph{Succursale Via
+Garibaldi}), un \emph{plesso} dedicato a un indirizzo
+specifico (per esempio \emph{Plesso ITT} per l'indirizzo
+tecnico-tecnologico). Spostare un docente o una classe da
+una sede all'altra durante la giornata costa tempo reale e
+introduce vincoli che non si possono modellare con i soli
+vincoli H1/H2/H3.
+
+Il modulo \textbf{Plessi} (tab \texttt{/plessi}) gestisce:
+\begin{itemize}
+\item l'\textbf{anagrafica delle sedi} (nome, codice,
+indirizzo);
+\item l'\textbf{associazione aula $\to$ plesso} (ogni aula
+appartiene a una sola sede);
+\item due tipi di regole comportamentali:
+\textbf{commuting rules} (gap minimo per spostarsi tra due
+sedi) e \textbf{entity policies} (vincoli globali su quante
+sedi pu\`o frequentare un docente o una classe).
+\end{itemize}
+
+\subsection{Commuting rules: il gap fra due plessi}
+
+Una \emph{commuting rule} si applica a una coppia ordinata
+\texttt{(plesso\_origine, plesso\_destinazione)} e dice
+quante ore minime devono separare due lezioni consecutive
+del docente quando l'aula cambia plesso. Campi rilevanti:
+
+\begin{itemize}
+\item \texttt{from\_plesso\_id}, \texttt{to\_plesso\_id}: la
+coppia di sedi.
+\item \texttt{entity\_kind}: a chi si applica
+(\texttt{teacher}, \texttt{class}, \texttt{group}).
+\item \texttt{entity\_id}: opzionale -- se NULL la regola
+\`e \emph{kind-wide} (vale per tutti i docenti / tutte le
+classi / tutti i gruppi); se valorizzato vale solo per
+quel docente / classe / gruppo specifico.
+\item \texttt{min\_gap\_hours}: numero di ore di
+\emph{buco} minimo richiesto fra l'ultima lezione nel plesso
+A e la prima lezione nel plesso B.
+\item \texttt{symmetric}: se \texttt{true} la regola vale
+anche nel verso opposto (B$\to$A).
+\item \texttt{priority}: chi vince in caso di pi\`u regole
+sovrapposte.
+\end{itemize}
+
+Esempio italiano tipico: tra \emph{Sede Centrale} e
+\emph{Succursale Via Garibaldi} servono almeno 60 minuti per
+spostarsi. La regola corrispondente \`e
+\texttt{(Centrale, Garibaldi, kind=teacher, entity\_id=NULL,
+min\_gap\_hours=1, symmetric=true)}: nessun docente pu\`o
+avere lezione in Garibaldi alle ore 9 se ne ha una in
+Centrale alle ore 8.
+
+La risoluzione \`e sempre \emph{specifico vince su generale}:
+se esiste una regola con \texttt{entity\_id=42} per il
+docente Rossi, quella prevale sulla regola
+\emph{kind-wide}. A parit\`a di specificit\`a vince la
+\texttt{priority} pi\`u alta.
+
+\subsection{Entity policies: vincoli globali sulla persona}
+
+Una \emph{entity policy} \`e un vincolo \emph{globale}
+(non legato a una coppia di plessi) sul comportamento di un
+docente o di una classe. Tre policy sono supportate:
+
+\begin{itemize}
+\item \texttt{any} -- nessun vincolo globale, valgono solo
+le commuting rules. \`E il default.
+\item \texttt{single\_plesso\_per\_day} -- nell'arco di una
+giornata l'entit\`a pu\`o avere lezioni in al massimo un
+plesso. Pi\`u stringente delle commuting rules: anche con
+gap = 1 ora, il cambio di sede nello stesso giorno \`e
+proibito.
+\item \texttt{single\_plesso\_total} -- l'entit\`a frequenta
+\emph{solo} il plesso \texttt{plesso\_id} per tutta la
+settimana. Tutte le aule assegnate a quell'entit\`a devono
+appartenere a quel plesso.
+\end{itemize}
+
+Esempi italiani concreti:
+
+\begin{itemize}
+\item \emph{Prof Rossi non vuole spostarsi a met\`a
+giornata}: la segreteria crea una policy
+\texttt{(entity\_kind=teacher, entity\_id=Rossi, policy=
+single\_plesso\_per\_day)}. Lunedi tutte le ore di Rossi
+sono in Centrale; martedi tutte in Garibaldi; mai un
+giorno misto.
+\item \emph{La classe 3A indirizzo tecnico frequenta solo il
+Plesso ITT}: policy \texttt{(entity\_kind=class,
+entity\_id=3A, policy=single\_plesso\_total,
+plesso\_id=ITT)}. Tutte le aule che ricevono lezioni della
+3A devono essere nel Plesso ITT.
+\item \emph{Tutti i docenti, di default, evitano cambi di
+sede infrasettimanali}: policy
+\texttt{(entity\_kind=teacher, entity\_id=NULL, policy=
+single\_plesso\_per\_day)} -- vale per tutti i docenti
+salvo quelli con override pi\`u specifico.
+\end{itemize}
+
+Anche per le entity policies vale specifico vince su
+generale (override per singolo docente/classe), poi
+\texttt{priority}.
+
+\subsection{Validazione pre-run}
+
+Prima di lanciare l'ottimizzazione il sistema esegue una
+batteria di controlli sui dati plessi
+(\texttt{validate\_plessi\_rules}). Se qualcosa \`e
+incoerente, la run viene rifiutata con un elenco di
+violazioni. Cose controllate:
+
+\begin{itemize}
+\item codice plesso vuoto o duplicato;
+\item commuting rule che riferisce un plesso inesistente;
+\item commuting rule con \texttt{min\_gap\_hours} negativo o
+\textgreater{} totale ore-giornata;
+\item commuting rule duplicata kind-wide (stessa coppia di
+plessi, stesso kind, entity\_id NULL, definita due volte);
+\item entity policy \texttt{single\_plesso\_total} senza
+\texttt{plesso\_id} o con plesso inesistente;
+\item entity policy con \texttt{policy} non riconosciuta;
+\item override per entit\`a inesistente (docente o classe
+cancellato/non in anagrafica).
+\end{itemize}
+
+L'endpoint \texttt{GET /api/plessi/validate} permette
+all'interfaccia di mostrare un \emph{badge} live ``config
+plessi OK / N anomalie''.
+
+\subsection{Implementazione CP-SAT}
+
+A livello di solver, le commuting rules diventano vincoli
+\emph{a coppie} sulle variabili di assegnamento aula:
+
+\[
+\forall (h_a, h_b)\ \text{adiacenti tali che}\
+\text{aula}(t, d, h_a) \in P_A,\
+\text{aula}(t, d, h_b) \in P_B:\
+h_b - h_a \geq \text{min\_gap}_{P_A \to P_B}.
+\]
+
+Le entity policies diventano vincoli su contatori:
+\texttt{single\_plesso\_per\_day} \`e
+$\sum_{P} \mathbf{1}[\exists h:\,\text{aula}(t,d,h) \in P]
+\leq 1$ per ogni giorno $d$;
+\texttt{single\_plesso\_total} fissa il dominio delle
+variabili aula al solo plesso target.
+
+I costi sono \emph{hard} per default. Il roadmap prevede una
+versione \emph{soft} con penalty per consentire override
+sporadici nei casi di sovraccarico (es. supplenza
+emergenza), ma la versione attuale tratta tutti i vincoli
+plesso come HARD.
+
