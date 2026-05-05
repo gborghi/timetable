@@ -235,12 +235,54 @@ def is_hard_feasible(sol, profs, verbose=False,
                               f"want {meta['ore']} got {got}")
                     return False
 
-    # H1, H2, H3: classi
+    # H1, H2, H3: classi.
+    # We rebuild a sostegno/coteach/parallel-aware "class hours per
+    # day" that mirrors what the solver enforces in Phase B
+    # (sostegno is shadow, coteach members collapse to one slot,
+    # parallel members share the slot, and group hours touching the
+    # home class are counted as busy slots for that class).
+    cls_hours_direct: dict[tuple[str, int], set[int]] = (
+        defaultdict(set))
+    cls_hours_groupextra: dict[tuple[str, int], set[int]] = (
+        defaultdict(set))
+    # Build the set of group-targeted (teacher, virtual_class, subj)
+    # so we can tell apart "this is a regular lesson" from "this is
+    # a group lesson". A regular (non-group) Assignment has a key
+    # whose `cl` is in `cls_set`; a group lesson's `cl` is the
+    # group_name (not in cls_set).
+    grp_keys: set[tuple[str, str, str]] = set()
+    home_by_grp: dict[tuple[str, str], list[str]] = {}
+    if group_assignments:
+        for ga in group_assignments:
+            grp_keys.add(
+                (ga["teacher_name"], ga["group_name"], ga["subject"]))
+            home_by_grp[
+                (ga["group_name"], ga["subject"])
+            ] = list(ga.get("home_class_names", []))
+    for (p, cl, subj, d, h), v in sol.items():
+        if v != 1:
+            continue
+        if (p, cl, subj) in support_keys:
+            continue
+        if (p, cl, subj) in grp_keys:
+            # Group lesson: register as group-extra for every home
+            # class.
+            for hc in home_by_grp.get((cl, subj), []):
+                cls_hours_groupextra[(hc, d)].add(h)
+            continue
+        # Regular class lesson (or coteach/parallel member, which
+        # share the slot in the same class anyway).
+        cls_hours_direct[(cl, d)].add(h)
     for cl in cls_set:
         for d in DAYS:
-            hrs = cls_h.get((cl, d), [])
-            if not hrs:
+            direct = cls_hours_direct.get((cl, d), set())
+            extra = cls_hours_groupextra.get((cl, d), set())
+            # H1/H2/H3 apply only when the class has direct triples
+            # on this day; pure group-only days are exempt (matches
+            # the solver's `cls_with_direct_triples` gate).
+            if not direct:
                 continue
+            hrs = sorted(direct | extra)
             if hrs[0] != 8:
                 if verbose: print(f"  H2 viol: {cl} d{d} hrs[0]={hrs[0]}")
                 return False
