@@ -266,6 +266,61 @@ def test_cg_schema_accepts_all_granularities():
             assert payload.granularity == g
 
 
+def test_cg_granularity_auto_suggestion_covers_new_options():
+    """The auto-detect heuristic must use the expanded granularity
+    set introduced in the BP refactor (so small/medium schools no
+    longer all collapse to 'teacher')."""
+    from backend.optimization import (
+        _suggest_cg_granularity, _CG_GRANULARITIES,
+    )
+    expected = {
+        5:   "teacher",
+        20:  "teacher-day",
+        40:  "teacher-class",
+        60:  "class",
+        100: "curriculum",
+    }
+    for n_classes, want in expected.items():
+        got = _suggest_cg_granularity(n_classes)
+        assert got == want, (
+            f"_suggest_cg_granularity({n_classes}) = {got!r}, "
+            f"expected {want!r}")
+        assert got in _CG_GRANULARITIES
+
+
+def test_cg_frontend_dropdown_options_are_valid():
+    """All <option value=...> entries in the granularity dropdown
+    must be values the backend recognises. Catches drift between
+    UI labels and backend enum.
+    """
+    import re
+    from backend.optimization import _CG_GRANULARITIES, _CG_MODES
+    here = os.path.dirname(os.path.abspath(__file__))
+    fe_path = os.path.normpath(os.path.join(
+        here, "..", "..", "frontend", "src", "lib", "components",
+        "optimize", "AdvancedTechniquesCard.svelte"))
+    with open(fe_path, "r", encoding="utf-8") as f:
+        src = f.read()
+
+    # Pull values from the cgGranularity <select> via a tolerant
+    # regex (multi-line, in <optgroup> or directly).
+    select_block = re.search(
+        r"bind:value=\{cgGranularity\}.*?</select>",
+        src, re.S)
+    assert select_block, "cgGranularity <select> not found"
+    fe_grans = set(re.findall(r'value="([^"]+)"', select_block.group(0)))
+    assert fe_grans == set(_CG_GRANULARITIES) | {"auto"}, (
+        f"frontend granularity options {fe_grans} != "
+        f"backend {set(_CG_GRANULARITIES) | {'auto'}}")
+
+    select_mode = re.search(
+        r"bind:value=\{cgMode\}.*?</select>",
+        src, re.S)
+    assert select_mode, "cgMode <select> not found"
+    fe_modes = set(re.findall(r'value="([^"]+)"', select_mode.group(0)))
+    assert fe_modes == set(_CG_MODES)
+
+
 # ---------- Lagrangian ----------
 
 def test_lagrangian_module_imports():

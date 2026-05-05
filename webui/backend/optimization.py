@@ -1149,19 +1149,28 @@ def run_diag_distributions(*, spec: dict | None = None) -> int:
 def _suggest_cg_granularity(n_classes: int) -> str:
     """Heuristic for the 'auto' granularity option.
 
-    < 30 classes  -> 'teacher' (small schools, the catalog is
-                     small enough that per-teacher patterns
-                     enumerate the search effectively).
-    30-80 classes -> 'class' (medium schools, per-class patterns
+    < 15 classes  -> 'teacher' (very small schools, per-teacher
+                     pattern catalog is small enough to enumerate).
+    15-30 classes -> 'teacher-day' (per-teacher patterns get large
+                     fast; splitting by day is a good compromise).
+    30-50 classes -> 'teacher-class' (medium schools: bind each
+                     teacher to ONE class at a time -- patterns
+                     stay small).
+    50-80 classes -> 'class' (large schools, per-class patterns
                      scale better while teacher catalogs explode).
-    > 80 classes  -> 'curriculum' (large schools with structured
-                     indirizzi: most teachers stay within an
-                     indirizzo, the bridge teachers are few).
-    The 'day' granularity is rarely the best option for BnP, but
-    remains selectable for experimentation.
+    > 80 classes  -> 'curriculum' (very large schools with
+                     structured indirizzi).
+
+    The 'day', 'class-day', 'teacher-subject', 'teacher-class-subject'
+    granularities are never auto-selected but remain available for
+    experimentation.
     """
-    if n_classes < 30:
+    if n_classes < 15:
         return "teacher"
+    if n_classes < 30:
+        return "teacher-day"
+    if n_classes < 50:
+        return "teacher-class"
     if n_classes <= 80:
         return "class"
     return "curriculum"

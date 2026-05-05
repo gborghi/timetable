@@ -202,12 +202,27 @@ Smoke test su `small` (10 classi, 19 docenti): 4 iter, 114
 pattern finali, master obj=60, completion ha riempito i gap,
 1662 celle, HARD-feasible al 100%, 25.8s wall.
 
-API: `POST /api/optimize/column-generation`. Accetta
-`granularity` ('teacher'|'class'|'day'), `branching_strategy`
-('ryan_foster'|'variable'), `max_iterations`, `parallel` --
-ma oggi solo `granularity='teacher'` corrisponde a un percorso
-implementato; gli altri valori vengono accettati con un
-warning di log e mappati a 'teacher'.
+API: `POST /api/optimize/column-generation`. Accetta:
+- `mode`: 'iterative-diversified' (default) | 'branch-and-price'
+  | 'auto'
+- `granularity` (per BP): 'auto' | 'teacher' | 'teacher-day' |
+  'teacher-class' | 'teacher-class-subject' | 'teacher-subject' |
+  'class' | 'class-day' | 'day' | 'curriculum'
+- `branching_strategy`: 'ryan_foster' | 'variable'
+- `max_iterations`, `bp_max_iterations`, `pricer_time_limit`,
+  `pricer_workers`, `parallel`
+
+Il valore `granularity='auto'` viene risolto server-side in base
+al numero di classi della scuola attiva: <15 classi -> 'teacher',
+15-30 -> 'teacher-day', 30-50 -> 'teacher-class', 50-80 -> 'class',
+>80 -> 'curriculum'. Gli altri 4 valori (`teacher-class-subject`,
+`teacher-subject`, `class-day`, `day`) sono accessibili solo
+manualmente.
+
+Le granularita' non ancora implementate nell'engine vengono
+accettate dal payload e mappate a 'teacher' con un warning di log;
+i pricers CP-SAT dedicati arrivano in commit separati (vedi
+roadmap qui sotto).
 
 ### Cosa serve per il vero Branch-and-Price (roadmap)
 

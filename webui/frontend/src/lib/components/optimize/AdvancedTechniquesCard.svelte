@@ -29,9 +29,17 @@
   let busyCg = false;
   let cgBudget = 60;
   let cgPatternsPerTeacher = 3;
-  let cgGranularity = 'auto';      // 'auto' | 'teacher' | 'class' | 'day' | 'curriculum'
+  let cgMode = 'iterative-diversified';
+  // 'iterative-diversified' | 'branch-and-price' | 'auto'
+  let cgGranularity = 'auto';
+  // 9 values: 'auto' | 'teacher' | 'teacher-day' | 'teacher-class' |
+  // 'teacher-class-subject' | 'teacher-subject' | 'class' | 'class-day' |
+  // 'day' | 'curriculum'
   let cgBranching = 'ryan_foster'; // 'variable' | 'ryan_foster'
   let cgMaxIterations = 100;
+  let cgBpMaxIterations = 8;
+  let cgPricerTimeLimit = 5.0;
+  let cgPricerWorkers = 2;
   let cgParallel = true;
 
   let busyLag = false;
@@ -87,9 +95,13 @@
       const r = await api.post('/api/optimize/column-generation', {
         time_budget_s: cgBudget,
         patterns_per_teacher: cgPatternsPerTeacher,
+        mode: cgMode,
         granularity: cgGranularity,
         branching_strategy: cgBranching,
         max_iterations: cgMaxIterations,
+        bp_max_iterations: cgBpMaxIterations,
+        pricer_time_limit: cgPricerTimeLimit,
+        pricer_workers: cgPricerWorkers,
         parallel: cgParallel,
       });
       flash('Column Generation run #' + r.run_id + ' avviato', 'success');
@@ -268,42 +280,75 @@
       <span class="pill pill-blue !text-[10px]">phase B alternativo</span>
     </div>
     <p class="text-[11px] text-ink-500 mb-2">
-      Decomposizione Dantzig-Wolfe: master LP + sottoproblema CP-SAT.
-      Granularita' del sub-problema configurabile (4 opzioni: per
-      docente / per classe / per giorno / per indirizzo) e
-      branching tra variable e Ryan-Foster.
-      <em>Auto</em> suggerisce la granularita' in base alla taglia
-      della scuola (&lt;30 classi -&gt; per docente; 30-80 -&gt; per
-      classe; &gt;80 con curricula ben definiti -&gt; per indirizzo;
-      per giorno raramente la migliore).
-      La pipeline corrente esegue la variante
-      <em>iterative-diversified</em> (master LP + pattern enrichment
-      + completion fallback day-by-day, HARD=100% garantito).
-      Le altre granularita', Ryan-Foster e branch-and-bound vero
-      sono in roadmap; vedi
+      Decomposizione Dantzig-Wolfe: master LP + sottoproblemi CP-SAT
+      a granularita' configurabile (9 opzioni). <em>Mode</em> sceglie
+      tra <em>iterative-diversified</em> (master LP + pattern
+      enrichment + completion fallback, sempre HARD=100%) e
+      <em>branch-and-price</em> (vero BP con sub-CP-SAT pricing dei
+      duali). <em>Auto</em> sceglie modalita' e granularita' in base
+      alla taglia della scuola. Vedi
       <code>docs/optimization_strategies.md &sect;4</code>.
     </p>
     <div class="grid grid-cols-2 gap-2 mb-2">
       <div class="field !mb-0">
+        <label class="!text-[11px]">Modalita'</label>
+        <select bind:value={cgMode} class="w-full">
+          <option value="iterative-diversified">Iterative-diversified (default)</option>
+          <option value="branch-and-price">Branch-and-Price (sub-CP-SAT pricing)</option>
+          <option value="auto">Auto (per taglia scuola)</option>
+        </select>
+      </div>
+      <div class="field !mb-0">
         <label class="!text-[11px]">Granularita' sub-problema</label>
-        <select bind:value={cgGranularity} class="w-full">
-          <option value="auto">Auto (suggerita dalla taglia)</option>
-          <option value="teacher">Per docente</option>
-          <option value="class">Per classe (roadmap)</option>
-          <option value="day">Per giorno (roadmap)</option>
-          <option value="curriculum">Per indirizzo / curriculum (roadmap)</option>
+        <select bind:value={cgGranularity} class="w-full"
+                title="Selettore granularita' di pricing per BP. Le granularita' teacher-based generano pattern per docente; class-based per classe; 'day' e 'curriculum' sono globali. 'auto' sceglie in base alla taglia.">
+          <optgroup label="Auto">
+            <option value="auto">Auto (suggerita dalla taglia)</option>
+          </optgroup>
+          <optgroup label="Teacher-based">
+            <option value="teacher">Per docente</option>
+            <option value="teacher-day">Per docente / giorno</option>
+            <option value="teacher-class">Per docente / classe</option>
+            <option value="teacher-class-subject">Per docente / classe / materia</option>
+            <option value="teacher-subject">Per docente / materia</option>
+          </optgroup>
+          <optgroup label="Class-based">
+            <option value="class">Per classe (orario completo)</option>
+            <option value="class-day">Per classe / giorno</option>
+          </optgroup>
+          <optgroup label="Globali">
+            <option value="day">Per giorno (tutti docenti+classi)</option>
+            <option value="curriculum">Per indirizzo / curriculum</option>
+          </optgroup>
         </select>
       </div>
       <div class="field !mb-0">
         <label class="!text-[11px]">Branching strategy</label>
         <select bind:value={cgBranching} class="w-full">
-          <option value="ryan_foster">Ryan-Foster (roadmap)</option>
-          <option value="variable">Variable branching (roadmap)</option>
+          <option value="ryan_foster">Ryan-Foster</option>
+          <option value="variable">Variable branching</option>
         </select>
       </div>
       <div class="field !mb-0">
-        <label class="!text-[11px]">Max iterazioni</label>
-        <input type="number" bind:value={cgMaxIterations} class="w-full"/>
+        <label class="!text-[11px]">Max iterazioni (ID)</label>
+        <input type="number" bind:value={cgMaxIterations} class="w-full"
+               title="Max iterazioni della pipeline iterative-diversified."/>
+      </div>
+      <div class="field !mb-0">
+        <label class="!text-[11px]">BP max iter</label>
+        <input type="number" bind:value={cgBpMaxIterations} class="w-full"
+               title="Max iterazioni del loop branch-and-price (master + pricing)."/>
+      </div>
+      <div class="field !mb-0">
+        <label class="!text-[11px]">Pricer time limit (s)</label>
+        <input type="number" step="0.5" bind:value={cgPricerTimeLimit}
+               class="w-full"
+               title="Tempo CPU max per ogni sub-problema CP-SAT di pricing."/>
+      </div>
+      <div class="field !mb-0">
+        <label class="!text-[11px]">Pricer workers</label>
+        <input type="number" bind:value={cgPricerWorkers} class="w-full"
+               title="Worker CP-SAT per ogni sub-problema di pricing."/>
       </div>
       <label class="flex items-center gap-2 text-xs self-end pb-1">
         <input type="checkbox" bind:checked={cgParallel}/>
