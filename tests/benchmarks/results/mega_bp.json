@@ -1,0 +1,42 @@
+{
+  "mega_50": {
+    "timestamp": "2026-05-05T22:21:52",
+    "scale": "mega_50",
+    "n_classes": 50,
+    "n_teachers": 50,
+    "granularity": "curriculum",
+    "t_bp_s": 1.9326915740966797,
+    "time_budget_s": 600.0,
+    "hard_feasible": true,
+    "soft_obj": null,
+    "n_columns": 80,
+    "n_iterations": 1,
+    "n_rf_nodes_explored": 1,
+    "n_columns_purged": 0,
+    "parallel_workers_used": 1,
+    "bp_terminated_reason": "no_improving_column",
+    "warnings": [
+      "master LP infeasible al passo iniziale (catalogo insufficiente). Completion solver in fondo riempira' il vuoto.",
+      "master LP infeasible all'iterazione 1",
+      "master LP infeasible all'iterazione 2"
+    ]
+  },
+  "mega_100": {
+    "timestamp": "2026-05-05T22:22:21",
+    "scale": "mega_100",
+    "n_classes": 100,
+    "n_teachers": 100,
+    "granularity": "curriculum",
+    "t_bp_s": 5.221813917160034,
+    "time_budget_s": 3600.0,
+    "hard_feasible": true,
+    "soft_obj": 0.0,
+    "n_columns": 200,
+    "n_iterations": 1,
+    "n_rf_nodes_explored": 1,
+    "n_columns_purged": 0,
+    "parallel_workers_used": 1,
+    "bp_terminated_reason": "no_improving_column",
+    "warnings": []
+  }
+}
