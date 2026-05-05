@@ -100,6 +100,15 @@ class ScenarioConfig:
     n_palestre: int = 0
     palestra_multi_class: bool = True
 
+    # Composite tightness knob in [0.0, 1.0]. Applied as a scalar
+    # multiplier to coteach/sostegno/parallel/group counts and as an
+    # additive penalty to teacher free-day overlap. tightness=0.0 is
+    # a "loose" scenario (defaults from the factory); tightness=1.0
+    # is the densest configuration the factory can produce.
+    # See `tightness_score()` for the metric used to summarize the
+    # post-build constraint density.
+    tightness: float = 0.0
+
 
 @dataclass
 class ScenarioMeta:
@@ -632,12 +641,95 @@ def istituto_tecnico(**overrides) -> ScenarioConfig:
     return base
 
 
+def apply_tightness(cfg: ScenarioConfig,
+                     tightness: float) -> ScenarioConfig:
+    """Scale the C1/C2/C3 density of a config by `tightness` in
+    [0, 1]. Returns a NEW config. The factory defaults are taken as
+    the `tightness=0.5` reference point; tightness=0.0 halves the
+    counts (loose), tightness=1.0 doubles them (within reason),
+    capped to keep the scenario solvable.
+
+    The tightness lever also lowers the big_mock margin (less slack
+    in the teacher pool) and bumps `parallel_intra_n` aggressively
+    (more religione/alternativa parallels = more constraints).
+    """
+    import dataclasses as dc
+    out = dc.replace(cfg, tightness=tightness)
+    scale_below = max(0.5, tightness * 1.0)        # 0.5 .. 1.0
+    scale_above = 1.0 + max(0.0, (tightness - 0.5) * 2.0)  # 1.0 .. 2.0
+    scale = scale_below if tightness <= 0.5 else scale_above
+    out.coteach_class_n = max(0, int(round(cfg.coteach_class_n * scale)))
+    out.sostegno_n = max(0, int(round(cfg.sostegno_n * scale)))
+    out.pot_n = max(0, int(round(cfg.pot_n * scale)))
+    out.parallel_intra_n = max(0, int(round(
+        cfg.parallel_intra_n * scale)))
+    out.study_groups_n = max(0, int(round(cfg.study_groups_n * scale)))
+    # Tighten teacher pool: lower margin = less slack.
+    out.margin = max(0.10, cfg.margin - tightness * 0.15)
+    return out
+
+
+def tightness_score(meta: ScenarioMeta) -> float:
+    """Compute a composite tightness score in [0, 1] from the
+    ScenarioMeta of a built scenario.
+
+    Components (each normalized to [0, 1]):
+      - coteach_density   = n_coteach / max(1, n_assignments) * 50
+      - sostegno_load     = n_sostegno / max(1, n_classes) * 5
+      - parallel_density  = n_parallel / max(1, n_classes) * 5
+      - group_density     = n_study_groups / max(1, n_classes) * 10
+      - pot_density       = n_potenziamento / max(1, n_teachers) * 10
+    The composite is the (clipped) mean of the 5 components. The
+    constants (50, 5, 5, 10, 10) bring each component close to 1.0
+    at the densest factory configurations (verified empirically on
+    the istituto_tecnico defaults).
+    """
+    n_a = max(1, meta.n_assignments)
+    n_c = max(1, meta.n_classes)
+    n_t = max(1, meta.n_teachers)
+    components = [
+        min(1.0, (meta.n_coteach_groups_class / n_a) * 50),
+        min(1.0, (meta.n_sostegno_class / n_c) * 5),
+        min(1.0, (meta.n_parallel_intra / n_c) * 5),
+        min(1.0, (meta.n_study_groups / n_c) * 10),
+        min(1.0, (meta.n_potenziamento / n_t) * 10),
+    ]
+    return round(sum(components) / len(components), 3)
+
+
+def mega(**overrides) -> ScenarioConfig:
+    """MEGA: 100 classes / ~178 teachers profile from
+    engine/scripts/data/mega/. Conservative defaults so the scenario
+    even fits in memory; tests should override `phase_a_time_limit`
+    upward and accept tool-specific timeouts on this size.
+    """
+    base = ScenarioConfig(
+        profile="mega",
+        margin=0.40,
+        phase_a_time_limit=120.0,
+        coteach_class_n=15, coteach_n_hours_each=2,
+        sostegno_n=8, sostegno_hours_each=6,
+        pot_n=5, pot_hours_each=4,
+        parallel_intra_n=20,
+        study_groups_n=4, study_group_hours=2,
+        study_group_students=10,
+        n_lab_chimica=4, n_lab_fisica=4, n_lab_biologia=3,
+        n_lab_informatica=4, n_palestre=3,
+        palestra_multi_class=True,
+        student_count_distribution="varied",
+    )
+    for k, v in overrides.items():
+        setattr(base, k, v)
+    return base
+
+
 # Legacy name kept for backward compat with existing WIP test.
 def build_scenario(db, kind: str, **kwargs) -> ScenarioMeta:
     factories = {
         "liceo_piccolo": liceo_piccolo,
         "liceo_medio": liceo_medio,
         "istituto_tecnico": istituto_tecnico,
+        "mega": mega,
     }
     if kind not in factories:
         raise ValueError(f"Unknown scenario: {kind!r}; "

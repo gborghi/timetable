@@ -1,0 +1,7 @@
+scenario,combination,run_idx,seed,status,t_phase_a,t_phase_b,t_post,t_total,obj_value,n_lessons,hard_feasible,error_msg
+liceo_piccolo,phase_b,0,42,ok,30.15,3.39,0.0,52.73,970.0,317,True,
+liceo_piccolo,phase_b+lns,0,42,ok,30.19,8.94,5.44,61.09,770.0,317,True,
+liceo_piccolo,phase_b+sa,0,42,ok,30.21,3.79,5.01,55.34,730.0,317,True,
+liceo_piccolo,phase_b+alns,0,42,ok,30.13,2.92,8.22,57.41,670.0,317,True,
+liceo_piccolo,phase_b+vns,0,42,ok,30.15,8.94,16.88,72.06,700.0,317,True,
+liceo_piccolo,phase_b+lagrangian,0,42,ok,30.14,5.46,8.15,59.85,750.0,317,True,
