@@ -379,6 +379,61 @@ def test_bp_pricing_subproblem_returns_none_when_no_improvement():
     assert rc >= -1e-6, f"rc should be non-negative, got {rc}"
 
 
+def test_bp_pricing_subproblem_teacher_class_subject_smoke():
+    """Direct call to the teacher-class-subject pricer with strong
+    positive lambda must return a pattern that places exactly the
+    cattedra hours in the optimised slice, leaves the OTHER subjects
+    and OTHER classes untouched (greedy base), and reports rc<0."""
+    import column_generation as cg
+    profs = _two_class_profs()
+    dc_value = _two_class_dc()
+    lambda_duals = {("T1", "1A", "Mat", 1): 100.0}
+    pat, rc = cg._pricing_subproblem_teacher_class_subject(
+        "T1", "1A", "Mat", profs, dc_value,
+        lambda_duals, mu_t=0.0,
+        time_limit=2.0, workers=1,
+    )
+    assert pat is not None, f"pricer returned None, rc={rc}"
+    assert rc < 0.0, f"expected rc<0 with strong lambda, got {rc}"
+    placed_T1_1A_Mat_d1 = sum(
+        1 for (p, c, s, d, _h), v in pat.items()
+        if v and p == "T1" and c == "1A" and s == "Mat" and d == 1
+    )
+    assert placed_T1_1A_Mat_d1 == 4
+    placed_T1_1B_Mat = sum(
+        1 for (p, c, s, _d, _h), v in pat.items()
+        if v and p == "T1" and c == "1B" and s == "Mat"
+    )
+    assert placed_T1_1B_Mat == 4, "greedy base for 1B Mat preserved"
+
+
+def test_bp_loop_with_teacher_class_subject_granularity():
+    """End-to-end BP with granularity=teacher-class-subject must
+    reach a HARD-feasible solution and not regress soft cost."""
+    import column_generation as cg
+    profs = _two_class_profs()
+    dc_value = _two_class_dc()
+    sol_id, info_id = cg.run_column_generation(
+        profs, dc_value, time_budget_s=20.0,
+        patterns_per_teacher=2, max_iterations=2, log=False,
+        mode="iterative-diversified", granularity="teacher",
+    )
+    sol_bp, info_bp = cg.run_column_generation(
+        profs, dc_value, time_budget_s=20.0,
+        patterns_per_teacher=2, max_iterations=2, log=False,
+        mode="branch-and-price", granularity="teacher-class-subject",
+        bp_max_iterations=3, pricer_time_limit=2.0, pricer_workers=1,
+    )
+    assert info_bp["granularity"] == "teacher-class-subject"
+    assert "bp_terminated_reason" in info_bp
+    assert (info_bp["feasible_after_assembly"]
+            or info_bp["feasible_after_completion"])
+    obj_id = info_id["master_obj_final"]
+    obj_bp = info_bp["master_obj_final"]
+    if obj_id is not None and obj_bp is not None:
+        assert obj_bp <= obj_id + 1e-6
+
+
 def test_bp_loop_runs_and_stays_feasible():
     """End-to-end BP run with mode=branch-and-price and
     granularity=teacher-class on the 2-class scaffold must:

@@ -684,13 +684,132 @@ def _pricing_subproblem_teacher_class(
     return None, rc
 
 
+def _pricing_subproblem_teacher_class_subject(
+    teacher: str, class_name: str, subject: str,
+    profs: dict, dc_value: dict,
+    lambda_duals: dict, mu_t: float,
+    *,
+    time_limit: float = 5.0,
+    workers: int = 2,
+    locks: set | None = None,
+    group_assignments: list | None = None,
+    eps: float = 1e-6,
+) -> tuple[dict | None, float]:
+    """CP-SAT pricer for the teacher-class-subject granularity.
+
+    Narrower than `_pricing_subproblem_teacher_class`: only the
+    (teacher, class_name, subject, *, *) slots are CP-SAT-optimised
+    against the LP duals; everything else (the teacher's other
+    subjects in this class AND all the teacher's other classes)
+    is greedy-placed first and treated as locked.
+
+    Useful when the teacher has multiple subjects in the same class
+    (coteach scenarios) and only ONE of them dominates the dual
+    signal -- you can refine just that subject without disturbing
+    the other.
+    """
+    from ortools.sat.python import cp_model
+
+    pairs_by_t = _profs_iter_with_groups(profs, group_assignments)
+    pairs = pairs_by_t.get(teacher, [])
+    if (class_name, subject) not in pairs:
+        return None, 0.0
+
+    # Greedy-place EVERYTHING the teacher does, then rip out the
+    # (teacher, class_name, subject) entries: those are what the
+    # CP-SAT will optimise.
+    base_pat, occ_t, occ_c = _greedy_base_pattern(
+        teacher, profs, dc_value,
+        skip_classes=set(), locks=locks,
+        group_assignments=group_assignments,
+    )
+    # Remove entries to be re-optimised, freeing their occupancy.
+    keys_to_drop = [
+        k for k in base_pat.keys()
+        if k[0] == teacher and k[1] == class_name and k[2] == subject
+    ]
+    for k in keys_to_drop:
+        del base_pat[k]
+        _, _, _, d, h = k
+        occ_t.discard((teacher, d, h))
+        occ_c.discard((class_name, d, h))
+
+    # Per-day demand for the (t, cl, s) cattedra.
+    triples: list[tuple[int, int]] = []  # (d, q)
+    for d in DAYS:
+        q = int(dc_value.get((teacher, class_name, subject, d), 0))
+        if q > 0:
+            triples.append((d, q))
+    if not triples:
+        rc = _compute_rc(base_pat, teacher, lambda_duals, mu_t, profs)
+        if rc < -eps:
+            return base_pat, rc
+        return None, rc
+
+    model = cp_model.CpModel()
+    slot: dict[tuple, cp_model.IntVar] = {}
+    for (d, _q) in triples:
+        for h in HOURS:
+            v = model.NewBoolVar(
+                f"slot_{teacher}_{class_name}_{subject}_{d}_{h}")
+            if (teacher, d, h) in occ_t or (class_name, d, h) in occ_c:
+                model.Add(v == 0)
+            slot[(d, h)] = v
+
+    for (d, q) in triples:
+        model.Add(sum(slot[(d, h)] for h in HOURS) == q)
+
+    # Locks force slot==1 for this (t, cl, s, d, h).
+    for (p, cl_l, s_l, d_l, h_l) in (locks or ()):
+        if p != teacher or cl_l != class_name or s_l != subject:
+            continue
+        v = slot.get((d_l, h_l))
+        if v is not None:
+            model.Add(v == 1)
+
+    # Objective: integer-scaled rc contribution from this single
+    # cattedra (rest is constant given the greedy base).
+    obj_terms: list = []
+    for (d, _q) in triples:
+        lam = float(lambda_duals.get(
+            (teacher, class_name, subject, d), 0.0))
+        lam_int = int(round(lam * _SCALE))
+        for h in HOURS:
+            v = slot[(d, h)]
+            if lam_int != 0:
+                obj_terms.append(-lam_int * v)
+            if h == _SIXTH_HOUR:
+                obj_terms.append(_PENALTY_SIXTH * v)
+    if obj_terms:
+        model.Minimize(sum(obj_terms))
+
+    solver = cp_model.CpSolver()
+    solver.parameters.max_time_in_seconds = float(time_limit)
+    solver.parameters.num_search_workers = int(workers)
+    solver.parameters.log_search_progress = False
+    status = solver.Solve(model)
+    if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        return None, 0.0
+
+    full_pat = dict(base_pat)
+    for (d, _q) in triples:
+        for h in HOURS:
+            if solver.Value(slot[(d, h)]):
+                full_pat[(teacher, class_name, subject, d, h)] = 1
+    rc = _compute_rc(full_pat, teacher, lambda_duals, mu_t, profs)
+    if rc < -eps:
+        return full_pat, rc
+    return None, rc
+
+
 # ---------------- BP loop: dispatcher + driver ----------------
 
 _BP_GRANULARITIES = (
     "teacher-class",
+    "teacher-class-subject",
     # Pricers for additional granularities arrive in subsequent
-    # commits (steps 3b-3h):
-    #   teacher-class-subject, teacher-subject, teacher-day,
+    # commits (steps 3c-3h):
+    #   teacher-subject, teacher-day,
     #   class, class-day, day, curriculum.
 )
 
@@ -713,6 +832,14 @@ def _enumerate_pricing_keys(granularity: str, profs: dict,
                         for d in DAYS):
                     out.append((t, cl))
         return sorted(out)
+    if granularity == "teacher-class-subject":
+        out = []
+        for t, pairs in pairs_by_t.items():
+            for (cl, s) in pairs:
+                if any(dc_value.get((t, cl, s, d), 0) > 0
+                        for d in DAYS):
+                    out.append((t, cl, s))
+        return sorted(out)
     raise NotImplementedError(
         f"granularity {granularity!r} pricing not yet implemented")
 
@@ -733,6 +860,16 @@ def _solve_pricing(granularity: str, key,
         mu_t = float(mu_duals.get(teacher, 0.0))
         return _pricing_subproblem_teacher_class(
             teacher, class_name, profs, dc_value,
+            lambda_duals, mu_t,
+            time_limit=time_limit, workers=workers,
+            locks=locks, group_assignments=group_assignments,
+            eps=eps,
+        )
+    if granularity == "teacher-class-subject":
+        teacher, class_name, subject = key
+        mu_t = float(mu_duals.get(teacher, 0.0))
+        return _pricing_subproblem_teacher_class_subject(
+            teacher, class_name, subject, profs, dc_value,
             lambda_duals, mu_t,
             time_limit=time_limit, workers=workers,
             locks=locks, group_assignments=group_assignments,
