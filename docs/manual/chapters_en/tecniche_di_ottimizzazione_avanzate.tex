@@ -1,0 +1,89 @@
+\chapter{Advanced optimization techniques}
+\label{ch:tecniche_avanzate_en}
+
+In addition to the classic metaheuristics (LNS / SA / TS / ILS),
+$\pi$Tantum integrates four classes of advanced techniques used
+when the standard pipeline is not enough or when targeted
+diagnostic information is needed.
+
+\section{Hall pre-check}
+
+\texttt{engine/diagnostics/hall\_check.py}. Hall's marriage theorem
+applied to the bipartite (\textit{class}, \textit{subject}) $\to$
+qualified-teachers graph as a fast pre-check (1--100\,ms) before
+launching Phase A. Three violation kinds are reported:
+
+\begin{enumerate}
+\item subject supply vs demand,
+\item subject coverage vs demand,
+\item Hall sampling random-subset with mutually exclusive subsets.
+\end{enumerate}
+Exposed at three UI points: inline button on PhaseACard, row in
+AdvancedTechniquesCard, section of the Statistics tab.
+
+\section{Column Generation and advanced Branch-and-Price}
+
+\texttt{engine/column\_generation.py}. Master LP via
+\texttt{scipy.linprog} HiGHS; eight dedicated CP-SAT pricers at
+distinct granularities (\texttt{teacher}, \texttt{teacher-day},
+\texttt{teacher-class}, \texttt{teacher-class-subject},
+\texttt{teacher-subject}, \texttt{class}, \texttt{class-day},
+\texttt{day}, \texttt{curriculum}); a \texttt{branch-and-price}
+mode equipped with all four scalability techniques required for
+MEGA-size instances:
+
+\begin{itemize}
+\item \textbf{Ryan-Foster recursive tree} with Achterberg pair
+  scoring on fractional class-slot pairs, best-first node
+  exploration with LP-bound pruning, depth cap 20 / 1000 nodes.
+\item \textbf{Box-step dual stabilization}
+  $\pi_{\text{blend}} = (1-\alpha)\pi_{\text{stable}}
+  + \alpha\pi_{\text{raw}}$ with $\alpha = 0.2$, applied to both
+  master variants.
+\item \textbf{Column management}: EWMA of the per-column reduced
+  cost over 20 iterations; when the pool exceeds 10\,000
+  columns, the worst (most positive \texttt{rc\_avg}) entries
+  are purged, while protecting columns currently in the LP basis
+  (\(x > 0\)) and the seed columns from the iterative-diversified
+  primal heuristic.
+\item \textbf{Parallel pricing} via \texttt{ProcessPoolExecutor}
+  (default $\lfloor \texttt{os.cpu\_count()}/2 \rfloor$ workers).
+  CP-SAT is CPU-bound and the GIL is only partially released by
+  the OR-tools binding, so \texttt{ThreadPoolExecutor} would not
+  parallelise the bottleneck; processes do.
+\end{itemize}
+
+\subsection*{The CP-SAT-as-fundamental contract}
+
+For every granularity, the sub-problem CP-SAT is the
+\emph{fundamental} minimisation; greedy serves only as a
+\texttt{model.add\_hint} warm-start (an accelerator). If CP-SAT
+cannot find a feasible solution within the time limit the pricer
+returns \texttt{(None, 0.0)}: the greedy is \emph{never} promoted
+to a column. The unit test
+\texttt{test\_bp\_pricers\_use\_addhint\_warmstart} monkey-patches
+\texttt{CpModel.add\_hint} with a counting wrapper to enforce this
+contract.
+
+\subsection*{Measured numbers (synthetic HUGE / MEGA benchmark)}
+
+See \texttt{tests/benchmarks/test\_bp\_huge\_mega.py}. On a
+synthetic scenario calibrated to match the engine's MEGA profile
+(100 classes, $\sim$174 teachers, 4 subjects, $\sim$400 cattedre)
+the pipeline reaches HARD-feasibility in \textbf{5.95\,s} with
+\texttt{granularity=curriculum} and all scalability techniques
+enabled. On the smaller HUGE scenario (50 classes,
+$\sim$95 teachers, 200 cattedre) the time is \textbf{2.57\,s}.
+The synthetic scenario is structurally easy (cattedre as 4-hour
+single-day blocks); on real-world instances with arbitrary day
+distributions the calibration target remains 30 minutes for MEGA,
+with a 60-minute hard cap.
+
+\section{Lagrangian relaxation}
+
+\texttt{engine/lagrangian.py}. Relaxes the inter-cluster bridge
+constraints and dualises them with multipliers $\lambda_b$;
+update via subgradient ascent
+$\lambda_{k+1} = \max(0, \lambda_k + \alpha_k g_k)$ with
+$\alpha_k = \alpha_0 / (1+k)$. Per-iteration refinement via
+Simulated Annealing.

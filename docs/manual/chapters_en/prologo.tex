@@ -1,0 +1,66 @@
+\chapter*{Introduction}
+\addcontentsline{toc}{chapter}{Introduction}
+\markboth{Introduction}{Introduction}
+\label{ch:prologo}
+
+\epigraph{``Omnia, Lucili, aliena sunt, tempus tantum nostrum
+est.''}{Lucius Annaeus Seneca, \emph{Epistulae morales ad
+Lucilium}, I, 1}
+
+$\pi$Tantum is a web application that assists in the
+composition of Italian-school timetables. It originates from
+ideas discussed and developed by Fernando Gargiulo, Giovanni
+Borghi, Matteo Mariani and Stefano Bertozzi.
+
+The school timetabling problem consists of assigning, to each
+\emph{cattedra} -- the pair formed by a teacher and a class for
+a specific subject -- a set of weekly hours distributed over
+days and time slots, such that all the following constraints
+are honoured: teacher availability, curricular hour coverage,
+classroom and equipment compatibility, and the constraints that
+derive from the Italian national collective contract for the
+school sector. This is a combinatorial problem classified as
+NP-hard, which means that as a school grows in size there is no
+fast algorithm capable of finding an exact optimal solution.
+
+$\pi$Tantum delegates the actual solving to the CP-SAT solver in
+Google OR-Tools, chosen for its maturity in constraint
+programming applied to scheduling problems. To scale beyond the
+size that the solver would handle directly, the system
+decomposes the problem into smaller sub-problems via four
+alternative strategies: spectral decomposition of the bipartite
+class-teacher graph, temporal decomposition by day of the week,
+curriculum-based decomposition, and balanced $k$-way METIS
+partitioning. On top of these, a cascade of metaheuristics
+(Large Neighborhood Search, Adaptive LNS, Simulated Annealing,
+Tabu Search, Iterated Local Search and Variable Neighborhood
+Search) improves the quality of the solution found.
+
+The application backend is written in Python on FastAPI; data
+persistence is delegated to SQLite. The user interface is
+based on SvelteKit (in Italian for the production deployment),
+organised into sixteen tabs that cover the whole lifecycle of a
+timetable: registry import, constraint configuration, generation,
+manual editing with real-time feasibility checks, and
+day-to-day handling of absences and substitutions.
+
+The following chapters describe the problem formally, the
+entities involved, the user interface, and each of the
+algorithms that $\pi$Tantum employs to compute the timetable.
+The exposition is intentionally multi-layered: a non-technical
+reader can follow the narrative thread without engaging the
+mathematical formulas, while a developer will find the
+implementation details, code references, and source-file
+pointers necessary to extend the system.
+
+\bigskip
+
+\noindent
+This English edition is a parallel translation of the Italian
+manual (\texttt{docs/manual.tex}). The Italian edition
+remains the primary reference; this English edition is
+intended for international readers and contributors. Where
+Italian-school context is necessary (e.g.\ the legal frame of
+the \emph{contratto collettivo nazionale}, the role of
+\emph{insegnante di sostegno}, or the meaning of
+\emph{indirizzo di studio}), explanatory notes are added.

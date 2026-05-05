@@ -1,0 +1,167 @@
+% =====================================================================
+% piTantum -- Manual (English edition)
+% Parallel English edition of docs/manual.tex.
+%
+% Compile with lualatex + biber + makeindex + lualatex (x2).
+% Helper: docs/build_manual.sh emits BOTH the Italian PDF (manual.pdf)
+% and the English PDF (manual_en.pdf) when invoked.
+% =====================================================================
+\input{manual/preamble_en}
+
+\begin{document}
+
+% =========== Cover ===========
+\begin{titlepage}
+\thispagestyle{empty}
+\centering
+\vspace*{1.6cm}
+
+{\fontsize{56}{60}\selectfont\bfseries\color{cIndaco}$\pi$\,Tantum\par}
+\vspace{0.4cm}
+{\Large\itshape\color{cInk} a.k.a.\ \emph{Tempus Tantum}\par}
+\vspace{0.6cm}
+{\Large\sffamily\color{cInk}school timetable generation system\par}
+
+\vspace{1.2cm}
+\rule{0.5\textwidth}{1pt}
+
+\vspace{0.9cm}
+\begin{minipage}{0.85\textwidth}
+\centering
+\itshape\color{cSiena}
+``Omnia, Lucili, aliena sunt, tempus tantum nostrum est.''\\
+\upshape\small\color{cInk} Lucius Annaeus Seneca,
+\emph{Epistulae morales ad Lucilium}, I, 1
+\end{minipage}
+
+\vspace{1.0cm}
+\rule{0.5\textwidth}{1pt}
+
+\vspace{1.6cm}
+{\LARGE\sffamily\color{cIndaco}\bfseries Manual\par}
+\vspace{0.4cm}
+{\Large\itshape A method for Italian-school timetabling\par}
+\vspace{0.2cm}
+{\large\itshape (English edition)\par}
+
+\vspace{0.6cm}
+{\small\sffamily\color{cInk}
+From an idea by Fernando Gargiulo, Giovanni Borghi,\\
+Matteo Mariani, Stefano Bertozzi
+\par}
+
+\vspace{2cm}
+
+\begin{tikzpicture}[scale=0.9]
+  \node[draw=cIndaco, very thick, rounded corners=4pt, minimum width=3cm,
+        minimum height=1cm, fill=cIndaco!15] (a) at (0,0)
+        {\textbf{\sffamily CP-SAT}};
+  \node[draw=cIndaco, very thick, rounded corners=4pt, minimum width=3cm,
+        minimum height=1cm, fill=cIndaco!15, right=0.6cm of a] (b)
+        {\textbf{\sffamily spectral}};
+  \node[draw=cIndaco, very thick, rounded corners=4pt, minimum width=3cm,
+        minimum height=1cm, fill=cIndaco!15, right=0.6cm of b] (c)
+        {\textbf{\sffamily LNS+SA+TS+ILS}};
+  \draw[-{Stealth[length=3mm]}, thick, cSiena] (a) -- (b);
+  \draw[-{Stealth[length=3mm]}, thick, cSiena] (b) -- (c);
+\end{tikzpicture}
+
+\vfill
+
+{\large\sffamily Giovanni Borghi\par}
+\vspace{0.2cm}
+{\large\sffamily \today\par}
+
+\vspace{0.6cm}
+{\small\sffamily\color{cInk}
+Repository: \url{https://github.com/gborghi/timetable}\\
+Documentation source: \texttt{docs/}
+\par}
+\end{titlepage}
+
+% =========== Colophon ===========
+\thispagestyle{empty}
+\null\vfill
+\noindent\small
+\textbf{\sffamily Colophon}\\[0.3em]
+This English edition is set in EB Garamond for body text and Lato
+for headings, with Inconsolata for code blocks. Compilation is
+done with \texttt{lualatex} (TeX Live), \texttt{biber} for
+bibliography and \texttt{makeindex} for the analytical index.
+The \LaTeX{} source lives in \texttt{docs/manual\_en.tex} with
+chapters in \texttt{docs/manual/chapters\_en/}; the bibliography is
+shared with the Italian edition in \texttt{docs/manual/bibliography.bib}.
+The build pipeline is in \texttt{docs/build\_manual.sh} which emits
+\textbf{both} \texttt{manual.pdf} (Italian) and
+\texttt{manual\_en.pdf} (English) in a single invocation.
+
+\bigskip
+\noindent\textbf{\sffamily Note on translation}: the Italian edition
+remains the primary reference. This English edition fully translates
+the introduction, the BP-related chapters and the benchmark chapter;
+all other chapters carry an English summary that points the reader to
+the corresponding Italian chapter for the full narrative. Where
+Italian-school context is necessary (for instance the legal frame of
+the \emph{contratto collettivo nazionale}, the role of the
+\emph{insegnante di sostegno}, or the meaning of \emph{indirizzo di
+studio}), explanatory notes are added in the English text.
+
+\bigskip
+\noindent
+The repository version corresponds to the most recent commit
+visible in \texttt{git log --oneline -- docs/}.
+Errors and suggestions can be reported as issues on the GitHub
+repository at \url{https://github.com/gborghi/timetable}.
+
+\bigskip
+\noindent
+All project rights belong to Giovanni Borghi.
+Document produced in May 2026.
+\vfill
+
+\cleardoublepage
+
+% =========== Indices ===========
+\tableofcontents
+\listoffigures
+\listoftables
+
+% =========== Chapters (in the same order as the Italian edition) ===
+\input{manual/chapters_en/prologo}
+\input{manual/chapters_en/problema_timetabling}
+\input{manual/chapters_en/panoramica_pitantum}
+\input{manual/chapters_en/orario_oggetto_strutturale}
+\input{manual/chapters_en/installazione}
+\input{manual/chapters_en/vincoli}
+\input{manual/chapters_en/workflow_di_ottimizzazione}
+\input{manual/chapters_en/guida_ui}
+\input{manual/chapters_en/launcher}
+\input{manual/chapters_en/metodo_cpsat}
+\input{manual/chapters_en/metodo_spettrale}
+\input{manual/chapters_en/metodo_metaeuristiche}
+\input{manual/chapters_en/metodo_hall}
+\input{manual/chapters_en/metodo_lagrangian}
+\input{manual/chapters_en/metodo_montecarlo}
+\input{manual/chapters_en/metodo_grafo}
+\input{manual/chapters_en/metodo_statistica}
+\input{manual/chapters_en/metodo_dsl}
+\input{manual/chapters_en/architettura}
+\input{manual/chapters_en/modello_dati}
+\input{manual/chapters_en/dsl_generico_per_i_vincoli}
+\input{manual/chapters_en/tecniche_di_ottimizzazione_avanzate}
+\input{manual/chapters_en/diagnostica_statistica}
+\input{manual/chapters_en/api_rest}
+\input{manual/chapters_en/estendere_il_sistema}
+\input{manual/chapters_en/repository_github}
+\input{manual/chapters_en/benchmarks}
+\input{manual/chapters_en/lessons_learned}
+\input{manual/chapters_en/glossario_discorsivo}
+\input{manual/chapters_en/reference}
+
+% =========== Bibliography ===========
+\printbibliography[heading=bibintoc, title={Bibliography}]
+
+% =========== Analytical index ===========
+\printindex
+
+\end{document}

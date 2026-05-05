@@ -1,0 +1,8 @@
+\chapter{Architecture}
+\label{ch:architettura_en}
+
+Three tiers (engine, backend, frontend) with the data flow: registry -> assignment -> dc_value -> Phase B -> integer recovery -> persistence -> UI. Async runs orchestrated via the /api/optimize/* endpoints and the SQLAlchemy `runs` table.
+
+\medskip
+\noindent
+\textit{This chapter is an English summary of the corresponding Italian chapter. The full text remains in the Italian edition (\texttt{docs/manual/chapters/architettura.tex}). For the implementation references see the engine modules in \texttt{engine/} and the API documentation at \texttt{docs/api.md}.}
