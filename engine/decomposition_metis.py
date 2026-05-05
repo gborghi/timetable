@@ -253,6 +253,9 @@ def solve_with_metis_decomposition(
     locked_day_count: dict | None = None,
     locked_by_day: dict | None = None,
     coteach_groups: list | None = None,
+    support_assignments: list | None = None,
+    parallel_groups: list | None = None,
+    group_assignments: list | None = None,
 ):
     """Pipeline end-to-end: METIS k-way partitioning + Stage A/B/C/mono.
 
@@ -297,4 +300,7 @@ def solve_with_metis_decomposition(
         locked_day_count=locked_day_count,
         locked_by_day=locked_by_day,
         coteach_groups=coteach_groups,
+        support_assignments=support_assignments,
+        parallel_groups=parallel_groups,
+        group_assignments=group_assignments,
     )

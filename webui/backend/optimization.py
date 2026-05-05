@@ -547,7 +547,12 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
         update_run(rid, progress=0.20)
 
         full_solution: dict = {}
-        if use_decomposition and len(classes) >= 8:
+        # Task C3: spectral stages A/B/C don't model group_slot vars.
+        # When group_assignments are present, force the per-day
+        # monolithic path so groups are scheduled correctly. The
+        # overall run still benefits from the cached `dc_value` from
+        # Phase A above.
+        if use_decomposition and len(classes) >= 8 and not group_assignments:
             import decomposition_spectral_v2 as dec  # type: ignore
             M, classes_v, _ = dec.build_adjacency(profs)
             labels, _ = dec.spectral_cluster(M, k)
@@ -3402,11 +3407,19 @@ def run_decomposition_curriculum(*, time_a: float = 60.0,
         locked_by_day = _locked_slots_by_day(locked_snap) or None
         with SessionLocal() as _db_co:
             coteach_groups = engine_io.coteach_groups_for_solver(_db_co)
+            support_assignments = engine_io.support_assignments_from_db(
+                _db_co)
+            parallel_groups = engine_io.parallel_groups_for_solver(_db_co)
+            group_assignments = engine_io.group_assignments_for_solver(
+                _db_co)
         if locked_snap:
             print(f"[curriculum] native lock path: {len(locked_snap)} "
                   f"locked lessons fed to solver")
         if coteach_groups:
             print(f"[curriculum] {len(coteach_groups)} coteach groups")
+        if group_assignments:
+            print(f"[curriculum] {len(group_assignments)} group "
+                  f"assignments (forced mono per-day)")
         result = dec_c.solve_with_curriculum_decomposition(
             profs, cls_to_curr, manual,
             time_a=time_a, time_bridges=time_bridges,
@@ -3416,6 +3429,9 @@ def run_decomposition_curriculum(*, time_a: float = 60.0,
             locked_day_count=locked_dc,
             locked_by_day=locked_by_day,
             coteach_groups=coteach_groups or None,
+            support_assignments=support_assignments or None,
+            parallel_groups=parallel_groups or None,
+            group_assignments=group_assignments or None,
         )
         update_run(rid, progress=0.85)
         full_solution = result["full_solution"]
@@ -3532,11 +3548,19 @@ def run_decomposition_metis(*, time_a: float = 60.0,
         locked_by_day = _locked_slots_by_day(locked_snap) or None
         with SessionLocal() as _db_co:
             coteach_groups = engine_io.coteach_groups_for_solver(_db_co)
+            support_assignments = engine_io.support_assignments_from_db(
+                _db_co)
+            parallel_groups = engine_io.parallel_groups_for_solver(_db_co)
+            group_assignments = engine_io.group_assignments_for_solver(
+                _db_co)
         if locked_snap:
             print(f"[metis] native lock path: {len(locked_snap)} "
                   f"locked lessons fed to solver")
         if coteach_groups:
             print(f"[metis] {len(coteach_groups)} coteach groups")
+        if group_assignments:
+            print(f"[metis] {len(group_assignments)} group "
+                  f"assignments (forced mono per-day)")
         result = dec_m.solve_with_metis_decomposition(
             profs, k=k, imbalance=imbalance,
             time_a=time_a, time_bridges=time_bridges,
@@ -3546,6 +3570,9 @@ def run_decomposition_metis(*, time_a: float = 60.0,
             locked_day_count=locked_dc,
             locked_by_day=locked_by_day,
             coteach_groups=coteach_groups or None,
+            support_assignments=support_assignments or None,
+            parallel_groups=parallel_groups or None,
+            group_assignments=group_assignments or None,
         )
         update_run(rid, progress=0.85)
         full_solution = result["full_solution"]

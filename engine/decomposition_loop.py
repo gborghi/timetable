@@ -64,6 +64,9 @@ def run_partitioned_pipeline(
     locked_day_count: dict | None = None,
     locked_by_day: dict | None = None,
     coteach_groups: list | None = None,
+    support_assignments: list | None = None,
+    parallel_groups: list | None = None,
+    group_assignments: list | None = None,
 ):
     """Run the canonical Stage A/B/C/monolithic loop on a precomputed
     cluster partition.
@@ -135,6 +138,9 @@ def run_partitioned_pipeline(
             time_limit=time_a, workers=workers, log=False,
             locked_day_count=locked_day_count,
             coteach_groups=coteach_groups,
+            support_assignments=support_assignments,
+            parallel_groups=parallel_groups,
+            group_assignments=group_assignments,
         )
     elapsed_master = time.time() - t0
 
@@ -145,9 +151,38 @@ def run_partitioned_pipeline(
     days_t0 = time.time()
     bridges_set = set(bridges)
 
+    # Task C3: when group_assignments are present, the spectral
+    # stages (A bridges / B cluster / C ricucitura) don't model the
+    # group_slot vars and would silently drop the group hours. Force
+    # the monolithic per-day path for the whole loop -- still benefits
+    # from the cached `dc_value` master, just skips the stages.
+    force_mono_for_groups = bool(group_assignments)
+
     for d in DAYS:
         t = time.time()
         locks_d = (locked_by_day or {}).get(d, None)
+        if force_mono_for_groups:
+            mono_out, _ = dec.solve_monolithic_day(
+                d, profs, triples, dc_value, time_mono, workers,
+                locked_slots_for_day=locks_d,
+                coteach_groups=coteach_groups,
+                support_assignments=support_assignments,
+                parallel_groups=parallel_groups,
+                group_assignments=group_assignments,
+            )
+            if mono_out is None:
+                failed_days.append(d)
+                days_per_day[d] = time.time() - t
+                if log:
+                    print(f"[loop]   day {d} MONO (groups) failed in "
+                          f"{days_per_day[d]:.1f}s")
+                continue
+            full_solution.update(mono_out)
+            days_per_day[d] = time.time() - t
+            if log:
+                print(f"[loop]   day {d} via MONO (groups path) in "
+                      f"{days_per_day[d]:.1f}s")
+            continue
         # Stage A: bridges first
         bridges_out, _ = dec.stage_a_bridges(
             d, profs, bridges_set, triples, dc_value,
@@ -160,6 +195,9 @@ def run_partitioned_pipeline(
                 d, profs, triples, dc_value, time_mono, workers,
                 locked_slots_for_day=locks_d,
                 coteach_groups=coteach_groups,
+                support_assignments=support_assignments,
+                parallel_groups=parallel_groups,
+                group_assignments=group_assignments,
             )
             if mono_out is None:
                 failed_days.append(d)
@@ -210,6 +248,10 @@ def run_partitioned_pipeline(
                 mono_out, _ = dec.solve_monolithic_day(
                     d, profs, triples, dc_value, time_mono, workers,
                     locked_slots_for_day=locks_d,
+                    coteach_groups=coteach_groups,
+                    support_assignments=support_assignments,
+                    parallel_groups=parallel_groups,
+                    group_assignments=group_assignments,
                 )
                 if mono_out is None:
                     failed_days.append(d)

@@ -531,10 +531,19 @@ def stage_c_ricucitura(day, profs, bridges, triples, dc_value,
 def solve_monolithic_day(day, profs, triples, dc_value,
                          time_limit, workers, log=False,
                          locked_slots_for_day=None,
-                         coteach_groups=None):
+                         coteach_groups=None,
+                         support_assignments=None,
+                         parallel_groups=None,
+                         group_assignments=None):
     """Monolithic fallback for a single day. Forwards
-    `locked_slots_for_day` and `coteach_groups` to
-    cv2.solve_phase_b_for_day."""
+    `locked_slots_for_day`, `coteach_groups`, `support_assignments`,
+    `parallel_groups`, `group_assignments` to cv2.solve_phase_b_for_day.
+
+    Used by the decomposed pipelines (spectral / curriculum / metis)
+    as a fallback when stages A/B/C fail, AND as the canonical path
+    when group_assignments are present (the spectral stages don't
+    yet model group_slot vars; routing the day through the monolithic
+    solver guarantees C3 invariants are honored)."""
     classes, _, class_profs = cv2.build_indices(profs)
     out, status = cv2.solve_phase_b_for_day(
         day, profs, classes, triples, class_profs, dc_value,
@@ -542,6 +551,9 @@ def solve_monolithic_day(day, profs, triples, dc_value,
         enforce_no_holes=True,
         locked_slots_for_day=locked_slots_for_day,
         coteach_groups=coteach_groups,
+        support_assignments=support_assignments,
+        parallel_groups=parallel_groups,
+        group_assignments=group_assignments,
     )
     return out, status
 
