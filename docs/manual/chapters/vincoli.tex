@@ -447,3 +447,253 @@ non sforare. Il sistema gestisce automaticamente questa
 ridistribuzione, e segnala all'utente i casi in cui un
 tetto troppo basso renderebbe il problema infeasibile.
 
+\section{Compresenze, sostegno e potenziamento}
+
+La scuola italiana ha tre famiglie di vincoli che il
+sistema modella nativamente: le \textbf{compresenze} (il
+laboratorio dove lavorano due docenti insieme), il
+\textbf{sostegno} (il prof DVA che segue uno studente
+specifico), e il \textbf{potenziamento} previsto dalla Legge
+107 del 2015 (le ore dell'organico potenziato, senza
+cattedra fissa). Sono entrati nel sistema a partire dal Task
+C1 e sono enforced come constraint CP-SAT, non gestiti
+post-hoc. Le violazioni sono restituite come errore al POST
+con un messaggio specifico, prima che la run parta.
+
+\subsection{Compresenze ``shared'' (lab di chimica)}
+
+\textbf{Caso d'uso:} laboratorio di chimica del 2C, 4 ore
+alla settimana, di cui 2 in compresenza con l'assistente di
+laboratorio. La 2C ha le sue 4 ore di chimica, ma in 2 di
+queste \`e prevista la presenza simultanea di due docenti.
+
+\textbf{Configurazione dalla UI:}
+\begin{enumerate}
+\item Tab \texttt{/assignments}: la cattedra principale di
+ProfChim (4 ore) \`e gi\`a presente.
+\item Tab \texttt{/coteaching}: nuovo gruppo
+\texttt{(2C, Chimica, n\_hours=2, kind=shared,
+required=True)}.
+\item Tab \texttt{/assignments}: aggiungi una nuova cattedra
+ProfAss (2 ore di Chimica in 2C) e collegala al gruppo di
+compresenza appena creato.
+\end{enumerate}
+
+\textbf{Cosa fa il solver:} introduce una variabile
+\texttt{coday\_count[gid, d]} per ogni giorno, vincolata a
+sommare a \texttt{n\_hours} sull'arco settimanale. Il
+docente principale (quello con pi\`u ore, in questo caso
+ProfChim) ha
+\texttt{day\_count[principal, d] >= coday\_count[gid, d]}: le
+sue ore di lezione coprono sempre quelle di compresenza. Il
+co-docente (ProfAss) ha invece
+\texttt{day\_count[codoc, d] == coday\_count[gid, d]}: le
+sue 2 ore coincidono esattamente con le ore di compresenza.
+A livello di slot orario, i due docenti vengono messi nella
+stessa cella tramite una variabile booleana di slot
+condiviso.
+
+\subsection{Sostegno: il prof DVA che segue lo studente}
+
+\textbf{Caso d'uso:} il prof Bianchi \`e il docente di
+sostegno per uno studente DVA della 2A, e ha una cattedra
+da 18 ore di sostegno. Il prof segue le lezioni della classe
+(non ne aggiunge di proprie) e deve essere presente solo
+quando 2A ha lezione con un altro docente.
+
+\textbf{Configurazione:}
+\begin{enumerate}
+\item Tab \texttt{/teachers}: ProfBianchi esiste con la
+materia ``sostegno'' nelle abilitazioni.
+\item Tab \texttt{/assignments}: nuova cattedra
+\texttt{(ProfBianchi, 2A, sostegno, ore=18,
+is\_support=True)}.
+\end{enumerate}
+
+\textbf{Cosa fa il solver:} la cattedra di sostegno NON
+contribuisce all'orario della 2A (le 18 ore non vanno a
+sommarsi alle ore curricolari). Il vincolo \`e
+\texttt{slot[ProfBianchi, 2A, sostegno, h] <= 2A\_busy[h]}:
+il prof di sostegno \`e presente solo dove la 2A ha gi\`a
+una lezione con un altro docente. La somma delle sue ore
+settimanali \`e fissata a 18, distribuita in modo che il
+profilo sia ragionevole.
+
+\subsection{Potenziamento (Legge 107)}
+
+\textbf{Caso d'uso:} la prof Verdi \`e nell'organico
+potenziato e ha 18 ore settimanali di potenziamento, senza
+una cattedra fissa. Le ore vengono usate per progetti,
+recupero o supplenze.
+
+\textbf{Configurazione:}
+\begin{enumerate}
+\item Tab \texttt{/assignments}: nuova cattedra
+\texttt{(ProfVerdi, classe=NULL, materia=Potenziamento,
+ore=18, is\_potenziamento=True)}. La cattedra viene
+visualizzata in una sezione dedicata in fondo al tab,
+\textbf{Potenziamento (Legge 107)}.
+\end{enumerate}
+
+\textbf{Cosa fa il solver:} introduce
+\texttt{pot\_day\_count[ProfVerdi, d]} per ogni giorno, con
+somma settimanale pari a 18. Il vincolo HARD
+\texttt{pot\_day\_count[d] + ore\_di\_cattedra[d] <= 5}
+garantisce che la prof non superi il tetto giornaliero. Cap
+settimanale HARD: 30 ore (cinque giorni per cinque ore
+ciascuno, escludendo il sabato).
+
+\textbf{Visibilit\`a nel tab Assenze/Supplenze:} quando un
+docente \`e assente, il sistema cerca un supplente fra i
+disponibili. I docenti di potenziamento vengono mostrati per
+primi, con un badge \textbf{POT} viola e un bordo dello
+stesso colore: l'idea \`e che la loro disponibilit\`a sia
+specificamente progettata per coprire questi buchi.
+
+\section{Religione, alternativa e parallelismi intra-classe}
+
+La classe 3B il marted\`i alla terza ora ha religione
+cattolica con un docente, e contemporaneamente alternativa
+con un altro docente, perch\'e gli studenti sono divisi.
+Dal punto di vista dell'orario della 3B la classe \`e
+``occupata'' in quello slot (gli studenti non sono
+disponibili per altre lezioni), ma sono in atto due lezioni
+parallele, non una.
+
+\textbf{Configurazione (Task C2):}
+\begin{enumerate}
+\item Tab \texttt{/assignments}: due cattedre,
+\texttt{(ProfRel, 3B, Religione, 1)} e
+\texttt{(ProfAlt, 3B, Alternativa, 1)}.
+\item Marca entrambe con lo stesso
+\texttt{parallel\_group\_id} (id arbitrario; serve solo a
+legarle insieme nel solver).
+\end{enumerate}
+
+\textbf{Cosa fa il solver:} le ore dei due docenti sono
+legate slot-per-slot
+(\texttt{slot[ProfRel, h] == slot[ProfAlt, h]}); a livello
+di occupazione classe, le due lezioni condividono la stessa
+chiave di busy, per cui la 3B risulta occupata UNA sola
+volta in quello slot, anche se sono presenti due docenti.
+
+\section{Gruppi inter-classe: seconda lingua, recupero}
+
+Caso pi\`u complesso, introdotto dal Task C3: un gruppo che
+attraversa pi\`u classi. Esempio: il gruppo di Spagnolo \`e
+formato da 5 studenti della 2A e da 7 studenti della 2B,
+si riunisce 3 ore alla settimana, ed \`e tenuto da
+ProfSpa. Quando il gruppo si riunisce, le due classi-madre
+2A e 2B sono ``occupate'' (i loro studenti sono nel gruppo,
+non possono fare lezione in classe), anche se la lezione
+non \`e formalmente una loro lezione.
+
+\textbf{Configurazione:}
+\begin{enumerate}
+\item Tab \texttt{/students}: assicurarsi che gli studenti
+del gruppo abbiano correttamente la classe-madre 2A o 2B.
+\item Tab \texttt{/groups}: nuovo StudyGroup di nome
+``Spagnolo 2A+2B'' con \texttt{kind=language}. Aggiungere i
+12 studenti come membri e dichiarare le ore-materia con
+\texttt{(Spagnolo, hours\_per\_week=3)}.
+\item Tab \texttt{/assignments}: nuova cattedra,
+selezionando il radio button \textbf{Target = gruppo
+(StudyGroup)}, scegliere ``Spagnolo 2A+2B'' dal dropdown,
+docente ``ProfSpa'', materia ``Spagnolo'', ore ``3''. La
+cattedra appare in una sezione dedicata di colore ciano,
+con badge \textbf{GRP}, separata sia dalle cattedre delle
+classi che dalla sezione Potenziamento.
+\end{enumerate}
+
+\textbf{Cosa fa il solver:} per ogni ora in cui il gruppo
+Spagnolo si riunisce, sia 2A che 2B vengono marcate come
+occupate. L'invariante \texttt{somma di subj\_busy == pr}
+del Phase B garantisce che, quando il gruppo \`e attivo in
+uno slot, la classe-madre non possa avere lezioni regolari
+nello stesso slot. Il vincolo per-day capacity in Phase A
+\texttt{(cl\_day\_load + sum(group\_day\_count) <= 6)}
+previene il caso degenere in cui curriculum e gruppo
+sommerebbero pi\`u di sei ore in un solo giorno.
+
+\subsection{Compresenza nel gruppo}
+
+Se il gruppo Spagnolo prevede due docenti
+(es. ProfSpa1 + ProfSpa2 in compresenza), si configura un
+\texttt{CoteachGroup} con \texttt{group\_id} valorizzato
+(XOR rispetto a \texttt{class\_id}) e si crea una seconda
+cattedra con \texttt{coteach\_group\_id} sul gruppo. Il
+modello CP-SAT applica la stessa logica principal/codoc che
+gi\`a usa per le compresenze sulle classi.
+
+\subsection{Sostegno nel gruppo}
+
+Se uno studente DVA appartiene al gruppo Tedesco (3A+3B), il
+prof di sostegno deve seguire lo studente \textbf{nel
+gruppo} (non in classe-madre, perch\'e in quei tre slot lo
+studente non \`e nella sua classe). Si configura una
+cattedra
+\texttt{(ProfSost, group\_id=tedesco, sostegno, ore=3,
+is\_support=True)}. Il vincolo
+\texttt{slot[ProfSost, h] <= group\_busy[h]} garantisce che
+il prof sia presente solo nei tre slot in cui il gruppo si
+riunisce, senza aggiungere ore di occupazione n\'e alla
+classe-madre n\'e al gruppo.
+
+\section{Lock nativi: blindare lezioni gi\`a sistemate}
+
+Il pulsante a forma di lucchetto in \texttt{/assignments}
+(e l'analogo nel monitor delle lezioni) marca una cattedra
+come ``locked''. Quando il solver viene rilanciato per
+ricalcolare l'orario, le lezioni di una cattedra lockata
+sono trattate come constraint nativi: il sistema non pu\`o
+spostarle da dove si trovano, deve risolvere intorno a
+esse.
+
+Vantaggio rispetto al vecchio meccanismo
+``snapshot/restore'': il fail \`e immediato e parlante. Se
+i lock sono incompatibili con altri vincoli (es. il giorno
+libero del docente, il tetto giornaliero della classe, una
+compresenza HARD), il sistema rifiuta la run con un errore
+specifico, ad esempio:
+\begin{quote}
+\textit{Phase A INFEASIBLE: i lock attivi sono incompatibili
+con i vincoli correnti. Rimuovi o adatta i lock (es.
+sblocca eventi nel monitor) e ritenta. Lock attivi: 7
+cattedra-giorno.}
+\end{quote}
+
+Senza lock nativi, lo stesso scenario sarebbe risultato in
+una run apparentemente riuscita, con i lock silenziosamente
+mossi a posteriori. I lock nativi sono propagati a tutte le
+pipeline (monolitica, decomposizione temporale, spettrale,
+curriculum, METIS, column generation) e a tutte le
+metaeuristiche (LNS, SA, TS, ILS, ALNS, VNS, Lagrangian).
+
+\section{Pre-flight checks: errori prima della run}
+
+Quando l'utente lancia un'ottimizzazione, il sistema esegue
+una serie di controlli sincroni \textbf{prima} di
+schedulare la run. Le violazioni vengono restituite come
+HTTP 400 con un elenco specifico, in italiano. Categorie
+controllate:
+\begin{itemize}
+\item \textbf{Lock vs vincoli HARD}: lock che cadono nel
+giorno libero del docente, oltre il tetto giornaliero della
+classe, ecc.
+\item \textbf{Compresenze}: numero di ore del principal
+$\geq$ \texttt{n\_hours}; numero di ore del codoc esattamente
+\texttt{n\_hours}.
+\item \textbf{Sostegno}: deve avere una classe valida
+(oppure un gruppo valido nel caso C3).
+\item \textbf{Potenziamento}: \texttt{class\_id} deve essere
+NULL; somma delle ore non deve superare 30.
+\item \textbf{Gruppi (C3)}: XOR class\_id/group\_id; il
+gruppo deve avere almeno uno studente; ogni studente deve
+avere classe-madre; ore $>$ 0.
+\end{itemize}
+
+L'utente vede un toast di errore con la lista delle
+anomalie. Pu\`o correggerle dai tab pertinenti
+(\texttt{/assignments}, \texttt{/groups},
+\texttt{/coteaching}) e rilanciare.
+
