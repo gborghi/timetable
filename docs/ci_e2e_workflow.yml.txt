@@ -1,0 +1,162 @@
+name: E2E
+
+# Triggered manually or on PR to main. The unit/integration suite
+# (pytest) is NOT in this workflow -- it runs on a separate fast
+# job. Here we focus on the long-running Cypress + Playwright
+# orchestration that needs a backend + frontend live.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - "webui/frontend/**"
+      - "webui/backend/**"
+      - "engine/**"
+      - "schedule/**"
+      - "docker-compose.test.yml"
+      - ".github/workflows/e2e.yml"
+
+jobs:
+  cypress:
+    name: Cypress E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build + start docker-compose stack
+        run: |
+          docker compose -f docker-compose.test.yml up -d --build
+
+      - name: Wait for stack healthy
+        run: |
+          for i in $(seq 1 60); do
+            backend_health=$(docker inspect -f '{{.State.Health.Status}}' \
+                             pitantum-backend-test 2>/dev/null || true)
+            frontend_health=$(docker inspect -f '{{.State.Health.Status}}' \
+                              pitantum-frontend-test 2>/dev/null || true)
+            echo "[$i] backend=$backend_health frontend=$frontend_health"
+            if [ "$backend_health" = "healthy" ] && \
+               [ "$frontend_health" = "healthy" ]; then
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "stack failed to become healthy"
+          docker compose -f docker-compose.test.yml logs --tail=200
+          exit 1
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: webui/frontend/package-lock.json
+
+      - name: Install frontend deps (host)
+        working-directory: webui/frontend
+        run: npm ci --no-audit --no-fund
+
+      - name: Run Cypress
+        working-directory: webui/frontend
+        run: npm run test:e2e:cypress
+        env:
+          CYPRESS_baseUrl: "http://localhost:5173"
+          CYPRESS_backendUrl: "http://localhost:8000"
+
+      - name: Upload Cypress artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cypress-artifacts
+          path: |
+            webui/frontend/cypress/screenshots/
+            webui/frontend/cypress/videos/
+          if-no-files-found: ignore
+
+      - name: Stop docker-compose stack
+        if: always()
+        run: |
+          docker compose -f docker-compose.test.yml logs --tail=300 \
+            > /tmp/compose-logs.txt 2>&1 || true
+          docker compose -f docker-compose.test.yml down -v
+
+      - name: Upload compose logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cypress-compose-logs
+          path: /tmp/compose-logs.txt
+          if-no-files-found: ignore
+
+  playwright:
+    name: Playwright E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build + start docker-compose stack
+        run: |
+          docker compose -f docker-compose.test.yml up -d --build
+
+      - name: Wait for stack healthy
+        run: |
+          for i in $(seq 1 60); do
+            backend_health=$(docker inspect -f '{{.State.Health.Status}}' \
+                             pitantum-backend-test 2>/dev/null || true)
+            frontend_health=$(docker inspect -f '{{.State.Health.Status}}' \
+                              pitantum-frontend-test 2>/dev/null || true)
+            echo "[$i] backend=$backend_health frontend=$frontend_health"
+            if [ "$backend_health" = "healthy" ] && \
+               [ "$frontend_health" = "healthy" ]; then
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "stack failed to become healthy"
+          docker compose -f docker-compose.test.yml logs --tail=200
+          exit 1
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: webui/frontend/package-lock.json
+
+      - name: Install frontend deps (host)
+        working-directory: webui/frontend
+        run: |
+          npm ci --no-audit --no-fund
+          npx playwright install --with-deps chromium
+
+      - name: Run Playwright
+        working-directory: webui/frontend
+        run: npm run test:e2e:playwright
+        env:
+          BACKEND_URL: "http://localhost:8000"
+
+      - name: Upload Playwright artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-artifacts
+          path: |
+            webui/frontend/playwright-report/
+            webui/frontend/test-results/
+          if-no-files-found: ignore
+
+      - name: Stop docker-compose stack
+        if: always()
+        run: |
+          docker compose -f docker-compose.test.yml down -v

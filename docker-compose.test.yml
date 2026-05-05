@@ -1,0 +1,65 @@
+# docker-compose.test.yml -- spin up backend + frontend dev servers
+# for E2E test runs (Cypress + Playwright).
+#
+# Usage:
+#   docker compose -f docker-compose.test.yml up -d
+#   # ...wait for health (the frontend depends_on backend healthy)
+#   cd webui/frontend && npm run test:e2e:cypress
+#   cd webui/frontend && npm run test:e2e:playwright
+#   docker compose -f docker-compose.test.yml down
+#
+# A SQLite test DB is mounted into a tmp volume so each fresh
+# `up` starts from an empty schema (init_db() creates the tables
+# on first request).
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: webui/backend/Dockerfile
+    image: pitantum-backend:test
+    container_name: pitantum-backend-test
+    environment:
+      # Use an ephemeral SQLite file inside a tmpfs volume so we
+      # don't pollute the host. The path is relative to the
+      # container's working directory (/app).
+      PITANTUM_DB_URL: "sqlite:////tmp/pitantum-test/timetable.db"
+      # Quiet uvicorn during E2E.
+      LOG_LEVEL: "warning"
+    ports:
+      - "8000:8000"
+    volumes:
+      - backend-tmp:/tmp/pitantum-test
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request; \
+            urllib.request.urlopen(\"http://localhost:8000/api/health\")' || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+
+  frontend:
+    build:
+      context: .
+      dockerfile: webui/frontend/Dockerfile
+    image: pitantum-frontend:test
+    container_name: pitantum-frontend-test
+    environment:
+      # The frontend uses cy.env / process.env BACKEND_URL when the
+      # E2E tests run; the dev server itself doesn't need a backend
+      # URL (the tests inject it).
+      VITE_BACKEND_URL: "http://backend:8000"
+    ports:
+      - "5173:5173"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:5173/ || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+
+volumes:
+  backend-tmp:

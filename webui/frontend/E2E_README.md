@@ -49,18 +49,83 @@ Test specs in `playwright/tests/*.spec.ts`. Currently parity for
 the most important Cypress tests (smoke, navigation, groups,
 classrooms).
 
-## CI considerations
+## Docker-compose orchestration
 
-The frameworks are NOT wired to CI yet. To wire them, an orchestrator
-needs to:
+A reusable stack is shipped at the repo root (`docker-compose.test.yml`):
 
-1. Build the frontend (`npm run build`).
-2. Start the backend with a test DB (env `PITANTUM_DB_URL=sqlite:///:memory:`).
-3. Start the frontend preview (`npm run preview`).
-4. Wait for both to be reachable.
-5. Run `npm run test:e2e:cypress` (or `:playwright`).
+```bash
+# From the repo root
+docker compose -f docker-compose.test.yml up -d --build
 
-A docker-compose recipe is the natural next step; not in scope yet.
+# Wait for both services to be healthy (~10-30s the first time)
+docker compose -f docker-compose.test.yml ps
+
+# Run the E2E suites against the stack
+cd webui/frontend
+npm run test:e2e:cypress     # or: npm run test:e2e:playwright
+
+# Tear down (the SQLite DB is in a tmpfs volume; -v wipes it)
+docker compose -f docker-compose.test.yml down -v
+```
+
+The stack:
+- `backend` (image `pitantum-backend:test`): python:3.11-slim with
+  the engine + schedule modules on PYTHONPATH, uvicorn on :8000,
+  health endpoint `/api/health` polled every 5s.
+- `frontend` (image `pitantum-frontend:test`): node:20-alpine with
+  `npm ci` + `vite dev --host 0.0.0.0`, depends on backend healthy.
+
+The Dockerfiles live next to each app (`webui/backend/Dockerfile`,
+`webui/frontend/Dockerfile`); both are minimal and meant for E2E
+only -- production-grade images are a separate concern.
+
+## CI
+
+Workflow source: [`docs/ci_e2e_workflow.yml.txt`](../../docs/ci_e2e_workflow.yml.txt).
+
+Two parallel jobs (`cypress` + `playwright`), each with the same
+shape:
+
+1. Build the docker-compose stack (`docker compose up -d --build`).
+2. Poll until both services report `healthy` (60 retries x 5s).
+3. `npm ci` on the host, install `chromium` for Playwright.
+4. Run the E2E suite (`npm run test:e2e:cypress` / `:playwright`).
+5. Upload artifacts on failure: cypress screenshots/videos /
+   playwright-report / compose logs.
+6. Tear down the stack with `down -v`.
+
+Triggers:
+- `pull_request` to `main` when frontend, backend, engine, schedule
+  or compose files change.
+- `workflow_dispatch` for manual runs from the GitHub UI.
+
+Per-job timeout: 25 minutes.
+
+### Activating the workflow
+
+The yaml file is shipped at `docs/ci_e2e_workflow.yml.txt` (NOT
+under `.github/workflows/` directly) because the OAuth token used
+to push commits does not carry the `workflow` scope. To enable the
+CI:
+
+```bash
+mkdir -p .github/workflows
+cp docs/ci_e2e_workflow.yml.txt .github/workflows/e2e.yml
+git add .github/workflows/e2e.yml
+git commit -m "ci: enable e2e workflow"
+# Push with a token that has the `workflow` scope, OR use the
+# GitHub web UI to upload the file under .github/workflows/.
+git push
+```
+
+To debug locally exactly the way CI does:
+```bash
+docker compose -f docker-compose.test.yml up -d --build
+cd webui/frontend
+npm ci
+npm run test:e2e:cypress
+docker compose -f docker-compose.test.yml down -v
+```
 
 ## Adding tests
 
