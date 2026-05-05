@@ -30,11 +30,16 @@ I profili sono:
   35 aule. Un istituto medio.
 \item \texttt{big}: 40 classi, 75 docenti, 1000 studenti,
   50 aule. Un istituto grande.
-\item \texttt{huge}: 50 classi, 100 docenti, 1250 studenti,
+\item \texttt{huge}: 50 classi, $\sim$95 docenti, 1250 studenti,
   60 aule. Un polo scolastico.
-\item \texttt{superhuge}: 80 classi, 160 docenti, 2000
+\item \texttt{superhuge}: 80 classi, $\sim$160 docenti, 2000
   studenti, 80 aule. 16 sezioni $\times$ 5 anni di liceo
   scientifico.
+\item \texttt{mega}: 100 classi, $\sim$174 docenti, $\sim$2500
+  studenti, 100 aule. 20 sezioni $\times$ 5 anni con mix di 8
+  indirizzi (Scientifico 6, ScienzeApplicate 4, ScienzeUmane 3,
+  Linguistico FRA-TED 2, Linguistico FRA-SPA 2, EconomicoSociale
+  FRA/SPA/TED 1 ciascuno). Banco di prova MEGA-scale.
 \end{itemize}
 
 \section{Pipeline end-to-end: tempi totali}
@@ -281,12 +286,104 @@ si attivano per scuole oltre 200 classi.}
 \label{tab:bench-cross}
 \end{table}
 
+\section{Branch-and-Price su HUGE e MEGA}
+\label{sec:bench-bp-huge-mega}
+
+Lo scenario \texttt{mega} (100 classi, $\sim$174 docenti) e il
+suo cugino minore \texttt{huge} (50 classi, $\sim$95 docenti)
+sono i banchi di prova naturali per la pipeline
+Branch-and-Price (cap.~\ref{ch:tecniche_avanzate}). I numeri
+riportati qui sotto sono misurati su scenari sintetici
+calibrati per riprodurre le proporzioni dei profili
+\texttt{engine/big\_mock\_school.py} (4 materie, ogni cattedra
+4 ore in un singolo giorno cosi che H1/H2/H3 siano soddisfatte
+per costruzione, distribuzione delle classi a blocchi contigui
+sui pool docenti). Il sorgente \`e
+\texttt{tests/benchmarks/test\_bp\_huge\_mega.py}, eseguito con
+le quattro tecniche di scalabilit\`a tutte attive:
+\textbf{Ryan-Foster recursive tree}, \textbf{box-step dual
+stabilization} ($\alpha=0{,}2$), \textbf{column management}
+(pool max 10\,000 con purge per RC EWMA su 20 iter) e
+\textbf{parallel pricing} (\texttt{ProcessPoolExecutor}).
+
+\begin{table}[h]
+\centering
+\sffamily\small
+\begin{tabular}{lrrrrr}
+\toprule
+Scala & Classi & Docenti & Cattedre & $t_{BP}$ & HARD \\
+\midrule
+\texttt{huge} &  50 &  95 & 200 & 2{,}57\,s & si \\
+\texttt{mega} & 100 & 174 & 400 & 5{,}95\,s & si \\
+\bottomrule
+\end{tabular}
+\caption{Tempi del Branch-and-Price su scenari sintetici
+HUGE/MEGA. Entrambi finiscono molto sotto target
+(5\,min/30\,min) perche' lo scenario sintetico e'
+strutturalmente facile (cattedra = blocco di 4 ore in un solo
+giorno). Su istanze reali con distribuzione giornaliera meno
+regolare il tempo per iterazione cresce; il target
+30\,min per MEGA \`e calibrato su quel regime.}
+\label{tab:bench-bp-scale}
+\end{table}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.75\linewidth]{benchmarks/figures/bp_time_by_scale}
+\caption{Tempo di convergenza del Branch-and-Price (scala
+logaritmica). Le linee tratteggiate orizzontali rappresentano
+i target di tempo per ciascuna scala (5\,min per HUGE,
+30\,min per MEGA).}
+\label{fig:bench-bp-time}
+\end{figure}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.75\linewidth]{benchmarks/figures/bp_columns_by_scale}
+\caption{Dimensione finale del pool di colonne dopo il loop
+Branch-and-Price.}
+\label{fig:bench-bp-cols}
+\end{figure}
+
+\section{Quando il Branch-and-Price conviene}
+\label{sec:bench-bp-when}
+
+Domanda pratica: \emph{vale la pena attivare la pipeline BP per
+la mia scuola?} Risposta misurata in funzione della taglia:
+
+\begin{itemize}
+\item \textbf{Sotto 30 classi}: la pipeline standard (Phase A
+  monolitica + Phase B per giorno) \`e pi\`u veloce. La modalit\`a
+  \texttt{iterative-diversified} di \texttt{column\_generation}
+  (master LP + pattern enrichment + completion fallback) basta
+  per migliorare il SOFT senza pagare il costo del BP loop.
+\item \textbf{30--80 classi}: la decomposizione spettrale o
+  per curriculum guida la Phase B; il BP con granularit\`a
+  \texttt{teacher-class} o \texttt{class} pu\`o ridurre il SOFT
+  ma il guadagno in tempo \`e trascurabile.
+\item \textbf{Oltre 80 classi (MEGA)}: il BP con granularit\`a
+  \texttt{curriculum} \`e l'unico approccio strutturalmente
+  scalabile. La Phase A monolitica diventa marginalmente
+  feasible (300\,s+ con CP-SAT puro), il BP riesce in tempi
+  comparabili anche grazie al pricing parallelo.
+\end{itemize}
+
+In pratica $\pi$Tantum suggerisce automaticamente il
+percorso giusto: il valore \texttt{auto} per il parametro
+\texttt{granularity} viene risolto server-side dal numero
+di classi (cf.\ Sez.~4 di
+\texttt{docs/optimization\_strategies.md}).
+
 \begin{biblioparvabox}
 \begin{itemize}
 \item \texttt{proposals/benchmarks.md}: il documento sorgente
   con i log dettagliati e le decisioni di tuning.
 \item \texttt{proposals/analysis.md}: la motivazione delle
   scelte modellistiche.
+\item \texttt{tests/benchmarks/test\_bp\_huge\_mega.py}: il
+  benchmark sintetico HUGE/MEGA aggiornato.
+\item \texttt{tests/benchmarks/results/bp\_scalability.json}:
+  numeri reali misurati.
 \item \cite{patat}: per chi voglia sottomettere $\pi$Tantum
   a benchmark internazionali, la conferenza PATAT pubblica
   istanze standard.
