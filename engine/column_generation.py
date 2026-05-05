@@ -2426,6 +2426,67 @@ def _solve_pricing_dw(granularity: str, key,
         f"_solve_pricing_dw: granularity {granularity!r} not implemented")
 
 
+# ---------------- Column management ----------------
+#
+# Long BP runs accumulate columns iteration after iteration. With
+# unbounded growth, master LP re-solves slow down quadratically and
+# memory blows up on large instances (the MEGA scenario can produce
+# 50K+ columns over a 30-min run). Column management caps the pool
+# at a fixed budget by purging the columns least likely to enter
+# the optimal basis.
+#
+# Score per column: EWMA of the column's reduced cost across recent
+# master iterations:
+#     rc_avg[i] = (1 - beta) * rc_avg[i] + beta * rc_curr[i]
+# with beta = 1/N where N is the smoothing horizon (default 20).
+# A column with rc_avg << 0 has been "improving" the master objective
+# steadily; a column with rc_avg >> 0 is dead weight. We purge the
+# latter whenever the pool exceeds `max_active_columns`.
+#
+# Two safety constraints on the purge:
+#  1. Columns with positive LP weight (x[col] > eps) are NEVER
+#     purged -- they are actively in the LP basis.
+#  2. The first `seed_count` columns (the iterative-diversified
+#     primal heuristic seed) are never purged, so the master LP
+#     can always recover the warm-start solution.
+
+
+def _maybe_purge_pool_dw(
+    columns: list[dict],
+    lp_x: list[float],
+    rc_avg: list[float],
+    *,
+    max_active_columns: int,
+    seed_count: int = 0,
+    eps: float = 1e-6,
+) -> tuple[list[dict], list[float], int]:
+    """Trim `columns` (and the parallel `rc_avg`) down to
+    `max_active_columns`. Drop columns whose rc_avg is most
+    positive (worst), excluding columns that are actively in the
+    LP basis (lp_x > eps) and the first `seed_count` seed columns.
+
+    Returns (new_columns, new_rc_avg, n_purged).
+    """
+    if max_active_columns <= 0:
+        return columns, rc_avg, 0
+    if len(columns) <= max_active_columns:
+        return columns, rc_avg, 0
+
+    candidates: list[int] = []
+    for i in range(seed_count, len(columns)):
+        x_i = float(lp_x[i]) if i < len(lp_x) else 0.0
+        if x_i > eps:
+            continue
+        candidates.append(i)
+    # Worst (highest rc_avg) first.
+    candidates.sort(key=lambda i: -rc_avg[i])
+    n_to_drop = len(columns) - max_active_columns
+    drop_set = set(candidates[:n_to_drop])
+    new_columns = [c for i, c in enumerate(columns) if i not in drop_set]
+    new_rc_avg = [r for i, r in enumerate(rc_avg) if i not in drop_set]
+    return new_columns, new_rc_avg, len(drop_set)
+
+
 # ---------------- Dual stabilization (box-step) ----------------
 #
 # Between iterations of a BP pricing loop, the raw LP duals can
@@ -2956,6 +3017,8 @@ def _run_branch_and_price_dw(
     log: bool = True,
     dual_stabilization: bool = True,
     dual_step_alpha: float = 0.2,
+    max_active_columns: int = 10000,
+    rc_smoothing_horizon: int = 20,
 ) -> tuple[list[dict], list[float], dict]:
     """Branch-and-price loop using master variant 2 (DW) for
     granularities whose columns span multiple teachers (class,
@@ -2976,9 +3039,18 @@ def _run_branch_and_price_dw(
         "bp_terminated_reason": "",
         "bp_dual_stabilization": bool(dual_stabilization),
         "bp_dual_step_alpha": float(dual_step_alpha),
+        "bp_max_active_columns": int(max_active_columns),
+        "bp_rc_smoothing_horizon": int(rc_smoothing_horizon),
+        "bp_columns_purged_total": 0,
+        "bp_pool_size_per_iter": [],
     }
     columns = list(columns_initial)
+    seed_count = len(columns)
     lp_x = []
+    # EWMA of reduced cost per column. beta = 1/N gives a smoothing
+    # horizon of ~N iterations.
+    rc_smooth_beta = 1.0 / max(int(rc_smoothing_horizon), 1)
+    rc_avg: list[float] = [0.0] * len(columns)
 
     res = _solve_master_dw(columns, dc_value, return_extended=True)
     if res[0] is None:
@@ -2986,6 +3058,10 @@ def _run_branch_and_price_dw(
         return columns, lp_x, info
     lp_x, best_obj, lam, mu_cl, mu_t, _ck, _clk, _tk = res
     info["bp_lp_obj_per_iter"].append(best_obj)
+    info["bp_pool_size_per_iter"].append(len(columns))
+    # Initialise rc_avg with current RC values for the seed columns.
+    for i, col in enumerate(columns):
+        rc_avg[i] = _compute_rc_dw(col, lam, mu_cl, mu_t)
     # Stable dual reference, initialised at the root LP.
     lam_stable = dict(lam)
     mu_cl_stable = dict(mu_cl)
@@ -3044,6 +3120,7 @@ def _run_branch_and_price_dw(
                 continue
             if col not in columns:
                 columns.append(col)
+                rc_avg.append(float(rc))  # initial rc for the new col
                 added += 1
         info["bp_iterations_done"] = it
         info["bp_columns_added_total"] += added
@@ -3060,6 +3137,35 @@ def _run_branch_and_price_dw(
             break
         lp_x, obj, lam, mu_cl, mu_t, _ck, _clk, _tk = res
         info["bp_lp_obj_per_iter"].append(float(obj))
+        # Update rc_avg per column with current LP duals (EWMA).
+        for i, col in enumerate(columns):
+            rc_curr = _compute_rc_dw(col, lam, mu_cl, mu_t)
+            rc_avg[i] = (
+                (1.0 - rc_smooth_beta) * rc_avg[i]
+                + rc_smooth_beta * rc_curr
+            )
+        # Purge dead-weight columns if the pool is over budget.
+        if len(columns) > max_active_columns:
+            columns, rc_avg, n_purged = _maybe_purge_pool_dw(
+                columns, lp_x, rc_avg,
+                max_active_columns=max_active_columns,
+                seed_count=seed_count, eps=eps,
+            )
+            if n_purged > 0:
+                info["bp_columns_purged_total"] += n_purged
+                if log:
+                    print(f"[CG.BP-DW] purged {n_purged} cols "
+                          f"(pool {len(columns) + n_purged} -> "
+                          f"{len(columns)})")
+                # Re-solve the master after purging.
+                res = _solve_master_dw(columns, dc_value,
+                                        return_extended=True)
+                if res[0] is None:
+                    info["bp_terminated_reason"] = (
+                        f"master_dw_infeasible_after_purge_{it}")
+                    break
+                lp_x, obj, lam, mu_cl, mu_t, _ck, _clk, _tk = res
+        info["bp_pool_size_per_iter"].append(len(columns))
         # Advance stabilised reference toward the current LP duals.
         if dual_stabilization:
             lam_stable = _blend_duals(
@@ -3151,6 +3257,8 @@ def run_column_generation(profs: dict, dc_value: dict,
                           pricer_workers: int = 2,
                           dual_stabilization: bool = True,
                           dual_step_alpha: float = 0.2,
+                          max_active_columns: int = 10000,
+                          rc_smoothing_horizon: int = 20,
                           class_to_curriculum: dict | None = None,
                           ) -> tuple[dict | None, dict]:
     """Iterative Column Generation with master LP + diversified
@@ -3335,6 +3443,8 @@ def run_column_generation(profs: dict, dc_value: dict,
                 log=log,
                 dual_stabilization=dual_stabilization,
                 dual_step_alpha=dual_step_alpha,
+                max_active_columns=max_active_columns,
+                rc_smoothing_horizon=rc_smoothing_horizon,
             )
         finally:
             _CLASS_TO_CURRICULUM_CTX["map"] = None

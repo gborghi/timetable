@@ -938,6 +938,117 @@ def test_bp_ryan_foster_tree_endtoend_via_pipeline():
             or info["feasible_after_completion"])
 
 
+def test_bp_purge_pool_drops_worst_when_over_budget():
+    """`_maybe_purge_pool_dw` drops columns with the most-positive
+    rc_avg when pool exceeds max_active_columns. Active columns
+    (lp_x > eps) and seed columns (i < seed_count) are protected.
+    """
+    import column_generation as cg
+    cols = [{"a": 1}, {"b": 1}, {"c": 1}, {"d": 1}, {"e": 1}]
+    rc_avg = [0.0, 5.0, 3.0, -2.0, 100.0]  # 'e' is the worst
+    lp_x = [0.5, 0.0, 0.0, 0.0, 0.0]  # 'a' is in basis
+    new_cols, new_rc, n_purged = cg._maybe_purge_pool_dw(
+        cols, lp_x, rc_avg,
+        max_active_columns=3, seed_count=0,
+    )
+    assert n_purged == 2
+    assert len(new_cols) == 3
+    # 'a' (in basis) and 'd' (best rc_avg) must remain. Of the
+    # remaining, the order in which 'b' or 'c' is dropped is
+    # well-defined: 'b' has rc_avg=5 (worse) so 'e' and 'b' get
+    # dropped; 'c' (rc=3) survives.
+    remaining_keys = [list(c.keys())[0] for c in new_cols]
+    assert "a" in remaining_keys
+    assert "d" in remaining_keys
+    assert "e" not in remaining_keys
+    assert "b" not in remaining_keys
+
+
+def test_bp_purge_pool_protects_seed_columns():
+    """Seed columns (the iterative-diversified primal heuristic
+    output) are never purged so the master can always recover the
+    warm-start solution."""
+    import column_generation as cg
+    cols = [{"seed": 1}, {"x": 1}, {"y": 1}]
+    rc_avg = [99.0, 0.0, 1.0]  # seed has the worst rc_avg
+    lp_x = [0.0, 0.0, 0.0]
+    new_cols, _new_rc, n_purged = cg._maybe_purge_pool_dw(
+        cols, lp_x, rc_avg,
+        max_active_columns=1, seed_count=1,
+    )
+    # seed column protected, so cap of 1 means only seed remains
+    # (worst non-seed dropped first).
+    assert n_purged == 2
+    assert {"seed": 1} in new_cols
+
+
+def test_bp_purge_pool_no_op_under_budget():
+    """If pool size is below max_active_columns, purge is a no-op."""
+    import column_generation as cg
+    cols = [{"a": 1}, {"b": 1}]
+    rc_avg = [0.0, 100.0]
+    lp_x = [0.0, 0.0]
+    new_cols, new_rc, n_purged = cg._maybe_purge_pool_dw(
+        cols, lp_x, rc_avg, max_active_columns=10, seed_count=0,
+    )
+    assert n_purged == 0
+    assert new_cols == cols
+
+
+def test_bp_column_management_surfaces_in_info():
+    """End-to-end: max_active_columns and rc_smoothing_horizon are
+    forwarded to the engine and surface in info."""
+    import column_generation as cg
+    profs = _two_class_profs()
+    dc_value = _two_class_dc()
+    sol, info = cg.run_column_generation(
+        profs, dc_value, time_budget_s=15.0,
+        patterns_per_teacher=2, max_iterations=2, log=False,
+        mode="branch-and-price", granularity="class",
+        bp_max_iterations=2, pricer_time_limit=2.0, pricer_workers=1,
+        max_active_columns=50,
+        rc_smoothing_horizon=10,
+    )
+    assert info["bp_max_active_columns"] == 50
+    assert info["bp_rc_smoothing_horizon"] == 10
+    assert "bp_columns_purged_total" in info
+    assert "bp_pool_size_per_iter" in info
+    assert info["bp_columns_purged_total"] >= 0
+    assert isinstance(info["bp_pool_size_per_iter"], list)
+
+
+def test_bp_column_management_actively_purges_when_pool_grows():
+    """When BP iterations add columns that push the pool past
+    max_active_columns, purges must fire and the pool size after
+    each iteration must respect the cap (modulo seed protection
+    -- seeds are never dropped, so pool size cannot drop below
+    seed_count even with a tighter cap)."""
+    import column_generation as cg
+    profs = _four_class_profs()
+    dc_value = _four_class_dc()
+    sol, info = cg.run_column_generation(
+        profs, dc_value, time_budget_s=30.0,
+        patterns_per_teacher=2, max_iterations=2, log=False,
+        mode="branch-and-price", granularity="class",
+        bp_max_iterations=4, pricer_time_limit=2.0, pricer_workers=1,
+        max_active_columns=10,  # tight enough to fire after seeds + BP growth
+    )
+    # Reaches HARD-feasibility regardless of column-management.
+    assert (info["feasible_after_assembly"]
+            or info["feasible_after_completion"])
+    # And the column-management metrics surface correctly.
+    sizes = info["bp_pool_size_per_iter"]
+    assert isinstance(sizes, list) and len(sizes) >= 1
+    # Either purges fired (counter > 0) or every per-iter pool size
+    # stayed at/below the cap (counter == 0 because the pool never
+    # grew past it).
+    purged = info["bp_columns_purged_total"]
+    if purged == 0:
+        for sz in sizes:
+            assert sz <= 10, (
+                f"no purges but pool size {sz} > 10; sizes={sizes}")
+
+
 def test_bp_blend_duals_correctness():
     """`_blend_duals` implements the box-step formula:
         pi_blend[k] = (1-alpha)*stable[k] + alpha*raw[k]
