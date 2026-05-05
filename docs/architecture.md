@@ -263,3 +263,136 @@ in modo che `import metaheuristics`, `import cpsat_v2_timetable`,
 codice solver. I router che lanciano l'ottimizzazione fanno
 `import metaheuristics as meta` lazily (dentro le funzioni) per non
 appesantire il boot.
+
+## Solver: vincoli italiani C1 + C2 + C3 e lock nativi
+
+Aggiornamento 2026-05-04/05: l'engine ora modella nativamente in
+CP-SAT cinque famiglie di vincoli specifici della scuola italiana
+che prima erano solo schema-level o gestiti via snapshot/restore.
+
+### Lock nativi (sostituiscono snapshot/restore)
+
+`Assignment.locked = True` (toggle dalla UI) si traduce in vincoli
+CP-SAT diretti:
+- **Phase A** (`solve_phase_a`): per ogni `(prof, class, subject,
+  day, n_locked)` derivato dai Lesson lockati, `day_count[(p, cl,
+  subj, d)] >= n_lock`.
+- **Phase B** (`solve_phase_b_for_day`): per ogni `(prof, class,
+  subject, hour)` lockato, `slot[(p, cl, subj, h)] == 1`.
+
+Pre-flight `validate_locks_vs_constraints` confronta i lock con
+free_day del docente, max_hours_per_day della classe, vincoli HARD
+di compresenza. Le violazioni sono restituite come 400 al POST
+prima che la run parta. Pipeline supportate: tutte
+(monolitica + temporale + spectral_v2 + curriculum + metis +
+column_generation + ALNS/VNS/Lagrangian + classroom_assignment).
+
+### C1 -- Compresenze (CoteachGroup)
+
+Due varianti, entrambe enforced come vincoli CP-SAT:
+
+**Shared** (lab di chimica con assistente, ecc.):
+- IntVar `coday_count[(gid, d)]` in `[0, n_hours]`, sum_d == n_hours.
+- `day_count[principal, X, S, d] >= coday_count[gid, d]`.
+- `day_count[codoc, X, S, d] == coday_count[gid, d]`.
+- Phase B: BoolVar `coslot[(gid, h)]`, sum_h == coday[d];
+  `slot[member, X, S, h] >= coslot[(gid, h)]` per ogni member.
+- Codoc triples escluse da `cl_day_load` e `ore_per_classe` (le ore
+  vengono contate via il principal).
+
+**Shadow** (sostegno DVA):
+- `Assignment.is_support = True`.
+- `slot[(sost, X, sost, h)] <= pr_per_cl_h[(X, h)]` -- la presenza
+  del sostegno implica la classe gia' in lezione.
+- Triple di sostegno escluse dal class-busy aggregator.
+
+### C1 -- Potenziamento (Legge 107)
+
+`Assignment.is_potenziamento = True`, `class_id = NULL`. Cattedra
+senza-classe, ore schedulate ma non producono `Lesson`. Il prof
+diventa prioritario nel tab `/assenze-supplenze`.
+- IntVar `pot_day_count[(p, d)]` in `[0, MAX_PROF_HOURS_PER_DAY=5]`,
+  sum_d == pot_total.
+- `pot_day_count[(p, d)] + prof_day_load[(p, d)] <= 5` (cap
+  giornaliero combinato cattedre + potenziamento).
+- Cap settimanale HARD: 30 ore (5 ore/giorno x 6 giorni).
+- Salvato in `dc_value` con chiave namespacata
+  `("__pot__", prof, d)`.
+
+### C2 -- Parallel groups intra-classe
+
+`Assignment.parallel_group_id` lega N Assignments della stessa
+classe da schedulare nello stesso slot (es. religione + alternativa
+in 3B):
+- Phase A: `day_count[m1, d] == day_count[m2, d]` per ogni d.
+  Members[1:] esclusi da `cl_day_load` e `ore_per_classe`.
+- Phase B: `slot[m1, h] == slot[m2, h]` per ogni h. Class-busy
+  aggregator usa `parallel_subj_to_busy_key`: tutti i membri della
+  parallela condividono la stessa busy_key, quindi la classe conta
+  come busy ONCE anche con N membri.
+
+### C3 -- Inter-class StudyGroup scheduling
+
+Modello dati Opzione B (cfr. data_model.md):
+- `Assignment.group_id` nullable (XOR con `class_id`).
+- `CoteachGroup.group_id` nullable (XOR con `class_id`).
+- `Lesson.group_name` nullable.
+
+Solver:
+- `engine_io.group_assignments_for_solver(db)` carica le
+  Assignments con group_id, risolve `home_class_names` via
+  `GroupMembership` + `Student.class_id`.
+- Phase A: augmenta `triples` con `(teacher, group_name, subject,
+  n_hours)`. Il `group_name` NON e' in `classes` (no `cl_day_load`,
+  no HARD-2 sulla virtual class).
+- Phase A vincolo per-day capacity:
+  `cl_day_load[home_cl, d] + sum(group_day_count[g, d]) <= 6`
+  su ogni classe-madre toccata. Sostegno-sul-gruppo escluso (segue
+  un'altra lezione, non aggiunge slot).
+- Phase A Hall-like fix: `prof_day_load <= max(cl_day_load)` e'
+  saltato per profs con SOLO classi virtuali (altrimenti
+  forzerebbe le loro ore a 0).
+- Phase B: la triple di gruppo entra in `triples_active`. Il
+  class-busy aggregator aggiunge il group_slot come `subj_busy_var`
+  per OGNI classe-madre dei membri, sotto la busy_key
+  `__grp__<group_name>__<subject>`. L'invariante
+  `sum(subj_busy) == pr` garantisce che la classe-madre non faccia
+  altre lezioni nello stesso slot.
+- Phase B HARD-2 / no-holes: applicate solo alle classi-con-direct
+  triples. Una classe toccata SOLO da gruppi e' esente.
+
+### C3 -- Coteach + sostegno su gruppo
+
+CoteachGroup.group_id (XOR class_id): le ore di compresenza si
+applicano alla virtual class del gruppo. `coteach_groups_for_solver`
+ritorna `class_name = group_name`; il modello CP-SAT esistente
+(`coday_count`, `coslot`, principal/codoc) lavora invariato.
+
+Sostegno con `is_support=True` + `group_id`: il prof segue lo
+studente DVA dentro il gruppo.
+- Phase A: `day_count[sost, G, sost, d] <= sum(non-support group
+  day_counts on day d)` -- il prof puo' essere nel gruppo solo nei
+  giorni in cui il gruppo si riunisce.
+- Phase B: `slot[sost, G, sost, h] <= OR(slot[m, G, subj, h] for
+  non-support members of G)` -- la shadow segue una lezione
+  effettiva.
+- Sostegno escluso sia dal class-busy aggregator che dal vincolo
+  per-day capacity sui home_classes.
+
+### Pipeline supportate per C3
+
+| Pipeline                 | C3 fully native | Note                            |
+|--------------------------|-----------------|----------------------------------|
+| monolitica (Phase B)     | si              | path canonico                    |
+| decomposition_temporal   | si              | thread-through completo         |
+| decomposition_spectral_v2| via mono        | force_mono_for_groups=True      |
+| decomposition_curriculum | via mono        | come sopra (loop condiviso)     |
+| decomposition_metis      | via mono        | come sopra (loop condiviso)     |
+| column_generation        | parziale        | usa la soluzione iniziale       |
+| ALNS / VNS / Lagrangian  | parziale        | rispettano locks; non rimodellano gruppi |
+
+`force_mono_for_groups`: quando `group_assignments` non e' vuoto,
+`run_partitioned_pipeline` (usata da curriculum + metis e dal
+fallback di spectral) fa partire `solve_monolithic_day` per ogni
+giorno, usando la cache `dc_value` del master ma saltando le tre
+fasi A/B/C che non modellano `group_slot` vars.

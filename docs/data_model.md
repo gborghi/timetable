@@ -114,8 +114,35 @@ sapere "che forma ha" un orario quando lo si guarda dall'interno.
 - **teacher_subjects** -- abilitazioni per materia.
 - **subject_group_weights** -- mapping `subject -> classe-di-concorso ->
   weight`. Riproduce in DB il `cconcorsopersubject` dei pickle storici.
-- **assignments** -- *cattedre*: una riga per `(teacher, class, subject)`
-  con `hours` e `locked`. Unique `(class_id, subject)`.
+- **assignments** -- *cattedre*: una riga per
+  `(teacher, [class | group | potenziamento], subject)` con `hours`
+  e `locked`. Tre forme:
+  - **Class-target** (default): `class_id` non null, `group_id`
+    NULL, `is_potenziamento=False`.
+  - **Group-target** (Task C3): `class_id` NULL, `group_id` non
+    null (FK a study_groups), `is_potenziamento=False`.
+  - **Potenziamento** (Task C1, Legge 107): `class_id` NULL,
+    `group_id` NULL, `is_potenziamento=True`. Cattedra
+    senza-classe schedulata come ore di organico potenziato.
+
+  Flag aggiuntivi:
+  - `coteach_group_id`: FK a `coteach_groups` se questa Assignment
+    e' membro di una compresenza shared.
+  - `is_support`: `True` se e' una cattedra di sostegno DVA. Il
+    target puo' essere class-bound o group-bound (Task C3 sostegno
+    sul gruppo).
+  - `parallel_group_id` (Task C2): id arbitrario di gruppo
+    parallelo intra-classe; le Assignment con lo stesso
+    `(parallel_group_id, class_id)` sono schedulate nello stesso
+    slot (es. religione + alternativa).
+
+  Vincolo XOR a livello applicativo (validato in
+  `validate_coteach_sostegno_potenziamento`): esattamente una di
+  `class_id`, `group_id` valorizzata, OPPURE entrambe NULL solo se
+  `is_potenziamento=True`. Unique vincoli:
+  - Legacy: `(class_id, subject)` (resta per back-compat).
+  - Task C1: `(teacher_id, class_id, subject, is_support)` --
+    permette N codoc per la stessa cattedra di compresenza.
 
 ### Disponibilita' / vincoli
 
@@ -144,18 +171,41 @@ sapere "che forma ha" un orario quando lo si guarda dall'interno.
 - **teacher_curriculum_preferences** -- *Phase-A only*: come sopra
   ma a livello di indirizzo (`curriculum_code`). HARD `forbidden`
   esclude TUTTE le classi di quell'indirizzo dal docente.
-- **coteaching_rules** -- compresenze: per `(class, subject)` la
-  lezione e' co-tenuta da `n_teachers` docenti, `required` (HARD/SOFT),
-  `weight`, `teacher_csv` opzionale.
+- **coteaching_rules** -- LEGACY: compresenze: per `(class, subject)`
+  la lezione e' co-tenuta da `n_teachers` docenti, `required` (HARD/
+  SOFT), `weight`, `teacher_csv` opzionale. Deprecata in favore di
+  `coteach_groups` (Task C1, vedi sotto).
+- **coteach_groups** (Task C1+C3) -- una compresenza per
+  `(target, subject)` di `n_hours`. Il `target` e' una **classe**
+  (`class_id` non null) oppure un **gruppo** (`group_id` non null,
+  Task C3). Vincolo XOR: esattamente una delle due e' valorizzata.
+  `kind` discrimina (al momento solo `shared`); `required` (HARD/
+  SOFT), `weight`. I docenti membri sono `Assignment` collegate via
+  `coteach_group_id`. Convenzione del solver: `members[0]` (ordinati
+  per ore desc) e' il **principal** (cattedra completa), gli altri
+  sono **codoc** (ore = `n_hours`).
+- **study_groups** (Task C3) -- gruppi che attraversano una o piu'
+  classi. Membri studenti via `group_memberships`. Ore-materia via
+  `group_subject_hours`. Tipi (`kind`): `splitting`, `language`,
+  `religion`, `support`, `other`.
+- **group_memberships** (Task C3) -- studente in gruppo (XOR a
+  livello applicativo: uno studente puo' essere in piu' gruppi
+  contemporaneamente, ma sempre con la sua classe-madre).
+- **group_subject_hours** (Task C3) -- per ogni `(group, subject)`
+  le ore-settimanali di quella materia per il gruppo.
 
 ### Soluzioni e scheduling
 
 - **solutions** -- una riga per soluzione salvata. `obj_value`,
   `metrics_json`, `is_active`, `kind` (phase_b / lns / sa / ts / ils /
   manual / imported).
-- **lessons** -- una riga per ora di lezione `(solution_id, teacher_name,
-  class_name, subject, day, hour)` con `classroom_name` opzionale e
-  `cotaught_with` (CSV di docenti aggiuntivi).
+- **lessons** -- una riga per ora di lezione
+  `(solution_id, teacher_name, class_name, subject, day, hour)` con
+  `classroom_name` opzionale e `cotaught_with` (CSV di docenti
+  aggiuntivi). Task C3: `group_name` opzionale -- quando non NULL,
+  la lezione appartiene a uno StudyGroup invece di una classe;
+  `class_name` in quel caso e' convenzionalmente uguale al nome del
+  gruppo (label del solver). XOR logico tra le due forme.
 - **day_counts** -- cache della Phase A: conteggio per
   `(solution, teacher, class, subject, day)`. Usato dal repair durante
   il drag-and-drop.

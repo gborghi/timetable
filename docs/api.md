@@ -210,9 +210,42 @@ Sub-endpoint:
 
 ### Assignments (cattedre)
 `/api/assignments` -- list flat. `/api/assignments/by-class` --
-group by class. `PUT /api/assignments/manual` (ManualAssignmentIn) --
-modifica un'assegnazione e valida HARD. `POST /api/assignments/lock/{id}`
--- toggle locked. `DELETE /api/assignments/{id}`.
+group by class (chiavi sintetiche `__potenziamento__` per le
+cattedre Legge 107 e `__group_<group_name>__` per le cattedre
+Task C3 agganciate a uno StudyGroup). `PUT /api/assignments/manual`
+(ManualAssignmentIn) -- modifica un'assegnazione e valida HARD.
+`POST /api/assignments/lock/{id}` -- toggle locked.
+`DELETE /api/assignments/{id}`.
+
+**ManualAssignmentIn (estesa per C3)**:
+```json
+{
+  "class_name": "2A" | "",   // richiesto se target_kind='class'
+  "subject": "Matematica",
+  "teacher_name": "Rossi",
+  "locked": true,
+  "target_kind": "class" | "group",   // default 'class'
+  "group_name": "_GruppoSpa_" | null, // richiesto se target_kind='group'
+  "hours": 3 | null            // richiesto se target_kind='group'
+}
+```
+Quando `target_kind='group'`:
+- `class_id` dell'Assignment risultante e' NULL.
+- `group_id` punta a `StudyGroup` con `name == group_name`.
+- `hours` viene preso dal payload (per le cattedre-classe le ore
+  vengono prese da `class_subjects.hours_per_week`).
+- Vincolo XOR validato sia client-side (modale `/assignments`)
+  che server-side (`optimization.manual_assignment`).
+
+**Output esteso** (`new_assignment`):
+```json
+{
+  "id": 42, "teacher_id": 7, "teacher_name": "Rossi",
+  "class_id": null, "class_name": null,
+  "group_id": 3, "group_name": "_GruppoSpa_",
+  "subject": "Spagnolo", "hours": 3, "locked": false
+}
+```
 
 `GET /api/assignments/teachers-for-subject?subject=NAME` -- ritorna
 i docenti abilitati con load corrente (`assigned_hours`, `max_hours`,
@@ -222,7 +255,40 @@ i docenti abilitati con load corrente (`assigned_hours`, `max_hours`,
 / `over` / `under` / `empty`. Usato dal pannello warnings.
 
 ### CoTeaching
-`/api/coteaching` -- CRUD su `coteaching_rules`.
+`/api/coteaching` -- CRUD su `coteaching_rules` (LEGACY).
+La nuova entita' canonica e' `coteach_groups` (Task C1+C3): gestita
+attraverso il form `/assignments` quando i membri vengono aggiunti
+con `coteach_group_id` settato. Una `CoteachGroup` puo' avere come
+target una classe (`class_id`) oppure uno StudyGroup (`group_id`,
+Task C3, XOR con class_id).
+
+### Groups (StudyGroup, Task C3)
+`/api/groups` -- CRUD su `study_groups`. Endpoint:
+- `GET /api/groups` -- lista. Filtri DSL come per altri tab,
+  pagination, sort. Restituisce `n_students` e `n_classes_touched`.
+- `GET /api/groups/{id}` -- dettaglio singolo con `student_ids[]`,
+  `subject_hours[]`.
+- `POST /api/groups` (StudyGroupIn) -- crea.
+- `PUT /api/groups/{id}` -- aggiorna (sostituisce `student_ids`
+  e `subject_hours`).
+- `DELETE /api/groups/{id}` -- cascade delete su memberships e
+  subject_hours.
+
+**StudyGroupIn**:
+```json
+{
+  "name": "Spagnolo 2A+2B",
+  "nickname": "ESP",
+  "kind": "language",
+  "description": "Seconda lingua, gruppo articolato cross-class",
+  "student_ids": [12, 47, 88, ...],
+  "subject_hours": [{"subject": "Spagnolo", "hours_per_week": 3}]
+}
+```
+
+Per agganciare una cattedra al gruppo: `PUT /api/assignments/manual`
+con `target_kind='group'`, `group_name=<name>`, `hours=N`. Il solver
+schedulera' le N ore con il vincolo classi-madre busy.
 
 ## Dataset / mock / import
 
