@@ -78,3 +78,10 @@ docs/*.synctex.gz
 *.pfx
 .env
 .env.*
+
+# E2E test artifacts (Cypress + Playwright)
+webui/frontend/cypress/screenshots/
+webui/frontend/cypress/videos/
+webui/frontend/cypress/downloads/
+webui/frontend/playwright-report/
+webui/frontend/test-results/
