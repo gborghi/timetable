@@ -938,6 +938,66 @@ def test_bp_ryan_foster_tree_endtoend_via_pipeline():
             or info["feasible_after_completion"])
 
 
+def test_bp_blend_duals_correctness():
+    """`_blend_duals` implements the box-step formula:
+        pi_blend[k] = (1-alpha)*stable[k] + alpha*raw[k]
+    over the union of keys (missing keys default to 0)."""
+    import column_generation as cg
+    stable = {("k1",): 1.0, ("k2",): 2.0}
+    raw = {("k2",): 4.0, ("k3",): 6.0}
+    blend = cg._blend_duals(stable, raw, alpha=0.25)
+    assert abs(blend[("k1",)] - 0.75) < 1e-9   # 0.75*1 + 0.25*0
+    assert abs(blend[("k2",)] - 2.5) < 1e-9     # 0.75*2 + 0.25*4
+    assert abs(blend[("k3",)] - 1.5) < 1e-9     # 0.75*0 + 0.25*6
+
+
+def test_bp_dual_stabilization_surfaces_in_info():
+    """End-to-end: dual_stabilization=True is reflected in info
+    dict, dual_stabilization=False likewise."""
+    import column_generation as cg
+    profs = _two_class_profs()
+    dc_value = _two_class_dc()
+    sol_on, info_on = cg.run_column_generation(
+        profs, dc_value, time_budget_s=15.0,
+        patterns_per_teacher=2, max_iterations=2, log=False,
+        mode="branch-and-price", granularity="teacher-class",
+        bp_max_iterations=2, pricer_time_limit=2.0, pricer_workers=1,
+        dual_stabilization=True, dual_step_alpha=0.2,
+    )
+    assert info_on["bp_dual_stabilization"] is True
+    assert info_on["bp_dual_step_alpha"] == 0.2
+
+    sol_off, info_off = cg.run_column_generation(
+        profs, dc_value, time_budget_s=15.0,
+        patterns_per_teacher=2, max_iterations=2, log=False,
+        mode="branch-and-price", granularity="teacher-class",
+        bp_max_iterations=2, pricer_time_limit=2.0, pricer_workers=1,
+        dual_stabilization=False,
+    )
+    assert info_off["bp_dual_stabilization"] is False
+
+
+def test_bp_dual_stabilization_does_not_break_feasibility():
+    """Stabilization must not introduce HARD-feasibility regressions
+    on any granularity."""
+    import column_generation as cg
+    profs = _two_class_profs()
+    dc_value = _two_class_dc()
+    for gran in ("teacher-class", "class"):
+        sol, info = cg.run_column_generation(
+            profs, dc_value, time_budget_s=15.0,
+            patterns_per_teacher=2, max_iterations=2, log=False,
+            mode="branch-and-price", granularity=gran,
+            bp_max_iterations=2, pricer_time_limit=2.0,
+            pricer_workers=1,
+            dual_stabilization=True, dual_step_alpha=0.2,
+        )
+        assert (info["feasible_after_assembly"]
+                or info["feasible_after_completion"]), (
+            f"stabilization regressed feasibility for {gran}: "
+            f"{info['warnings']}")
+
+
 def test_bp_ryan_foster_branching_invoked_in_pipeline():
     """End-to-end: branching_strategy='ryan_foster' triggers the
     full recursive RF tree in the BP-DW pipeline. info dict must

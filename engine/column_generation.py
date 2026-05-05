@@ -2426,6 +2426,35 @@ def _solve_pricing_dw(granularity: str, key,
         f"_solve_pricing_dw: granularity {granularity!r} not implemented")
 
 
+# ---------------- Dual stabilization (box-step) ----------------
+#
+# Between iterations of a BP pricing loop, the raw LP duals can
+# swing wildly -- causing the pricer to oscillate and generate
+# columns that flip back and forth. Stabilization blends the raw
+# duals with a "stable" reference vector that moves slowly:
+#
+#     pi_blend = (1 - alpha) * pi_stable + alpha * pi_raw
+#
+# After pricing with `pi_blend`, `pi_stable` is updated to
+# `pi_blend`. With small alpha (0.1-0.2), the blended duals
+# converge smoothly to the LP optimum without the per-iteration
+# oscillation.
+
+
+def _blend_duals(stable: dict, raw: dict, alpha: float) -> dict:
+    """Box-step blend: pi_blend[k] = (1 - alpha) * stable[k]
+    + alpha * raw[k] for every key in either dict (missing keys
+    default to 0)."""
+    a = float(alpha)
+    keys = set(stable.keys()) | set(raw.keys())
+    out: dict = {}
+    for k in keys:
+        s = float(stable.get(k, 0.0))
+        r = float(raw.get(k, 0.0))
+        out[k] = (1.0 - a) * s + a * r
+    return out
+
+
 def _run_branch_and_price(
     patterns: dict, profs: dict, dc_value: dict,
     *,
@@ -2439,6 +2468,8 @@ def _run_branch_and_price(
     t0: float,
     eps: float = 1e-6,
     log: bool = True,
+    dual_stabilization: bool = True,
+    dual_step_alpha: float = 0.2,
 ) -> tuple[dict, float, dict[str, int], dict]:
     """Real Branch-and-Price loop (no Ryan-Foster yet -- next
     commit). Iteratively:
@@ -2458,6 +2489,9 @@ def _run_branch_and_price(
         "bp_terminated_reason": "",
     }
 
+    info["bp_dual_stabilization"] = bool(dual_stabilization)
+    info["bp_dual_step_alpha"] = float(dual_step_alpha)
+
     sel, obj, lam, mu, _x, _cols = _solve_master(
         patterns, profs, dc_value, return_extended=True)
     if sel is None:
@@ -2466,6 +2500,9 @@ def _run_branch_and_price(
     best_obj = float(obj)
     best_selection = dict(sel)
     info["bp_lp_obj_per_iter"].append(best_obj)
+    # Initialize the stable dual reference at the root LP duals.
+    lam_stable: dict = dict(lam)
+    mu_stable: dict = dict(mu)
 
     for it in range(1, bp_max_iterations + 1):
         if time.time() - t0 > time_budget_s:
@@ -2481,6 +2518,18 @@ def _run_branch_and_price(
                 print(f"[CG.BP] {e}")
             break
 
+        # Box-step dual blend: pi_blend = (1-alpha)*pi_stable
+        # + alpha*pi_raw. Pricing uses pi_blend; pi_stable is then
+        # advanced toward pi_raw by alpha.
+        if dual_stabilization:
+            lam_for_pricing = _blend_duals(
+                lam_stable, lam, dual_step_alpha)
+            mu_for_pricing = _blend_duals(
+                mu_stable, mu, dual_step_alpha)
+        else:
+            lam_for_pricing = lam
+            mu_for_pricing = mu
+
         added = 0
         min_rc = 0.0
         for key in keys:
@@ -2488,7 +2537,8 @@ def _run_branch_and_price(
                 break
             try:
                 pat, rc = _solve_pricing(
-                    granularity, key, profs, dc_value, lam, mu,
+                    granularity, key, profs, dc_value,
+                    lam_for_pricing, mu_for_pricing,
                     time_limit=pricer_time_limit,
                     workers=pricer_workers,
                     locks=locks,
@@ -2503,12 +2553,8 @@ def _run_branch_and_price(
                 min_rc = rc
             if pat is None:
                 continue
-            # The pricer always emits a single-teacher pattern;
-            # find the teacher and append.
             teachers_in_pat = {k[0] for k in pat.keys()}
             if len(teachers_in_pat) != 1:
-                # Defensive: skip multi-teacher columns until master
-                # variant 2 lands.
                 continue
             tname = next(iter(teachers_in_pat))
             existing = patterns.setdefault(tname, [])
@@ -2530,6 +2576,12 @@ def _run_branch_and_price(
                 f"master_infeasible_at_iter_{it}")
             break
         info["bp_lp_obj_per_iter"].append(float(obj_it))
+        # Advance stabilised reference toward the current LP duals.
+        if dual_stabilization:
+            lam_stable = _blend_duals(
+                lam_stable, lam_it, dual_step_alpha)
+            mu_stable = _blend_duals(
+                mu_stable, mu_it, dual_step_alpha)
         if obj_it < best_obj - eps:
             best_obj = float(obj_it)
             best_selection = dict(sel_it)
@@ -2902,6 +2954,8 @@ def _run_branch_and_price_dw(
     t0: float,
     eps: float = 1e-6,
     log: bool = True,
+    dual_stabilization: bool = True,
+    dual_step_alpha: float = 0.2,
 ) -> tuple[list[dict], list[float], dict]:
     """Branch-and-price loop using master variant 2 (DW) for
     granularities whose columns span multiple teachers (class,
@@ -2920,6 +2974,8 @@ def _run_branch_and_price_dw(
         "bp_lp_obj_per_iter": [],
         "bp_min_rc_per_iter": [],
         "bp_terminated_reason": "",
+        "bp_dual_stabilization": bool(dual_stabilization),
+        "bp_dual_step_alpha": float(dual_step_alpha),
     }
     columns = list(columns_initial)
     lp_x = []
@@ -2930,6 +2986,10 @@ def _run_branch_and_price_dw(
         return columns, lp_x, info
     lp_x, best_obj, lam, mu_cl, mu_t, _ck, _clk, _tk = res
     info["bp_lp_obj_per_iter"].append(best_obj)
+    # Stable dual reference, initialised at the root LP.
+    lam_stable = dict(lam)
+    mu_cl_stable = dict(mu_cl)
+    mu_t_stable = dict(mu_t)
 
     for it in range(1, bp_max_iterations + 1):
         if time.time() - t0 > time_budget_s:
@@ -2945,6 +3005,19 @@ def _run_branch_and_price_dw(
                 print(f"[CG.BP-DW] {e}")
             break
 
+        # Box-step blend.
+        if dual_stabilization:
+            lam_for_pricing = _blend_duals(
+                lam_stable, lam, dual_step_alpha)
+            mu_cl_for_pricing = _blend_duals(
+                mu_cl_stable, mu_cl, dual_step_alpha)
+            mu_t_for_pricing = _blend_duals(
+                mu_t_stable, mu_t, dual_step_alpha)
+        else:
+            lam_for_pricing = lam
+            mu_cl_for_pricing = mu_cl
+            mu_t_for_pricing = mu_t
+
         added = 0
         min_rc = 0.0
         for key in keys:
@@ -2953,7 +3026,8 @@ def _run_branch_and_price_dw(
             try:
                 col, rc = _solve_pricing_dw(
                     granularity, key, profs, dc_value,
-                    lam, mu_cl, mu_t,
+                    lam_for_pricing, mu_cl_for_pricing,
+                    mu_t_for_pricing,
                     time_limit=pricer_time_limit,
                     workers=pricer_workers,
                     locks=locks,
@@ -2986,6 +3060,14 @@ def _run_branch_and_price_dw(
             break
         lp_x, obj, lam, mu_cl, mu_t, _ck, _clk, _tk = res
         info["bp_lp_obj_per_iter"].append(float(obj))
+        # Advance stabilised reference toward the current LP duals.
+        if dual_stabilization:
+            lam_stable = _blend_duals(
+                lam_stable, lam, dual_step_alpha)
+            mu_cl_stable = _blend_duals(
+                mu_cl_stable, mu_cl, dual_step_alpha)
+            mu_t_stable = _blend_duals(
+                mu_t_stable, mu_t, dual_step_alpha)
         if obj < best_obj - eps:
             best_obj = float(obj)
             if log:
@@ -3067,6 +3149,8 @@ def run_column_generation(profs: dict, dc_value: dict,
                           bp_max_iterations: int = 8,
                           pricer_time_limit: float = 5.0,
                           pricer_workers: int = 2,
+                          dual_stabilization: bool = True,
+                          dual_step_alpha: float = 0.2,
                           class_to_curriculum: dict | None = None,
                           ) -> tuple[dict | None, dict]:
     """Iterative Column Generation with master LP + diversified
@@ -3249,6 +3333,8 @@ def run_column_generation(profs: dict, dc_value: dict,
                 time_budget_s=time_budget_s,
                 t0=t0,
                 log=log,
+                dual_stabilization=dual_stabilization,
+                dual_step_alpha=dual_step_alpha,
             )
         finally:
             _CLASS_TO_CURRICULUM_CTX["map"] = None
@@ -3321,6 +3407,8 @@ def run_column_generation(profs: dict, dc_value: dict,
             time_budget_s=time_budget_s,
             t0=t0,
             log=log,
+            dual_stabilization=dual_stabilization,
+            dual_step_alpha=dual_step_alpha,
         )
         info.update({f"bp_{k.removeprefix('bp_')}": v
                       for k, v in bp_info.items()
