@@ -1,0 +1,4 @@
+scenario,combination,tightness_in,tightness_score,run_idx,seed,status,t_phase_a,t_phase_b,t_post,t_total,obj_value,n_lessons,hard_feasible,n_assignments,n_classes,n_teachers,error_msg
+liceo_piccolo,phase_b,0.2,0.177,0,42,ok,30.13,2.82,0.0,51.15,790.0,309,True,113,10,25,
+liceo_piccolo,phase_b+lns,0.2,0.177,0,42,ok,30.11,3.24,5.36,54.97,670.0,309,True,113,10,25,
+liceo_piccolo,phase_b+sa,0.2,0.177,0,42,ok,30.13,3.39,5.14,54.88,680.0,309,True,113,10,25,
