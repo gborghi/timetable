@@ -2426,6 +2426,75 @@ def _solve_pricing_dw(granularity: str, key,
         f"_solve_pricing_dw: granularity {granularity!r} not implemented")
 
 
+# ---------------- Parallel pricing ----------------
+#
+# Pricing keys for most granularities are pairwise independent
+# (one CP-SAT per teacher / teacher-class / teacher-day / class /
+# class-day / curriculum -- the sub-problems do not share
+# variables). The exception is the `day` granularity (one global
+# pricing key per day spanning all teachers/classes), where there
+# is only DAYS=6 keys and parallelism gives little speedup.
+#
+# CP-SAT is CPU-bound and the OR-tools call releases the GIL
+# only partially (model construction holds the GIL). For real
+# speedup we use ProcessPoolExecutor (each worker is its own
+# Python process), not ThreadPoolExecutor.
+
+
+def _solve_pricing_v1_picklable(
+    granularity, key, profs, dc_value, lam, mu,
+    time_limit, workers, locks, group_assignments, eps,
+):
+    """Module-level picklable entry point for parallel variant-1
+    pricing via ProcessPoolExecutor."""
+    return _solve_pricing(
+        granularity, key, profs, dc_value, lam, mu,
+        time_limit=time_limit, workers=workers,
+        locks=locks, group_assignments=group_assignments,
+        eps=eps,
+    )
+
+
+def _solve_pricing_dw_picklable(
+    granularity, key, profs, dc_value,
+    lam_cov, mu_cl, mu_t,
+    time_limit, workers, locks, group_assignments, eps,
+    class_to_curriculum,
+):
+    """Module-level picklable entry point for parallel variant-2
+    (DW) pricing. Sets the per-process curriculum context (Windows
+    `spawn` workers don't inherit module-level state)."""
+    global _CLASS_TO_CURRICULUM_CTX
+    if class_to_curriculum is not None:
+        _CLASS_TO_CURRICULUM_CTX["map"] = class_to_curriculum
+    try:
+        return _solve_pricing_dw(
+            granularity, key, profs, dc_value,
+            lam_cov, mu_cl, mu_t,
+            time_limit=time_limit, workers=workers,
+            locks=locks, group_assignments=group_assignments,
+            eps=eps,
+        )
+    finally:
+        _CLASS_TO_CURRICULUM_CTX["map"] = None
+
+
+def _resolve_parallel_workers(parallel_workers, n_keys):
+    """Decide how many worker processes to use:
+      - 0 or 1: sequential (no executor).
+      - <= 0: default to os.cpu_count() // 2 (cap at n_keys).
+      - n: capped at n_keys.
+    Sequential is always chosen if n_keys < 2 or parallel_workers
+    resolves to <= 1."""
+    if parallel_workers is None or parallel_workers <= 0:
+        cpu = os.cpu_count() or 1
+        n = max(1, cpu // 2)
+    else:
+        n = int(parallel_workers)
+    n = min(n, max(1, int(n_keys)))
+    return n if n > 1 else 1
+
+
 # ---------------- Column management ----------------
 #
 # Long BP runs accumulate columns iteration after iteration. With
@@ -2531,6 +2600,7 @@ def _run_branch_and_price(
     log: bool = True,
     dual_stabilization: bool = True,
     dual_step_alpha: float = 0.2,
+    parallel_workers: int = 0,
 ) -> tuple[dict, float, dict[str, int], dict]:
     """Real Branch-and-Price loop (no Ryan-Foster yet -- next
     commit). Iteratively:
@@ -2552,6 +2622,7 @@ def _run_branch_and_price(
 
     info["bp_dual_stabilization"] = bool(dual_stabilization)
     info["bp_dual_step_alpha"] = float(dual_step_alpha)
+    info["bp_parallel_workers_requested"] = int(parallel_workers)
 
     sel, obj, lam, mu, _x, _cols = _solve_master(
         patterns, profs, dc_value, return_extended=True)
@@ -2593,23 +2664,81 @@ def _run_branch_and_price(
 
         added = 0
         min_rc = 0.0
-        for key in keys:
-            if time.time() - t0 > time_budget_s:
-                break
+        n_workers = _resolve_parallel_workers(
+            parallel_workers, len(keys))
+        if n_workers > 1:
+            from concurrent.futures import (
+                ProcessPoolExecutor, as_completed,
+            )
+            results: list = []
             try:
-                pat, rc = _solve_pricing(
-                    granularity, key, profs, dc_value,
-                    lam_for_pricing, mu_for_pricing,
-                    time_limit=pricer_time_limit,
-                    workers=pricer_workers,
-                    locks=locks,
-                    group_assignments=group_assignments,
-                    eps=eps,
-                )
-            except NotImplementedError:
-                info["bp_terminated_reason"] = (
-                    f"granularity_not_implemented:{granularity}")
-                break
+                with ProcessPoolExecutor(max_workers=n_workers) as ex:
+                    fut_to_key = {
+                        ex.submit(
+                            _solve_pricing_v1_picklable,
+                            granularity, key, profs, dc_value,
+                            lam_for_pricing, mu_for_pricing,
+                            pricer_time_limit, pricer_workers,
+                            locks, group_assignments, eps,
+                        ): key
+                        for key in keys
+                    }
+                    for fut in as_completed(fut_to_key):
+                        key = fut_to_key[fut]
+                        try:
+                            pat, rc = fut.result()
+                        except NotImplementedError:
+                            info["bp_terminated_reason"] = (
+                                f"granularity_not_implemented:{granularity}")
+                            pat, rc = None, 0.0
+                        results.append((key, pat, rc))
+            except Exception as e:  # noqa: BLE001
+                # Fall back to sequential if anything goes wrong
+                # with parallel infrastructure (pickle errors,
+                # process spawn failures, etc.).
+                if log:
+                    print(f"[CG.BP] parallel pricing failed "
+                          f"({type(e).__name__}: {e}); fall back "
+                          f"to sequential")
+                results = []
+                for key in keys:
+                    try:
+                        pat, rc = _solve_pricing(
+                            granularity, key, profs, dc_value,
+                            lam_for_pricing, mu_for_pricing,
+                            time_limit=pricer_time_limit,
+                            workers=pricer_workers,
+                            locks=locks,
+                            group_assignments=group_assignments,
+                            eps=eps,
+                        )
+                    except NotImplementedError:
+                        info["bp_terminated_reason"] = (
+                            f"granularity_not_implemented:{granularity}")
+                        pat, rc = None, 0.0
+                    results.append((key, pat, rc))
+        else:
+            results = []
+            for key in keys:
+                if time.time() - t0 > time_budget_s:
+                    break
+                try:
+                    pat, rc = _solve_pricing(
+                        granularity, key, profs, dc_value,
+                        lam_for_pricing, mu_for_pricing,
+                        time_limit=pricer_time_limit,
+                        workers=pricer_workers,
+                        locks=locks,
+                        group_assignments=group_assignments,
+                        eps=eps,
+                    )
+                except NotImplementedError:
+                    info["bp_terminated_reason"] = (
+                        f"granularity_not_implemented:{granularity}")
+                    break
+                results.append((key, pat, rc))
+
+        for _key, pat, rc in results:
             if rc < min_rc:
                 min_rc = rc
             if pat is None:
@@ -2625,6 +2754,7 @@ def _run_branch_and_price(
         info["bp_iterations_done"] = it
         info["bp_columns_added_total"] += added
         info["bp_min_rc_per_iter"].append(min_rc)
+        info.setdefault("bp_parallel_workers_used", n_workers)
 
         if added == 0:
             info["bp_terminated_reason"] = "no_improving_column"
@@ -3019,6 +3149,8 @@ def _run_branch_and_price_dw(
     dual_step_alpha: float = 0.2,
     max_active_columns: int = 10000,
     rc_smoothing_horizon: int = 20,
+    parallel_workers: int = 0,
+    class_to_curriculum: dict | None = None,
 ) -> tuple[list[dict], list[float], dict]:
     """Branch-and-price loop using master variant 2 (DW) for
     granularities whose columns span multiple teachers (class,
@@ -3043,6 +3175,7 @@ def _run_branch_and_price_dw(
         "bp_rc_smoothing_horizon": int(rc_smoothing_horizon),
         "bp_columns_purged_total": 0,
         "bp_pool_size_per_iter": [],
+        "bp_parallel_workers_requested": int(parallel_workers),
     }
     columns = list(columns_initial)
     seed_count = len(columns)
@@ -3096,35 +3229,94 @@ def _run_branch_and_price_dw(
 
         added = 0
         min_rc = 0.0
-        for key in keys:
-            if time.time() - t0 > time_budget_s:
-                break
+        n_workers = _resolve_parallel_workers(
+            parallel_workers, len(keys))
+        if n_workers > 1:
+            from concurrent.futures import (
+                ProcessPoolExecutor, as_completed,
+            )
+            results: list = []
             try:
-                col, rc = _solve_pricing_dw(
-                    granularity, key, profs, dc_value,
-                    lam_for_pricing, mu_cl_for_pricing,
-                    mu_t_for_pricing,
-                    time_limit=pricer_time_limit,
-                    workers=pricer_workers,
-                    locks=locks,
-                    group_assignments=group_assignments,
-                    eps=eps,
-                )
-            except NotImplementedError:
-                info["bp_terminated_reason"] = (
-                    f"granularity_not_implemented:{granularity}")
-                break
+                with ProcessPoolExecutor(max_workers=n_workers) as ex:
+                    fut_to_key = {
+                        ex.submit(
+                            _solve_pricing_dw_picklable,
+                            granularity, key, profs, dc_value,
+                            lam_for_pricing, mu_cl_for_pricing,
+                            mu_t_for_pricing,
+                            pricer_time_limit, pricer_workers,
+                            locks, group_assignments, eps,
+                            class_to_curriculum,
+                        ): key
+                        for key in keys
+                    }
+                    for fut in as_completed(fut_to_key):
+                        key = fut_to_key[fut]
+                        try:
+                            col, rc = fut.result()
+                        except NotImplementedError:
+                            info["bp_terminated_reason"] = (
+                                f"granularity_not_implemented:{granularity}")
+                            col, rc = None, 0.0
+                        results.append((key, col, rc))
+            except Exception as e:  # noqa: BLE001
+                if log:
+                    print(f"[CG.BP-DW] parallel pricing failed "
+                          f"({type(e).__name__}: {e}); fall back "
+                          f"to sequential")
+                results = []
+                for key in keys:
+                    try:
+                        col, rc = _solve_pricing_dw(
+                            granularity, key, profs, dc_value,
+                            lam_for_pricing, mu_cl_for_pricing,
+                            mu_t_for_pricing,
+                            time_limit=pricer_time_limit,
+                            workers=pricer_workers,
+                            locks=locks,
+                            group_assignments=group_assignments,
+                            eps=eps,
+                        )
+                    except NotImplementedError:
+                        info["bp_terminated_reason"] = (
+                            f"granularity_not_implemented:{granularity}")
+                        col, rc = None, 0.0
+                    results.append((key, col, rc))
+        else:
+            results = []
+            for key in keys:
+                if time.time() - t0 > time_budget_s:
+                    break
+                try:
+                    col, rc = _solve_pricing_dw(
+                        granularity, key, profs, dc_value,
+                        lam_for_pricing, mu_cl_for_pricing,
+                        mu_t_for_pricing,
+                        time_limit=pricer_time_limit,
+                        workers=pricer_workers,
+                        locks=locks,
+                        group_assignments=group_assignments,
+                        eps=eps,
+                    )
+                except NotImplementedError:
+                    info["bp_terminated_reason"] = (
+                        f"granularity_not_implemented:{granularity}")
+                    break
+                results.append((key, col, rc))
+
+        for _key, col, rc in results:
             if rc < min_rc:
                 min_rc = rc
             if col is None:
                 continue
             if col not in columns:
                 columns.append(col)
-                rc_avg.append(float(rc))  # initial rc for the new col
+                rc_avg.append(float(rc))
                 added += 1
         info["bp_iterations_done"] = it
         info["bp_columns_added_total"] += added
         info["bp_min_rc_per_iter"].append(min_rc)
+        info.setdefault("bp_parallel_workers_used", n_workers)
 
         if added == 0:
             info["bp_terminated_reason"] = "no_improving_column"
@@ -3259,6 +3451,7 @@ def run_column_generation(profs: dict, dc_value: dict,
                           dual_step_alpha: float = 0.2,
                           max_active_columns: int = 10000,
                           rc_smoothing_horizon: int = 20,
+                          parallel_workers: int = 0,
                           class_to_curriculum: dict | None = None,
                           ) -> tuple[dict | None, dict]:
     """Iterative Column Generation with master LP + diversified
@@ -3445,6 +3638,8 @@ def run_column_generation(profs: dict, dc_value: dict,
                 dual_step_alpha=dual_step_alpha,
                 max_active_columns=max_active_columns,
                 rc_smoothing_horizon=rc_smoothing_horizon,
+                parallel_workers=parallel_workers,
+                class_to_curriculum=class_to_curriculum,
             )
         finally:
             _CLASS_TO_CURRICULUM_CTX["map"] = None
@@ -3519,6 +3714,7 @@ def run_column_generation(profs: dict, dc_value: dict,
             log=log,
             dual_stabilization=dual_stabilization,
             dual_step_alpha=dual_step_alpha,
+            parallel_workers=parallel_workers,
         )
         info.update({f"bp_{k.removeprefix('bp_')}": v
                       for k, v in bp_info.items()

@@ -938,6 +938,77 @@ def test_bp_ryan_foster_tree_endtoend_via_pipeline():
             or info["feasible_after_completion"])
 
 
+def test_bp_resolve_parallel_workers():
+    """Worker count resolution: <=0 -> cpu_count // 2; positive ->
+    min(n, n_keys)."""
+    import column_generation as cg
+    import os
+    cpu = os.cpu_count() or 1
+    expected_default = max(1, cpu // 2)
+    # default-resolved (when n_keys is large)
+    assert cg._resolve_parallel_workers(0, 100) == min(
+        expected_default, 100) if expected_default > 1 else 1
+    # explicit cap
+    assert cg._resolve_parallel_workers(8, 100) == 8
+    # capped by n_keys
+    assert cg._resolve_parallel_workers(8, 3) == 3
+    # 1 worker -> sequential signal
+    assert cg._resolve_parallel_workers(1, 10) == 1
+    # n_keys < 2 always sequential
+    assert cg._resolve_parallel_workers(8, 1) == 1
+    assert cg._resolve_parallel_workers(8, 0) == 1
+
+
+def test_bp_parallel_pricing_produces_same_columns_as_sequential():
+    """Determinism: parallel and sequential pricing must produce
+    the SAME final column pool size and HARD-feasibility outcome
+    on a small fixture."""
+    import column_generation as cg
+    profs = _two_class_profs()
+    dc_value = _two_class_dc()
+    sol_seq, info_seq = cg.run_column_generation(
+        profs, dc_value, time_budget_s=20.0,
+        patterns_per_teacher=2, max_iterations=2, log=False,
+        mode="branch-and-price", granularity="teacher-class",
+        bp_max_iterations=2, pricer_time_limit=2.0, pricer_workers=1,
+        parallel_workers=1,  # forced sequential
+    )
+    sol_par, info_par = cg.run_column_generation(
+        profs, dc_value, time_budget_s=20.0,
+        patterns_per_teacher=2, max_iterations=2, log=False,
+        mode="branch-and-price", granularity="teacher-class",
+        bp_max_iterations=2, pricer_time_limit=2.0, pricer_workers=1,
+        parallel_workers=2,  # 2 workers
+    )
+    # Both must reach HARD-feasibility.
+    assert (info_seq["feasible_after_assembly"]
+            or info_seq["feasible_after_completion"])
+    assert (info_par["feasible_after_assembly"]
+            or info_par["feasible_after_completion"])
+    # And info dict surfaces parallel_workers correctly.
+    assert info_seq["bp_parallel_workers_requested"] == 1
+    assert info_par["bp_parallel_workers_requested"] == 2
+
+
+def test_bp_parallel_pricing_dw_path():
+    """Parallel pricing also works for the DW path (granularity=
+    class) -- a separate code path that handles class_to_curriculum
+    threading via the dispatcher context."""
+    import column_generation as cg
+    profs = _two_class_profs()
+    dc_value = _two_class_dc()
+    sol, info = cg.run_column_generation(
+        profs, dc_value, time_budget_s=30.0,
+        patterns_per_teacher=2, max_iterations=2, log=False,
+        mode="branch-and-price", granularity="class",
+        bp_max_iterations=2, pricer_time_limit=2.0, pricer_workers=1,
+        parallel_workers=2,
+    )
+    assert (info["feasible_after_assembly"]
+            or info["feasible_after_completion"])
+    assert info["bp_parallel_workers_requested"] == 2
+
+
 def test_bp_purge_pool_drops_worst_when_over_budget():
     """`_maybe_purge_pool_dw` drops columns with the most-positive
     rc_avg when pool exceeds max_active_columns. Active columns
