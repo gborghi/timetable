@@ -1,15 +1,16 @@
 {
-  "mega_50": {
-    "timestamp": "2026-05-05T22:21:52",
-    "scale": "mega_50",
+  "huge": {
+    "timestamp": "2026-05-05T22:40:37",
+    "scale": "huge",
     "n_classes": 50,
-    "n_teachers": 50,
+    "n_teachers": 95,
+    "n_cattedre": 200,
     "granularity": "curriculum",
-    "t_bp_s": 1.9326915740966797,
+    "t_bp_s": 2.5721144676208496,
     "time_budget_s": 600.0,
     "hard_feasible": true,
     "soft_obj": null,
-    "n_columns": 80,
+    "n_columns": 136,
     "n_iterations": 1,
     "n_rf_nodes_explored": 1,
     "n_columns_purged": 0,
@@ -21,22 +22,27 @@
       "master LP infeasible all'iterazione 2"
     ]
   },
-  "mega_100": {
-    "timestamp": "2026-05-05T22:22:21",
-    "scale": "mega_100",
+  "mega": {
+    "timestamp": "2026-05-05T22:40:43",
+    "scale": "mega",
     "n_classes": 100,
-    "n_teachers": 100,
+    "n_teachers": 174,
+    "n_cattedre": 400,
     "granularity": "curriculum",
-    "t_bp_s": 5.221813917160034,
+    "t_bp_s": 5.952622175216675,
     "time_budget_s": 3600.0,
     "hard_feasible": true,
-    "soft_obj": 0.0,
-    "n_columns": 200,
+    "soft_obj": null,
+    "n_columns": 272,
     "n_iterations": 1,
     "n_rf_nodes_explored": 1,
     "n_columns_purged": 0,
     "parallel_workers_used": 1,
     "bp_terminated_reason": "no_improving_column",
-    "warnings": []
+    "warnings": [
+      "master LP infeasible al passo iniziale (catalogo insufficiente). Completion solver in fondo riempira' il vuoto.",
+      "master LP infeasible all'iterazione 1",
+      "master LP infeasible all'iterazione 2"
+    ]
   }
 }
