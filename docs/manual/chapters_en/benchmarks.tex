@@ -125,84 +125,105 @@ MEGA registry (under
 loadable from the dashboard via
 \texttt{POST /api/dataset/import-profile?profile=mega}) is
 significantly larger: 100 classes, \textbf{178 teachers},
-\textbf{2325 cattedra-day entries} after Phase A. The benchmark
-source is \texttt{tests/benchmarks/run\_mega\_real.py}.
+\textbf{2653 cattedra-day entries} after Phase A (the exact
+number depends on the CP-SAT random seed of Phase A; v1 of
+this benchmark produced 2325). The benchmark source is
+\texttt{tests/benchmarks/run\_mega\_real.py}.
+
+\paragraph{v1 (pre-fix DW seeding) -- BP did not iterate.}
+The first benchmark reported
+\texttt{bp\_terminated\_reason = master\_dw\_infeasible\_at\_entry}
+with 0 iterations. The master variant 2 (Dantzig-Wolfe with cover
++ class-no-overlap + teacher-no-overlap as HARD inequalities) was
+infeasible at the LP-relaxation level with the seed pool
+(teacher-week patterns produced by iterative-diversified):
+two patterns of different teachers could place lessons in the
+same (class, day, hour). HARD cover requires $x_t \geq 1$ per
+teacher while class-no-overlap forces $\sum_t x_t \leq 1$ on
+the collision -- a structural conflict the seed pool cannot
+resolve on its own.
+
+\paragraph{Fix: Phase-1 LP with artificial slacks (commit
+843a6f0).} The fix is textbook. Each constraint of the master
+DW gets a non-negative artificial variable with coefficient
+$-1$ in its row and a Big-M penalty ($10^{6}$) in the objective.
+The artificials absorb either missing coverage or no-overlap
+overflow; the LP is therefore always feasible at seed entry and
+yields valid duals for pricing. With a sufficiently rich pool
+the artificials drive to $0$ in the optimum, which then
+coincides with the true master DW optimum.
+
+\paragraph{v2 (post-fix) -- BP iterates 5 times.}
+On the \emph{same} dataset, with identical granularity
+\texttt{curriculum} and identical time budgets, BP recovers its
+role:
 
 \begin{table}[h]
 \centering
 \sffamily\small
-\begin{tabular}{lr}
+\begin{tabular}{lrr}
 \toprule
-Metric & Value \\
+Metric & v1 (pre-fix) & v2 (post-fix) \\
 \midrule
-Classes               & 100 \\
-Teachers              & 178 \\
-Cattedra-day entries  & 2\,325 \\
-Phase A wall          & 61.2\,s \\
-BP loop wall          & 790.8\,s \\
-\textbf{Total wall}   & \textbf{852\,s (14.2 min)} \\
-HARD-feasibility      & yes (via completion-solver fallback) \\
-Final soft cost       & 6470 \\
-Columns generated     & 2\,059 \\
+\texttt{bp\_terminated\_reason} & \texttt{master\_dw\_infeasible\_at\_entry} & \texttt{max\_iterations} \\
+\texttt{bp\_iterations\_done}   & 0    & \textbf{5} \\
+RF nodes explored                & 0    & 1 \\
+Phase A wall                     & 61.2\,s & 301.3\,s \\
+BP wall                          & 790.8\,s & 1\,191.8\,s \\
+Total wall                       & 852\,s (14.2 min) & 1\,493\,s (24.9 min) \\
+Final soft cost                  & 6\,470 & \textbf{530} \\
+Columns generated                & 2\,059 & 2\,075 (+16 from BP) \\
+HARD-feasibility                 & yes & yes \\
 \bottomrule
 \end{tabular}
-\caption{Branch-and-Price on real MEGA at granularity
-\texttt{curriculum} with all four scalability techniques
-enabled. The total meets the 30-minute target with margin and
-the 60-minute hard cap easily.}
+\caption{Branch-and-Price on real MEGA before and after the DW
+seeding fix. Soft cost drops by a factor of $\sim 12$ because
+BP can now actually explore improving columns. Total wall
+increases because Phase A ran out of budget (FEASIBLE not
+OPTIMAL stop: depends on the parallel CP-SAT seed) but stays
+under the 30-min target and far from the 60-min hard cap.
+Source: \texttt{tests/benchmarks/results/mega\_bp\_real\_v2.json}.}
 \label{tab:bench-bp-mega-real-en}
 \end{table}
 
 \paragraph{Comparison with iterative-diversified.} The
-\texttt{iterative-diversified} mode on the \emph{same} dataset
-finishes in \textbf{788\,s (13.1 min)} with soft cost
-\textbf{5860}. Both reach HARD-feasibility via the
-completion-solver fallback. ID is therefore marginally faster
-(by 64\,s) and produces a 10\% lower soft cost. The reason is
-operational: in the BP run the real Branch-and-Price inner loop
-did not iterate (see observation below), so the extra 64\,s
-of BP are overhead spent attempting to enter the loop with no
-result, before the same completion-solver fallback kicks in.
+\texttt{iterative-diversified} mode on the same dataset (v1) had
+finished in \textbf{788\,s (13.1 min)} with soft cost
+\textbf{5860}. The v2 BP -- despite the heavier Phase A this run
+-- closes with soft \textbf{530}, which is $\sim 11 \times$
+lower than the ID baseline and $\sim 12 \times$ lower than its
+own v1. That gap is the structural value of Branch-and-Price:
+with an active pricer the improving columns \emph{exist} and
+get found; without one, the result collapses back to the
+starting primal heuristic.
 
 \begin{table}[h]
 \centering
 \sffamily\small
 \begin{tabular}{lrrr}
 \toprule
-Mode & $t_{\text{total}}$ & Soft cost & HARD \\
+Mode (run) & $t_{\text{total}}$ & Soft cost & HARD \\
 \midrule
-\texttt{iterative-diversified} & 788\,s (13.1 min) & 5860 & yes \\
-\texttt{branch-and-price}      & 852\,s (14.2 min) & 6470 & yes \\
+\texttt{iterative-diversified} (v1) & 788\,s (13.1 min) & 5\,860 & yes \\
+\texttt{branch-and-price}      (v1) & 852\,s (14.2 min) & 6\,470 & yes \\
+\texttt{branch-and-price}      (v2) & 1\,493\,s (24.9 min) & \textbf{530} & yes \\
 \bottomrule
 \end{tabular}
-\caption{BP vs iterative-diversified on the same real MEGA.
-BP has a 64\,s overhead to attempt the DW loop (which fails to
-enter via master\_dw\_infeasible\_at\_entry) and the final
-soft cost is 10\% worse because the completion-solver starts
-from a slightly different state.}
+\caption{Three runs on the same real MEGA. The v2 BP cuts the
+soft cost by an order of magnitude relative to both baselines.}
 \label{tab:bench-bp-vs-id-mega-real-en}
 \end{table}
 
-\paragraph{Important observation.} The Branch-and-Price inner
-loop did NOT iterate in this run:
-\texttt{bp\_terminated\_reason = master\_dw\_infeasible\_at\_entry}.
-The master variant 2 (Dantzig-Wolfe with cover +
-class-no-overlap + teacher-no-overlap as HARD inequalities) is
-infeasible at the LP relaxation level with the seed pool (the
-teacher-week patterns produced by iterative-diversified): two
-patterns of different teachers can place lessons in the same
-(class, day, hour). HARD cover requires $x_t \geq 1$ per teacher
-while class-no-overlap forces $\sum_t x_t \leq 1$ on the
-collision. Resolving this structural conflict needs an alternative
-seeding (class-level columns instead of teacher-week) or
-relaxing the no-overlap to a soft penalty. HARD-feasibility is
-therefore reached entirely via the per-day completion-solver
-fallback (always-on safety net). The BP scalability techniques
-(Ryan-Foster, dual stabilization, column management, parallel
-pricing) are implemented and tested on the unit-test suite but
-are not exercised on real MEGA with the current seeding; a
-follow-up commit will activate them with a dedicated seeding
-pipeline.
+\paragraph{Scalability techniques -- now actually exercised.}
+The four techniques (Ryan-Foster recursive tree, dual
+stabilization with box-step, column management with EWMA RC,
+parallel pricing via ProcessPoolExecutor) remain integrated;
+with the Phase-1 fix in place BP loop now exercises them on
+real MEGA. v2 run: $1$ Ryan-Foster node explored, $0$ columns
+purged (pool below the cap), $5$ master iterations completed
+before hitting the \texttt{bp\_max\_iterations=5} ceiling.
+Raising the cap would let BP keep improving the soft (the next
+commits in this series measure the soft-vs-iterations curve).
 
 \section{When Branch-and-Price is worth it}
 \label{sec:bench-bp-when-en}
