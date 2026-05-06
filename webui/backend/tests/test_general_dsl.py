@@ -128,6 +128,44 @@ def test_eval_giovanni_lab_fisica():
     assert G.evaluate(tree, world3) is False
 
 
+def test_parse_classroom_plesso_path():
+    """l.classroom.plesso parses as a 3-step Ref path."""
+    tree = G.parse(
+        'forall l in lessons where l.classroom.plesso == 1: true')
+    assert tree.kind == "QUANT"
+
+
+def test_eval_classroom_plesso_predicate_via_world_alias():
+    """``l.classroom.plesso`` resolves via the ``classroom_plesso``
+    pre-resolved field on the lesson dict (the same two-step chain
+    shortcut that ``l.classroom.type`` uses). Required for the
+    post-hoc evaluator to consume plesso commuting DSL clauses on
+    a finalised solution."""
+    tree = G.parse(
+        'forall l in lessons where l.classroom.plesso == 1: '
+        'l.hour < 14')
+    world = _world([], [
+        {"teacher": "T", "hour": 8, "day": 1, "class": "1A",
+         "subject": "Mat", "classroom": "A1", "classroom_type": "",
+         "classroom_plesso": 1},
+        {"teacher": "T", "hour": 9, "day": 1, "class": "1A",
+         "subject": "Mat", "classroom": "B1", "classroom_type": "",
+         "classroom_plesso": 2},
+    ])
+    assert G.evaluate(tree, world) is True
+    # And the negative: false body on the matched plesso must yield
+    # False if any plesso=1 lesson exists, True if none do.
+    tree2 = G.parse(
+        'forall l in lessons where l.classroom.plesso == 1: false')
+    assert G.evaluate(tree2, world) is False
+    world_no_p1 = _world([], [
+        {"teacher": "T", "hour": 9, "day": 1, "class": "1A",
+         "subject": "Mat", "classroom": "B1", "classroom_type": "",
+         "classroom_plesso": 2},
+    ])
+    assert G.evaluate(tree2, world_no_p1) is True
+
+
 def test_eval_implies():
     tree = G.parse("(exists l in lessons: l.teacher == X)"
                    " => (exists l in lessons: l.teacher == Y)")

@@ -524,7 +524,7 @@ _KNOWN_ENTITY_FIELDS: dict[str, set[str]] = {
                   "exemption_hours", "subject", "subjects"},
     "class":     {"name", "year", "section", "curriculum",
                   "n_students"},
-    "classroom": {"name", "kind", "type", "capacity", "tags"},
+    "classroom": {"name", "kind", "type", "capacity", "tags", "plesso"},
     "subject":   {"name"},
     "curriculum": {"name", "code", "score"},
     "group":     {"name", "kind"},
@@ -698,7 +698,8 @@ def build_world(db) -> dict[str, list]:
     ]
     out["classrooms"] = [
         {"name": r.name, "kind": r.kind, "type": r.kind,
-         "capacity": r.capacity}
+         "capacity": r.capacity,
+         "plesso": r.plesso_id}
         for r in rooms_by_id.values()
     ]
     out["subjects"] = [
@@ -783,12 +784,16 @@ def build_world(db) -> dict[str, list]:
                 a.tag.name for a in (r.tag_assignments or [])
                 if a.tag is not None
             })
+        room_plesso_by_name: dict[str, Any] = {
+            r.name: r.plesso_id for r in rooms_by_id.values()
+        }
         for l in db.query(models.Lesson).filter(
             models.Lesson.solution_id == active.id
         ).all():
             cr_name = l.classroom_name or ""
             cr_type = room_type_by_name.get(cr_name, "")
             cr_tags = room_tags_by_name.get(cr_name, [])
+            cr_plesso = room_plesso_by_name.get(cr_name)
             out["lessons"].append({
                 "teacher": l.teacher_name,
                 "class": l.class_name,
@@ -800,6 +805,7 @@ def build_world(db) -> dict[str, list]:
                 "classroom_type": cr_type,    # alias for l.classroom.type
                 "classroom_kind": cr_type,    # alias for l.classroom.kind
                 "classroom_tags": cr_tags,    # alias for l.classroom.tags
+                "classroom_plesso": cr_plesso,  # alias for l.classroom.plesso
                 "slot": (l.day, l.hour),
             })
     # Also populate the classrooms world dict with tags so DSLs that
