@@ -746,6 +746,189 @@ class MonolithicSolver(ConstraintModel):
 
 
 # ============================================================
+# PhaseBDaySolver -- OO entry point for per-day Phase B
+# ============================================================
+
+
+class PhaseBDaySolver:
+    """Object-oriented wrapper around ``cpsat_v2_timetable.solve_phase_b_for_day``.
+
+    The Phase B per-day function carries 380 lines of carefully
+    balanced HARD/SOFT logic (coteach groups, parallel groups, support
+    shadow, group/home-class busy propagation, locks, no-holes,
+    h11 presence, mat/ita/motorie pairs, sixth-hour and teacher gap
+    objectives). Re-implementing every branch in a fresh OO model
+    risks behavioural drift on the 100+ existing Phase B regression
+    tests. ``PhaseBDaySolver`` therefore composes over the proven
+    function: it exposes the OO interface (``solve()``, scope access,
+    DSL augmentation via ``via_dsl=True``) while delegating model
+    construction to the legacy code path. Zero-drift is preserved
+    structurally because the byte-identical model is built every time
+    the OO surface is invoked without DSL augmentation.
+
+    When ``via_dsl=True`` is passed at solve time, the DSL pipeline
+    activates as an *additional* constraint layer on top of the
+    legacy model: rules sourced from the database and/or extra DSL
+    expressions are compiled by ``DSLConstraintCompiler`` against the
+    same CP-SAT model right before the solver runs. The legacy hard
+    constraints stay intact; the DSL layer can only further restrict
+    the feasible set, never relax it.
+
+    Slot key convention
+    -------------------
+    The legacy function returns ``out[(prof, class, subject, day,
+    hour)] -> 0/1``. ``PhaseBDaySolver.solve()`` preserves this exact
+    output shape so existing callers of ``solve_phase_b_for_day`` can
+    be ported with zero behavioural change.
+
+    Future migration
+    ----------------
+    Once the OO catalogue (``MonolithicSolver`` + DSL seed pragmas)
+    grows the missing constraint families (coteach coslot vars,
+    parallel slot tying, support shadow, group home-class busy
+    propagation, teacher gap penalty), this wrapper can be replaced
+    with a direct subclass that builds the model from
+    ``ConstraintModel`` primitives. Until then, composition is the
+    safe migration path.
+    """
+
+    def __init__(
+        self,
+        profs: dict,
+        dc_value: dict,
+        day: int,
+        *,
+        classes: list | None = None,
+        triples: list | None = None,
+        class_profs: dict | None = None,
+        config: ConstraintConfig | None = None,
+        db: Any = None,
+        extra_dsl_expressions: list | None = None,
+    ):
+        self.profs = profs
+        self.dc_value = dc_value
+        self.day = int(day)
+        self.config = config or ConstraintConfig()
+        self.db = db
+        self.extra_dsl_expressions = list(extra_dsl_expressions or [])
+        # Lazy-build the index only when callers don't provide one;
+        # ``solve_phase_b_for_day`` happily re-derives ``classes`` /
+        # ``triples`` / ``class_profs`` from ``profs`` if needed but
+        # the public function expects them upfront.
+        if classes is None or triples is None or class_profs is None:
+            try:
+                from . import cpsat_v2_timetable as _cv2  # type: ignore
+            except ImportError:
+                import cpsat_v2_timetable as _cv2  # type: ignore
+            cl_built, tri_built, cp_built = _cv2.build_indices(profs)
+            classes = classes or cl_built
+            triples = triples or tri_built
+            class_profs = class_profs or cp_built
+        self.classes = classes
+        self.triples = triples
+        self.class_profs = class_profs
+        # Diagnostics surface for callers that want to inspect what
+        # the DSL augmentation actually emitted.
+        self.dsl_diagnostics: list[str] = []
+        # Last solve status string (set by ``solve()``).
+        self.last_status: str | None = None
+
+    # ------- compatibility properties -------
+
+    @property
+    def days(self) -> list[int]:
+        return [self.day]
+
+    @property
+    def hours(self) -> list[int]:
+        return list(HOURS)
+
+    @property
+    def scope(self) -> tuple:
+        return ("day", self.day)
+
+    def solve(
+        self,
+        *,
+        time_limit_s: float = 10.0,
+        workers: int = 4,
+        log: bool = False,
+        via_dsl: bool = False,
+        enforce_no_holes: bool | None = None,
+        locked_slots_for_day: list | None = None,
+        coteach_groups: list | None = None,
+        support_assignments: list | None = None,
+        parallel_groups: list | None = None,
+        group_assignments: list | None = None,
+    ):
+        """Build & solve the Phase-B-per-day CP-SAT model.
+
+        ``via_dsl=True``: load DSL constraints from ``self.db`` and
+        compile any ``extra_dsl_expressions`` provided at construction
+        as an additional HARD layer. The legacy hardcoded path stays
+        untouched (zero-drift on existing tests).
+        """
+        try:
+            from . import cpsat_v2_timetable as _cv2  # type: ignore
+        except ImportError:
+            import cpsat_v2_timetable as _cv2  # type: ignore
+
+        if enforce_no_holes is None:
+            enforce_no_holes = bool(self.config.enforce_no_holes)
+        if locked_slots_for_day is None:
+            # Translate 5-tuple locks (config.locks) into 4-tuple form
+            # expected by the legacy function -- only those matching
+            # this day.
+            locked_slots_for_day = [
+                (t, cl, s, h)
+                for (t, cl, s, d, h) in (self.config.locks or [])
+                if int(d) == self.day
+            ]
+        if coteach_groups is None:
+            coteach_groups = list(self.config.coteach_groups or [])
+        if support_assignments is None:
+            support_assignments = list(
+                self.config.support_assignments or [])
+        if parallel_groups is None:
+            parallel_groups = list(self.config.parallel_groups or [])
+        if group_assignments is None:
+            group_assignments = list(self.config.group_assignments or [])
+
+        out, status = _cv2.solve_phase_b_for_day(
+            self.day, self.profs, self.classes, self.triples,
+            self.class_profs, self.dc_value,
+            time_limit=time_limit_s, workers=workers, log=log,
+            enforce_no_holes=enforce_no_holes,
+            locked_slots_for_day=locked_slots_for_day,
+            coteach_groups=coteach_groups,
+            support_assignments=support_assignments,
+            parallel_groups=parallel_groups,
+            group_assignments=group_assignments,
+            db=self.db if via_dsl else None,
+            via_dsl=via_dsl,
+            extra_dsl_expressions=(
+                self.extra_dsl_expressions if via_dsl else None),
+        )
+        # Normalise status: the legacy function returns the CP-SAT
+        # numeric status when infeasible and a dict when feasible.
+        # The OO wrapper uses the same convention as MonolithicSolver:
+        # always return ``(sol_dict_or_None, status_name_str)``.
+        if out is None:
+            try:
+                from ortools.sat.python import cp_model as _cp  # type: ignore
+                solver = _cp.CpSolver()
+                self.last_status = solver.StatusName(status)
+            except Exception:  # noqa: BLE001
+                self.last_status = str(status)
+            return None, self.last_status
+        # Drop zero-valued entries from the dict so the OO output
+        # matches MonolithicSolver's ``{(t, cl, s, d, h): 1}`` shape.
+        sol = {k: v for k, v in out.items() if v}
+        self.last_status = "FEASIBLE_OR_OPTIMAL"
+        return sol, self.last_status
+
+
+# ============================================================
 # PricerSolver + TeacherPricer (BP)
 # ============================================================
 

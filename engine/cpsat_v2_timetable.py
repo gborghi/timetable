@@ -854,7 +854,10 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
                           coteach_groups=None,
                           support_assignments=None,
                           parallel_groups=None,
-                          group_assignments=None):
+                          group_assignments=None,
+                          db=None,
+                          via_dsl=False,
+                          extra_dsl_expressions=None):
     r"""Risolve il sotto-problema di un singolo giorno.
 
     Se enforce_no_holes=True (default) impone ai profili di classe la
@@ -1212,6 +1215,81 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
         obj_terms.append(W_GAP * sum(gap_terms))
     if obj_terms:
         model.Minimize(sum(obj_terms))
+
+    # ---- Step 4a: DSL augmentation (opt-in via via_dsl=True) ----
+    # When the caller passes ``via_dsl=True`` together with a database
+    # session (``db``) and/or a list of extra DSL expressions
+    # (``extra_dsl_expressions``), every applicable rule is compiled
+    # onto the existing model BEFORE the solver runs. The legacy
+    # hardcoded path (cattedra demand, no-overlap, no-holes, motorie/
+    # mat/ita pairs, locks, coteach, parallel, support, groups) is
+    # untouched -- DSL rules are added on top. Slot vars used by the
+    # compiler are wrapped to match its 5-tuple key convention
+    # (``t, cl, s, day, h``); the existing 4-tuple ``slot`` dict is
+    # not mutated.
+    dsl_diagnostics: list[str] = []
+    if via_dsl and (db is not None
+                     or extra_dsl_expressions):
+        try:
+            try:
+                from . import dsl_to_cpsat as _d2c  # type: ignore
+                from . import cp_sat_constraint_model as _csm  # type: ignore
+            except ImportError:
+                import dsl_to_cpsat as _d2c  # type: ignore
+                import cp_sat_constraint_model as _csm  # type: ignore
+
+            # Build the 5-tuple slot view the DSL compiler expects.
+            slot_5 = {
+                (p, cl, s, day, h): v
+                for (p, cl, s, h), v in slot.items()
+            }
+            cfg5 = _csm.ConstraintConfig()
+            compiler = _d2c.DSLConstraintCompiler(
+                model, slot_5, config=cfg5,
+                classroom_for_slot=None,
+                plessi_data=None,
+            )
+
+            # Pull DB-side rules through the unified loader.
+            if db is not None:
+                try:
+                    try:
+                        from . import dsl_translator as _dt  # type: ignore
+                    except ImportError:
+                        import dsl_translator as _dt  # type: ignore
+                    rules = _dt.load_all_dsl_constraints(
+                        db, include_soft=False)
+                    for r in rules:
+                        try:
+                            compiler.compile(r["expression"])
+                        except Exception as exc:  # noqa: BLE001
+                            dsl_diagnostics.append(
+                                f"compile_failed:{r.get('label', '')}:"
+                                f"{type(exc).__name__}:{exc}")
+                except Exception as exc:  # noqa: BLE001
+                    dsl_diagnostics.append(
+                        f"db_load_failed:{type(exc).__name__}:{exc}")
+
+            # In-memory extras (e.g. seed pragmas the caller pre-built).
+            for expr in (extra_dsl_expressions or []):
+                try:
+                    compiler.compile(expr)
+                except Exception as exc:  # noqa: BLE001
+                    dsl_diagnostics.append(
+                        f"compile_failed_extra:{type(exc).__name__}:{exc}")
+
+            dsl_diagnostics.extend(compiler.diagnostics)
+            if log and dsl_diagnostics:
+                print(f"[phaseB.day{day}] DSL diagnostics: "
+                      f"{len(dsl_diagnostics)} note(s)")
+        except Exception as exc:  # noqa: BLE001
+            # The DSL pipeline is opt-in; never let its failures
+            # break the proven legacy path.
+            dsl_diagnostics.append(
+                f"dsl_augmentation_failed:{type(exc).__name__}:{exc}")
+            if log:
+                print(f"[phaseB.day{day}] WARN dsl_augmentation_failed: "
+                      f"{exc}")
 
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = time_limit

@@ -93,3 +93,4 @@ webui/frontend/cypress/videos/
 webui/frontend/cypress/downloads/
 webui/frontend/playwright-report/
 webui/frontend/test-results/
+tests/benchmarks/results/*.pkl

@@ -1909,6 +1909,60 @@ def _teachers_for_class(class_name: str, profs: dict,
     return out
 
 
+def _add_branching_constraints_to_pricer_model(
+    model, *, slots_at_class_d_h, branching_constraints,
+    var_prefix: str = "branch",
+):
+    """Translate Ryan-Foster branching decisions into CP-SAT constraints
+    on a pricer's column.
+
+    Each branching decision is a triple ``(item_a, item_b, mode)`` where
+    ``item_a`` and ``item_b`` are ``(class_name, day, hour)`` cells and
+    ``mode`` is ``"together"`` or ``"apart"``. The semantics are:
+
+      - ``"apart"``  -- the column must NOT cover both cells.
+      - ``"together"`` -- the column must cover both cells or neither.
+
+    ``slots_at_class_d_h(cl, d, h)`` is a callback returning the list of
+    pricer BoolVars that fire when the column covers ``(cl, d, h)``. If
+    a cell is out of the pricer's scope (e.g. a class pricer evaluating
+    a constraint on a different class), the callback returns an empty
+    list and the constraint is skipped for that pricer (it relates to
+    a slot the column cannot cover, so it is auto-satisfied).
+
+    Aggregation is via auxiliary BoolVars (max/OR over the candidate
+    slot vars) so the constraint scales linearly in the number of
+    branching decisions, regardless of how many ``(t, s)`` cattedre
+    contribute to the cell.
+    """
+    for i, item in enumerate(branching_constraints or []):
+        if not item or len(item) != 3:
+            continue
+        item_a, item_b, mode = item
+        if mode not in ("together", "apart"):
+            continue
+        try:
+            cl_a, d_a, h_a = item_a
+            cl_b, d_b, h_b = item_b
+        except (TypeError, ValueError):
+            continue
+        vars_a = list(slots_at_class_d_h(cl_a, int(d_a), int(h_a)))
+        vars_b = list(slots_at_class_d_h(cl_b, int(d_b), int(h_b)))
+        # If either side is empty in this pricer's scope, the
+        # constraint is trivially satisfied (the column cannot cover
+        # an out-of-scope cell), so skip it.
+        if not vars_a or not vars_b:
+            continue
+        any_a = model.NewBoolVar(f"{var_prefix}_a_{i}")
+        any_b = model.NewBoolVar(f"{var_prefix}_b_{i}")
+        model.AddMaxEquality(any_a, vars_a)
+        model.AddMaxEquality(any_b, vars_b)
+        if mode == "apart":
+            model.Add(any_a + any_b <= 1)
+        else:  # together
+            model.Add(any_a == any_b)
+
+
 def _pricing_subproblem_class(
     class_name: str, profs: dict, dc_value: dict,
     lambda_cover: dict, mu_class: dict, mu_teacher: dict,
@@ -1918,6 +1972,7 @@ def _pricing_subproblem_class(
     locks: set | None = None,
     group_assignments: list | None = None,
     eps: float = 1e-6,
+    branching_constraints: list | None = None,
 ) -> tuple[dict | None, float]:
     """CP-SAT pricer for the `class` granularity (master variant 2).
 
@@ -2039,6 +2094,23 @@ def _pricing_subproblem_class(
         v = slot.get((p, s_l, d_l, h_l))
         if v is not None:
             model.Add(v == 1)
+
+    # Ryan-Foster branching decisions (Step 4b: pricing-in-nodes).
+    # Each decision either forbids the column from covering BOTH of
+    # two same-class cells (apart) or forces it to cover both or
+    # neither (together). Constraints relating to a different class
+    # are skipped: this pricer's column is scoped to ``class_name``.
+    if branching_constraints:
+        def _slots_at(cl, d, h):
+            if cl != class_name:
+                return []
+            return [slot[(t, s, d, h)]
+                    for (t, s, d2, _q) in quads
+                    if d2 == d and (t, s, d, h) in slot]
+        _add_branching_constraints_to_pricer_model(
+            model, slots_at_class_d_h=_slots_at,
+            branching_constraints=branching_constraints,
+            var_prefix=f"bc_class_{class_name}")
 
     # Objective. For class no-overlap, the column DOES occupy
     # (cl, d, h) for any non-empty (d, h) -- we encode this with an
@@ -3002,9 +3074,19 @@ def _solve_pricing_dw(granularity: str, key,
                       locks: set | None = None,
                       group_assignments: list | None = None,
                       eps: float = 1e-6,
+                      branching_constraints: list | None = None,
                       ) -> tuple[dict | None, float]:
     """Dispatch a master-variant-2 (DW) pricing call. Used by BP for
-    granularities whose columns span multiple teachers."""
+    granularities whose columns span multiple teachers.
+
+    ``branching_constraints``: optional list of Ryan-Foster decisions
+    (``(item_a, item_b, mode)`` triples) applied to every pricer that
+    has a hook for them. The class pricer applies them directly; the
+    other pricers (class-day, day, curriculum) currently fall back to
+    post-hoc filtering -- a column violating the branching constraints
+    is silently rejected by the RF tree's ``_filter_columns_*``
+    helpers when added to a node's pool.
+    """
     if granularity == "class":
         class_name = key
         return _pricing_subproblem_class(
@@ -3013,6 +3095,7 @@ def _solve_pricing_dw(granularity: str, key,
             time_limit=time_limit, workers=workers,
             locks=locks, group_assignments=group_assignments,
             eps=eps,
+            branching_constraints=branching_constraints,
         )
     if granularity == "class-day":
         class_name, day = key
@@ -3518,6 +3601,36 @@ def _filter_columns_apart(
     return out
 
 
+def _column_respects_branches(
+    col: dict, branches: list,
+) -> bool:
+    """Check whether ``col`` satisfies every Ryan-Foster branching
+    decision in ``branches`` (list of ``(item_a, item_b, mode)``).
+
+    Used by the RF tree as a defensive post-hoc filter when a pricer
+    doesn't honour the branching constraints natively (today only the
+    class pricer does -- see ``_pricing_subproblem_class``). Pricers
+    for other granularities can still slip through illegal columns
+    when the dispatcher receives ``branching_constraints``; this
+    helper rejects them at insertion time so the node pool never
+    holds a column that violates its branch.
+    """
+    if not branches:
+        return True
+    slots = set()
+    for (_p, cl, _s, d, h), v in col.items():
+        if v:
+            slots.add((cl, d, h))
+    for (item_a, item_b, mode) in branches:
+        ca = item_a in slots
+        cb = item_b in slots
+        if mode == "apart" and ca and cb:
+            return False
+        if mode == "together" and ca != cb:
+            return False
+    return True
+
+
 def _ryan_foster_branch_dw(
     columns: list[dict], lp_x: list[float], profs: dict,
     dc_value: dict,
@@ -3609,6 +3722,13 @@ def _run_ryan_foster_tree(
     t0: float | None = None,
     eps: float = 1e-6,
     log: bool = True,
+    granularity: str | None = None,
+    pricer_time_limit: float = 5.0,
+    pricer_workers: int = 2,
+    locks: set | None = None,
+    group_assignments: list | None = None,
+    enable_pricing_in_nodes: bool = False,
+    pricing_max_iters_per_node: int = 1,
 ) -> tuple[dict | None, dict]:
     """Full recursive Ryan-Foster tree on the DW master LP.
 
@@ -3616,15 +3736,23 @@ def _run_ryan_foster_tree(
     (lower = explore first, since we minimise). Each node holds:
       - column pool (subset of `initial_columns` after the branch
         constraints applied)
+      - accumulated Ryan-Foster branching decisions from root to here
       - depth in the branching tree
+
     At each node:
-      1. Solve master variant 2 LP -> (lp_x, lp_obj, duals).
-      2. If lp_obj >= incumbent: prune (bound-prune).
-      3. Try greedy set-packing integer recovery; if HARD-feasible
+      1. (Step 4b) When ``enable_pricing_in_nodes`` is True, run a
+         CG iteration: solve master to get duals, then call every
+         pricer with the accumulated branching constraints; merge
+         improving columns into the node pool. This is the "true"
+         branch-and-price loop -- new columns are generated INSIDE
+         each tree node, not just filtered from the root pool.
+      2. Solve master variant 2 LP -> (lp_x, lp_obj, duals).
+      3. If lp_obj >= incumbent: prune (bound-prune).
+      4. Try greedy set-packing integer recovery; if HARD-feasible
          and beats incumbent -> update incumbent.
-      4. If LP is integer (Achterberg pair score = None) -> done
+      5. If LP is integer (Achterberg pair score = None) -> done
          exploring this node.
-      5. Otherwise pick the most-fractional class-slot pair (i, j)
+      6. Otherwise pick the most-fractional class-slot pair (i, j)
          and spawn two child nodes:
             - together: columns must cover BOTH or NEITHER of i, j
             - apart:    no column covers BOTH
@@ -3652,10 +3780,13 @@ def _run_ryan_foster_tree(
         "rf_tree_incumbent_obj": None,
         "rf_tree_incumbents_found": 0,
         "rf_tree_terminated_reason": "",
+        "rf_tree_pricing_in_nodes": bool(enable_pricing_in_nodes),
+        "rf_tree_columns_added_in_nodes": 0,
+        "rf_tree_pricing_calls": 0,
     }
 
     # Initial LP solve at root.
-    res = _solve_master_dw(initial_columns, dc_value)
+    res = _solve_master_dw(initial_columns, dc_value, return_extended=True)
     if res[0] is None:
         info["rf_tree_terminated_reason"] = "root_infeasible"
         return None, info
@@ -3663,10 +3794,18 @@ def _run_ryan_foster_tree(
     incumbent_sol = None
     incumbent_obj = float("inf")
 
-    # Priority queue: (lp_bound, counter, columns, depth).
-    # `counter` breaks ties so heapq doesn't try to compare lists.
+    can_price = bool(
+        enable_pricing_in_nodes
+        and granularity is not None
+        and granularity in _BP_GRANULARITIES_DW)
+
+    # Priority queue: (lp_bound, counter, columns, branching_decisions, depth).
+    # ``branching_decisions`` is the accumulated list of RF branching
+    # triples from root to this node. ``counter`` breaks ties so heapq
+    # doesn't try to compare lists.
     counter = 0
-    pq: list = [(float(res[1]), counter, list(initial_columns), 0)]
+    pq: list = [(float(res[1]), counter, list(initial_columns),
+                  [], 0)]
 
     while pq:
         if time.time() - t0 > time_budget_s:
@@ -3676,7 +3815,7 @@ def _run_ryan_foster_tree(
             info["rf_tree_terminated_reason"] = "max_nodes"
             break
 
-        node_lb, _ctr, node_cols, depth = heapq.heappop(pq)
+        node_lb, _ctr, node_cols, node_branches, depth = heapq.heappop(pq)
         info["rf_tree_nodes_explored"] += 1
         info["rf_tree_max_depth_reached"] = max(
             info["rf_tree_max_depth_reached"], depth)
@@ -3686,6 +3825,58 @@ def _run_ryan_foster_tree(
         if node_lb >= incumbent_obj - eps:
             info["rf_tree_nodes_pruned"] += 1
             continue
+
+        # Step 4b: pricing-in-nodes. Run CG with the accumulated
+        # branching constraints applied to the pricers, so the
+        # generated columns honour the branch by construction
+        # (instead of being filtered post-hoc).
+        if can_price and time.time() - t0 < time_budget_s:
+            for _ in range(max(int(pricing_max_iters_per_node), 1)):
+                if time.time() - t0 > time_budget_s:
+                    break
+                cg_res = _solve_master_dw(
+                    node_cols, dc_value, return_extended=True)
+                if cg_res[0] is None:
+                    break
+                _x, _obj, lam, mu_cl, mu_t, _ck, _clk, _tk = cg_res
+                try:
+                    keys = _enumerate_pricing_keys(
+                        granularity, profs, dc_value,
+                        group_assignments)
+                except NotImplementedError:
+                    break
+                added = 0
+                for key in keys:
+                    if time.time() - t0 > time_budget_s:
+                        break
+                    try:
+                        col, rc = _solve_pricing_dw(
+                            granularity, key, profs, dc_value,
+                            lam, mu_cl, mu_t,
+                            time_limit=pricer_time_limit,
+                            workers=pricer_workers,
+                            locks=locks,
+                            group_assignments=group_assignments,
+                            eps=eps,
+                            branching_constraints=node_branches,
+                        )
+                    except NotImplementedError:
+                        col, rc = None, 0.0
+                    info["rf_tree_pricing_calls"] += 1
+                    if col is None:
+                        continue
+                    if col in node_cols:
+                        continue
+                    # Defensive post-hoc filter: if a pricer doesn't
+                    # honour ``branching_constraints`` (only the class
+                    # pricer does today), drop columns that violate.
+                    if not _column_respects_branches(col, node_branches):
+                        continue
+                    node_cols = node_cols + [col]
+                    added += 1
+                if added == 0:
+                    break
+                info["rf_tree_columns_added_in_nodes"] += added
 
         # Re-solve master at this node (the queued bound came from a
         # previous solve; an updated solve gives current duals + x).
@@ -3718,9 +3909,11 @@ def _run_ryan_foster_tree(
             continue  # LP integer at this node -> nothing to branch on
         item_a, item_b, score = pair
 
-        for child_cols, label in (
-            (_filter_columns_together(node_cols, item_a, item_b), "tog"),
-            (_filter_columns_apart(node_cols, item_a, item_b), "apt"),
+        for child_cols, label, mode in (
+            (_filter_columns_together(node_cols, item_a, item_b),
+             "tog", "together"),
+            (_filter_columns_apart(node_cols, item_a, item_b),
+             "apt", "apart"),
         ):
             if not child_cols:
                 continue
@@ -3735,8 +3928,11 @@ def _run_ryan_foster_tree(
                 info["rf_tree_nodes_pruned"] += 1
                 continue
             counter += 1
+            child_branches = list(node_branches) + [
+                (item_a, item_b, mode)]
             heapq.heappush(
-                pq, (child_lb, counter, child_cols, depth + 1))
+                pq, (child_lb, counter, child_cols, child_branches,
+                     depth + 1))
 
     if not info["rf_tree_terminated_reason"]:
         info["rf_tree_terminated_reason"] = "queue_exhausted"
@@ -4073,6 +4269,9 @@ def run_column_generation(profs: dict, dc_value: dict,
                           rc_smoothing_horizon: int = 20,
                           parallel_workers: int = 0,
                           class_to_curriculum: dict | None = None,
+                          rf_pricing_in_nodes: bool = False,
+                          rf_max_depth: int = 20,
+                          rf_max_nodes: int = 1000,
                           ) -> tuple[dict | None, dict]:
     """Iterative Column Generation with master LP + diversified
     pattern enrichment + integer recovery + completion fallback.
@@ -4305,6 +4504,14 @@ def run_column_generation(profs: dict, dc_value: dict,
                 time_budget_s=time_budget_s,
                 t0=t0,
                 log=log,
+                granularity=granularity,
+                pricer_time_limit=pricer_time_limit,
+                pricer_workers=pricer_workers,
+                locks=locks,
+                group_assignments=group_assignments,
+                enable_pricing_in_nodes=rf_pricing_in_nodes,
+                max_depth=rf_max_depth,
+                max_nodes=rf_max_nodes,
             )
             info.update({k: v for k, v in rf_info.items()
                           if k.startswith("rf_")})
