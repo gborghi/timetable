@@ -644,25 +644,63 @@ class ConstraintModel:
             f"loaded {len(rules)} DSL rules from DB "
             f"(include_soft={include_soft})")
 
-    def add_all_hard_constraints(self):
+    def add_all_hard_constraints(self, *, via_dsl: bool = False):
         """Apply every HARD constraint enabled by ``self.config``.
 
         Sub-classes can override to skip constraints that don't apply
         to their scope (e.g. the per-teacher pricer can skip
         ``add_class_no_overlap`` since it only sees one teacher's
         slots and intra-teacher class overlap is already covered by
-        ``add_teacher_no_overlap``)."""
+        ``add_teacher_no_overlap``).
+
+        ``via_dsl``: when True, route the canonical HARD families
+        (no-holes, h11 presence, motorie pair, mat/ita pair) through
+        ``dsl_translator.seed_implicit_hardcoded`` + the DSL
+        compiler instead of the direct ``add_*`` method calls.
+        Step 3e of the DSL unification plan: the seed pragmas
+        produce the same CP-SAT encoding as the methods (proven
+        zero-drift in test_dsl_seed_legacy.py), so this is purely a
+        pipeline switch with no behavioural change."""
         self.add_teacher_no_overlap()
         if self.config.locks:
             self.add_locks()
-        if self.config.enforce_no_holes:
-            self.add_class_no_holes()
-            if self.config.enforce_h3_presence_at_11:
-                self.add_h3_presence_at_11()
-        if self.config.enforce_motorie_pair:
-            self.add_motorie_pair()
-        if self.config.enforce_math_italian_pair:
-            self.add_math_italian_pair()
+        if via_dsl:
+            try:
+                from . import dsl_translator as dt  # type: ignore
+            except ImportError:
+                import dsl_translator as dt  # type: ignore
+            seeds = dt.seed_implicit_hardcoded(
+                self.profs,
+                classes=self.classes_in_scope(),
+                enforce_no_holes=self.config.enforce_no_holes,
+                enforce_h3_presence=(
+                    self.config.enforce_no_holes
+                    and self.config.enforce_h3_presence_at_11),
+                enforce_motorie_pair=self.config.enforce_motorie_pair,
+                enforce_math_italian_pair=(
+                    self.config.enforce_math_italian_pair),
+                # The cattedra_max + teacher_max + class_day_load
+                # families are not part of the OO solver's HARD
+                # surface yet -- the function-based legacy enforces
+                # them via direct day_count / cl_day_load IntVars in
+                # cpsat_v2_timetable. They are emitted by the seed
+                # for completeness when the caller asks (e.g. in a
+                # full Phase B port), but disabled by default here
+                # to preserve the OO solver's existing surface.
+                enforce_class_day_load=False,
+                enforce_max_per_day_triple=False,
+                enforce_max_prof_hours_per_day=False,
+            )
+            self.add_all_dsl_constraints(seeds)
+        else:
+            if self.config.enforce_no_holes:
+                self.add_class_no_holes()
+                if self.config.enforce_h3_presence_at_11:
+                    self.add_h3_presence_at_11()
+            if self.config.enforce_motorie_pair:
+                self.add_motorie_pair()
+            if self.config.enforce_math_italian_pair:
+                self.add_math_italian_pair()
         if self.config.plessi_data is not None:
             self.add_plessi_commuting_constraints()
 
@@ -682,16 +720,17 @@ class MonolithicSolver(ConstraintModel):
     commit.
     """
 
-    def build(self):
-        self.add_all_hard_constraints()
+    def build(self, *, via_dsl: bool = False):
+        self.add_all_hard_constraints(via_dsl=via_dsl)
         self.add_class_no_overlap()
         obj_terms, _ = self.compute_soft_cost_expr()
         if obj_terms:
             self.model.Minimize(sum(obj_terms))
 
     def solve(self, *, time_limit_s: float = 10.0,
-              workers: int = 4, log: bool = False):
-        self.build()
+              workers: int = 4, log: bool = False,
+              via_dsl: bool = False):
+        self.build(via_dsl=via_dsl)
         solver = cp_model.CpSolver()
         solver.parameters.max_time_in_seconds = float(time_limit_s)
         solver.parameters.num_search_workers = int(workers)
@@ -759,8 +798,8 @@ class PricerSolver(ConstraintModel):
             # Format and semantics defined in commit 3 (RF tree).
             pass
 
-    def build(self):
-        self.add_all_hard_constraints()
+    def build(self, *, via_dsl: bool = False):
+        self.add_all_hard_constraints(via_dsl=via_dsl)
         self.add_branching_constraints()
         soft_terms, _ = self.compute_soft_cost_expr()
         bonus_terms = self.compute_dual_bonus_terms()
@@ -777,13 +816,14 @@ class PricerSolver(ConstraintModel):
 
     def solve_pricing(self, *, time_limit_s: float = 5.0,
                       workers: int = 2,
-                      warm_start_pattern: dict | None = None):
+                      warm_start_pattern: dict | None = None,
+                      via_dsl: bool = False):
         """Return ``(pattern, status_name)`` -- pattern is a
         ``{(t, cl, s, d, h): 1}`` dict if FEASIBLE/OPTIMAL, else
         None."""
         if warm_start_pattern:
             self.add_warm_start_hint(warm_start_pattern)
-        self.build()
+        self.build(via_dsl=via_dsl)
         solver = cp_model.CpSolver()
         solver.parameters.max_time_in_seconds = float(time_limit_s)
         solver.parameters.num_search_workers = int(workers)

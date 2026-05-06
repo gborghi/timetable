@@ -314,6 +314,140 @@ def plesso_commuting_rule_to_dsl(
 
 
 # ---------------------------------------------------------------------
+# Seed generator: in-memory DSL forms for the legacy hardcoded HARD
+# constraints in ``cpsat_v2_timetable``. The function takes the same
+# inputs the legacy solvers receive (profs map + dc_value cattedra-
+# day demand) and returns a list of DSL strings that, when compiled
+# onto a ``MonolithicSolver``, produce the same HARD constraints as
+# the legacy hardcoded path (zero-drift property).
+#
+# Coverage (the legacy invariants):
+#   - cattedra_max_per_day(t, c, s, MAX_PER_DAY_TRIPLE=2)        per cattedra
+#   - teacher_max_per_day(t, MAX_PROF_HOURS_PER_DAY=5)           per docente
+#   - subject_pair_must(c, "Scienzemotorie")                     HARD-B
+#   - subject_pair_exists(c, "Matematica") + Italiano            HARD-A
+#   - class_day_load_in(c, 0, 4, 5, 6)                           HARD-1+HARD-2
+#   - no_holes_class(c)                                          enforce_no_holes
+#   - class_present_at_hour(c, 11)                               HARD-3
+#
+# Out-of-scope here (handled separately or by other paths):
+#   - TeacherUnavailability / ClassUnavailability rows           load_all_dsl_constraints
+#   - CoteachGroup / parallel groups / sostegno / potenziamento  function-based wiring
+#     (these have richer multi-clause structure that is best
+#      kept in the function-based legacy until the OO/DSL path
+#      grows the matching pragmas)
+# ---------------------------------------------------------------------
+
+
+# Default constants (mirror cpsat_v2_timetable module-level values).
+DEFAULT_MAX_PER_DAY_TRIPLE = 2
+DEFAULT_MAX_PROF_HOURS_PER_DAY = 5
+DEFAULT_CLASS_DAY_LOAD_ALLOWED = (0, 4, 5, 6)
+DEFAULT_H3_HOUR = 11
+
+
+def seed_implicit_hardcoded(
+    profs: dict,
+    classes: list | None = None,
+    *,
+    max_per_day_triple: int = DEFAULT_MAX_PER_DAY_TRIPLE,
+    max_prof_hours_per_day: int = DEFAULT_MAX_PROF_HOURS_PER_DAY,
+    class_day_load_allowed: tuple = DEFAULT_CLASS_DAY_LOAD_ALLOWED,
+    h3_hour: int = DEFAULT_H3_HOUR,
+    enforce_no_holes: bool = True,
+    enforce_h3_presence: bool = True,
+    enforce_motorie_pair: bool = True,
+    enforce_math_italian_pair: bool = True,
+    enforce_class_day_load: bool = True,
+    enforce_max_per_day_triple: bool = True,
+    enforce_max_prof_hours_per_day: bool = True,
+) -> list[str]:
+    """Return the list of DSL strings that encode the legacy
+    hardcoded HARD constraints for the given ``profs`` map.
+
+    The output is fed to ``ConstraintModel.add_all_dsl_constraints``
+    and produces the same CP-SAT encoding as the legacy methods
+    (``add_class_no_holes``, ``add_h3_presence_at_11``,
+    ``add_motorie_pair``, ``add_math_italian_pair``, ...). Each
+    flag toggles whether to emit the corresponding family.
+
+    Determinism: rules are emitted in a stable order
+    (by class name, then teacher name, then subject) so the CP-SAT
+    model construction order matches across runs.
+    """
+    out: list[str] = []
+    profs = profs or {}
+    if classes is None:
+        classes = sorted({c for p in profs.values()
+                          for c in p.get("classi", {})})
+    classes = sorted(classes)
+
+    # --- per-cattedra cap (MAX_PER_DAY_TRIPLE) ---
+    if enforce_max_per_day_triple:
+        triples: list[tuple[str, str, str]] = []
+        for t, info in profs.items():
+            for cl, subjs in info.get("classi", {}).items():
+                for s in subjs:
+                    triples.append((t, cl, s))
+        triples.sort()
+        for (t, cl, s) in triples:
+            out.append(cattedra_max_per_day_to_dsl(
+                t, cl, s, max_per_day_triple))
+
+    # --- per-teacher daily cap (MAX_PROF_HOURS_PER_DAY) ---
+    if enforce_max_prof_hours_per_day:
+        for t in sorted(profs):
+            out.append(teacher_max_per_day_to_dsl(
+                t, max_prof_hours_per_day))
+
+    # --- HARD-1 + HARD-2: cl_day_load in {0, 4, 5, 6} ---
+    if enforce_class_day_load:
+        for cl in classes:
+            out.append(class_day_load_in_to_dsl(
+                cl, list(class_day_load_allowed)))
+
+    # --- enforce_no_holes per class ---
+    if enforce_no_holes:
+        for cl in classes:
+            out.append(class_no_holes_to_dsl(cl))
+
+    # --- HARD-3: presence at h=11 per class ---
+    if enforce_h3_presence:
+        for cl in classes:
+            if h3_hour == 11:
+                out.append(class_h11_presence_to_dsl(cl))
+            else:
+                out.append(
+                    f'class_present_at_hour({_quote(cl)}, '
+                    f'{int(h3_hour)})')
+
+    # --- HARD-B: motorie pair (must_pair) ---
+    if enforce_motorie_pair:
+        for cl in classes:
+            # Only emit the pragma when the class actually has a
+            # Scienzemotorie cattedra; otherwise the pragma is a
+            # no-op but still valid DSL.
+            has_motorie = any(
+                "Scienzemotorie" in p.get("classi", {}).get(cl, {})
+                for p in profs.values())
+            if has_motorie:
+                out.append(subject_pair_must_to_dsl(
+                    cl, "Scienzemotorie"))
+
+    # --- HARD-A: Mat/Ita pair_exists ---
+    if enforce_math_italian_pair:
+        for cl in classes:
+            for subj in ("Matematica", "Italiano"):
+                has_subj = any(
+                    subj in p.get("classi", {}).get(cl, {})
+                    for p in profs.values())
+                if has_subj:
+                    out.append(subject_pair_exists_to_dsl(cl, subj))
+
+    return out
+
+
+# ---------------------------------------------------------------------
 # Loader
 # ---------------------------------------------------------------------
 
