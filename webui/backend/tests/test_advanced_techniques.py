@@ -505,6 +505,50 @@ def test_bp_master_dw_solves_smoke():
     assert isinstance(mu_t, dict)
 
 
+def test_bp_master_dw_phase1_handles_colliding_seeds():
+    """When seed columns collide on the same (class, day, hour), the
+    naive LP without artificials is infeasible. With Phase-1 artificial
+    slacks, _solve_master_dw must STILL return a valid LP solution and
+    duals so the BP loop can iterate.
+
+    We craft a deliberate collision: two single-teacher patterns that
+    each occupy (1A, Mon, h=8) -- legal individually, but their cover
+    constraints both demand x_t >= 1 while the class no-overlap caps
+    sum x <= 1. Without artificials this is LP-infeasible.
+    """
+    import column_generation as cg
+    profs = _two_class_profs()
+    dc_value = _two_class_dc()
+
+    # Build two patterns that BOTH place a teacher in (1A, day=1, h=8).
+    # We use the existing seed mechanism to get valid patterns and then
+    # force a collision by including patterns from two different
+    # teachers that happen to land on the same slot.
+    p1 = {("T1", "1A", "Mat", 1, 8): 1, ("T1", "1A", "Mat", 1, 9): 1,
+          ("T1", "1A", "Mat", 1, 10): 1, ("T1", "1A", "Mat", 1, 11): 1,
+          ("T1", "1A", "Mat", 1, 12): 1}
+    p2 = {("T2", "1A", "Ita", 1, 8): 1, ("T2", "1A", "Ita", 1, 9): 1,
+          ("T2", "1A", "Ita", 1, 10): 1, ("T2", "1A", "Ita", 1, 11): 1}
+    columns = [p1, p2]
+
+    res = cg._solve_master_dw(columns, dc_value, return_extended=True)
+    lp_x, obj, lam_cov, mu_cl, mu_t, ck, clk, tk = res
+    assert lp_x is not None, (
+        "Phase-1 artificials must keep the LP feasible even when "
+        "seed columns collide on (class, day, hour).")
+    # We only need duals to be available -- the BP loop will use them
+    # to drive pricing.
+    assert isinstance(lam_cov, dict)
+    assert isinstance(mu_cl, dict)
+    assert isinstance(mu_t, dict)
+    # Objective should incorporate the Big-M artificial penalty: the
+    # collision means at least one unit of artificial slack at the
+    # class no-overlap rows is unavoidable, so obj >> typical pattern
+    # cost.
+    assert obj > cg._DW_BIG_M_ARTIFICIAL * 0.5, (
+        f"Expected large objective from artificial penalty, got {obj}")
+
+
 def test_bp_pricing_subproblem_class_smoke():
     """The class pricer produces a multi-teacher partial pattern
     that covers ALL the demand in the chosen class."""

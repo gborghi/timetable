@@ -139,17 +139,17 @@ def run_iterative_diversified(profs, dc_value, time_budget_s, log_file):
     return sol, info, t
 
 
-def persist(scale: str, metrics: dict):
-    RESULTS.parent.mkdir(parents=True, exist_ok=True)
+def persist(scale: str, metrics: dict, results_path: Path = RESULTS):
+    results_path.parent.mkdir(parents=True, exist_ok=True)
     all_results: dict = {}
-    if RESULTS.exists():
+    if results_path.exists():
         try:
-            with open(RESULTS, "r", encoding="utf-8") as f:
+            with open(results_path, "r", encoding="utf-8") as f:
                 all_results = json.load(f)
         except Exception:
             all_results = {}
     all_results[scale] = metrics
-    with open(RESULTS, "w", encoding="utf-8") as f:
+    with open(results_path, "w", encoding="utf-8") as f:
         json.dump(all_results, f, indent=2)
 
 
@@ -163,7 +163,14 @@ def main():
     ap.add_argument("--time-budget-id", type=float, default=600.0)
     ap.add_argument("--time-budget-phase-a", type=float, default=120.0)
     ap.add_argument("--log-file", default=None)
+    ap.add_argument(
+        "--results-file", default=None,
+        help="Override the JSON results path (default: "
+             "tests/benchmarks/results/mega_bp_real.json). Useful "
+             "for re-running after a fix without overwriting v1.")
     args = ap.parse_args()
+    results_path = (Path(args.results_file)
+                     if args.results_file else RESULTS)
 
     log_path = args.log_file or os.path.join(
         LOG_DIR, f"mega_real_{int(time.time())}.log")
@@ -220,7 +227,7 @@ def main():
                 "bp_terminated_reason": info.get("bp_terminated_reason"),
                 "warnings": info.get("warnings", []),
             }
-            persist("mega_real_bp", metrics)
+            persist("mega_real_bp", metrics, results_path)
             log(f"BP metrics persisted: hard={hard}, "
                 f"t_total={metrics['t_total_s']:.1f}s", log_file)
 
@@ -243,7 +250,7 @@ def main():
                 "soft_obj": info.get("master_obj_final"),
                 "warnings": info.get("warnings", []),
             }
-            persist("mega_real_id", metrics)
+            persist("mega_real_id", metrics, results_path)
             log(f"ID metrics persisted: hard={hard}, "
                 f"t_total={metrics['t_total_s']:.1f}s", log_file)
 

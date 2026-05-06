@@ -1236,17 +1236,36 @@ def _placed_in(col: dict, t: str, cl: str, s: str, d: int) -> int:
                if v and pp == t and cc == cl and ss == s and dd == d)
 
 
+_DW_BIG_M_ARTIFICIAL = 1e6
+"""Big-M penalty on Phase-1 artificial slack variables in the
+master DW LP. Artificials let the LP stay feasible even when the
+seed columns (typically teacher-week patterns from
+iterative-diversified) are jointly infeasible against the
+class/teacher no-overlap constraints. They are also added to cover
+rows so under-coverage can't kill the LP either. The penalty must
+be much larger than any realistic pattern cost yet within HiGHS'
+numerically stable range; 1e6 satisfies both. When all artificials
+end at 0 in the LP solution, the master is truly feasible and the
+artificials add zero cost; otherwise the residual artificial usage
+quantifies the structural infeasibility of the current pool.
+"""
+
+
 def _solve_master_dw(
     columns: list[dict], dc_value: dict,
     *,
     return_extended: bool = False,
 ) -> tuple:
-    """Master LP variant 2 (proper Dantzig-Wolfe).
+    """Master LP variant 2 (proper Dantzig-Wolfe), Phase-1-augmented.
 
     `columns` is a flat list of partial pattern dicts. The LP picks
     fractional weights x[col] in [0, 1] minimising sum c[col]*x[col]
-    subject to cover (>=) + class-no-overlap (<=) + teacher-no-overlap
-    (<=) inequalities.
+    + Big-M * sum artificials, subject to cover (>=) +
+    class-no-overlap (<=) + teacher-no-overlap (<=) inequalities,
+    each row hosting one non-negative artificial slack so the LP is
+    always feasible. The artificials disappear at value 0 once the
+    column pool is rich enough; until then the LP still gives
+    meaningful duals for pricing.
 
     Returns (when return_extended=False):
       (lp_x, obj, lambda_cover_duals)
@@ -1254,7 +1273,9 @@ def _solve_master_dw(
       (lp_x, obj, lambda_cover_duals, mu_class_duals, mu_teacher_duals,
        cover_keys, class_keys, teacher_keys)
 
-    On infeasibility returns (None, +inf, {}, ...).
+    On numerical failure of the LP solver returns
+    (None, +inf, {}, ...); the Phase-1 augmentation makes structural
+    infeasibility unreachable.
     """
     from scipy.optimize import linprog
 
@@ -1279,36 +1300,58 @@ def _solve_master_dw(
     class_keys = sorted(class_set)
     teacher_keys = sorted(teacher_set)
 
+    n_cov = len(cover_keys)
+    n_cl = len(class_keys)
+    n_t = len(teacher_keys)
+    n_rows = n_cov + n_cl + n_t
+    n_art = n_rows  # one artificial per row
+
+    # Build A_ub augmented with artificial columns. The artificial
+    # for row r has coefficient -1 in row r and 0 elsewhere -- this
+    # absorbs slack on cover (negated >=) and on no-overlap (<=)
+    # uniformly.
     A_ub: list[list[float]] = []
     b_ub: list[float] = []
 
     # Cover (negated for >= demand).
-    for k in cover_keys:
+    for ri, k in enumerate(cover_keys):
         (t, cl, s, d) = k
         row = [-float(_placed_in(columns[j], t, cl, s, d))
                 for j in range(n)]
-        A_ub.append(row)
+        # Append artificial coefficients: -1 only in column ri.
+        art_block = [0.0] * n_art
+        art_block[ri] = -1.0
+        A_ub.append(row + art_block)
         b_ub.append(-float(dc_value[k]))
 
     # Class no-overlap.
-    for k in class_keys:
+    for ri, k in enumerate(class_keys):
         (cl, d, h) = k
         row = [float(_occupies_class_slot(columns[j], cl, d, h))
                 for j in range(n)]
-        A_ub.append(row)
+        art_block = [0.0] * n_art
+        art_block[n_cov + ri] = -1.0
+        A_ub.append(row + art_block)
         b_ub.append(1.0)
 
     # Teacher no-overlap.
-    for k in teacher_keys:
+    for ri, k in enumerate(teacher_keys):
         (t, d, h) = k
         row = [float(_occupies_teacher_slot(columns[j], t, d, h))
                 for j in range(n)]
-        A_ub.append(row)
+        art_block = [0.0] * n_art
+        art_block[n_cov + n_cl + ri] = -1.0
+        A_ub.append(row + art_block)
         b_ub.append(1.0)
 
-    bounds = [(0.0, 1.0) for _ in range(n)]
+    # Bounds: real columns x_j in [0,1]; artificials s >= 0
+    # (no upper bound).
+    bounds = ([(0.0, 1.0) for _ in range(n)]
+              + [(0.0, None) for _ in range(n_art)])
+    obj_coeffs = list(pattern_costs) + [_DW_BIG_M_ARTIFICIAL] * n_art
+
     res = linprog(
-        c=pattern_costs,
+        c=obj_coeffs,
         A_ub=np.array(A_ub) if A_ub else None,
         b_ub=np.array(b_ub) if b_ub else None,
         bounds=bounds,
@@ -1320,8 +1363,14 @@ def _solve_master_dw(
                     cover_keys, class_keys, teacher_keys)
         return None, float("inf"), {}
 
-    lp_x = list(res.x)
-    obj = float(res.fun)
+    # Strip artificials from the returned LP weights: callers expect
+    # lp_x parallel to columns.
+    full_x = list(res.x)
+    lp_x = full_x[:n]
+    art_x = full_x[n:n + n_art]
+    obj_real = sum(c * x for c, x in zip(pattern_costs, lp_x))
+    obj_art = float(_DW_BIG_M_ARTIFICIAL * sum(art_x))
+    obj = obj_real + obj_art  # equals res.fun within fp noise
 
     # Sign-flip all marginals so positive dual <-> binding constraint.
     lambda_cover: dict = {}
@@ -1329,8 +1378,6 @@ def _solve_master_dw(
     mu_teacher: dict = {}
     if hasattr(res, "ineqlin") and res.ineqlin is not None:
         marg = list(res.ineqlin.marginals)
-        n_cov = len(cover_keys)
-        n_cl = len(class_keys)
         for i, k in enumerate(cover_keys):
             lambda_cover[k] = -float(marg[i])
         for i, k in enumerate(class_keys):
