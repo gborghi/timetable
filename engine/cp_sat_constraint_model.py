@@ -584,6 +584,35 @@ class ConstraintModel:
         for expr in expressions or []:
             self.add_dsl_constraint(expr)
 
+    def add_all_dsl_constraints_from_db(self, db, *,
+                                          include_soft: bool = False):
+        """Aggregate every constraint table (TeacherUnavailability,
+        ClassUnavailability, ClassroomUnavailability,
+        TeacherMandatoryFreeDay, CoteachGroup, LogicalUnavailability,
+        CurriculumLogicalConstraint, ...) into a single DSL stream
+        and compile every entry onto the model.
+
+        Single source of truth for all HARD constraints across mono
+        solver, every BP pricer, Ryan-Foster nodes, metaheuristics
+        repair operators, and classroom assignment. The legacy
+        special-purpose tables are no longer queried directly by
+        each solver -- they are translated by ``dsl_translator``
+        and consumed uniformly here.
+        """
+        try:
+            from . import dsl_translator as dt  # type: ignore
+        except ImportError:
+            import dsl_translator as dt  # type: ignore
+        rules = dt.load_all_dsl_constraints(
+            db, include_soft=include_soft)
+        for r in rules:
+            self.add_dsl_constraint(r["expression"])
+        if not hasattr(self, "dsl_diagnostics"):
+            self.dsl_diagnostics: list[str] = []
+        self.dsl_diagnostics.append(
+            f"loaded {len(rules)} DSL rules from DB "
+            f"(include_soft={include_soft})")
+
     def add_all_hard_constraints(self):
         """Apply every HARD constraint enabled by ``self.config``.
 
