@@ -83,4 +83,43 @@ aggiornamento via subgradient ascent
 $\lambda_{k+1} = \max(0, \lambda_k + \alpha_k g_k)$ con
 $\alpha_k = \alpha_0 / (1+k)$. Per-iteration refinement via SA.
 
+\section{Branch-and-Price MVP scaffold (Step 4)}
+\label{sec:bp-mvp-scaffold}
+
+Step 4 del piano multi-day introduce uno \emph{scaffold} OO
+testuale per il loop di Branch-and-Price che, in un singolo
+modulo (\texttt{engine/column\_generation.py} con flag
+\texttt{mode="branch-and-price"}), tiene insieme tre componenti
+ortogonali:
+
+\begin{enumerate}
+\item \textbf{\texttt{PhaseBDaySolver}} -- wrapper OO sulla
+  funzione legacy \texttt{solve\_phase\_b\_for\_day}. Espone
+  l'interfaccia object-oriented (\texttt{solve()}, scope
+  d'azione, augmentation via DSL) ma delega la costruzione del
+  modello al codice provato. Vantaggio: 100+ test di regressione
+  Phase B continuano a passare \emph{by construction}; quando
+  \texttt{via\_dsl=True}, il modello legacy viene esteso con
+  vincoli DSL aggiuntivi (le regole DB e le espressioni extra
+  passate al costruttore).
+\item \textbf{Ryan-Foster pricing-in-nodes} -- ad ogni nodo
+  dell'albero RF si rilancia il pricer CP-SAT con i vincoli
+  ramo (\texttt{together}/\texttt{apart}) gi\`a applicati;
+  questo \`e il textbook BP, contrapposto al precedente che
+  esplorava i nodi solo via re-solve del master sul pool
+  esistente.
+\item \textbf{Smoke benchmark} --
+  \texttt{tests/benchmarks/test\_bp\_step4\_smoke.py} esegue il
+  loop completo (Mono $\to$ pool inziale $\to$ master DW $\to$
+  RF tree $\to$ integer recovery $\to$ completion) su uno
+  scenario \texttt{small} (10 classi) e su uno \texttt{medium}
+  (28 classi), verificando HARD-feasibility e che il soft cost
+  non aumenti rispetto alla pipeline iterative-diversified.
+\end{enumerate}
+
+Il flag \texttt{mode="branch-and-price"} attiva il path
+completo. La modalit\`a precedente
+(\texttt{iterative-diversified}) resta il default e continua a
+funzionare come pre-passo di seeding del pool.
+
 % =========== DSL generico ===========

@@ -24,7 +24,7 @@ AdvancedTechniquesCard, section of the Statistics tab.
 \section{Column Generation and advanced Branch-and-Price}
 
 \texttt{engine/column\_generation.py}. Master LP via
-\texttt{scipy.linprog} HiGHS; eight dedicated CP-SAT pricers at
+\texttt{scipy.linprog} HiGHS; nine dedicated CP-SAT pricers at
 distinct granularities (\texttt{teacher}, \texttt{teacher-day},
 \texttt{teacher-class}, \texttt{teacher-class-subject},
 \texttt{teacher-subject}, \texttt{class}, \texttt{class-day},
@@ -78,6 +78,46 @@ The synthetic scenario is structurally easy (cattedre as 4-hour
 single-day blocks); on real-world instances with arbitrary day
 distributions the calibration target remains 30 minutes for MEGA,
 with a 60-minute hard cap.
+
+\section{Branch-and-Price MVP scaffold (Step 4)}
+\label{sec:bp-mvp-scaffold-en}
+
+Step 4 of the multi-day plan introduces an OO-textbook
+\emph{scaffold} of the Branch-and-Price loop that tightens
+three orthogonal pieces inside one module
+(\texttt{engine/column\_generation.py} with
+\texttt{mode="branch-and-price"}):
+
+\begin{enumerate}
+\item \textbf{\texttt{PhaseBDaySolver}} -- OO wrapper around the
+  legacy \texttt{solve\_phase\_b\_for\_day} function. Exposes the
+  object-oriented interface (\texttt{solve()}, scope access,
+  \texttt{via\_dsl} augmentation) but delegates model
+  construction to the proven legacy code path. Benefit: 100+
+  Phase B regression tests keep passing \emph{by construction};
+  with \texttt{via\_dsl=True} the legacy model is augmented
+  with extra DSL constraints (DB-stored rules + extra
+  expressions passed to the constructor).
+\item \textbf{Ryan-Foster pricing-in-nodes} -- at every RF tree
+  node the CP-SAT pricer is re-invoked with the branch
+  decisions (\texttt{together} / \texttt{apart}) already
+  applied to its model. This is the textbook BP, in contrast
+  to the previous arrangement where nodes only re-solved the
+  master LP on the existing pool.
+\item \textbf{Smoke benchmark} --
+  \texttt{tests/benchmarks/test\_bp\_step4\_smoke.py} runs the
+  full loop (Mono $\to$ initial pool $\to$ master DW $\to$ RF
+  tree $\to$ integer recovery $\to$ completion) on a
+  \texttt{small} scenario (10 classes) and a \texttt{medium}
+  one (28 classes), checking HARD-feasibility and that the soft
+  cost does not regress against the iterative-diversified
+  baseline.
+\end{enumerate}
+
+The flag \texttt{mode="branch-and-price"} activates the full
+path. The previous \texttt{iterative-diversified} mode remains
+the default and continues to act as a primal-heuristic seeder
+of the column pool.
 
 \section{Lagrangian relaxation}
 

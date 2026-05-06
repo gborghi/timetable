@@ -374,3 +374,259 @@ sezioni 1--12 (galleria di 30+ esempi commentati,
 troubleshooting esteso, reference tabellare di tutti gli
 attributi per ciascuna entit\`a).
 
+\section{Compilazione DSL $\to$ CP-SAT (Step 1)}
+\label{sec:dsl-cpsat}
+
+A partire da Step 1 del piano multi-day, il DSL ha un
+\emph{compilatore} verso CP-SAT
+(\texttt{engine/dsl\_to\_cpsat.py}, classe
+\texttt{DSLConstraintCompiler}). Mentre l'evaluator post-hoc
+guarda una soluzione gi\`a costruita per dichiararla feasible o
+violata, il compilatore aggiunge i vincoli \emph{durante} la
+costruzione del modello CP-SAT, in modo che il solver eviti
+strutturalmente le violazioni.
+
+Il compilatore \`e usato in tre punti del sistema:
+\begin{itemize}
+\item dal \texttt{MonolithicSolver} (cap.~\ref{ch:metodo_cpsat})
+  quando il flag \texttt{via\_dsl=True} \`e attivo;
+\item dai pricer di Branch-and-Price
+  (cap.~\ref{ch:tecniche_avanzate}) per applicare gli stessi
+  vincoli al sotto-problema;
+\item da \texttt{PhaseBDaySolver} quando si invoca con
+  \texttt{via\_dsl=True} per riprodurre la pipeline legacy
+  affiancata dal DSL.
+\end{itemize}
+
+Tutte le sorgenti delle lezioni gi\`a note (\texttt{teachers},
+\texttt{classes}, \texttt{slots}, ecc.) sono accessibili al
+compilatore allo stesso modo. La differenza chiave \`e che
+quando una variabile slot \`e ancora indecisa, il compilatore
+emette il vincolo CP-SAT corrispondente al posto di valutare
+una verit\`a; quando un'espressione \`e \emph{completamente
+statica} (per esempio \texttt{consecutive(s1, s2)} con \texttt{s1}
+e \texttt{s2} legati staticamente nel \texttt{forall}) la
+valutazione viene eseguita a tempo di compilazione e si emette
+un vincolo solo se serve.
+
+\section{Predicati di slot: \texttt{consecutive}, \texttt{same\_day}}
+\label{sec:dsl-slot-preds}
+
+Step 3a aggiunge due predicati built-in che il compilatore
+risolve a tempo di compilazione quando entrambi gli argomenti
+sono slot legati staticamente:
+
+\begin{itemize}
+\item \texttt{same\_day(s1, s2)} \`e vero se i due slot cadono
+  nello stesso giorno della settimana.
+\item \texttt{consecutive(s1, s2)} \`e vero se i due slot cadono
+  nello stesso giorno e differiscono di un'ora ($|h_1-h_2|=1$).
+\end{itemize}
+
+Sono i mattoni con cui si esprimono ``ore consecutive'',
+``stacco fra plessi'', ``coppia di ore quando ce ne sono due
+nel giorno'', ``compresenza che deve avvenire nello stesso
+giorno''. Gli argomenti accettati sono o tuple letterali
+\texttt{(d, h)} oppure path puntati come \texttt{l.slot} che
+restituiscono una \texttt{(day, hour)}.
+
+Esempio: una classe deve avere mate in tre ore consecutive in
+\emph{qualche} giorno della settimana:
+\begin{lstlisting}
+exists s1 in slots: exists s2 in slots: exists s3 in slots:
+    consecutive(s1, s2) and consecutive(s2, s3)
+    and lesson(class==3B, day==s1.day,
+               hour==s1.hour, subject==Matematica)
+    and lesson(class==3B, day==s2.day,
+               hour==s2.hour, subject==Matematica)
+    and lesson(class==3B, day==s3.day,
+               hour==s3.hour, subject==Matematica)
+\end{lstlisting}
+
+\section{Path \texttt{l.classroom.plesso}}
+\label{sec:dsl-classroom-plesso}
+
+Ancora in Step 3a, l'evaluator post-hoc e il compilatore
+risolvono il path chained \texttt{l.classroom.plesso}: per ogni
+lezione \texttt{l}, l'aula assegnata viene letta dalla mappa
+\texttt{classroom\_for\_slot} fornita da Phase B / Phase
+classroom-assignment, e il plesso viene risolto via la tabella
+\texttt{plessi\_data}. Senza queste due strutture il path
+ritorna \texttt{None} e il compilatore emette un diagnostico.
+
+L'esempio canonico \`e una commuting rule fra plessi (vedi
+sez.~\ref{sec:plessi}): ``nessun docente pu\`o avere lezione in
+Plesso B nell'ora successiva a una lezione in Plesso A'':
+\begin{lstlisting}
+forall l1 in lessons where l1.classroom.plesso == 1:
+    forall l2 in lessons where l2.classroom.plesso == 2
+        and l2.teacher == l1.teacher
+        and consecutive(l1.slot, l2.slot):
+        false
+\end{lstlisting}
+
+\section{Vocabolario di pattern canonici (Step 3b)}
+\label{sec:dsl-canonici}
+
+Step 3b introduce un \emph{vocabolario} di chiamate di funzione
+che il compilatore riconosce in modo speciale ed emette
+direttamente come gruppi compatti di vincoli CP-SAT. Ognuna di
+queste forme corrisponde a un pattern frequente che, scritto in
+DSL puro a colpi di \texttt{forall}, produrrebbe centinaia o
+migliaia di clausole. La forma canonica \`e zero-drift rispetto
+all'encoding hardcoded del solver legacy.
+
+\begin{tabular}{lp{6.7cm}}
+\toprule
+\textbf{Pragma} & \textbf{Equivalente legacy} \\
+\midrule
+\texttt{no\_holes\_class("3B")} &
+  catena non-crescente di booleani che vieta i buchi
+  nell'orario settimanale della 3B (legacy
+  \texttt{add\_class\_no\_holes}) \\
+
+\texttt{class\_present\_at\_hour("3B", 11)} &
+  se la 3B ha una lezione in un giorno, lo slot all'ora 11
+  deve essere occupato (legacy HARD-3 / ``uscita dopo le 12'') \\
+
+\texttt{class\_day\_load\_in("3B", 0, 4, 5, 6)} &
+  in un giorno la 3B ha 0 ore (giorno libero) o tra 4 e 6 ore
+  (legacy HARD-1+HARD-2) \\
+
+\texttt{teacher\_max\_per\_day("Rossi", 5)} &
+  Rossi ha al massimo 5 ore in un giorno
+  (legacy \texttt{MAX\_PROF\_HOURS\_PER\_DAY}) \\
+
+\texttt{cattedra\_max\_per\_day("Rossi", "3B", "Matematica", 2)} &
+  la cattedra (Rossi, 3B, Mate) ha al massimo 2 ore in un
+  giorno (legacy \texttt{MAX\_PER\_DAY\_TRIPLE}) \\
+
+\texttt{subject\_pair\_must("3B", "Scienzemotorie")} &
+  quando 3B ha 2 ore di motoria nello stesso giorno, devono
+  essere consecutive (legacy HARD-B / \texttt{add\_motorie\_pair}) \\
+
+\texttt{subject\_pair\_exists("3B", "Matematica")} &
+  quando 3B ha 2+ ore di mate nello stesso giorno, almeno una
+  coppia di consecutive deve esistere (legacy HARD-A /
+  \texttt{add\_math\_italian\_pair}) \\
+\bottomrule
+\end{tabular}
+
+\medskip
+
+Inoltre il pragma \texttt{no\_holes\_all\_classes()} e
+\texttt{class\_present\_at\_hour\_all(11)} agiscono in batch su
+tutte le classi nel \emph{slot scope} corrente, utile da
+incollare in cima alla lista di vincoli senza dover enumerare i
+nomi.
+
+\section{Plesso commuting via DSL (Step 3c)}
+\label{sec:dsl-plesso-commuting}
+
+Step 3c collega le \texttt{PlessoCommutingRule} al DSL: la
+helper \texttt{plesso\_commuting\_rule\_to\_dsl(rule)} produce
+una lista di clausole DSL equivalenti alla regola legacy. La
+property zero-drift \`e verificata nella suite di test:
+applicare la regola via DSL produce esattamente le stesse
+combinazioni proibite della pipeline hardcoded
+\texttt{plessi\_constraints}.
+
+\section{Seed legacy HARD via DSL (Step 3d-3e)}
+\label{sec:dsl-seed-legacy}
+
+Step 3d-3e introduce \texttt{seed\_implicit\_hardcoded(profs)}
+che, dato il dizionario delle cattedre, restituisce una lista
+di stringhe DSL che rappresentano TUTTI i vincoli HARD
+hardcoded del solver legacy. Combinato con il flag
+\texttt{via\_dsl=True} di \texttt{MonolithicSolver} e
+\texttt{PhaseBDaySolver}, permette di costruire un modello
+CP-SAT completo \emph{esclusivamente dal DSL}: nessun ramo di
+codice hardcoded \`e attivo. Le invarianti che si garantiscono:
+
+\begin{itemize}
+\item zero-drift sintattico: le tuple di slot proibite/forzate
+  emesse dal path DSL coincidono bit-per-bit con quelle del
+  path legacy;
+\item zero-drift semantico: le soluzioni feasible accettate
+  dai due path sono identiche, verificato sui benchmark
+  \texttt{small}/\texttt{medium}/\texttt{huge};
+\item determinismo: l'ordinamento delle stringhe DSL prodotte
+  da \texttt{seed\_implicit\_hardcoded} \`e stabile, quindi
+  l'ordine di inserimento dei vincoli nel modello CP-SAT \`e
+  riproducibile run-to-run.
+\end{itemize}
+
+Questo \`e il \emph{vehicle} per la migrazione progressiva: nei
+prossimi step il path hardcoded verr\`a deprecato a favore del
+path DSL, e l'esistenza di \texttt{seed\_implicit\_hardcoded}
+permette di farlo senza perdere la copertura dei vincoli.
+
+\section{Stato dei vincoli SOFT}
+\label{sec:dsl-soft-status}
+
+Il DSL accetta sia regole HARD che regole SOFT (con peso
+opzionale). A livello di \emph{evaluator post-hoc} il SOFT \`e
+pienamente implementato: le violazioni di clausole SOFT
+contribuiscono allo score globale della soluzione e sono
+visibili nelle metriche restituite da \texttt{run\_metrics}.
+
+A livello di \emph{compilatore CP-SAT} (Step 1+) il SOFT \`e
+attualmente accettato dal parser ma il backend di compilazione
+non emette ancora la traduzione a costo soft (penalit\`a
+positiva sull'obiettivo). Il diagnostico
+\texttt{soft constraint X: SOFT cost not yet wired} \`e emesso
+dal compilatore per ogni regola SOFT incontrata; la regola
+viene archiviata nel modello come \emph{label informativo}, ma
+il solver non aggiusta l'obiettivo. Nei prossimi step la SOFT
+verr\`a integrata: l'utente legge ora la guida tenendo presente
+che il SOFT in DSL \`e semanticamente definito ma il suo
+\emph{enforcement} via CP-SAT \`e ancora in corso.
+
+In pratica: usare HARD per qualunque cosa che non possa essere
+violata; per le SOFT, usare il DSL come ``contratto
+dichiarativo'' che oggi la pipeline esegue post-hoc e domani
+eseguir\`a anche durante la compilazione.
+
+\section{Diagramma dell'architettura DSL}
+\label{sec:dsl-archi}
+
+\begin{verbatim}
++--------------------------------------------------+
+|  UI (modal "+ Nuovo vincolo DSL")                 |
+|  webui/frontend/.../GeneralConstraintsCard.svelte |
++--------------------+-----------------------------+
+                     |
+                     v
++--------------------+-----------------------------+
+|  POST /api/constraints/general                   |
+|  webui/backend/routers/constraints.py            |
++--------------------+-----------------------------+
+                     |
+                     v
++--------------------+-----------------------------+
+|  Parser + AST                                    |
+|  webui/backend/utils/general_dsl.py              |
++--------------------+-----------------------------+
+                     |
+                     +---------+---------+
+                     v         v         v
+              post-hoc    compiler    SOFT score
+              evaluator   to CP-SAT   (post-hoc)
+              (cattura    (Step 1+)
+               violazioni
+               HARD)
+                     |         |
+                     v         v
+              +--------------------+
+              |   CP-SAT solver    |
+              |   (Mono / Pricer / |
+              |    PhaseB / RF /   |
+              |    Meta)           |
+              +--------------------+
+\end{verbatim}
+
+Stesso AST, due backend: l'evaluator legge la soluzione e
+risponde ``feasible/violato''; il compilatore aggiunge vincoli
+al modello prima della solve. La grammatica \`e unica e i nomi
+delle sorgenti sono identici nei due backend.
+

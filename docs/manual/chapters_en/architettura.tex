@@ -1,8 +1,149 @@
 \chapter{Architecture}
 \label{ch:architettura_en}
 
-Three tiers (engine, backend, frontend) with the data flow: registry -> assignment -> dc_value -> Phase B -> integer recovery -> persistence -> UI. Async runs orchestrated via the /api/optimize/* endpoints and the SQLAlchemy `runs` table.
+\section{Stack}
+
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Backend}: Python 3.11+, FastAPI, SQLAlchemy 2.0,
+        Pydantic 2, uvicorn, OR-Tools, NumPy, scikit-learn, Faker.
+  \item \textbf{Frontend}: SvelteKit (Svelte 4), Vite 5, Tailwind
+        CSS, plain JavaScript.
+  \item \textbf{DB}: SQLite via SQLAlchemy. Idempotent migrations
+        in code (no Alembic).
+  \item \textbf{Engine I/O}: Python pickle;
+        \texttt{engine\_io.py} converts between DB and dict for
+        the solver.
+\end{itemize}
+
+\section{Three-tier overview}
+
+The system has a CP-SAT solver core (\texttt{engine/}), a
+FastAPI + SQLite backend (\texttt{webui/backend/}) and a
+SvelteKit frontend (\texttt{webui/frontend/}). The solver runs
+as a library imported by the backend; pipelines are exposed as
+async runs via \texttt{/api/optimize/*}. The frontend talks
+to the backend over JSON; long-running solver runs are tracked
+via the \texttt{runs} table polled at 1\,Hz from the UI.
+
+Solver pipelines (in \texttt{engine/}):
+\begin{itemize}
+\item \texttt{cpsat\_v2\_assignment.py}: Phase A (teacher to
+  class assignment).
+\item \texttt{cpsat\_v2\_timetable.py}: Phase A (timetabling,
+  \texttt{day\_count}) + Phase B (per-day slot placement).
+  Native locks + C1/C2/C3 constraints.
+\item \texttt{decomposition\_temporal.py}: 6-day parallel
+  decomposition.
+\item \texttt{decomposition\_spectral\_v2.py}, \texttt{curriculum}
+  / \texttt{metis} variants: cluster classes, solve
+  sub-problems, ricucitura.
+\item \texttt{column\_generation.py}: master LP + diversified
+  pattern enrichment + completion fallback. Mode
+  \texttt{branch-and-price} fully wired with all scalability
+  techniques (RF tree, dual stabilization, column management,
+  parallel pricing).
+\item \texttt{metaheuristics.py}, \texttt{alns.py},
+  \texttt{vns.py}, \texttt{lagrangian.py}: post-processing on a
+  HARD-feasible seed solution.
+\end{itemize}
+
+\section{Solver architecture: from DSL to CP-SAT}
+\label{sec:arch-dsl-cpsat-en}
+
+Steps 1--4 of the multi-day plan introduced a uniformly
+layered architecture for every solver use site.
+
+\begin{verbatim}
++-----------------------------------------------------------+
+| UI (SvelteKit)                                            |
+|   - Constraints tab: matrices + DSL + plessi              |
+|   - Workflow tab: pipeline (mode, granularity)            |
++-----------------+----------------------------+------------+
+                  |                              |
+        POST /api/constraints/general     POST /api/optimize/*
+                  |                              |
+                  v                              v
++-----------------+----------------+   +---------+---------+
+| dsl_parser (general_dsl.py)      |   | router            |
+|   parse() -> AST                  |   | run_async         |
++-----------------+----------------+   +---------+---------+
+                  |                              |
+                  v                              v
++-----------------+----------------+   +---------+---------+
+| dsl_translator                   |   | engine pipeline   |
+|   special-purpose tables         |   | (mono / decomp /  |
+|   -> canonical DSL strings       |   |  CG / BP)         |
++-----------------+----------------+   +---------+---------+
+                  |                              |
+                  +------------- merged ---------+
+                                  |
+                                  v
++--------------------------------+--------------------------+
+| dsl_to_cpsat.DSLConstraintCompiler                         |
+|   AST + slot dict + plessi_data                            |
+|   -> add_assertion() / add_implication() on CpModel        |
++--------------------------------+--------------------------+
+                                 |
+              +------------------+------------------+
+              v                  v                  v
+       MonolithicSolver   PhaseBDaySolver   BP Pricer (9 grans)
+       (cpsat_v2_*)       (legacy +         + RF nodes
+       seed via DSL       DSL augment)
+              |                  |                  |
+              +------------------+------------------+
+                                 |
+                                 v
+                         solution (Lessons)
+                                 |
+                                 v
+                          DSL post-hoc evaluator
+                          (HARD: feasibility check)
+                          (SOFT: contributes to
+                                  global score)
+\end{verbatim}
+
+Key properties:
+\begin{itemize}
+\item \textbf{One parser, one AST}. Every constraint source
+  (matrices, DSL UI, plesso rules, seeded legacy HARDs) is
+  unified into canonical DSL strings parsed by
+  \texttt{general\_dsl.py}.
+\item \textbf{One compiler}. \texttt{DSLConstraintCompiler} is
+  the single gate to CP-SAT. Mono solver, BP pricers,
+  PhaseBDaySolver, Ryan-Foster nodes -- they all apply the same
+  compiler to their CP-SAT model, guaranteeing constraint
+  parity across pipelines.
+\item \textbf{Zero-drift}.
+  \texttt{seed\_implicit\_hardcoded(profs)} translates the
+  legacy hardcoded HARDs into DSL. Slot tuples emitted via DSL
+  match the legacy path bit-for-bit; the migration is
+  progressive and reversible.
+\item \textbf{HARD up-front, SOFT post-hoc}. DSL HARDs become
+  CP-SAT constraints before the solve. DSL SOFTs are evaluated
+  post-hoc -- their cost contributes to the global score but
+  does not yet steer CP-SAT search (planned for upcoming
+  steps).
+\end{itemize}
+
+\section{Backend lifecycle}
+
+\texttt{webui/backend/main.py} defines a \texttt{lifespan}
+context that calls \texttt{init\_db()} at startup. It does:
+
+\begin{enumerate}
+  \item \texttt{Base.metadata.create\_all(bind=engine)} -- create
+        missing tables.
+  \item \texttt{\_apply\_lightweight\_migrations()} -- idempotent
+        ALTER TABLEs for fields added in later versions
+        (\texttt{school\_classes.curriculum\_id},
+        \texttt{teachers.last\_name}, \dots). Each ALTER is
+        guarded by \texttt{PRAGMA table\_info} to avoid
+        duplication.
+\end{enumerate}
 
 \medskip
 \noindent
-\textit{This chapter is an English summary of the corresponding Italian chapter. The full text remains in the Italian edition (\texttt{docs/manual/chapters/architettura.tex}). For the implementation references see the engine modules in \texttt{engine/} and the API documentation at \texttt{docs/api.md}.}
+\textit{This chapter is the English edition. The Italian
+edition (\texttt{docs/manual/chapters/architettura.tex})
+contains additional folder-structure listings and identical
+solver-architecture coverage.}

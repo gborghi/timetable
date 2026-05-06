@@ -887,3 +887,82 @@ sporadici nei casi di sovraccarico (es. supplenza
 emergenza), ma la versione attuale tratta tutti i vincoli
 plesso come HARD.
 
+\subsection{Plessi via DSL (Step 3a-3c)}
+
+Da Step 3a in avanti, le \texttt{PlessoCommutingRule} sono
+traducibili interamente in clausole DSL grazie a due novit\`a
+del linguaggio (cf.\ cap.~\ref{ch:dsl_generico_per_i_vincoli}):
+
+\begin{itemize}
+\item il path \texttt{l.classroom.plesso} che, data una
+  lezione, risolve l'aula assegnata e poi il plesso a cui
+  l'aula appartiene;
+\item il predicato \texttt{consecutive(l1.slot, l2.slot)} che
+  diventa vero quando le due lezioni cadono nello stesso
+  giorno e differiscono di un'ora.
+\end{itemize}
+
+La regola legacy ``Centrale $\to$ Garibaldi gap minimo 1 ora,
+docente Rossi'' si scrive in DSL come:
+
+\begin{lstlisting}
+forall l1 in lessons where
+       l1.classroom.plesso == 1
+   and l1.teacher == "Rossi":
+    forall l2 in lessons where
+           l2.classroom.plesso == 2
+       and l2.teacher == "Rossi"
+       and consecutive(l1.slot, l2.slot):
+        false
+\end{lstlisting}
+
+La helper \texttt{plesso\_commuting\_rule\_to\_dsl(rule)} in
+\texttt{engine/dsl\_translator.py} produce automaticamente le
+clausole DSL a partire dalla riga ORM. La suite di test
+verifica zero-drift: il path DSL produce le stesse coppie di
+slot proibite del path legacy
+\texttt{plessi\_constraints.py}.
+
+\section{Pattern canonici e seed legacy via DSL (Step 3b-3e)}
+
+Step 3b-3e ha introdotto un \emph{vocabolario} di pattern
+canonici riconosciuti direttamente dal compilatore DSL $\to$
+CP-SAT. Ognuno di essi corrisponde a un vincolo HARD legacy che
+prima viveva solo come encoding hardcoded. Ora possono essere
+espressi in DSL e prodotti automaticamente dalla translation
+\texttt{seed\_implicit\_hardcoded(profs)}.
+
+Pragmas accettate:
+\begin{itemize}
+\item \texttt{no\_holes\_class("3B")} -- niente buchi
+  nell'orario settimanale della 3B (legacy
+  \texttt{add\_class\_no\_holes}).
+\item \texttt{class\_present\_at\_hour("3B", 11)} -- se la 3B
+  ha lezione, lo slot all'ora 11 deve essere occupato (HARD-3
+  / ``uscita non prima delle 12'').
+\item \texttt{class\_day\_load\_in("3B", 0, 4, 5, 6)} -- la
+  3B in un giorno ha 0 ore (giorno libero) o tra 4 e 6 ore
+  (HARD-1+HARD-2).
+\item \texttt{teacher\_max\_per\_day("Rossi", 5)} -- Rossi non
+  supera 5 ore in un giorno.
+\item \texttt{cattedra\_max\_per\_day("Rossi", "3B",
+  "Matematica", 2)} -- la cattedra (Rossi, 3B, Mate) ha al
+  massimo 2 ore in un giorno.
+\item \texttt{subject\_pair\_must("3B", "Scienzemotorie")} --
+  quando la 3B ha 2 ore di motoria nello stesso giorno,
+  devono essere consecutive.
+\item \texttt{subject\_pair\_exists("3B", "Matematica")} --
+  quando la 3B ha 2+ ore di mate nello stesso giorno, almeno
+  una coppia consecutiva deve esistere.
+\end{itemize}
+
+Effetto concreto: l'utente avanzato pu\`o ora scrivere
+nell'editor del modal ``+ Nuovo vincolo DSL'' un'espressione
+come \texttt{no\_holes\_class("4A")} ottenendo lo stesso
+risultato del toggle \texttt{hard\_no\_holes} in
+\texttt{school\_classes}. Il vantaggio del DSL \`e la
+componibilit\`a con \texttt{forall}, \texttt{exists},
+\texttt{count}: si pu\`o restringere a sotto-insiemi di classi,
+combinare con altri predicati, modificare al volo dall'UI
+senza editare il database.
+

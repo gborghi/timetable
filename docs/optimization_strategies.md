@@ -367,6 +367,48 @@ Per il MEGA (100 classi) l'auto-detect propone `curriculum`,
 che e' la scelta naturale dato che gli 8 indirizzi della
 scuola hanno pool di docenti largamente disgiunti.
 
+### Step 4 (textbook BP): pricing-in-nodes + PhaseBDaySolver
+
+Step 4 del piano multi-day porta il loop di Branch-and-Price
+alla forma textbook completa:
+
+1. **Pricing-in-nodes**. Prima del Step 4, l'albero
+   Ryan-Foster esplorava i nodi solo via re-solve del master
+   sul pool esistente: il pricer CP-SAT veniva invocato solo
+   alla radice. Ora ogni nodo dell'albero RF rilancia il
+   pricer con i vincoli ramo (`together`/`apart`) gi\`a
+   applicati al modello CP-SAT del sotto-problema. Effetto:
+   le colonne migliorative emerse nel sotto-problema vincolato
+   sono proprie di quel nodo, non disponibili alla radice;
+   l'esplorazione e' molto piu' efficace su istanze MEGA dove
+   la radice produce duali stabili ma il sotto-problema
+   restringe lo spazio in modi non rappresentabili dal pool
+   originale.
+
+2. **PhaseBDaySolver**. Wrapper OO sulla funzione legacy
+   `solve_phase_b_for_day`. Mantiene byte-by-byte il modello
+   legacy (oltre 100 test di regressione passano by
+   construction) e accetta un flag `via_dsl=True` che
+   aggiunge in cima al modello tutti i vincoli DSL pertinenti
+   al giorno. La sua esistenza e' la chiave per migrare
+   progressivamente dal path hardcoded a quello DSL: il path
+   hardcoded resta attivo, il DSL aggiunge restrizioni
+   ulteriori, e quando l'output coincide su 100% degli scenari
+   il path hardcoded viene deprecato.
+
+3. **Smoke benchmark**. Il file
+   `tests/benchmarks/test_bp_step4_smoke.py` esegue il loop
+   completo su scenari `small` (10 classi) e `medium` (28
+   classi), verificando: HARD-feasibility, soft cost non
+   peggiore della baseline iterative-diversified, RF tree
+   esplorato. Il test e' in CI quindi ogni regressione del
+   path BP viene catturata immediatamente.
+
+Il flag `mode="branch-and-price"` nel POST a
+`/api/optimize/column-generation` attiva il path completo. La
+modalita' `iterative-diversified` resta il default e funge da
+seeder del pool iniziale.
+
 ### Riferimenti
 
 - Dantzig & Wolfe 1960, *Decomposition principle for linear

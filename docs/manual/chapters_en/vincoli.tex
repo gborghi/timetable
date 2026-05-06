@@ -161,3 +161,78 @@ sporadic emergency overrides (e.g. last-minute substitute
 teaching), but the current version treats every plesso
 constraint as HARD.
 
+\subsection{Plessi via DSL (Step 3a-3c)}
+
+Starting in Step 3a, \texttt{PlessoCommutingRule} rows are
+fully expressible as DSL clauses thanks to two language
+additions (cf.\ cap.~\ref{ch:dsl_generico_per_i_vincoli_en}):
+
+\begin{itemize}
+\item the \texttt{l.classroom.plesso} chained path that, given
+  a lesson, resolves the assigned room and then the plesso the
+  room belongs to;
+\item the \texttt{consecutive(l1.slot, l2.slot)} predicate,
+  true when the two lessons fall on the same day and differ
+  by one hour.
+\end{itemize}
+
+The legacy rule ``Centrale $\to$ Garibaldi minimum 1-hour gap,
+teacher Rossi'' translates to:
+
+\begin{lstlisting}
+forall l1 in lessons where
+       l1.classroom.plesso == 1
+   and l1.teacher == "Rossi":
+    forall l2 in lessons where
+           l2.classroom.plesso == 2
+       and l2.teacher == "Rossi"
+       and consecutive(l1.slot, l2.slot):
+        false
+\end{lstlisting}
+
+The helper \texttt{plesso\_commuting\_rule\_to\_dsl(rule)} in
+\texttt{engine/dsl\_translator.py} produces these clauses
+automatically from the ORM row. A regression test enforces
+zero-drift: the DSL path emits exactly the same forbidden slot
+pairs as the legacy \texttt{plessi\_constraints.py} pipeline.
+
+\section{Canonical patterns and seeded legacy HARDs (Step 3b-3e)}
+
+Step 3b-3e introduces a vocabulary of canonical patterns
+recognised directly by the DSL $\to$ CP-SAT compiler. Each
+maps to a legacy HARD constraint that previously lived only as
+hardcoded encoding. They can now be authored in DSL and are
+also generated automatically by
+\texttt{seed\_implicit\_hardcoded(profs)}.
+
+Accepted pragmas:
+\begin{itemize}
+\item \texttt{no\_holes\_class("3B")} -- no gaps in 3B's weekly
+  schedule (legacy \texttt{add\_class\_no\_holes}).
+\item \texttt{class\_present\_at\_hour("3B", 11)} -- if 3B has
+  any lesson on a day, the slot at hour 11 is busy (HARD-3,
+  ``no exit before noon'').
+\item \texttt{class\_day\_load\_in("3B", 0, 4, 5, 6)} -- 3B's
+  daily load is 0 (free day) or in [4, 6] hours (HARD-1
+  + HARD-2).
+\item \texttt{teacher\_max\_per\_day("Rossi", 5)} -- teacher
+  Rossi has at most 5 hours on any day.
+\item \texttt{cattedra\_max\_per\_day("Rossi", "3B",
+  "Matematica", 2)} -- the (Rossi, 3B, Math) cattedra has at
+  most 2 hours per day.
+\item \texttt{subject\_pair\_must("3B", "Scienzemotorie")} --
+  when 3B has 2 hours of PE on a day they must be consecutive.
+\item \texttt{subject\_pair\_exists("3B", "Matematica")} --
+  when 3B has 2+ hours of math on a day at least one
+  consecutive pair must exist.
+\end{itemize}
+
+Practical effect: the advanced user can now write
+\texttt{no\_holes\_class("4A")} in the ``+ New DSL constraint''
+modal and obtain the same outcome as the
+\texttt{hard\_no\_holes} toggle in \texttt{school\_classes}.
+The DSL advantage is composability with \texttt{forall},
+\texttt{exists}, \texttt{count}: the rule can be restricted to
+subsets of classes, combined with other predicates and modified
+on the fly without editing the database.
+

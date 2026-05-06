@@ -1,8 +1,270 @@
 \chapter{Generic constraint DSL}
 \label{ch:dsl_generico_per_i_vincoli_en}
 
-The general_dsl subset for HARD constraint authoring: predicates over (teacher, class, subject, day, hour), boolean combinators, compilation to CP-SAT constraints.
+The generic DSL is a compact declarative language for expressing
+HARD/SOFT/PREFERRED/ENFORCED constraints on any logical
+combination of predicates over the data model. It is implemented
+in \texttt{webui/backend/utils/general\_dsl.py} ($\sim$250 LOC,
+recursive-descent parser + AST + post-hoc evaluator, no external
+dependencies). The language is exposed through
+\texttt{POST /api/constraints/general}, validated live by
+\texttt{POST /api/constraints/general/validate}, and accessible
+from the ``+ New DSL constraint'' modal of the Constraints tab.
+
+\section{Philosophy}
+
+Before the generic DSL the system carried four specialised
+sub-languages (query, logical, objective, introspective) that
+re-implemented the same grammar four times. The generic DSL
+unifies all of them under a single grammar with four
+\emph{flavours} of compilation (LIST, LOGIC, OBJECTIVE, EVAL):
+one parser, many compilers. The syntax of
+\texttt{forall x in S where Filter: Body} and of the atomic
+predicates (\texttt{==}, \texttt{!=}, \texttt{<},
+\texttt{in}, \dots) is identical across all contexts; only the
+translation backend changes.
+
+\section{BNF grammar}
+
+\begin{lstlisting}[basicstyle=\ttfamily\small]
+expr           ::= iff_expr
+iff_expr       ::= implies_expr ( "<=>" implies_expr )*
+implies_expr   ::= or_expr     ( "=>"  or_expr )*
+or_expr        ::= and_expr    ( ("OR"|"or") and_expr )*
+and_expr       ::= not_expr    ( ("AND"|"and") not_expr )*
+not_expr       ::= ("NOT"|"not") not_expr | atom
+
+atom           ::= quant_expr | count_expr | comparison
+                 | call | bool_lit | "(" expr ")"
+
+quant_expr     ::= ("forall"|"exists") IDENT "in" source
+                   ["where" or_expr] ":" expr
+count_expr     ::= "count" IDENT "in" source ["where" or_expr]
+                   ( ":" comparison | op value )
+
+source         ::= IDENT | IDENT ("." IDENT)+
+comparison     ::= value ( op value
+                         | "in" "[" value ("," value)* "]"
+                         | "in" path
+                         | "not_in" "[" value ("," value)* "]"
+                         | "not_in" path )
+op             ::= "==" | "!=" | "<" | "<=" | ">" | ">="
+\end{lstlisting}
+
+Iterable sources include \texttt{lessons}, \texttt{teachers},
+\texttt{classes}, \texttt{classrooms}, \texttt{students},
+\texttt{subjects}, \texttt{slots}, \texttt{days},
+\texttt{hours}. Path-sources are also accepted (e.g.
+\texttt{exists g in s.groups: g.name == "X"}).
+
+\section{DSL $\to$ CP-SAT compilation (Step 1)}
+\label{sec:dsl-cpsat-en}
+
+Starting with Step 1 of the multi-day plan, the DSL ships a
+\emph{compiler} into CP-SAT in
+\texttt{engine/dsl\_to\_cpsat.py}, class
+\texttt{DSLConstraintCompiler}. While the post-hoc evaluator
+inspects an already-built solution to declare it feasible or
+violated, the compiler adds constraints \emph{during} the
+construction of the CP-SAT model so that the solver
+structurally avoids violations.
+
+The compiler is invoked at three sites:
+
+\begin{itemize}
+\item by \texttt{MonolithicSolver}
+  (cap.~\ref{ch:metodo_cpsat_en}) when the
+  \texttt{via\_dsl=True} flag is on;
+\item by every Branch-and-Price pricer
+  (cap.~\ref{ch:tecniche_avanzate_en}) so the same constraints
+  reach the sub-problem;
+\item by \texttt{PhaseBDaySolver} when called with
+  \texttt{via\_dsl=True} to re-use the legacy pipeline
+  augmented with DSL.
+\end{itemize}
+
+When a slot variable is still undecided the compiler emits the
+matching CP-SAT constraint instead of evaluating a truth value;
+when an expression is fully static (e.g. \texttt{consecutive(s1,
+s2)} with both \texttt{s1, s2} bound by the enclosing
+\texttt{forall}) the evaluation runs at compile time.
+
+\section{Slot predicates: \texttt{consecutive}, \texttt{same\_day}}
+\label{sec:dsl-slot-preds-en}
+
+Step 3a adds two built-in predicates resolved at compile time
+when both arguments are statically bound slots:
+
+\begin{itemize}
+\item \texttt{same\_day(s1, s2)} -- both slots fall on the same
+  weekday.
+\item \texttt{consecutive(s1, s2)} -- both slots fall on the
+  same weekday and differ by exactly one hour ($|h_1-h_2|=1$).
+\end{itemize}
+
+These are the building blocks for ``consecutive hours'',
+``inter-plesso travel gap'', ``same-day pair'', ``coteach must
+share day''. Arguments accept either literal pairs
+\texttt{(d, h)} or dotted paths like \texttt{l.slot} that
+return a \texttt{(day, hour)} tuple.
+
+\section{The \texttt{l.classroom.plesso} path}
+
+Also in Step 3a, the post-hoc evaluator and the compiler
+resolve the chained path \texttt{l.classroom.plesso}: per
+lesson \texttt{l}, the assigned room is read from the
+\texttt{classroom\_for\_slot} map provided by Phase B / the
+classroom-assignment phase, and the plesso (campus) is then
+resolved through the \texttt{plessi\_data} table. Without
+those two structures the path returns \texttt{None} and the
+compiler emits a diagnostic.
+
+The canonical use is a commuting rule between campuses (see
+the \texttt{vincoli} chapter, plessi section): ``no teacher
+may have a lesson in Plesso B in the hour immediately
+following a lesson in Plesso A''.
+
+\section{Canonical pattern vocabulary (Step 3b)}
+\label{sec:dsl-canonici-en}
+
+Step 3b introduces a vocabulary of function-call pragmas
+that the compiler recognises specially and emits as compact
+groups of CP-SAT constraints. Each form corresponds to a
+frequent pattern that, written as raw \texttt{forall} loops,
+would produce hundreds or thousands of clauses. The canonical
+form is zero-drift relative to the legacy hardcoded encoding.
+
+\begin{tabular}{lp{6.7cm}}
+\toprule
+\textbf{Pragma} & \textbf{Legacy equivalent} \\
+\midrule
+\texttt{no\_holes\_class("3B")} &
+  non-increasing chain forbidding gaps in 3B's weekly schedule
+  (legacy \texttt{add\_class\_no\_holes}). \\
+\texttt{class\_present\_at\_hour("3B", 11)} &
+  if 3B has any lesson on a day, the slot at hour 11 is busy
+  (legacy HARD-3, ``school day ends $\geq$ 12:00''). \\
+\texttt{class\_day\_load\_in("3B", 0, 4, 5, 6)} &
+  3B's daily load is 0 (free day) or 4--6 hours (legacy
+  HARD-1 + HARD-2). \\
+\texttt{teacher\_max\_per\_day("Rossi", 5)} &
+  teacher Rossi has at most 5 hours on any day
+  (\texttt{MAX\_PROF\_HOURS\_PER\_DAY}). \\
+\texttt{cattedra\_max\_per\_day("Rossi", "3B", "Matematica", 2)} &
+  the (Rossi, 3B, Math) cattedra has at most 2 hours per day
+  (\texttt{MAX\_PER\_DAY\_TRIPLE}). \\
+\texttt{subject\_pair\_must("3B", "Scienzemotorie")} &
+  when 3B has 2 hours of PE on a day they MUST be consecutive
+  (legacy HARD-B). \\
+\texttt{subject\_pair\_exists("3B", "Matematica")} &
+  when 3B has 2+ hours of math on a day at least one
+  consecutive pair must exist (legacy HARD-A). \\
+\bottomrule
+\end{tabular}
 
 \medskip
-\noindent
-\textit{This chapter is an English summary of the corresponding Italian chapter. The full text remains in the Italian edition (\texttt{docs/manual/chapters/dsl\_generico\_per\_i\_vincoli.tex}). For the implementation references see the engine modules in \texttt{engine/} and the API documentation at \texttt{docs/api.md}.}
+
+\texttt{no\_holes\_all\_classes()} and
+\texttt{class\_present\_at\_hour\_all(11)} act in batch over
+every class in the current slot scope.
+
+\section{Plesso commuting via DSL (Step 3c)}
+
+Step 3c wires the \texttt{PlessoCommutingRule} ORM table into
+the DSL: the helper
+\texttt{plesso\_commuting\_rule\_to\_dsl(rule)} returns a list
+of DSL clauses equivalent to the legacy rule. A regression
+test verifies zero-drift: applying the rule via DSL produces
+exactly the same forbidden slot tuples as the hardcoded
+\texttt{plessi\_constraints} pipeline.
+
+\section{Seed legacy HARDs via DSL (Step 3d-3e)}
+
+Step 3d-3e adds \texttt{seed\_implicit\_hardcoded(profs)}: given
+the teacher dictionary, it returns the list of DSL strings that
+encode every legacy HARD constraint of the solver. Combined
+with the \texttt{via\_dsl=True} flag of \texttt{MonolithicSolver}
+and \texttt{PhaseBDaySolver}, this allows building a complete
+CP-SAT model \emph{exclusively from DSL} -- no hardcoded code
+path is exercised. Invariants:
+
+\begin{itemize}
+\item \emph{syntactic zero-drift}: the slot tuples
+  forbidden/forced by the DSL path coincide bit-for-bit with
+  the legacy ones;
+\item \emph{semantic zero-drift}: the feasible set accepted by
+  the two paths is identical, validated on the
+  \texttt{small} / \texttt{medium} / \texttt{huge} benchmarks;
+\item \emph{determinism}: the order in which
+  \texttt{seed\_implicit\_hardcoded} emits DSL strings is
+  stable, so the CP-SAT model construction order is
+  reproducible across runs.
+\end{itemize}
+
+This is the migration vehicle: in subsequent steps the
+hardcoded path will be deprecated in favour of the DSL path,
+and the existence of \texttt{seed\_implicit\_hardcoded}
+allows that to happen without coverage loss.
+
+\section{Status of SOFT constraints}
+\label{sec:dsl-soft-status-en}
+
+The DSL accepts both HARD and SOFT rules (with optional
+weight). At the level of the \emph{post-hoc evaluator} SOFT is
+fully implemented: SOFT-clause violations contribute to the
+solution's global score and surface in
+\texttt{run\_metrics}.
+
+At the level of the \emph{CP-SAT compiler} (Step 1+) SOFT is
+parsed but not yet wired to an objective penalty: every SOFT
+rule the compiler encounters yields the diagnostic
+\texttt{soft constraint X: SOFT cost not yet wired}, and the
+rule is stored as an informational label without affecting the
+solver objective. Future steps will integrate SOFT into the
+CP-SAT objective; today the user should understand the
+\emph{declarative} contract while knowing the
+\emph{enforcement} via CP-SAT is post-hoc only.
+
+In practice: use HARD for anything that cannot be violated;
+use SOFT for soft preferences understanding that, today, the
+DSL acts as a declarative contract that the pipeline applies
+post-hoc and tomorrow will also apply during compilation.
+
+\section{DSL architecture diagram}
+
+\begin{verbatim}
++--------------------------------------------------+
+|  UI ("+ New DSL constraint" modal)                |
+|  webui/frontend/.../GeneralConstraintsCard.svelte |
++--------------------+-----------------------------+
+                     |
+                     v
++--------------------+-----------------------------+
+|  POST /api/constraints/general                   |
++--------------------+-----------------------------+
+                     |
+                     v
++--------------------+-----------------------------+
+|  Parser + AST -- general_dsl.py                  |
++--------------------+-----------------------------+
+                     |
+                     +---------+---------+
+                     v         v         v
+              post-hoc    CP-SAT      SOFT score
+              evaluator   compiler    (post-hoc)
+              (HARD       (Step 1+)
+               viol. capture)
+                     |         |
+                     v         v
+              +--------------------+
+              |   CP-SAT solver    |
+              |   (Mono / Pricer / |
+              |    PhaseB / RF /   |
+              |    Meta)           |
+              +--------------------+
+\end{verbatim}
+
+One AST, two backends: the evaluator reads a solution and
+answers ``feasible / violated''; the compiler emits CP-SAT
+constraints before solving. The grammar is unique and source
+names are identical between backends.

@@ -79,4 +79,85 @@ chiama \texttt{init\_db()} allo startup. Esso fa:
         duplicare.
 \end{enumerate}
 
+\section{Architettura del solver: dal DSL a CP-SAT}
+\label{sec:arch-dsl-cpsat}
+
+Step 1--4 del piano multi-day hanno introdotto un'architettura
+\emph{a strati uniforme} per tutti gli usi del solver. Il
+diagramma sotto riassume i flussi di trasformazione.
+
+\begin{verbatim}
++-----------------------------------------------------------+
+| UI (SvelteKit)                                            |
+|   - Tab Vincoli: matrici + DSL + Plessi                   |
+|   - Tab Workflow: pipeline (mode, granularity)            |
++-----------------+----------------------------+------------+
+                  |                              |
+        POST /api/constraints/general     POST /api/optimize/*
+                  |                              |
+                  v                              v
++-----------------+----------------+   +---------+---------+
+| dsl_parser (general_dsl.py)      |   | router            |
+|   parse() -> AST                  |   | run_async         |
++-----------------+----------------+   +---------+---------+
+                  |                              |
+                  v                              v
++-----------------+----------------+   +---------+---------+
+| dsl_translator                   |   | engine pipeline   |
+|   tabelle special-purpose        |   | (mono / decomp /  |
+|   -> stringhe DSL canoniche       |   |  CG / BP)         |
++-----------------+----------------+   +---------+---------+
+                  |                              |
+                  +------------- merged ---------+
+                                  |
+                                  v
++--------------------------------+--------------------------+
+| dsl_to_cpsat.DSLConstraintCompiler                         |
+|   AST + slot dict + plessi_data                            |
+|   -> add_assertion() / add_implication() su CpModel        |
++--------------------------------+--------------------------+
+                                 |
+              +------------------+------------------+
+              v                  v                  v
+       MonolithicSolver   PhaseBDaySolver   BP Pricer (9 grani)
+       (cpsat_v2_*) +     (legacy +         + RF nodi
+       seed via DSL       DSL augment)
+              |                  |                  |
+              +------------------+------------------+
+                                 |
+                                 v
+                         soluzione (Lessons)
+                                 |
+                                 v
+                          DSL evaluator post-hoc
+                          (HARD: feasibility check)
+                          (SOFT: contributo allo
+                                  score globale)
+\end{verbatim}
+
+I punti chiave:
+\begin{itemize}
+\item \textbf{Un parser, un AST}. Tutte le sorgenti (matrici,
+  DSL UI, regole plesso, vincoli legacy seedati) vengono
+  unificate in stringhe DSL canoniche e parsate da
+  \texttt{general\_dsl.py}.
+\item \textbf{Un compilatore}. Il
+  \texttt{DSLConstraintCompiler} \`e la porta unica verso
+  CP-SAT. Mono solver, pricer di BP, PhaseBDaySolver, nodi
+  Ryan-Foster: tutti applicano lo stesso compilatore al loro
+  modello, garantendo coerenza dei vincoli fra le diverse
+  pipeline.
+\item \textbf{Zero-drift}.
+  \texttt{seed\_implicit\_hardcoded(profs)} traduce in DSL i
+  vincoli HARD legacy hardcoded. Le tuple di slot proibite
+  emesse via DSL coincidono bit-per-bit con quelle del path
+  legacy: la migrazione \`e progressiva e reversibile.
+\item \textbf{SOFT post-hoc, HARD up-front}. I HARD del DSL
+  diventano vincoli CP-SAT prima della solve. I SOFT del DSL
+  sono attualmente valutati \emph{post-hoc}: il loro costo
+  contribuisce allo score globale ma non orienta ancora la
+  ricerca CP-SAT (la wired-up del SOFT in obiettivo \`e
+  pianificata nei prossimi step).
+\end{itemize}
+
 % =========== Cap 3: Modello dati ===========
