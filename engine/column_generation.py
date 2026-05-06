@@ -733,6 +733,103 @@ def _pricing_subproblem_teacher(
 ) -> tuple[dict | None, float]:
     """CP-SAT pricer for the ``teacher`` granularity (V1 master).
 
+    PoC of the OO architecture (engine/cp_sat_constraint_model.py):
+    delegates to ``TeacherPricer``, the first sub-class of the new
+    ``ConstraintModel`` hierarchy. The other 8 pricers continue to
+    use their inline implementation; migration is incremental so the
+    existing 318-test regression baseline stays green throughout.
+    """
+    # Group-aware profs: when the caller passed group_assignments,
+    # the profs need to be augmented so the pricer sees the group
+    # classes. Replicates the legacy `_profs_iter_with_groups`
+    # behaviour without touching its internals.
+    if group_assignments:
+        from copy import deepcopy
+        aug_profs = deepcopy(profs)
+        for ga in group_assignments:
+            t_g = ga.get("teacher_name")
+            g_cl = ga.get("group_name")
+            g_s = ga.get("subject")
+            if not (t_g and g_cl and g_s):
+                continue
+            classi = aug_profs.setdefault(t_g, {}).setdefault(
+                "classi", {})
+            classi.setdefault(g_cl, {}).setdefault(
+                g_s, {"ore": int(ga.get("n_hours", 0))})
+        profs_for_pricer = aug_profs
+    else:
+        profs_for_pricer = profs
+
+    try:
+        from .cp_sat_constraint_model import (  # type: ignore
+            TeacherPricer, ConstraintConfig)
+    except ImportError:
+        from cp_sat_constraint_model import (  # type: ignore
+            TeacherPricer, ConstraintConfig)
+
+    locks_in_scope = [(p, cl, s, d, h) for (p, cl, s, d, h)
+                       in (locks or ()) if p == teacher]
+    cfg = ConstraintConfig(
+        enforce_no_holes=False,
+        enforce_h3_presence_at_11=False,
+        enforce_motorie_pair=False,
+        enforce_math_italian_pair=False,
+        locks=locks_in_scope,
+    )
+    pricer = TeacherPricer(
+        profs_for_pricer, dc_value, teacher,
+        lambda_duals=lambda_duals, mu_t=mu_t,
+        config=cfg,
+    )
+    if not pricer.slot:
+        return None, 0.0
+    # Greedy warm-start hint, mirroring the function-based pricer.
+    occ_t: set = set()
+    occ_c: set = set()
+    for (p, cl_l, s_l, d_l, h_l) in locks_in_scope:
+        occ_t.add((d_l, h_l))
+        occ_c.add((cl_l, d_l, h_l))
+    hint_pattern: dict = {}
+    triples_flat = sorted(
+        ((d, q, key[1], key[2])  # (day, q, class, subject)
+         for key, lst in pricer.triples.items()
+         for (d, q) in lst),
+        key=lambda t: (t[0], t[2], t[3]))
+    for (d, q, cl, s) in triples_flat:
+        placed = 0
+        for h in HOURS:
+            if placed >= q:
+                break
+            if (d, h) in occ_t or (cl, d, h) in occ_c:
+                continue
+            hint_pattern[(teacher, cl, s, d, h)] = 1
+            occ_t.add((d, h))
+            occ_c.add((cl, d, h))
+            placed += 1
+    sol, _status = pricer.solve_pricing(
+        time_limit_s=time_limit, workers=workers,
+        warm_start_pattern=hint_pattern)
+    if sol is None:
+        return None, 0.0
+    rc = _compute_rc(sol, teacher, lambda_duals, mu_t, profs_for_pricer)
+    if rc < -eps:
+        return sol, rc
+    return None, rc
+
+
+def _pricing_subproblem_teacher_legacy(
+    teacher: str, profs: dict, dc_value: dict,
+    lambda_duals: dict, mu_t: float,
+    *,
+    time_limit: float = 5.0,
+    workers: int = 2,
+    locks: set | None = None,
+    group_assignments: list | None = None,
+    eps: float = 1e-6,
+) -> tuple[dict | None, float]:
+    """Legacy function-based per-teacher pricer (kept for reference
+    + benchmark comparison; no longer wired into the dispatcher).
+
     Builds the WHOLE per-teacher week pattern in a single CP-SAT
     call: every (class, subject, day) triple in the teacher's
     catalog gets exactly its hours-count placed across the 6x6
