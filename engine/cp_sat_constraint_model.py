@@ -119,6 +119,7 @@ class ConstraintModel:
         scope: tuple | None = None,
         days: Iterable[int] | None = None,
         hours: Iterable[int] | None = None,
+        classroom_for_slot: dict | None = None,
     ):
         self.profs = profs
         self.dc_value = dc_value
@@ -136,6 +137,13 @@ class ConstraintModel:
         # Cattedra-day demand expanded from dc_value, scoped:
         # triples[(teacher, class, subject)] = list[(day, q)] with q>0
         self.triples: dict[tuple, list] = {}
+        # Optional ``(class, day, hour) -> classroom_name`` mapping,
+        # used by the DSL compiler to resolve ``l.classroom`` /
+        # ``l.classroom.plesso`` references when the post-CG
+        # classroom assignment is already known. ``None`` means
+        # rooms are still unassigned and DSL rules touching the
+        # classroom dimension will be skipped with a diagnostic.
+        self.classroom_for_slot = classroom_for_slot
         self._build_slot_variables()
 
     # ----- variable construction -----
@@ -555,7 +563,9 @@ class ConstraintModel:
     # Generic DSL constraint integration
     # ============================================================
 
-    def add_dsl_constraint(self, expression):
+    def add_dsl_constraint(self, expression, *,
+                            classroom_for_slot: dict | None = None,
+                            plessi_data: Any = None):
         """Compile a single DSL expression (string or AST) and add
         the resulting CP-SAT constraints to ``self.model``.
 
@@ -565,6 +575,12 @@ class ConstraintModel:
         log/inspect them; HARD rules with dynamic constructs the
         compiler can't yet emit are reported there rather than
         silently ignored.
+
+        ``classroom_for_slot`` and ``plessi_data`` are forwarded to
+        the compiler; when omitted, the model defaults
+        (``self.classroom_for_slot`` / ``self.config.plessi_data``)
+        are used. They unlock DSL rules that reference
+        ``l.classroom`` / ``l.classroom.plesso``.
         """
         try:
             from . import dsl_to_cpsat as d2c  # type: ignore
@@ -572,17 +588,32 @@ class ConstraintModel:
             import dsl_to_cpsat as d2c  # type: ignore
         if not hasattr(self, "dsl_diagnostics"):
             self.dsl_diagnostics: list[str] = []
+        cfs = classroom_for_slot
+        if cfs is None:
+            cfs = getattr(self, "classroom_for_slot", None)
+        plessi = plessi_data
+        if plessi is None:
+            plessi = getattr(self.config, "plessi_data", None)
         compiler = d2c.DSLConstraintCompiler(
-            self.model, self.slot, config=self.config)
+            self.model, self.slot, config=self.config,
+            classroom_for_slot=cfs,
+            plessi_data=plessi,
+        )
         compiler.compile(expression)
         self.dsl_diagnostics.extend(compiler.diagnostics)
 
-    def add_all_dsl_constraints(self, expressions: list):
+    def add_all_dsl_constraints(self, expressions: list, *,
+                                  classroom_for_slot: dict | None = None,
+                                  plessi_data: Any = None):
         """Convenience: compile every expression in the list. Useful
         when the caller has loaded a batch of LogicalUnavailability
         rows and wants to push them all into the model."""
         for expr in expressions or []:
-            self.add_dsl_constraint(expr)
+            self.add_dsl_constraint(
+                expr,
+                classroom_for_slot=classroom_for_slot,
+                plessi_data=plessi_data,
+            )
 
     def add_all_dsl_constraints_from_db(self, db, *,
                                           include_soft: bool = False):

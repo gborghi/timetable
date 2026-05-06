@@ -81,7 +81,26 @@ def _normalize_day_value(v: Any) -> int | None:
 # ``(teacher, class_name, subject, day, hour)``, returns the value of
 # the named attribute. The parser's `l.teacher` etc. translate to
 # these projections at compile time.
-def _lesson_attr(key: tuple, attr: str) -> Any:
+#
+# Classroom + plesso resolution
+# -----------------------------
+# Slot keys do NOT carry a classroom dimension (rooms are decided
+# post-CG by the classroom-assignment solver). When the caller wants
+# a DSL rule to reference ``l.classroom`` or ``l.classroom.plesso``,
+# the compiler accepts an optional ``classroom_for_slot`` lookup
+# (``(class, day, hour) -> classroom_name``) and an optional
+# ``plessi_data`` carrier (anything with a ``classroom_to_plesso``
+# dict). When those are provided the static evaluator resolves the
+# attribute chain transparently; otherwise it raises
+# ``ValueError`` so the caller logs a diagnostic instead of silently
+# dropping the rule.
+def _lesson_attr(
+    key: tuple,
+    attr: str,
+    *,
+    classroom_for_slot: dict | None = None,
+    plessi_data: Any = None,
+) -> Any:
     t, cl, s, d, h = key
     if attr == "teacher":
         return t
@@ -96,12 +115,90 @@ def _lesson_attr(key: tuple, attr: str) -> Any:
     if attr == "slot":
         return (d, h)
     if attr == "classroom":
-        # Decided post-CG by classroom assignment; unknown here.
-        return None
+        if classroom_for_slot is None:
+            raise ValueError(
+                "l.classroom referenced but classroom_for_slot lookup "
+                "not provided to compiler")
+        return classroom_for_slot.get((cl, d, h))
     return None
 
 
-def _eval_static(node, env: dict, key_lookup: dict[str, tuple]) -> Any:
+def _resolve_lesson_path(
+    key: tuple,
+    path: list[str],
+    *,
+    classroom_for_slot: dict | None = None,
+    plessi_data: Any = None,
+) -> Any:
+    """Resolve a multi-step attribute chain on a slot key.
+
+    Currently understands chained access through ``classroom``:
+      - ``l.classroom`` -> classroom_name (str | None)
+      - ``l.classroom.plesso`` -> plesso_id  (int | None)
+      - ``l.classroom.id``     -> classroom_name  (alias of name in
+                                                   the post-CG model)
+
+    Single-step paths fall through to ``_lesson_attr``.
+
+    A return value of ``None`` is legitimate (e.g. the classroom for
+    that slot is not assigned yet, or the room has no plesso). A
+    chain that the resolver does NOT understand raises
+    ``ValueError`` so the caller can record a diagnostic.
+    """
+    if not path:
+        return key
+    head = path[0]
+    rest = path[1:]
+    val = _lesson_attr(
+        key, head,
+        classroom_for_slot=classroom_for_slot,
+        plessi_data=plessi_data,
+    )
+    if not rest:
+        return val
+    if val is None:
+        # Cannot resolve further on a missing intermediate value.
+        # We still return None rather than raise; the comparison
+        # using this None is then evaluated as "unequal to any
+        # concrete RHS", which is the correct semantics when the
+        # classroom for the slot is unknown.
+        return None
+    if head == "classroom":
+        nxt = rest[0]
+        deeper = rest[1:]
+        # ``l.classroom`` already produced a string (the room name).
+        # Now consume the next token.
+        if nxt == "plesso":
+            if plessi_data is None:
+                raise ValueError(
+                    "l.classroom.plesso referenced but plessi_data "
+                    "not provided to compiler")
+            mapping = getattr(plessi_data, "classroom_to_plesso", None)
+            if mapping is None and isinstance(plessi_data, dict):
+                mapping = plessi_data.get("classroom_to_plesso")
+            if mapping is None:
+                raise ValueError(
+                    "plessi_data missing classroom_to_plesso mapping")
+            pl = mapping.get(val)
+            if deeper:
+                # No further attributes on a plesso id (an int).
+                raise ValueError(
+                    f"cannot follow path {'.'.join(rest)} on plesso id")
+            return pl
+        if nxt in ("name", "id"):
+            # The slot model uses the room NAME as identifier; both
+            # `.name` and `.id` collapse to the same value.
+            if deeper:
+                raise ValueError(
+                    f"cannot follow path {'.'.join(rest)} on classroom name")
+            return val
+    raise ValueError(
+        f"unsupported attribute chain {'.'.join(path)} on lesson key")
+
+
+def _eval_static(node, env: dict, key_lookup: dict[str, tuple],
+                  *, classroom_for_slot: dict | None = None,
+                  plessi_data: Any = None) -> Any:
     """Evaluate an AST node when ALL the references are
     statically resolvable (compile-time constants on the candidate
     keys). ``env`` maps quantifier-bound variable names to either
@@ -111,6 +208,10 @@ def _eval_static(node, env: dict, key_lookup: dict[str, tuple]) -> Any:
     Returns the value (bool / int / str / tuple) or raises
     ``ValueError`` when the expression is dynamic (depends on a
     decision variable).
+
+    ``classroom_for_slot`` and ``plessi_data`` are optional carriers
+    used to resolve ``l.classroom`` and ``l.classroom.plesso``
+    references; they are forwarded to ``_resolve_lesson_path``.
     """
     from webui.backend.utils import general_dsl as gd  # type: ignore
 
@@ -129,20 +230,31 @@ def _eval_static(node, env: dict, key_lookup: dict[str, tuple]) -> Any:
         bound = env[head]
         if not rest:
             return bound
-        # bound is a slot key tuple; project attributes
+        # bound is a slot key tuple; project attributes (with
+        # support for chained access through l.classroom).
         if isinstance(bound, tuple) and head in key_lookup:
-            return _lesson_attr(bound, rest[0])
+            return _resolve_lesson_path(
+                bound, rest,
+                classroom_for_slot=classroom_for_slot,
+                plessi_data=plessi_data,
+            )
         if isinstance(bound, dict):
             return bound.get(rest[0])
         raise ValueError(
             f"cannot resolve {'.'.join(node.path)} on {bound!r}")
     if isinstance(node, gd.Cmp):
-        lhs = _eval_static(node.left, env, key_lookup)
+        lhs = _eval_static(
+            node.left, env, key_lookup,
+            classroom_for_slot=classroom_for_slot,
+            plessi_data=plessi_data)
         op = node.op
         if op in ("in", "not_in") and isinstance(node.right, list):
             rhs_set = []
             for r in node.right:
-                rhs_set.append(_eval_static(r, env, key_lookup))
+                rhs_set.append(_eval_static(
+                    r, env, key_lookup,
+                    classroom_for_slot=classroom_for_slot,
+                    plessi_data=plessi_data))
             # Day labels in 'in' lists are normalized.
             if isinstance(lhs, int):
                 rhs_norm = [_normalize_day_value(v) or v
@@ -154,7 +266,10 @@ def _eval_static(node, env: dict, key_lookup: dict[str, tuple]) -> Any:
             if op == "in":
                 return lhs in rhs_norm
             return lhs not in rhs_norm
-        rhs = _eval_static(node.right, env, key_lookup)
+        rhs = _eval_static(
+            node.right, env, key_lookup,
+            classroom_for_slot=classroom_for_slot,
+            plessi_data=plessi_data)
         # Day-name normalization for direct ==/!= comparisons.
         if op in ("==", "!=") and isinstance(lhs, int):
             n = _normalize_day_value(rhs)
@@ -174,23 +289,43 @@ def _eval_static(node, env: dict, key_lookup: dict[str, tuple]) -> Any:
             return lhs >= rhs
         raise ValueError(f"unknown op {op}")
     if isinstance(node, gd.And):
-        return all(_eval_static(a, env, key_lookup) for a in node.args)
+        return all(_eval_static(
+            a, env, key_lookup,
+            classroom_for_slot=classroom_for_slot,
+            plessi_data=plessi_data) for a in node.args)
     if isinstance(node, gd.Or):
-        return any(_eval_static(a, env, key_lookup) for a in node.args)
+        return any(_eval_static(
+            a, env, key_lookup,
+            classroom_for_slot=classroom_for_slot,
+            plessi_data=plessi_data) for a in node.args)
     if isinstance(node, gd.Not):
-        return not _eval_static(node.arg, env, key_lookup)
+        return not _eval_static(
+            node.arg, env, key_lookup,
+            classroom_for_slot=classroom_for_slot,
+            plessi_data=plessi_data)
     if isinstance(node, gd.Implies):
-        l = _eval_static(node.left, env, key_lookup)
+        l = _eval_static(
+            node.left, env, key_lookup,
+            classroom_for_slot=classroom_for_slot,
+            plessi_data=plessi_data)
         if not l:
             return True
-        return bool(_eval_static(node.right, env, key_lookup))
+        return bool(_eval_static(
+            node.right, env, key_lookup,
+            classroom_for_slot=classroom_for_slot,
+            plessi_data=plessi_data))
     if isinstance(node, gd.Call):
-        return _eval_static_call(node, env, key_lookup)
+        return _eval_static_call(
+            node, env, key_lookup,
+            classroom_for_slot=classroom_for_slot,
+            plessi_data=plessi_data)
     raise ValueError(f"unsupported node kind {type(node).__name__}")
 
 
 def _eval_static_call(node, env: dict,
-                       key_lookup: dict[str, tuple]) -> Any:
+                       key_lookup: dict[str, tuple],
+                       *, classroom_for_slot: dict | None = None,
+                       plessi_data: Any = None) -> Any:
     """Evaluate built-in DSL functions on statically bound vars.
 
     Supported:
@@ -202,7 +337,9 @@ def _eval_static_call(node, env: dict,
       teacher(lesson) / class(lesson) / subject(lesson): str
     """
     name = node.name
-    args = [_eval_static(arg_node, env, key_lookup)
+    args = [_eval_static(arg_node, env, key_lookup,
+                          classroom_for_slot=classroom_for_slot,
+                          plessi_data=plessi_data)
             for _kw, arg_node in node.args]
     if name == "same_day":
         if len(args) != 2:
@@ -278,11 +415,21 @@ class DSLConstraintCompiler:
     """
 
     def __init__(self, model, slot: dict, *, config=None,
-                 is_hard: bool = True):
+                 is_hard: bool = True,
+                 classroom_for_slot: dict | None = None,
+                 plessi_data: Any = None):
         self.model = model
         self.slot = slot
         self.config = config
         self.is_hard = is_hard
+        # Optional classroom + plesso resolution carriers. When the
+        # caller wants DSL rules that reference ``l.classroom`` /
+        # ``l.classroom.plesso`` to be enforced, both must be passed
+        # in (or just classroom_for_slot for ``l.classroom`` alone).
+        # The DTOs are forwarded verbatim to ``_eval_static`` /
+        # ``_resolve_lesson_path`` and never mutated.
+        self.classroom_for_slot = classroom_for_slot
+        self.plessi_data = plessi_data
         # Index slot keys by candidate dimensions for O(1) lookup.
         self._by_t: dict = {}
         self._by_c: dict = {}
@@ -309,6 +456,16 @@ class DSLConstraintCompiler:
             tree = source
         self._compile_node(tree, env={})
 
+    def _eval(self, node, env):
+        """Evaluate a node statically, propagating the carrier
+        kwargs (classroom_for_slot, plessi_data) from this compiler
+        instance. Raises ``ValueError`` for dynamic terms."""
+        return _eval_static(
+            node, env, self._key_lookup_kinds(),
+            classroom_for_slot=self.classroom_for_slot,
+            plessi_data=self.plessi_data,
+        )
+
     # ----- node dispatch -----
 
     def _compile_node(self, node, env: dict):
@@ -334,13 +491,14 @@ class DSLConstraintCompiler:
             return
         # Boolean leaf: try static eval.
         try:
-            value = _eval_static(node, env, self._key_lookup_kinds())
+            value = self._eval(node, env)
             if not value:
                 self.model.AddBoolAnd([self.model.NewConstant(0)])
             return
-        except ValueError:
+        except ValueError as exc:
             self.diagnostics.append(
-                f"could not statically reduce node {type(node).__name__}")
+                f"could not statically reduce node "
+                f"{type(node).__name__}: {exc}")
 
     # ----- forall / exists -----
 
@@ -356,12 +514,11 @@ class DSLConstraintCompiler:
             new_env[node.var] = key
             if node.where is not None:
                 try:
-                    keep = bool(_eval_static(
-                        node.where, new_env,
-                        self._key_lookup_kinds()))
-                except ValueError:
+                    keep = bool(self._eval(node.where, new_env))
+                except ValueError as exc:
                     self.diagnostics.append(
-                        "forall.where contains dynamic refs; skipped")
+                        f"forall.where contains dynamic refs; "
+                        f"skipped ({exc})")
                     continue
                 if not keep:
                     continue
@@ -385,8 +542,7 @@ class DSLConstraintCompiler:
             # caller. For now: treat the body as a static filter
             # and require the slot to be 1.
             try:
-                value = bool(_eval_static(
-                    node.body, env, self._key_lookup_kinds()))
+                value = bool(self._eval(node.body, env))
                 if value:
                     # exists candidate: add slot to a placeholder.
                     self._exists_pending_slots.append(self.slot[key])
@@ -396,8 +552,7 @@ class DSLConstraintCompiler:
             return
         # forall: body must hold whenever slot is true.
         try:
-            value = _eval_static(
-                node.body, env, self._key_lookup_kinds())
+            value = self._eval(node.body, env)
             if value is False:
                 # body false -> the slot must NOT be active.
                 self.model.Add(self.slot[key] == 0)
@@ -432,18 +587,14 @@ class DSLConstraintCompiler:
                 # Inner where filter
                 if body.where is not None:
                     try:
-                        keep = bool(_eval_static(
-                            body.where, new_env,
-                            self._key_lookup_kinds()))
+                        keep = bool(self._eval(body.where, new_env))
                     except ValueError:
                         continue
                     if not keep:
                         continue
                 # Inner body
                 try:
-                    inner_value = _eval_static(
-                        body.body, new_env,
-                        self._key_lookup_kinds())
+                    inner_value = self._eval(body.body, new_env)
                 except ValueError:
                     self.diagnostics.append(
                         "double-forall body dynamic; skipped")
@@ -472,9 +623,7 @@ class DSLConstraintCompiler:
             new_env[node.var] = key
             if node.where is not None:
                 try:
-                    keep = bool(_eval_static(
-                        node.where, new_env,
-                        self._key_lookup_kinds()))
+                    keep = bool(self._eval(node.where, new_env))
                 except ValueError:
                     self.diagnostics.append(
                         "count.where dynamic; skipped term")
@@ -491,7 +640,7 @@ class DSLConstraintCompiler:
             n = int(rhs.value)
         else:
             try:
-                n = int(_eval_static(rhs, env, self._key_lookup_kinds()))
+                n = int(self._eval(rhs, env))
             except ValueError:
                 self.diagnostics.append("count rhs dynamic; skipped")
                 return
@@ -524,8 +673,7 @@ class DSLConstraintCompiler:
         # iff the antecedent holds. Dynamic implications would need
         # reification at constraint level.
         try:
-            ant = _eval_static(
-                node.left, env, self._key_lookup_kinds())
+            ant = self._eval(node.left, env)
         except ValueError:
             self.diagnostics.append(
                 "implies with dynamic antecedent; skipped")
@@ -544,7 +692,7 @@ class DSLConstraintCompiler:
         slot_vars: list = []
         for arg in node.args:
             try:
-                v = _eval_static(arg, env, self._key_lookup_kinds())
+                v = self._eval(arg, env)
                 if v:
                     return  # Or already satisfied statically.
             except ValueError:
@@ -559,8 +707,7 @@ class DSLConstraintCompiler:
 
     def _compile_not(self, node, env: dict):
         try:
-            v = _eval_static(
-                node.arg, env, self._key_lookup_kinds())
+            v = self._eval(node.arg, env)
             if v:
                 self.model.AddBoolAnd([self.model.NewConstant(0)])
             return

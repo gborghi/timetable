@@ -190,3 +190,93 @@ def test_diagnostics_for_unsupported_construct():
     assert any("teachers" in d or "not yet supported" in d
                 for d in ms.dsl_diagnostics), (
         f"missing diagnostic; got {ms.dsl_diagnostics}")
+
+
+# ============================================================
+# Step 3a: classroom + plesso predicates
+# ============================================================
+
+
+def test_dsl_l_classroom_resolves_when_assignment_provided():
+    """`l.classroom == "<name>"` filters by the post-CG room
+    assignment when the caller passes ``classroom_for_slot``."""
+    from cp_sat_constraint_model import MonolithicSolver, ConstraintConfig
+    profs = _basic_profs()
+    # 1 hr/day for 4 days. We pre-assign every (1A, d, h) to
+    # classroom "Aula1" except (1A, 1, 8) which is "Aula2".
+    dc = _basic_dc(hrs_per_day=1)
+    cfs = {("1A", d, h): "Aula1"
+           for d in (1, 2, 3, 4) for h in range(8, 14)}
+    cfs[("1A", 1, 8)] = "Aula2"
+    ms = MonolithicSolver(profs, dc, ConstraintConfig(
+        enforce_no_holes=False, enforce_h3_presence_at_11=False),
+        classroom_for_slot=cfs)
+    # Forbid Aula2 entirely.
+    ms.add_dsl_constraint(
+        'forall l in lessons where l.classroom == "Aula2": false')
+    sol, status = ms.solve(time_limit_s=5.0, workers=1)
+    assert sol is not None, status
+    # No slot at (T1, 1A, Mat, 1, 8) should be set; the day-1 hour
+    # must come from a different (d, h) where classroom != Aula2.
+    assert ("T1", "1A", "Mat", 1, 8) not in sol
+
+
+def test_dsl_l_classroom_plesso_resolves_with_plessi_data():
+    """`l.classroom.plesso == 1` filters by the plesso of the
+    assigned classroom -- two-step attribute chain."""
+    from cp_sat_constraint_model import MonolithicSolver, ConstraintConfig
+    profs = _basic_profs()
+    dc = _basic_dc(hrs_per_day=1)
+    # All 4 days use Aula1 (plesso=1) except day-2-h8 in Aula2 (plesso=2).
+    cfs = {("1A", d, h): "Aula1"
+           for d in (1, 2, 3, 4) for h in range(8, 14)}
+    cfs[("1A", 2, 8)] = "Aula2"
+    plessi = {"classroom_to_plesso": {"Aula1": 1, "Aula2": 2}}
+    ms = MonolithicSolver(profs, dc, ConstraintConfig(
+        enforce_no_holes=False, enforce_h3_presence_at_11=False),
+        classroom_for_slot=cfs)
+    # Forbid all lessons in plesso 2.
+    ms.add_dsl_constraint(
+        'forall l in lessons where l.classroom.plesso == 2: false',
+        plessi_data=plessi,
+    )
+    sol, status = ms.solve(time_limit_s=5.0, workers=1)
+    assert sol is not None, status
+    # The (1A, 2, 8) slot is the only one in plesso 2 -- it must be 0.
+    assert ("T1", "1A", "Mat", 2, 8) not in sol
+
+
+def test_dsl_l_classroom_diagnostic_when_carrier_missing():
+    """When `l.classroom` is referenced but no classroom_for_slot
+    is provided, the compiler should record a diagnostic instead of
+    silently accepting the rule."""
+    from cp_sat_constraint_model import MonolithicSolver, ConstraintConfig
+    profs = _basic_profs()
+    dc = _basic_dc(hrs_per_day=1)
+    ms = MonolithicSolver(profs, dc, ConstraintConfig(
+        enforce_no_holes=False, enforce_h3_presence_at_11=False))
+    # No classroom_for_slot passed -> the rule cannot be statically
+    # resolved.
+    ms.add_dsl_constraint(
+        'forall l in lessons where l.classroom == "Aula1": false')
+    assert any("classroom" in d.lower()
+                for d in ms.dsl_diagnostics), (
+        f"missing classroom diagnostic; got {ms.dsl_diagnostics}")
+
+
+def test_dsl_l_classroom_plesso_diagnostic_when_plessi_missing():
+    """`l.classroom.plesso` without plessi_data must emit a
+    diagnostic and not crash."""
+    from cp_sat_constraint_model import MonolithicSolver, ConstraintConfig
+    profs = _basic_profs()
+    dc = _basic_dc(hrs_per_day=1)
+    cfs = {("1A", d, h): "Aula1"
+           for d in (1, 2, 3, 4) for h in range(8, 14)}
+    ms = MonolithicSolver(profs, dc, ConstraintConfig(
+        enforce_no_holes=False, enforce_h3_presence_at_11=False),
+        classroom_for_slot=cfs)
+    ms.add_dsl_constraint(
+        'forall l in lessons where l.classroom.plesso == 1: false')
+    assert any("plessi" in d.lower() or "plesso" in d.lower()
+                for d in ms.dsl_diagnostics), (
+        f"missing plesso diagnostic; got {ms.dsl_diagnostics}")
