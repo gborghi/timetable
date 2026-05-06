@@ -551,6 +551,39 @@ class ConstraintModel:
         # consistent so subclasses can opt-in safely.
         return
 
+    # ============================================================
+    # Generic DSL constraint integration
+    # ============================================================
+
+    def add_dsl_constraint(self, expression):
+        """Compile a single DSL expression (string or AST) and add
+        the resulting CP-SAT constraints to ``self.model``.
+
+        Routes through ``engine.dsl_to_cpsat.DSLConstraintCompiler``.
+        Diagnostics from the compiler (skipped/unsupported nodes)
+        are collected on ``self.dsl_diagnostics`` so the caller can
+        log/inspect them; HARD rules with dynamic constructs the
+        compiler can't yet emit are reported there rather than
+        silently ignored.
+        """
+        try:
+            from . import dsl_to_cpsat as d2c  # type: ignore
+        except ImportError:
+            import dsl_to_cpsat as d2c  # type: ignore
+        if not hasattr(self, "dsl_diagnostics"):
+            self.dsl_diagnostics: list[str] = []
+        compiler = d2c.DSLConstraintCompiler(
+            self.model, self.slot, config=self.config)
+        compiler.compile(expression)
+        self.dsl_diagnostics.extend(compiler.diagnostics)
+
+    def add_all_dsl_constraints(self, expressions: list):
+        """Convenience: compile every expression in the list. Useful
+        when the caller has loaded a batch of LogicalUnavailability
+        rows and wants to push them all into the model."""
+        for expr in expressions or []:
+            self.add_dsl_constraint(expr)
+
     def add_all_hard_constraints(self):
         """Apply every HARD constraint enabled by ``self.config``.
 
