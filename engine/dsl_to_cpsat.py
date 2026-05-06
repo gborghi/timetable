@@ -484,6 +484,14 @@ class DSLConstraintCompiler:
             return self._compile_or(node, env)
         if isinstance(node, gd.Not):
             return self._compile_not(node, env)
+        if isinstance(node, gd.Call):
+            # Top-level Call covers the canonical-pattern vocabulary:
+            # no_holes_class, class_present_at_hour, ... (see
+            # _compile_call). Routes there before falling back to
+            # generic static eval.
+            handled = self._compile_call(node, env)
+            if handled:
+                return
         if isinstance(node, gd.Lit):
             if not bool(node.value):
                 # Top-level literal `false` => infeasible HARD.
@@ -724,3 +732,350 @@ class DSLConstraintCompiler:
 
     # placeholders used by exists path (currently no-op)
     _exists_pending_slots: list = []
+
+    # ============================================================
+    # Canonical-pattern vocabulary (Step 3b)
+    # ============================================================
+    #
+    # The verbose DSL form of "no holes per class" is a triple-
+    # quantifier expression that the generic compiler can technically
+    # parse but cannot translate to an efficient encoding. Rather
+    # than rely on heuristic pattern recognition, the system uses a
+    # named-call vocabulary: translators emit DSL such as
+    # ``no_holes_class("1A")`` and the compiler recognises these
+    # names as pragmas, then emits the same compact CP-SAT encoding
+    # the legacy hardcoded path uses (the ``present[h+1] <=
+    # present[h]`` non-increasing chain on per-hour OR vars).
+    #
+    # The vocabulary is small and stable; new entries land here once
+    # and are inherited by every solver subclass.
+    #
+    # Recognised top-level Calls
+    # --------------------------
+    #   no_holes_class(class_name)           -- non-increasing chain +
+    #                                            "starts at h_min"
+    #   no_holes_all_classes()               -- as above for every class
+    #                                            present in self.slot
+    #   class_present_at_hour(class, hour)   -- if any lesson that day,
+    #                                            slot at `hour` busy
+    #   class_present_at_hour_all(hour)      -- as above for every class
+    #   teacher_max_per_day(teacher, n)      -- daily teacher load <= n
+    #   cattedra_max_per_day(t, c, s, n)     -- daily cattedra load <= n
+    #   subject_pair_must(class, subject)    -- when 2 hr/day, consecutive
+    #   subject_pair_exists(class, subject)  -- when >=2 hr/day, exists pair
+    #   class_day_load_in(class, [v, ...])   -- daily class hours in set
+    #
+    # Unknown call names fall back to generic static evaluation
+    # (boolean leaf): if the name is a known DSL built-in such as
+    # same_day, hour, etc. and the args are static, the result is a
+    # truth value handled by the existing leaf path.
+
+    def _compile_call(self, node, env: dict) -> bool:
+        """Try to compile ``node`` as a canonical-pattern pragma.
+        Returns True if the call name was recognised AND processed,
+        False otherwise (caller falls back to generic eval)."""
+        name = node.name
+        # Resolve positional args eagerly in env.
+        try:
+            arg_values = [self._eval(arg, env)
+                            for _kw, arg in node.args]
+        except ValueError as exc:
+            # Some recognised pragmas can still be processed without
+            # evaluable args (none currently); fall through to the
+            # generic path so the caller can try static eval.
+            self.diagnostics.append(
+                f"call {name}(...): cannot evaluate args ({exc})")
+            return False
+        if name == "no_holes_class":
+            if len(arg_values) != 1:
+                self.diagnostics.append(
+                    f"no_holes_class expects 1 arg, got "
+                    f"{len(arg_values)}")
+                return True
+            self._compile_no_holes_for_class(str(arg_values[0]))
+            return True
+        if name == "no_holes_all_classes":
+            if arg_values:
+                self.diagnostics.append(
+                    "no_holes_all_classes takes no args")
+                return True
+            for cl in sorted({k[1] for k in self.slot}):
+                self._compile_no_holes_for_class(cl)
+            return True
+        if name == "class_present_at_hour":
+            if len(arg_values) != 2:
+                self.diagnostics.append(
+                    f"class_present_at_hour expects 2 args, got "
+                    f"{len(arg_values)}")
+                return True
+            cl = str(arg_values[0])
+            hr = int(arg_values[1])
+            self._compile_class_present_at_hour(cl, hr)
+            return True
+        if name == "class_present_at_hour_all":
+            if len(arg_values) != 1:
+                self.diagnostics.append(
+                    f"class_present_at_hour_all expects 1 arg, got "
+                    f"{len(arg_values)}")
+                return True
+            hr = int(arg_values[0])
+            for cl in sorted({k[1] for k in self.slot}):
+                self._compile_class_present_at_hour(cl, hr)
+            return True
+        if name == "teacher_max_per_day":
+            if len(arg_values) != 2:
+                self.diagnostics.append(
+                    f"teacher_max_per_day expects 2 args, got "
+                    f"{len(arg_values)}")
+                return True
+            t = str(arg_values[0])
+            n = int(arg_values[1])
+            self._compile_teacher_max_per_day(t, n)
+            return True
+        if name == "cattedra_max_per_day":
+            if len(arg_values) != 4:
+                self.diagnostics.append(
+                    f"cattedra_max_per_day expects 4 args, got "
+                    f"{len(arg_values)}")
+                return True
+            t, cl, subj, n = (str(arg_values[0]), str(arg_values[1]),
+                              str(arg_values[2]), int(arg_values[3]))
+            self._compile_cattedra_max_per_day(t, cl, subj, n)
+            return True
+        if name == "subject_pair_must":
+            if len(arg_values) != 2:
+                self.diagnostics.append(
+                    f"subject_pair_must expects 2 args")
+                return True
+            cl = str(arg_values[0])
+            subj = str(arg_values[1])
+            self._compile_subject_pair(cl, subj, mode="must_pair")
+            return True
+        if name == "subject_pair_exists":
+            if len(arg_values) != 2:
+                self.diagnostics.append(
+                    f"subject_pair_exists expects 2 args")
+                return True
+            cl = str(arg_values[0])
+            subj = str(arg_values[1])
+            self._compile_subject_pair(cl, subj, mode="pair_exists")
+            return True
+        if name == "class_day_load_in":
+            if len(arg_values) < 2:
+                self.diagnostics.append(
+                    "class_day_load_in expects (class, allowed...)")
+                return True
+            cl = str(arg_values[0])
+            allowed = [int(v) for v in arg_values[1:]]
+            self._compile_class_day_load_in(cl, allowed)
+            return True
+        # Unknown call name: leave for the generic path.
+        return False
+
+    # ---- pragma implementations ----
+
+    def _slots_for_class_day_hour(self, cl: str, d: int, h: int):
+        return [v for (_t, ccl, _s, dd, hh), v in self.slot.items()
+                if ccl == cl and dd == d and hh == h]
+
+    def _slots_for_class_day(self, cl: str, d: int):
+        return [v for (_t, ccl, _s, dd, _h), v in self.slot.items()
+                if ccl == cl and dd == d]
+
+    def _classes_in_scope(self) -> list:
+        return sorted({k[1] for k in self.slot})
+
+    def _days_in_scope(self) -> list:
+        return sorted({k[3] for k in self.slot})
+
+    def _hours_in_scope(self) -> list:
+        return sorted({k[4] for k in self.slot})
+
+    def _compile_no_holes_for_class(self, cl: str):
+        """Class no-holes: per (class, day) the busy slots are
+        contiguous and start at the earliest hour. Encoded via the
+        non-increasing chain on per-hour OR indicators -- identical
+        to ConstraintModel.add_class_no_holes for a single class."""
+        days = self._days_in_scope()
+        hours = self._hours_in_scope()
+        if not hours:
+            return
+        for d in days:
+            present_per_h = []
+            for h in hours:
+                vs = self._slots_for_class_day_hour(cl, d, h)
+                if not vs:
+                    present_per_h.append(self.model.NewConstant(0))
+                    continue
+                pr = self.model.NewBoolVar(
+                    f"_dsl_pr_{cl}_{d}_{h}")
+                self.model.AddMaxEquality(pr, vs)
+                present_per_h.append(pr)
+            ap = self.model.NewBoolVar(f"_dsl_ap_{cl}_{d}")
+            self.model.AddMaxEquality(ap, present_per_h)
+            self.model.Add(present_per_h[0] >= ap)
+            for i in range(len(present_per_h) - 1):
+                self.model.Add(
+                    present_per_h[i + 1] <= present_per_h[i])
+
+    def _compile_class_present_at_hour(self, cl: str, hr: int):
+        """If the class has any lesson that day, the slot at ``hr``
+        must be busy. Same encoding as add_h3_presence_at_11."""
+        days = self._days_in_scope()
+        hours = self._hours_in_scope()
+        if hr not in hours:
+            return
+        for d in days:
+            day_vars = self._slots_for_class_day(cl, d)
+            if not day_vars:
+                continue
+            vs_at_hr = self._slots_for_class_day_hour(cl, d, hr)
+            if not vs_at_hr:
+                # Class never reaches that hour: forbid any lesson on
+                # that day (else the rule cannot be satisfied).
+                for v in day_vars:
+                    self.model.Add(v == 0)
+                continue
+            any_d = self.model.NewBoolVar(
+                f"_dsl_apX_{cl}_{d}_{hr}")
+            self.model.AddMaxEquality(any_d, day_vars)
+            pr_h = self.model.NewBoolVar(
+                f"_dsl_prX_{cl}_{d}_{hr}")
+            self.model.AddMaxEquality(pr_h, vs_at_hr)
+            self.model.Add(pr_h >= any_d)
+
+    def _compile_teacher_max_per_day(self, t: str, n: int):
+        """sum_{cl, s, h} slot[(t, cl, s, d, h)] <= n for every day."""
+        days = self._days_in_scope()
+        hours = self._hours_in_scope()
+        for d in days:
+            vs = [v for (tt, _cl, _s, dd, _h), v in self.slot.items()
+                  if tt == t and dd == d]
+            if vs:
+                self.model.Add(sum(vs) <= int(n))
+
+    def _compile_cattedra_max_per_day(self, t: str, cl: str,
+                                        subj: str, n: int):
+        """sum_h slot[(t, cl, s, d, h)] <= n for every day."""
+        days = self._days_in_scope()
+        for d in days:
+            vs = [v for (tt, ccl, ss, dd, _h), v in self.slot.items()
+                  if tt == t and ccl == cl and ss == subj and dd == d]
+            if vs:
+                self.model.Add(sum(vs) <= int(n))
+
+    def _compile_subject_pair(self, cl: str, subj: str, *, mode: str):
+        """Subject-pair pragma. ``mode`` is ``must_pair`` (used for
+        Scienzemotorie: 2 hr/day MUST be consecutive) or
+        ``pair_exists`` (used for Mat/Ita: when >= 2 hr/day, at least
+        one consecutive pair). Day-counts are read from the slot
+        sums (so the pragma works without requiring dc_value)."""
+        hours = self._hours_in_scope()
+        days = self._days_in_scope()
+        # Find the unique teacher for (cl, subj).
+        teachers = sorted({tt for (tt, ccl, ss, _d, _h) in self.slot
+                           if ccl == cl and ss == subj})
+        if not teachers:
+            return
+        for t in teachers:
+            for d in days:
+                presence = []
+                for h in hours:
+                    vs = [v for (tt, ccl, ss, dd, hh), v
+                           in self.slot.items()
+                           if tt == t and ccl == cl and ss == subj
+                              and dd == d and hh == h]
+                    if not vs:
+                        presence.append(self.model.NewConstant(0))
+                        continue
+                    if len(vs) == 1:
+                        presence.append(vs[0])
+                        continue
+                    pr = self.model.NewBoolVar(
+                        f"_dsl_sp_{subj[:3]}_{t}_{cl}_{d}_{h}")
+                    self.model.AddMaxEquality(pr, vs)
+                    presence.append(pr)
+                if not presence:
+                    continue
+                # day_count IntVar, used by must_pair to gate the
+                # constraint at exactly 2 (rest of cases: AddBoolOr
+                # over adjacent pairs is a HARD requirement when the
+                # day_count is at least 2, so we guard it with an
+                # implication).
+                total = sum(presence)
+                pairs = []
+                for i in range(len(hours) - 1):
+                    pair = self.model.NewBoolVar(
+                        f"_dsl_pp_{subj[:3]}_{t}_{cl}_{d}_{i}")
+                    self.model.AddBoolAnd(
+                        [presence[i], presence[i + 1]]
+                    ).OnlyEnforceIf(pair)
+                    self.model.AddBoolOr(
+                        [presence[i].Not(),
+                         presence[i + 1].Not()]
+                    ).OnlyEnforceIf(pair.Not())
+                    pairs.append(pair)
+                if not pairs:
+                    continue
+                # We need: when day_count >= threshold, at least one
+                # pair is true. Encode via:
+                #   has_any_pair = OR(pairs)
+                #   has_any_pair >= 1 when count >= threshold
+                threshold = 2
+                has_any = self.model.NewBoolVar(
+                    f"_dsl_hp_{subj[:3]}_{t}_{cl}_{d}")
+                self.model.AddMaxEquality(has_any, pairs)
+                # Reify "count >= threshold" -> trig
+                trig = self.model.NewBoolVar(
+                    f"_dsl_tr_{subj[:3]}_{t}_{cl}_{d}")
+                # count >= threshold iff trig
+                self.model.Add(total >= threshold).OnlyEnforceIf(trig)
+                self.model.Add(total < threshold).OnlyEnforceIf(
+                    trig.Not())
+                # has_any >= trig (when triggered, has_any must be 1)
+                self.model.Add(has_any >= trig)
+                if mode == "must_pair":
+                    # Additional rule: when count == 2 the only
+                    # acceptable shape is "exactly one pair". The
+                    # generic pair_exists rule already forces the
+                    # single pair when count == 2, so the extra
+                    # tightening is implicit.
+                    pass
+
+    def _compile_class_day_load_in(self, cl: str,
+                                     allowed: list[int]):
+        """Per (class, day), the number of busy hours must lie in
+        ``allowed`` (set of integers). Encoded via
+        ``AddAllowedAssignments`` on the IntVar count, mirroring the
+        legacy HARD-1+HARD-2 ``cl_day_load in {0,4,5,6}`` rule."""
+        days = self._days_in_scope()
+        hours = self._hours_in_scope()
+        if not hours:
+            return
+        if not allowed:
+            return
+        # Limit allowed values to the feasible 0..len(hours).
+        max_v = len(hours)
+        allowed_clamped = sorted({int(v) for v in allowed
+                                   if 0 <= int(v) <= max_v})
+        if not allowed_clamped:
+            return
+        for d in days:
+            # Build per-hour OR indicator (parallel groups + multi-
+            # subject would otherwise inflate the count); count busy
+            # HOURS, not busy slots.
+            present_per_h = []
+            for h in hours:
+                vs = self._slots_for_class_day_hour(cl, d, h)
+                if not vs:
+                    present_per_h.append(self.model.NewConstant(0))
+                    continue
+                pr = self.model.NewBoolVar(
+                    f"_dsl_clpr_{cl}_{d}_{h}")
+                self.model.AddMaxEquality(pr, vs)
+                present_per_h.append(pr)
+            count = self.model.NewIntVar(
+                0, max_v, f"_dsl_cnt_{cl}_{d}")
+            self.model.Add(count == sum(present_per_h))
+            self.model.AddAllowedAssignments(
+                [count], [(v,) for v in allowed_clamped])

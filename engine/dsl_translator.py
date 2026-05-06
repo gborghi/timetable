@@ -111,20 +111,61 @@ def teacher_max_consecutive_to_dsl(teacher_name: str, n: int) -> str:
 
 
 def class_no_holes_to_dsl(class_name: str) -> str:
-    """No-holes per class: between earliest and latest hour of the
-    day all hours must be busy. Approximate by quantifying over
-    (h-1, h, h+1) triples and forbidding the (busy, free, busy)
-    pattern. This is a conservative DSL approximation; the
-    compiler's nested-forall path emits the pairwise forbid
-    constraints that capture the same intent."""
-    return (f'forall d in days: '
-            f'forall h in hours where h >= 9 and h <= 12: '
-            f'count l in lessons where l.class == {_quote(class_name)}'
-            f' and l.day == d and l.hour == h - 1 == 1 implies '
-            f'count l in lessons where l.class == {_quote(class_name)}'
-            f' and l.day == d and l.hour == h + 1 == 1 implies '
-            f'count l in lessons where l.class == {_quote(class_name)}'
-            f' and l.day == d and l.hour == h == 1')
+    """No-holes per class. Emitted as a canonical-pattern pragma the
+    DSL compiler recognises directly (``no_holes_class("<name>")``)
+    and translates into the same compact non-increasing-chain
+    encoding that the legacy ``add_class_no_holes`` uses. The
+    pragma lives in the DSL function vocabulary and parses cleanly
+    via ``general_dsl``."""
+    return f'no_holes_class({_quote(class_name)})'
+
+
+def class_h11_presence_to_dsl(class_name: str) -> str:
+    """If the class has any lesson on a day, the slot at h=11 must
+    be busy (HARD-2 / "uscita non prima delle 12"). Emitted as
+    ``class_present_at_hour("<name>", 11)``."""
+    return f'class_present_at_hour({_quote(class_name)}, 11)'
+
+
+def class_day_load_in_to_dsl(class_name: str,
+                                allowed: list[int]) -> str:
+    """The class' daily busy-hour count must lie in the given set
+    (legacy HARD-1+HARD-2 packed: ``cl_day_load in {0,4,5,6}``).
+    Emitted as ``class_day_load_in("<name>", v1, v2, ...)``."""
+    parts = [_quote(class_name)] + [str(int(v)) for v in allowed]
+    return f'class_day_load_in({", ".join(parts)})'
+
+
+def teacher_max_per_day_to_dsl(teacher_name: str, n: int) -> str:
+    """Teacher daily load cap (legacy HARD-C: max 5 hours/day).
+    Emitted as ``teacher_max_per_day("<name>", n)``."""
+    return f'teacher_max_per_day({_quote(teacher_name)}, {int(n)})'
+
+
+def cattedra_max_per_day_to_dsl(teacher_name: str, class_name: str,
+                                  subject: str, n: int) -> str:
+    """Per-cattedra daily cap (legacy MAX_PER_DAY_TRIPLE = 2).
+    Emitted as ``cattedra_max_per_day("<t>", "<c>", "<s>", n)``."""
+    return (
+        f'cattedra_max_per_day({_quote(teacher_name)}, '
+        f'{_quote(class_name)}, {_quote(subject)}, {int(n)})')
+
+
+def subject_pair_must_to_dsl(class_name: str, subject: str) -> str:
+    """When ``subject`` has 2 hours/day for ``class``, they MUST be
+    consecutive (Scienzemotorie pattern). Emitted as
+    ``subject_pair_must("<class>", "<subject>")``."""
+    return (
+        f'subject_pair_must({_quote(class_name)}, {_quote(subject)})')
+
+
+def subject_pair_exists_to_dsl(class_name: str, subject: str) -> str:
+    """When ``subject`` has >= 2 hours/day, at least one consecutive
+    pair must exist (Mat/Ita pattern). Emitted as
+    ``subject_pair_exists("<class>", "<subject>")``."""
+    return (
+        f'subject_pair_exists({_quote(class_name)}, '
+        f'{_quote(subject)})')
 
 
 # ---------------------------------------------------------------------
