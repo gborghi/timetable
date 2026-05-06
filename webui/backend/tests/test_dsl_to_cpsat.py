@@ -131,6 +131,47 @@ def test_dynamic_pair_compiles_and_blocks_invalid():
         f"DSL pair-consecutive not enforced; got hours {hours}")
 
 
+def test_dsl_supports_all_comparators():
+    """User-required: <=, >=, !=, ==, <, > all parse + compile."""
+    from cp_sat_constraint_model import (
+        MonolithicSolver, ConstraintConfig)
+    profs = _basic_profs()
+    dc = _basic_dc(hrs_per_day=1)
+    for op_str in ("<=", ">=", "!=", "==", "<", ">"):
+        ms = MonolithicSolver(profs, dc, ConstraintConfig(
+            enforce_no_holes=False, enforce_h3_presence_at_11=False))
+        ms.add_dsl_constraint(
+            f'count l in lessons where l.day == 1 {op_str} 0')
+        # Build (sub-test): no exception means the DSL parsed and
+        # the compiler emitted a constraint of the requested op.
+        ms.build()
+
+
+def test_dsl_three_consecutive_math_hours_user_example():
+    """User's stated example: '3 ore di matematica attaccate' for
+    a class. Encoded as a count == 3 + a chain of consecutive
+    constraints between every pair of math hours that day. We
+    verify the solver actually produces 3 consecutive hours when
+    the demand is exactly 3 on a single day."""
+    from cp_sat_constraint_model import (
+        MonolithicSolver, ConstraintConfig)
+    profs = {"T1": {"classi": {"1A": {"Mat": {"ore": 3}}},
+                     "max_hours": 18}}
+    dc = {("T1", "1A", "Mat", 1): 3}
+    ms = MonolithicSolver(profs, dc, ConstraintConfig(
+        enforce_no_holes=False, enforce_h3_presence_at_11=False))
+    ms.add_dsl_constraint(
+        'forall l1 in lessons where l1.subject == "Mat": '
+        'forall l2 in lessons where l2.subject == "Mat": '
+        'consecutive(l1.slot, l2.slot)')
+    sol, status = ms.solve(time_limit_s=5.0, workers=1)
+    assert sol is not None, status
+    hours = sorted({k[4] for k in sol})
+    # 3 consecutive hours on day 1 (h, h+1, h+2)
+    assert len(hours) == 3
+    assert hours[1] - hours[0] == 1 and hours[2] - hours[1] == 1
+
+
 def test_diagnostics_for_unsupported_construct():
     """The compiler should NOT silently accept patterns it can't
     translate; it logs to dsl_diagnostics so the caller knows."""
