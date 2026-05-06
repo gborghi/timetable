@@ -167,21 +167,40 @@ def _seed_patterns(profs: dict, dc_value: dict, max_per_teacher: int = 3,
 
 
 def _cost_of_pattern(pat: dict, profs: dict) -> float:
-    """SOFT cost of a single-teacher pattern -- a coarse proxy of the
-    teacher's contribution to the global SOFT score."""
+    """SOFT cost of a pattern -- aligned with `meta.compute_soft`.
+
+    Computes the four canonical components:
+      - sixth: count of slots at h=13 (per pattern; for single-teacher
+        patterns this equals the number of (class, day) pairs the
+        teacher serves at h=13, which matches compute_soft);
+      - buchi: per (teacher, day) gap count = (last_h - first_h + 1) - count
+        when count >= 2 (else 0);
+      - five: count of (teacher, day) bins with exactly 5 slots;
+      - one: count of (teacher, day) bins with exactly 1 slot.
+
+    The buchi component was missing prior to this commit; the pricer
+    proxy objective therefore could not see gap-reduction columns
+    even when the master LP would have rewarded them.
+    """
     if not pat:
         return 0.0
-    # Sixth hour count
-    sixth = sum(1 for (p, c, s, d, h), v in pat.items() if v and h == 13)
-    # Day 5-load count
+    sixth = sum(1 for (p, c, s, d, h), v in pat.items()
+                 if v and h == 13)
     day_load: dict[tuple, int] = {}
+    day_hours: dict[tuple, list] = {}
     for (p, c, s, d, h), v in pat.items():
         if v:
             day_load[(p, d)] = day_load.get((p, d), 0) + 1
+            day_hours.setdefault((p, d), []).append(int(h))
     five = sum(1 for v in day_load.values() if v == 5)
     one = sum(1 for v in day_load.values() if v == 1)
+    buchi = 0
+    for (_p, _d), hs in day_hours.items():
+        if len(hs) >= 2:
+            buchi += (max(hs) - min(hs) + 1) - len(hs)
     return float(
         meta.OBJECTIVE_WEIGHTS["sixth"] * sixth
+        + meta.OBJECTIVE_WEIGHTS["buchi"] * buchi
         + meta.OBJECTIVE_WEIGHTS["five"] * five
         + meta.OBJECTIVE_WEIGHTS["one"] * one
     )
@@ -497,7 +516,125 @@ def _completion_solver(initial_sol: dict, profs: dict, dc_value: dict,
 
 _SCALE = 100        # integer-scaling for fractional duals
 _SIXTH_HOUR = 13    # hour code for 13:00 (the "sixth hour")
-_PENALTY_SIXTH = 5 * _SCALE   # SOFT penalty per slot on sixth hour
+# Pricer SOFT penalty constants -- derived from
+# meta.OBJECTIVE_WEIGHTS so the CP-SAT proxy objective tracks
+# `_cost_of_pattern` term by term. Up to commit 47df68a only `sixth`
+# was modelled and at 1/10 of the canonical weight; reduced cost on
+# generated columns therefore systematically rejected the seed-
+# equivalent patterns and BP terminated in 1 iter with
+# no_improving_column.
+_PENALTY_SIXTH = meta.OBJECTIVE_WEIGHTS["sixth"] * _SCALE   # = 5000
+_PENALTY_BUCHI = meta.OBJECTIVE_WEIGHTS["buchi"] * _SCALE   # = 1000
+_PENALTY_FIVE = meta.OBJECTIVE_WEIGHTS["five"] * _SCALE     # = 3000
+_PENALTY_ONE = meta.OBJECTIVE_WEIGHTS["one"] * _SCALE       # = 8000
+
+
+def _add_full_soft_cost_terms(
+    model,
+    *,
+    cpsat_vars_by_t_d_h: dict,
+    fixed_load_by_t_d_h: dict | None = None,
+    teachers: list,
+    days: list,
+    hours: list,
+    var_prefix: str = "sc",
+) -> list:
+    """Build per-(teacher, day) reified BoolVars + IntVar(buchi) and
+    return the list of objective contributions
+    ``[_PENALTY_FIVE * is_five, _PENALTY_ONE * is_one,
+       _PENALTY_BUCHI * buchi]``
+    that the caller appends to its ``obj_terms``.
+
+    `cpsat_vars_by_t_d_h[(t, d, h)]` is a list of BoolVars (zero or
+    more slot vars sharing that teacher/day/hour); ``fixed_load_by_t_d_h``
+    is a dict of 0/1 ints for slots already locked by the greedy
+    base or by caller locks.
+
+    The five/one indicators reify on ``count(t,d) == 5`` / ``== 1``.
+    The buchi indicator equals ``max(0, last_h - first_h + 1 - count)``
+    per (teacher, day), matching ``meta.compute_soft``.
+    """
+    fixed = dict(fixed_load_by_t_d_h or {})
+    extra: list = []
+    if not hours:
+        return extra
+    h_min, h_max = min(hours), max(hours)
+    for t in teachers:
+        for d in days:
+            base_at_h: dict = {}
+            cpsat_at_h: dict = {}
+            for h in hours:
+                base_at_h[h] = int(fixed.get((t, d, h), 0))
+                cpsat_at_h[h] = list(cpsat_vars_by_t_d_h.get(
+                    (t, d, h), []))
+            base_count = sum(base_at_h.values())
+            cpsat_all = [v for h in hours for v in cpsat_at_h[h]]
+            # Skip when no possible activity that day.
+            if not cpsat_all and base_count == 0:
+                continue
+            # any_at_h: True iff slot is busy at (t, d, h)
+            any_at_h: dict = {}
+            for h in hours:
+                if base_at_h[h] >= 1:
+                    any_at_h[h] = model.NewConstant(1)
+                elif not cpsat_at_h[h]:
+                    any_at_h[h] = model.NewConstant(0)
+                else:
+                    b = model.NewBoolVar(
+                        f"{var_prefix}_any_{t}_{d}_{h}")
+                    for v in cpsat_at_h[h]:
+                        model.Add(b >= v)
+                    model.Add(b <= sum(cpsat_at_h[h]))
+                    any_at_h[h] = b
+            # count_d = base_count + sum(cpsat_all)
+            count_d = model.NewIntVar(
+                base_count, base_count + len(cpsat_all),
+                f"{var_prefix}_cnt_{t}_{d}")
+            if cpsat_all:
+                model.Add(count_d == base_count + sum(cpsat_all))
+            else:
+                model.Add(count_d == base_count)
+            # first_h, last_h via min/max over hours.
+            first_h_d = model.NewIntVar(
+                h_min, h_max + 1, f"{var_prefix}_fh_{t}_{d}")
+            last_h_d = model.NewIntVar(
+                h_min - 1, h_max, f"{var_prefix}_lh_{t}_{d}")
+            hf_aux: list = []
+            hl_aux: list = []
+            for h in hours:
+                hf = model.NewIntVar(
+                    h_min, h_max + 1, f"{var_prefix}_hf_{t}_{d}_{h}")
+                hl = model.NewIntVar(
+                    h_min - 1, h_max, f"{var_prefix}_hl_{t}_{d}_{h}")
+                model.Add(hf == h).OnlyEnforceIf(any_at_h[h])
+                model.Add(hf == h_max + 1).OnlyEnforceIf(
+                    any_at_h[h].Not())
+                model.Add(hl == h).OnlyEnforceIf(any_at_h[h])
+                model.Add(hl == h_min - 1).OnlyEnforceIf(
+                    any_at_h[h].Not())
+                hf_aux.append(hf)
+                hl_aux.append(hl)
+            model.AddMinEquality(first_h_d, hf_aux)
+            model.AddMaxEquality(last_h_d, hl_aux)
+            # buchi_d >= max(0, last_h - first_h + 1 - count)
+            max_buchi = h_max - h_min  # at most n_hours - 1
+            buchi_d = model.NewIntVar(
+                0, max_buchi, f"{var_prefix}_bch_{t}_{d}")
+            model.Add(buchi_d >= last_h_d - first_h_d + 1 - count_d)
+            # is_five reified on count_d == 5
+            is_five_d = model.NewBoolVar(
+                f"{var_prefix}_5_{t}_{d}")
+            model.Add(count_d == 5).OnlyEnforceIf(is_five_d)
+            model.Add(count_d != 5).OnlyEnforceIf(is_five_d.Not())
+            # is_one reified on count_d == 1
+            is_one_d = model.NewBoolVar(
+                f"{var_prefix}_1_{t}_{d}")
+            model.Add(count_d == 1).OnlyEnforceIf(is_one_d)
+            model.Add(count_d != 1).OnlyEnforceIf(is_one_d.Not())
+            extra.append(_PENALTY_FIVE * is_five_d)
+            extra.append(_PENALTY_ONE * is_one_d)
+            extra.append(_PENALTY_BUCHI * buchi_d)
+    return extra
 
 
 def _greedy_base_pattern(
@@ -714,6 +851,17 @@ def _pricing_subproblem_teacher(
                 obj_terms.append(-lam_int * v)
             if h == _SIXTH_HOUR:
                 obj_terms.append(_PENALTY_SIXTH * v)
+    # Full SOFT cost (buchi + five + one) per (teacher, day).
+    cpsat_vars_by_t_d_h: dict = {}
+    for (cl, s, d, _q) in triples:
+        for h in HOURS:
+            cpsat_vars_by_t_d_h.setdefault(
+                (teacher, d, h), []).append(slot[(cl, s, d, h)])
+    obj_terms.extend(_add_full_soft_cost_terms(
+        model,
+        cpsat_vars_by_t_d_h=cpsat_vars_by_t_d_h,
+        teachers=[teacher], days=list(DAYS), hours=list(HOURS),
+        var_prefix=f"t_{teacher}"))
     if obj_terms:
         model.Minimize(sum(obj_terms))
 
@@ -877,6 +1025,23 @@ def _pricing_subproblem_teacher_class(
                 obj_terms.append(-lam_int * v)
             if h == _SIXTH_HOUR:
                 obj_terms.append(_PENALTY_SIXTH * v)
+    # Full SOFT cost (buchi + five + one) per (teacher, day),
+    # combining CP-SAT vars (this class) and greedy base (other classes).
+    cpsat_vars_by_t_d_h: dict = {}
+    for (s, d, _q) in triples:
+        for h in HOURS:
+            cpsat_vars_by_t_d_h.setdefault(
+                (teacher, d, h), []).append(slot[(s, d, h)])
+    fixed_load_by_t_d_h: dict = {}
+    for (p, _cl_b, _s_b, d_b, h_b), v in base_pat.items():
+        if v and p == teacher:
+            fixed_load_by_t_d_h[(teacher, int(d_b), int(h_b))] = 1
+    obj_terms.extend(_add_full_soft_cost_terms(
+        model,
+        cpsat_vars_by_t_d_h=cpsat_vars_by_t_d_h,
+        fixed_load_by_t_d_h=fixed_load_by_t_d_h,
+        teachers=[teacher], days=list(DAYS), hours=list(HOURS),
+        var_prefix=f"tc_{teacher}_{class_name}"))
     if obj_terms:
         model.Minimize(sum(obj_terms))
 
@@ -1019,6 +1184,21 @@ def _pricing_subproblem_teacher_class_subject(
                 obj_terms.append(-lam_int * v)
             if h == _SIXTH_HOUR:
                 obj_terms.append(_PENALTY_SIXTH * v)
+    cpsat_vars_by_t_d_h: dict = {}
+    for (d, _q) in triples:
+        for h in HOURS:
+            cpsat_vars_by_t_d_h.setdefault(
+                (teacher, d, h), []).append(slot[(d, h)])
+    fixed_load_by_t_d_h: dict = {}
+    for (p, _cl_b, _s_b, d_b, h_b), v in base_pat.items():
+        if v and p == teacher:
+            fixed_load_by_t_d_h[(teacher, int(d_b), int(h_b))] = 1
+    obj_terms.extend(_add_full_soft_cost_terms(
+        model,
+        cpsat_vars_by_t_d_h=cpsat_vars_by_t_d_h,
+        fixed_load_by_t_d_h=fixed_load_by_t_d_h,
+        teachers=[teacher], days=list(DAYS), hours=list(HOURS),
+        var_prefix=f"tcs_{teacher}_{class_name}_{subject}"))
     if obj_terms:
         model.Minimize(sum(obj_terms))
 
@@ -1163,6 +1343,21 @@ def _pricing_subproblem_teacher_subject(
                 obj_terms.append(-lam_int * v)
             if h == _SIXTH_HOUR:
                 obj_terms.append(_PENALTY_SIXTH * v)
+    cpsat_vars_by_t_d_h: dict = {}
+    for (cl, d, _q) in triples:
+        for h in HOURS:
+            cpsat_vars_by_t_d_h.setdefault(
+                (teacher, d, h), []).append(slot[(cl, d, h)])
+    fixed_load_by_t_d_h: dict = {}
+    for (p, _cl_b, _s_b, d_b, h_b), v in base_pat.items():
+        if v and p == teacher:
+            fixed_load_by_t_d_h[(teacher, int(d_b), int(h_b))] = 1
+    obj_terms.extend(_add_full_soft_cost_terms(
+        model,
+        cpsat_vars_by_t_d_h=cpsat_vars_by_t_d_h,
+        fixed_load_by_t_d_h=fixed_load_by_t_d_h,
+        teachers=[teacher], days=list(DAYS), hours=list(HOURS),
+        var_prefix=f"ts_{teacher}_{subject}"))
     if obj_terms:
         model.Minimize(sum(obj_terms))
 
@@ -1324,6 +1519,21 @@ def _pricing_subproblem_teacher_day(
                 obj_terms.append(-lam_int * v)
             if h == _SIXTH_HOUR:
                 obj_terms.append(_PENALTY_SIXTH * v)
+    cpsat_vars_by_t_d_h: dict = {}
+    for (cl, s, _q) in triples:
+        for h in HOURS:
+            cpsat_vars_by_t_d_h.setdefault(
+                (teacher, day, h), []).append(slot[(cl, s, h)])
+    fixed_load_by_t_d_h: dict = {}
+    for (p, _cl_b, _s_b, d_b, h_b), v in base_pat.items():
+        if v and p == teacher:
+            fixed_load_by_t_d_h[(teacher, int(d_b), int(h_b))] = 1
+    obj_terms.extend(_add_full_soft_cost_terms(
+        model,
+        cpsat_vars_by_t_d_h=cpsat_vars_by_t_d_h,
+        fixed_load_by_t_d_h=fixed_load_by_t_d_h,
+        teachers=[teacher], days=list(DAYS), hours=list(HOURS),
+        var_prefix=f"td_{teacher}_{day}"))
     if obj_terms:
         model.Minimize(sum(obj_terms))
 
@@ -1798,6 +2008,25 @@ def _pricing_subproblem_class(
                         model.Add(any_v >= u)
                     obj_terms.append(mu_int * any_v)
 
+    # Full SOFT cost (buchi + five + one) per (teacher, day) within
+    # this class column. The class pricer column has slots only for
+    # `class_name`, so each teacher's day_load here counts ONLY the
+    # hours that teacher serves in this class on that day.
+    cpsat_vars_by_t_d_h: dict = {}
+    for (t, s, d, _q) in quads:
+        for h in HOURS:
+            v = slot.get((t, s, d, h))
+            if v is None:
+                continue
+            cpsat_vars_by_t_d_h.setdefault((t, d, h), []).append(v)
+    teachers_in_col = sorted({t for (t, _s, _d, _q) in quads})
+    obj_terms.extend(_add_full_soft_cost_terms(
+        model,
+        cpsat_vars_by_t_d_h=cpsat_vars_by_t_d_h,
+        teachers=teachers_in_col, days=list(DAYS),
+        hours=list(HOURS),
+        var_prefix=f"cl_{class_name}"))
+
     if obj_terms:
         model.Minimize(sum(obj_terms))
 
@@ -1980,6 +2209,21 @@ def _pricing_subproblem_class_day(
                 for u in uniq:
                     model.Add(any_v >= u)
                 obj_terms.append(mu_int * any_v)
+
+    # Full SOFT cost per teacher on this single day.
+    cpsat_vars_by_t_d_h: dict = {}
+    for (t, s, _q) in quads:
+        for h in HOURS:
+            v = slot.get((t, s, h))
+            if v is not None:
+                cpsat_vars_by_t_d_h.setdefault(
+                    (t, day, h), []).append(v)
+    teachers_in_col = sorted({t for (t, _s, _q) in quads})
+    obj_terms.extend(_add_full_soft_cost_terms(
+        model,
+        cpsat_vars_by_t_d_h=cpsat_vars_by_t_d_h,
+        teachers=teachers_in_col, days=[day], hours=list(HOURS),
+        var_prefix=f"cd_{class_name}_{day}"))
 
     if obj_terms:
         model.Minimize(sum(obj_terms))
@@ -2178,6 +2422,21 @@ def _pricing_subproblem_day(
                 for u in uniq:
                     model.Add(any_v >= u)
                 obj_terms.append(mu_int * any_v)
+
+    # Full SOFT cost per teacher on this single day across classes.
+    cpsat_vars_by_t_d_h: dict = {}
+    for (t, cl, s, _q) in quads:
+        for h in HOURS:
+            v = slot.get((t, cl, s, h))
+            if v is not None:
+                cpsat_vars_by_t_d_h.setdefault(
+                    (t, day, h), []).append(v)
+    teachers_in_col = sorted({t for (t, _cl, _s, _q) in quads})
+    obj_terms.extend(_add_full_soft_cost_terms(
+        model,
+        cpsat_vars_by_t_d_h=cpsat_vars_by_t_d_h,
+        teachers=teachers_in_col, days=[day], hours=list(HOURS),
+        var_prefix=f"d_{day}"))
 
     if obj_terms:
         model.Minimize(sum(obj_terms))
@@ -2395,6 +2654,22 @@ def _pricing_subproblem_curriculum(
                     for u in uniq:
                         model.Add(any_v >= u)
                     obj_terms.append(mu_int * any_v)
+
+    # Full SOFT cost per (teacher, day) for teachers in this curriculum.
+    cpsat_vars_by_t_d_h: dict = {}
+    for (t, cl, s, d, _q) in quints:
+        for h in HOURS:
+            v = slot.get((t, cl, s, d, h))
+            if v is not None:
+                cpsat_vars_by_t_d_h.setdefault(
+                    (t, d, h), []).append(v)
+    teachers_in_col = sorted({t for (t, _cl, _s, _d, _q) in quints})
+    obj_terms.extend(_add_full_soft_cost_terms(
+        model,
+        cpsat_vars_by_t_d_h=cpsat_vars_by_t_d_h,
+        teachers=teachers_in_col, days=list(DAYS),
+        hours=list(HOURS),
+        var_prefix=f"cur_{curriculum_id}"))
 
     if obj_terms:
         model.Minimize(sum(obj_terms))
