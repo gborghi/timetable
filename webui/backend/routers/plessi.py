@@ -189,6 +189,53 @@ def validate_plessi(db: Session = Depends(get_db)):
     }
 
 
+@router.get("/check-active-solution")
+def check_active_solution(db: Session = Depends(get_db)):
+    """Audit the currently-active solution against the plessi rules.
+
+    Returns a list of violation dicts (commuting / single_per_day /
+    single_total / unknown_classroom). Empty list means the solution
+    is plessi-compliant. Used by the monitor UI to show a live
+    violation badge that decays as the user fixes the schedule.
+
+    Returns ``{"ok": True, "violations": []}`` when no solution is
+    active, so the UI does not need to special-case the empty state.
+    """
+    import os
+    import sys
+
+    # Engine import path is added at startup; safety fallback for
+    # alternative invocation contexts.
+    here = os.path.dirname(os.path.abspath(__file__))
+    engine_dir = os.path.normpath(
+        os.path.join(here, "..", "..", "..", "engine"))
+    if engine_dir not in sys.path:
+        sys.path.insert(0, engine_dir)
+
+    from .. import engine_io
+    import plessi_constraints as pc  # type: ignore
+
+    active = engine_io.get_active_solution(db)
+    if active is None:
+        return {"ok": True, "violations": []}
+    snap = pc.load_plessi_data(db)
+    sol_dict: dict = {}
+    for l in db.query(models.Lesson).filter(
+        models.Lesson.solution_id == active.id
+    ).all():
+        if not l.classroom_name:
+            continue
+        key = (l.teacher_name, l.class_name, l.subject,
+                int(l.day), int(l.hour))
+        sol_dict[key] = l.classroom_name
+    violations = pc.check_solution_against_plessi(sol_dict, snap)
+    return {
+        "ok": len(violations) == 0,
+        "n_lessons_audited": len(sol_dict),
+        "violations": violations,
+    }
+
+
 # =========================================================
 # Plesso CRUD (the dynamic /{pid} routes go LAST)
 # =========================================================

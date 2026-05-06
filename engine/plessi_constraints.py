@@ -597,6 +597,205 @@ def add_plesso_entity_policy_constraints_class_kind(
     return n_emitted
 
 
+# ---------- Solution-side diagnostic ----------
+
+def check_solution_against_plessi(
+    solution: dict,
+    plessi: PlessiData,
+) -> list[dict]:
+    """Audit a finalised solution against the plessi rules and return
+    a flat list of violation dicts.
+
+    `solution` is a dict keyed by ``(teacher, class_name, subject,
+    day, hour) -> classroom_name`` (the canonical solution shape used
+    elsewhere in the engine). The helper does NOT modify the solution;
+    it only inspects what was scheduled.
+
+    Each violation dict has at minimum:
+      - ``kind``: one of ``"commuting"`` / ``"single_per_day"`` /
+        ``"single_total"`` / ``"unknown_classroom"`` /
+        ``"unknown_plesso"``;
+      - ``entity_kind`` and ``entity_name``;
+      - source data (slots, plessi, rule id) sufficient to render a
+        readable message in the UI.
+
+    Two intended uses:
+      1. The monitor UI calls this on the active solution to show a
+         live "plessi violations" badge with a drill-down list.
+      2. Pre-commit / smoke test on solutions produced by pipelines
+         that do NOT yet wire plessi constraints (Phase B,
+         decompositions, meta) -- the helper makes the gap visible.
+    """
+    if not solution:
+        return []
+
+    violations: list[dict] = []
+
+    # Decode every assignment into (entity_role, entity, day, hour,
+    # plesso_id). We track teacher AND class roles per assignment.
+    cl_to_pl = plessi.classroom_to_plesso
+
+    # by_teacher_day_hour and by_class_day_hour index the schedule
+    # for adjacency / per-day checks.
+    by_t_d_h: dict[tuple[str, int, int], list[tuple]] = {}
+    by_c_d_h: dict[tuple[str, int, int], list[tuple]] = {}
+    by_t_total: dict[str, list[tuple]] = {}
+    by_c_total: dict[str, list[tuple]] = {}
+
+    for key, room in solution.items():
+        if room is None or len(key) != 5:
+            continue
+        t, cl, subj, d, h = key
+        d, h = int(d), int(h)
+        if room not in cl_to_pl:
+            violations.append({
+                "kind": "unknown_classroom",
+                "classroom": room,
+                "key": (t, cl, subj, d, h),
+            })
+            continue
+        pl = cl_to_pl[room]
+        if pl is None:
+            # Classroom exists but has no plesso assigned: outside
+            # the plessi system, can't violate plessi rules.
+            continue
+        slot = (t, cl, subj, d, h, room, pl)
+        by_t_d_h.setdefault((t, d, h), []).append(slot)
+        by_c_d_h.setdefault((cl, d, h), []).append(slot)
+        by_t_total.setdefault(t, []).append(slot)
+        by_c_total.setdefault(cl, []).append(slot)
+
+    # ---- commuting rules (teacher kind) ----
+    for t, slots in by_t_total.items():
+        teacher_id = plessi.teacher_name_to_id.get(t)
+        # Build per-day (h, plesso) lists.
+        by_d: dict[int, list[tuple[int, int, str]]] = {}
+        for (_t, _cl, _s, d, h, room, pl) in slots:
+            by_d.setdefault(d, []).append((h, pl, room))
+        for d, lst in by_d.items():
+            lst.sort()
+            for i in range(len(lst) - 1):
+                h_a, pl_a, room_a = lst[i]
+                h_b, pl_b, room_b = lst[i + 1]
+                if pl_a == pl_b:
+                    continue
+                rule = resolve_commuting_rule(
+                    plessi, pl_a, pl_b, "teacher", teacher_id)
+                if rule is None:
+                    continue
+                if h_b - h_a >= max(1, rule.min_gap_hours + 1) - 1 \
+                        and rule.min_gap_hours <= h_b - h_a - 1:
+                    # Gap is enough to satisfy min_gap_hours.
+                    if not rule.allowed_break_only:
+                        continue
+                # break_only check
+                if rule.allowed_break_only and (
+                        rule.break_start_hour is not None
+                        and rule.break_end_hour is not None
+                        and h_a == rule.break_start_hour
+                        and h_b == rule.break_end_hour):
+                    continue
+                violations.append({
+                    "kind": "commuting",
+                    "entity_kind": "teacher",
+                    "entity_name": t,
+                    "day": d,
+                    "hour_a": h_a,
+                    "hour_b": h_b,
+                    "plesso_a": pl_a,
+                    "plesso_b": pl_b,
+                    "room_a": room_a,
+                    "room_b": room_b,
+                    "rule_id": rule.id,
+                    "min_gap_hours": rule.min_gap_hours,
+                })
+
+    # ---- commuting rules (class kind) ----
+    for cl_name, slots in by_c_total.items():
+        class_id = plessi.class_name_to_id.get(cl_name)
+        by_d: dict[int, list[tuple[int, int, str]]] = {}
+        for (_t, _cl, _s, d, h, room, pl) in slots:
+            by_d.setdefault(d, []).append((h, pl, room))
+        for d, lst in by_d.items():
+            lst.sort()
+            for i in range(len(lst) - 1):
+                h_a, pl_a, room_a = lst[i]
+                h_b, pl_b, room_b = lst[i + 1]
+                if pl_a == pl_b:
+                    continue
+                rule = resolve_commuting_rule(
+                    plessi, pl_a, pl_b, "class", class_id)
+                if rule is None:
+                    continue
+                if rule.min_gap_hours <= h_b - h_a - 1 \
+                        and not rule.allowed_break_only:
+                    continue
+                if rule.allowed_break_only and (
+                        rule.break_start_hour is not None
+                        and rule.break_end_hour is not None
+                        and h_a == rule.break_start_hour
+                        and h_b == rule.break_end_hour):
+                    continue
+                violations.append({
+                    "kind": "commuting",
+                    "entity_kind": "class",
+                    "entity_name": cl_name,
+                    "day": d,
+                    "hour_a": h_a,
+                    "hour_b": h_b,
+                    "plesso_a": pl_a,
+                    "plesso_b": pl_b,
+                    "room_a": room_a,
+                    "room_b": room_b,
+                    "rule_id": rule.id,
+                    "min_gap_hours": rule.min_gap_hours,
+                })
+
+    # ---- entity policies (teacher + class) ----
+    def _check_policies(by_total, kind_name, name_to_id):
+        for ent_name, slots in by_total.items():
+            ent_id = name_to_id.get(ent_name)
+            policy = resolve_entity_policy(plessi, kind_name, ent_id)
+            if policy is None or policy.policy == "any":
+                continue
+            if policy.policy == "single_plesso_total":
+                target = policy.plesso_id
+                bad = [(t, cl, s, d, h, room, pl)
+                       for (t, cl, s, d, h, room, pl) in slots
+                       if pl != target]
+                if bad:
+                    violations.append({
+                        "kind": "single_total",
+                        "entity_kind": kind_name,
+                        "entity_name": ent_name,
+                        "expected_plesso": target,
+                        "n_slots_in_wrong_plesso": len(bad),
+                        "rule_id": policy.id,
+                    })
+                continue
+            if policy.policy == "single_plesso_per_day":
+                by_d: dict[int, set[int]] = {}
+                for (_t, _cl, _s, d, _h, _room, pl) in slots:
+                    by_d.setdefault(d, set()).add(pl)
+                for d, plessi_today in by_d.items():
+                    if len(plessi_today) > 1:
+                        violations.append({
+                            "kind": "single_per_day",
+                            "entity_kind": kind_name,
+                            "entity_name": ent_name,
+                            "day": d,
+                            "plessi": sorted(plessi_today),
+                            "rule_id": policy.id,
+                        })
+
+    _check_policies(by_t_total, "teacher",
+                     plessi.teacher_name_to_id)
+    _check_policies(by_c_total, "class",
+                     plessi.class_name_to_id)
+
+    return violations
+
+
 # ---------- DB-side loader (kept thin for testability) ----------
 
 def load_plessi_data(db) -> PlessiData:

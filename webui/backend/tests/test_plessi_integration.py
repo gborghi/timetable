@@ -145,6 +145,95 @@ def test_classroom_solver_respects_db_commuting_rule(
         f"adjacent crossing not blocked: {pl_a} -> {pl_b}")
 
 
+def test_check_active_solution_no_active_returns_ok(client_and_session):
+    """When no solution is active the endpoint returns ok=True with
+    empty violations -- the UI does not need a special-case path."""
+    client, _ = client_and_session
+    r = client.get("/api/plessi/check-active-solution")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["ok"] is True
+    assert body["violations"] == []
+
+
+def test_check_active_solution_clean_returns_no_violations(
+    client_and_session,
+):
+    """A solution that respects every plessi rule produces an empty
+    violations list."""
+    from backend import models
+    client, TestSession = client_and_session
+    p_ids = _make_rooms_with_plessi(client)
+    # Persist a tiny "active solution" with two lessons in the same
+    # plesso so no rule fires.
+    with TestSession() as db:
+        sol = models.Solution(name="t", kind="phase_b",
+                               is_active=True)
+        db.add(sol)
+        db.flush()
+        for (cl, subj, d, h, room) in [
+            ("1A", "Mate", 1, 8, "A1"),
+            ("1A", "Mate", 1, 9, "A2"),
+        ]:
+            db.add(models.Lesson(
+                solution_id=sol.id,
+                teacher_name="Rossi", class_name=cl, subject=subj,
+                day=d, hour=h, classroom_name=room))
+        db.commit()
+    # Add a kind-wide commuting rule that WOULD fire on a cross.
+    client.post("/api/plessi/commuting-rules", json={
+        "from_plesso_id": p_ids["A"],
+        "to_plesso_id": p_ids["B"],
+        "entity_kind": "teacher", "entity_id": None,
+        "min_gap_hours": 1, "symmetric": True, "priority": 0,
+    })
+    r = client.get("/api/plessi/check-active-solution")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["ok"] is True
+    assert body["violations"] == []
+    assert body["n_lessons_audited"] == 2
+
+
+def test_check_active_solution_flags_commuting_violation(
+    client_and_session,
+):
+    """A solution that violates a teacher commuting rule is flagged
+    by the endpoint."""
+    from backend import models
+    client, TestSession = client_and_session
+    p_ids = _make_rooms_with_plessi(client)
+    client.post("/api/plessi/commuting-rules", json={
+        "from_plesso_id": p_ids["A"],
+        "to_plesso_id": p_ids["B"],
+        "entity_kind": "teacher", "entity_id": None,
+        "min_gap_hours": 1, "symmetric": True, "priority": 0,
+    })
+    with TestSession() as db:
+        sol = models.Solution(name="t", kind="phase_b",
+                               is_active=True)
+        db.add(sol)
+        db.flush()
+        # Same teacher, adjacent hours, different plessi -- violation.
+        for (cl, subj, d, h, room) in [
+            ("1A", "Mate", 1, 8, "A1"),
+            ("1B", "Mate", 1, 9, "B1"),
+        ]:
+            db.add(models.Lesson(
+                solution_id=sol.id,
+                teacher_name="Rossi", class_name=cl, subject=subj,
+                day=d, hour=h, classroom_name=room))
+        db.commit()
+    r = client.get("/api/plessi/check-active-solution")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["ok"] is False
+    assert any(v["kind"] == "commuting"
+               and v["entity_kind"] == "teacher"
+               and v["entity_name"] == "Rossi"
+               for v in body["violations"])
+
+
 def test_classroom_solver_respects_db_single_plesso_total_policy(
     client_and_session,
 ):
