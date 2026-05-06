@@ -232,7 +232,14 @@ def _eval_static(node, env: dict, key_lookup: dict[str, tuple],
             return bound
         # bound is a slot key tuple; project attributes (with
         # support for chained access through l.classroom).
-        if isinstance(bound, tuple) and head in key_lookup:
+        # Any 5-tuple bound in env originates from iterating
+        # ``lessons`` (the only tuple-valued source the compiler
+        # currently supports), so we accept any var name -- DSL
+        # rules use names like ``l``, ``l1``, ``l2``, ``lesson`` and
+        # all should resolve identically. ``key_lookup`` is kept as
+        # a hint set for future extensions (e.g. another tuple-
+        # valued source) but is no longer authoritative.
+        if isinstance(bound, tuple) and len(bound) == 5:
             return _resolve_lesson_path(
                 bound, rest,
                 classroom_for_slot=classroom_for_slot,

@@ -208,17 +208,109 @@ def coteach_group_to_dsl(class_name: str, subject: str,
     return out
 
 
-def plesso_commuting_rule_to_dsl(*args, **kwargs) -> str:
-    """Stub. Plesso commuting rules require classroom knowledge
-    (rooms decided post-CG); the DSL form is intentionally deferred
-    to keep the translator focused on slot-level constraints. The
-    existing engine/plessi_constraints.py already adds these
-    constraints at classroom-assignment time via its own helper."""
-    raise NotImplementedError(
-        "Plesso commuting rules use classroom dimension; deferred "
-        "to a future commit that extends the DSL with `l.classroom`"
-        " predicates."
-    )
+def plesso_commuting_rule_to_dsl(
+    rule, *, teacher_name: str | None = None,
+) -> list[str]:
+    """Translate one PlessoCommutingRule into a list of DSL strings.
+
+    The DSL relies on the chained ``l.classroom.plesso`` accessor
+    introduced in Step 3a + the canonical ``consecutive(slot, slot)``
+    DSL function. Compilation requires the caller to plumb
+    ``classroom_for_slot`` and ``plessi_data`` through
+    ``add_dsl_constraint`` so the static evaluator can resolve the
+    classroom -> plesso chain.
+
+    Supported rule shapes (entity_kind='teacher'):
+
+      - ``min_gap_hours >= 1``: any adjacent (h, h+1) slot pair
+        crossing the (from_plesso, to_plesso) pair is forbidden.
+      - ``allowed_break_only=True`` with both break hours set: every
+        adjacent pair is forbidden except the
+        (break_start, break_end) pair (and its reverse for symmetric
+        rules).
+      - ``min_gap_hours == 0`` and not ``allowed_break_only``: no
+        constraint -> empty list.
+      - ``entity_id`` set + ``teacher_name`` provided -> per-teacher;
+        ``entity_id is None`` -> kind-wide (every teacher).
+
+    Returns the list of DSL clause strings (one per directed plesso
+    pair). For symmetric rules both directions are emitted.
+
+    Raises ``NotImplementedError`` for entity_kind in {'class',
+    'group'}; those use a slightly different structure (class-side
+    iteration) and can be added incrementally.
+    """
+    kind = getattr(rule, "entity_kind", None) or rule.get("entity_kind")
+    if kind != "teacher":
+        raise NotImplementedError(
+            f"plesso_commuting_rule_to_dsl: entity_kind={kind!r} "
+            "not yet supported (only 'teacher')")
+
+    def _attr(name, default=None):
+        if hasattr(rule, name):
+            return getattr(rule, name)
+        if isinstance(rule, dict):
+            return rule.get(name, default)
+        return default
+
+    from_pl = int(_attr("from_plesso_id"))
+    to_pl = int(_attr("to_plesso_id"))
+    entity_id = _attr("entity_id")
+    min_gap = int(_attr("min_gap_hours", 0) or 0)
+    allowed_break_only = bool(_attr("allowed_break_only", False))
+    bs = _attr("break_start_hour")
+    be = _attr("break_end_hour")
+    symmetric = bool(_attr("symmetric", True))
+
+    # Decide whether the rule forbids adjacency at all.
+    if min_gap < 1 and not allowed_break_only:
+        return []
+
+    pairs = [(from_pl, to_pl)]
+    if symmetric:
+        pairs.append((to_pl, from_pl))
+
+    # Teacher filter
+    if entity_id is not None and teacher_name:
+        l1_teacher = (
+            f' and l1.teacher == {_quote(teacher_name)}')
+        l2_teacher = (
+            f' and l2.teacher == {_quote(teacher_name)}')
+    else:
+        # Kind-wide: pair shares a teacher (resolved via
+        # l1/l2 binding).
+        l1_teacher = ''
+        l2_teacher = ' and l2.teacher == l1.teacher'
+
+    # Allowed break exception (only for allowed_break_only).
+    if allowed_break_only and bs is not None and be is not None:
+        bs_i, be_i = int(bs), int(be)
+        # Forbid pair (l1.hour, l2.hour) UNLESS
+        #   (l1.hour, l2.hour) in {(bs, be), (be, bs)}.
+        # Encoded by adding a where clause that excludes the
+        # break pair, leaving the non-break adjacency as the
+        # forbidden region.
+        break_excl = (
+            f' and not ((l1.hour == {bs_i} and l2.hour == {be_i})'
+            f' or (l1.hour == {be_i} and l2.hour == {bs_i}))')
+    else:
+        break_excl = ''
+
+    out: list[str] = []
+    for (from_p, to_p) in pairs:
+        clause = (
+            f'forall l1 in lessons where '
+            f'l1.classroom.plesso == {int(from_p)}'
+            f'{l1_teacher}: '
+            f'forall l2 in lessons where '
+            f'l2.classroom.plesso == {int(to_p)}'
+            f'{l2_teacher}'
+            f' and consecutive(l1.slot, l2.slot)'
+            f'{break_excl}: '
+            f'false'
+        )
+        out.append(clause)
+    return out
 
 
 # ---------------------------------------------------------------------

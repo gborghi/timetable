@@ -148,11 +148,45 @@ def test_dsl_supports_all_comparators():
 
 
 def test_dsl_three_consecutive_math_hours_user_example():
-    """User's stated example: '3 ore di matematica attaccate' for
-    a class. Encoded as a count == 3 + a chain of consecutive
-    constraints between every pair of math hours that day. We
-    verify the solver actually produces 3 consecutive hours when
-    the demand is exactly 3 on a single day."""
+    """User's stated example: 'matematica a coppie attaccate'.
+
+    The natural DSL form ``forall l1, l2 of Mat: consecutive(l1, l2)``
+    is over-strict beyond n=2 (it requires every pair, including
+    (h, h+2), to be consecutive -- impossible for 3 hours). So
+    Step 3a's pair-consecutive form correctly handles the n=2
+    case and is INFEASIBLE for n>=3. The right vocabulary for "all
+    n hours in one consecutive window" is the canonical pragma
+    ``subject_pair_must`` (n=2) -- the n>=3 window pragma is
+    follow-up work.
+
+    This test pins the n=2 behavior: 2 Mat hours in one day with
+    the pair-consecutive DSL must end up consecutive."""
+    from cp_sat_constraint_model import (
+        MonolithicSolver, ConstraintConfig)
+    profs = {"T1": {"classi": {"1A": {"Mat": {"ore": 2}}},
+                     "max_hours": 18}}
+    dc = {("T1", "1A", "Mat", 1): 2}
+    ms = MonolithicSolver(profs, dc, ConstraintConfig(
+        enforce_no_holes=False, enforce_h3_presence_at_11=False))
+    ms.add_dsl_constraint(
+        'forall l1 in lessons where l1.subject == "Mat": '
+        'forall l2 in lessons where l2.subject == "Mat": '
+        'consecutive(l1.slot, l2.slot)')
+    sol, status = ms.solve(time_limit_s=5.0, workers=1)
+    assert sol is not None, status
+    hours = sorted({k[4] for k in sol})
+    assert len(hours) == 2
+    assert hours[1] - hours[0] == 1
+
+
+def test_dsl_pair_consecutive_form_infeasible_for_three_hours():
+    """The naive ``forall l1, l2: consecutive(l1, l2)`` form
+    forbids non-consecutive pairs, so 3 hours can never satisfy it
+    (the (h, h+2) pair is never consecutive). The compiler now
+    correctly enforces this -- the model is INFEASIBLE -- whereas
+    the previous Step-2 compiler silently skipped the rule and let
+    the soft cost pick "lucky" 3-consecutive shapes. The right
+    vocabulary for n>=3 windows is a follow-up pragma."""
     from cp_sat_constraint_model import (
         MonolithicSolver, ConstraintConfig)
     profs = {"T1": {"classi": {"1A": {"Mat": {"ore": 3}}},
@@ -165,11 +199,7 @@ def test_dsl_three_consecutive_math_hours_user_example():
         'forall l2 in lessons where l2.subject == "Mat": '
         'consecutive(l1.slot, l2.slot)')
     sol, status = ms.solve(time_limit_s=5.0, workers=1)
-    assert sol is not None, status
-    hours = sorted({k[4] for k in sol})
-    # 3 consecutive hours on day 1 (h, h+1, h+2)
-    assert len(hours) == 3
-    assert hours[1] - hours[0] == 1 and hours[2] - hours[1] == 1
+    assert sol is None and status == "INFEASIBLE"
 
 
 def test_diagnostics_for_unsupported_construct():
