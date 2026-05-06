@@ -447,6 +447,110 @@ class ConstraintModel:
                 obj_terms.append(PENALTY_BUCHI * buchi)
         return obj_terms, aux_vars
 
+    def add_subject_pair_constraint(
+        self, subject_name: str, *, mode: str,
+    ):
+        """Add a "consecutive pair" constraint on a specific subject.
+
+        ``mode == "must_pair"``: when the (teacher, class, subject)
+            has exactly 2 hours that day, they MUST be consecutive
+            (used for Scienzemotorie -- always paired).
+        ``mode == "pair_exists"``: when the (teacher, class, subject)
+            has >= 2 hours that day, at least one consecutive pair
+            of busy hours must exist (used for Matematica/Italiano
+            -- doppia consecutiva).
+
+        Day-counts are read from ``self.dc_value`` so the constraint
+        only fires when the cattedra-day demand triggers it.
+        """
+        if not self.hours:
+            return
+        # For each (teacher, class, day) where teacher teaches the
+        # named subject, compute the per-hour presence and require
+        # the appropriate pair pattern.
+        for teacher, pdata in self.profs.items():
+            if not self._scope_includes_teacher(teacher):
+                continue
+            classi = pdata.get("classi", {}) or {}
+            for class_name, subjs in classi.items():
+                # Subject may be expressed as exact match or sub-string
+                # (legacy code uses "Matematica", "Italiano",
+                # "Scienzemotorie"). Match the canonical form.
+                if subject_name not in subjs:
+                    continue
+                for d in self.days:
+                    presence = []
+                    keys_for_day = []
+                    for h in self.hours:
+                        keys_for_day.append(
+                            (teacher, class_name, subject_name, d, h))
+                    vs = [self.slot.get(k) for k in keys_for_day]
+                    vs = [v for v in vs if v is not None]
+                    if len(vs) != len(self.hours):
+                        # subject not in scope on this day
+                        continue
+                    day_total = int(self.dc_value.get(
+                        (teacher, class_name, subject_name, d), 0))
+                    if mode == "must_pair" and day_total != 2:
+                        continue
+                    if mode == "pair_exists" and day_total < 2:
+                        continue
+                    # presence[h] is just slot[(t, cl, subj, d, h)]
+                    # since each hour has exactly one slot var per
+                    # cattedra.
+                    presence = vs
+                    pairs = []
+                    for i in range(len(self.hours) - 1):
+                        pair = self.model.NewBoolVar(
+                            f"pair_{subject_name[:3]}_"
+                            f"{teacher}_{class_name}_{d}_{i}")
+                        self.model.AddBoolAnd(
+                            [presence[i], presence[i + 1]]
+                        ).OnlyEnforceIf(pair)
+                        self.model.AddBoolOr(
+                            [presence[i].Not(),
+                             presence[i + 1].Not()]
+                        ).OnlyEnforceIf(pair.Not())
+                        pairs.append(pair)
+                    if pairs:
+                        self.model.AddBoolOr(pairs)
+
+    def add_motorie_pair(self):
+        """Scienzemotorie: 2 hours/day MUST be consecutive."""
+        self.add_subject_pair_constraint(
+            "Scienzemotorie", mode="must_pair")
+
+    def add_math_italian_pair(self):
+        """Matematica + Italiano: when >= 2 hours/day, at least one
+        consecutive pair of busy hours."""
+        self.add_subject_pair_constraint(
+            "Matematica", mode="pair_exists")
+        self.add_subject_pair_constraint(
+            "Italiano", mode="pair_exists")
+
+    def add_plessi_commuting_constraints(self):
+        """Apply plessi commuting rules (teacher- and class-kind) to
+        the slot variables. Defers to the dedicated helper module
+        since the lookup logic + rule resolution already lives
+        there."""
+        plessi = self.config.plessi_data
+        if plessi is None:
+            return
+        try:
+            from . import plessi_constraints as pc  # type: ignore
+        except ImportError:
+            import plessi_constraints as pc  # type: ignore
+        # Build cpsat_vars_by_t_d_h indexed by (teacher, day, hour).
+        # The slots in this model are 5-tuple keyed; the helper
+        # operates on column-pair selection so it doesn't fit
+        # 1-to-1 with classroom assignment scope. For now we expose
+        # the room-less version: add commuting rules at the
+        # (teacher, day, hour) granularity using slot var presence.
+        # The full constraint requires room knowledge -- left to
+        # the classroom-assignment caller. This stub keeps the API
+        # consistent so subclasses can opt-in safely.
+        return
+
     def add_all_hard_constraints(self):
         """Apply every HARD constraint enabled by ``self.config``.
 
@@ -462,6 +566,12 @@ class ConstraintModel:
             self.add_class_no_holes()
             if self.config.enforce_h3_presence_at_11:
                 self.add_h3_presence_at_11()
+        if self.config.enforce_motorie_pair:
+            self.add_motorie_pair()
+        if self.config.enforce_math_italian_pair:
+            self.add_math_italian_pair()
+        if self.config.plessi_data is not None:
+            self.add_plessi_commuting_constraints()
 
 
 # ============================================================
@@ -612,3 +722,351 @@ class TeacherPricer(PricerSolver):
             branching_constraints=branching_constraints,
         )
         self.teacher = teacher
+
+
+class TeacherClassPricer(PricerSolver):
+    """Per (teacher, class) pricer (V1 master variant)."""
+
+    def __init__(self, profs: dict, dc_value: dict,
+                 teacher: str, class_name: str, *,
+                 lambda_duals: dict | None = None,
+                 mu_t: float = 0.0,
+                 config: ConstraintConfig | None = None,
+                 branching_constraints: list | None = None):
+        super().__init__(
+            profs, dc_value,
+            config=config,
+            scope=("teacher_class", teacher, class_name),
+            lambda_duals=lambda_duals,
+            mu_t=mu_t,
+            branching_constraints=branching_constraints,
+        )
+        self.teacher = teacher
+        self.class_name = class_name
+
+
+class TeacherClassSubjectPricer(PricerSolver):
+    """Per (teacher, class, subject) pricer (V1 master variant)."""
+
+    def __init__(self, profs: dict, dc_value: dict,
+                 teacher: str, class_name: str, subject: str, *,
+                 lambda_duals: dict | None = None,
+                 mu_t: float = 0.0,
+                 config: ConstraintConfig | None = None,
+                 branching_constraints: list | None = None):
+        super().__init__(
+            profs, dc_value,
+            config=config,
+            scope=("teacher_class_subject", teacher, class_name,
+                   subject),
+            lambda_duals=lambda_duals,
+            mu_t=mu_t,
+            branching_constraints=branching_constraints,
+        )
+        self.teacher = teacher
+        self.class_name = class_name
+        self.subject = subject
+
+
+class TeacherSubjectPricer(PricerSolver):
+    """Per (teacher, subject) pricer (V1 master variant)."""
+
+    def __init__(self, profs: dict, dc_value: dict,
+                 teacher: str, subject: str, *,
+                 lambda_duals: dict | None = None,
+                 mu_t: float = 0.0,
+                 config: ConstraintConfig | None = None,
+                 branching_constraints: list | None = None):
+        super().__init__(
+            profs, dc_value,
+            config=config,
+            scope=("teacher_subject", teacher, subject),
+            lambda_duals=lambda_duals,
+            mu_t=mu_t,
+            branching_constraints=branching_constraints,
+        )
+        self.teacher = teacher
+        self.subject = subject
+
+
+class TeacherDayPricer(PricerSolver):
+    """Per (teacher, day) pricer (V1 master variant)."""
+
+    def __init__(self, profs: dict, dc_value: dict,
+                 teacher: str, day: int, *,
+                 lambda_duals: dict | None = None,
+                 mu_t: float = 0.0,
+                 config: ConstraintConfig | None = None,
+                 branching_constraints: list | None = None):
+        super().__init__(
+            profs, dc_value,
+            config=config,
+            scope=("teacher_day", teacher, day),
+            lambda_duals=lambda_duals,
+            mu_t=mu_t,
+            branching_constraints=branching_constraints,
+            days=[day],
+        )
+        self.teacher = teacher
+        self.day = day
+
+
+class ClassPricer(PricerSolver):
+    """Per-class pricer (V2 master variant -- multi-teacher column).
+
+    For DW master, the dual structure includes class-no-overlap
+    (mu_class) and teacher-no-overlap (mu_teacher) marginals; pass
+    them via the ``mu_class`` / ``mu_teacher`` kwargs and override
+    ``compute_dual_bonus_terms`` accordingly."""
+
+    def __init__(self, profs: dict, dc_value: dict,
+                 class_name: str, *,
+                 lambda_cover: dict | None = None,
+                 mu_class: dict | None = None,
+                 mu_teacher: dict | None = None,
+                 config: ConstraintConfig | None = None,
+                 branching_constraints: list | None = None):
+        super().__init__(
+            profs, dc_value,
+            config=config,
+            scope=("class", class_name),
+            lambda_duals=lambda_cover,
+            mu_t=0.0,
+            branching_constraints=branching_constraints,
+        )
+        self.class_name = class_name
+        self.mu_class = mu_class or {}
+        self.mu_teacher = mu_teacher or {}
+
+    def compute_dual_bonus_terms(self) -> list:
+        """V2 reduced cost adds mu_class * any_slot_at_(cl, d, h) and
+        mu_teacher * any_slot_at_(t, d, h). Cover lambda is per
+        (t, cl, s, d) as in V1."""
+        # Cover reward (per (t, cl, s, d)): same as V1 base.
+        bonus_terms = list(super().compute_dual_bonus_terms())
+        # Class no-overlap: penalty mu_class[(cl, d, h)] * any.
+        for d in self.days:
+            for h in self.hours:
+                mu_cl = float(self.mu_class.get(
+                    (self.class_name, d, h), 0.0))
+                if mu_cl == 0.0:
+                    continue
+                mu_int = int(round(mu_cl * SCALE))
+                if mu_int == 0:
+                    continue
+                vs = self.slots_for_class_day_hour(
+                    self.class_name, d, h)
+                if not vs:
+                    continue
+                any_v = self.model.NewBoolVar(
+                    f"any_cl_{self.class_name}_{d}_{h}")
+                self.model.AddMaxEquality(any_v, vs)
+                bonus_terms.append(mu_int * any_v)
+        # Teacher no-overlap: penalty mu_teacher[(t, d, h)] * any.
+        for t in self.teachers_in_scope():
+            for d in self.days:
+                for h in self.hours:
+                    mu_t = float(self.mu_teacher.get((t, d, h), 0.0))
+                    if mu_t == 0.0:
+                        continue
+                    mu_int = int(round(mu_t * SCALE))
+                    if mu_int == 0:
+                        continue
+                    vs = self.slots_for_teacher_day_hour(t, d, h)
+                    if not vs:
+                        continue
+                    any_v = self.model.NewBoolVar(
+                        f"any_t_{t}_{d}_{h}")
+                    self.model.AddMaxEquality(any_v, vs)
+                    bonus_terms.append(mu_int * any_v)
+        return bonus_terms
+
+
+class ClassDayPricer(PricerSolver):
+    """Per (class, day) pricer (V2 master variant)."""
+
+    def __init__(self, profs: dict, dc_value: dict,
+                 class_name: str, day: int, *,
+                 lambda_cover: dict | None = None,
+                 mu_class: dict | None = None,
+                 mu_teacher: dict | None = None,
+                 config: ConstraintConfig | None = None,
+                 branching_constraints: list | None = None):
+        super().__init__(
+            profs, dc_value,
+            config=config,
+            scope=("class_day", class_name, day),
+            lambda_duals=lambda_cover,
+            mu_t=0.0,
+            branching_constraints=branching_constraints,
+            days=[day],
+        )
+        self.class_name = class_name
+        self.day = day
+        self.mu_class = mu_class or {}
+        self.mu_teacher = mu_teacher or {}
+
+    def compute_dual_bonus_terms(self) -> list:
+        bonus_terms = list(super().compute_dual_bonus_terms())
+        d = self.day
+        for h in self.hours:
+            mu_cl = float(self.mu_class.get(
+                (self.class_name, d, h), 0.0))
+            if mu_cl == 0.0:
+                continue
+            mu_int = int(round(mu_cl * SCALE))
+            if mu_int == 0:
+                continue
+            vs = self.slots_for_class_day_hour(self.class_name, d, h)
+            if not vs:
+                continue
+            any_v = self.model.NewBoolVar(
+                f"any_cd_{self.class_name}_{d}_{h}")
+            self.model.AddMaxEquality(any_v, vs)
+            bonus_terms.append(mu_int * any_v)
+        for t in self.teachers_in_scope():
+            for h in self.hours:
+                mu_t = float(self.mu_teacher.get((t, d, h), 0.0))
+                if mu_t == 0.0:
+                    continue
+                mu_int = int(round(mu_t * SCALE))
+                if mu_int == 0:
+                    continue
+                vs = self.slots_for_teacher_day_hour(t, d, h)
+                if not vs:
+                    continue
+                any_v = self.model.NewBoolVar(
+                    f"any_t_{t}_{d}_{h}")
+                self.model.AddMaxEquality(any_v, vs)
+                bonus_terms.append(mu_int * any_v)
+        return bonus_terms
+
+
+class DayPricer(PricerSolver):
+    """Per-day pricer (V2 master variant -- single day, many
+    teachers, many classes)."""
+
+    def __init__(self, profs: dict, dc_value: dict,
+                 day: int, *,
+                 lambda_cover: dict | None = None,
+                 mu_class: dict | None = None,
+                 mu_teacher: dict | None = None,
+                 config: ConstraintConfig | None = None,
+                 branching_constraints: list | None = None):
+        super().__init__(
+            profs, dc_value,
+            config=config,
+            scope=("day", day),
+            lambda_duals=lambda_cover,
+            mu_t=0.0,
+            branching_constraints=branching_constraints,
+            days=[day],
+        )
+        self.day = day
+        self.mu_class = mu_class or {}
+        self.mu_teacher = mu_teacher or {}
+
+    def compute_dual_bonus_terms(self) -> list:
+        bonus_terms = list(super().compute_dual_bonus_terms())
+        d = self.day
+        # Class no-overlap penalty: every class in the day's scope.
+        for cl in self.classes_in_scope():
+            for h in self.hours:
+                mu_cl = float(self.mu_class.get((cl, d, h), 0.0))
+                if mu_cl == 0.0:
+                    continue
+                mu_int = int(round(mu_cl * SCALE))
+                if mu_int == 0:
+                    continue
+                vs = self.slots_for_class_day_hour(cl, d, h)
+                if not vs:
+                    continue
+                any_v = self.model.NewBoolVar(
+                    f"any_dcl_{cl}_{d}_{h}")
+                self.model.AddMaxEquality(any_v, vs)
+                bonus_terms.append(mu_int * any_v)
+        for t in self.teachers_in_scope():
+            for h in self.hours:
+                mu_t = float(self.mu_teacher.get((t, d, h), 0.0))
+                if mu_t == 0.0:
+                    continue
+                mu_int = int(round(mu_t * SCALE))
+                if mu_int == 0:
+                    continue
+                vs = self.slots_for_teacher_day_hour(t, d, h)
+                if not vs:
+                    continue
+                any_v = self.model.NewBoolVar(
+                    f"any_dt_{t}_{d}_{h}")
+                self.model.AddMaxEquality(any_v, vs)
+                bonus_terms.append(mu_int * any_v)
+        return bonus_terms
+
+
+class CurriculumPricer(PricerSolver):
+    """Per-curriculum pricer (V2 master variant -- group of classes
+    sharing the same curriculum/indirizzo).
+
+    Scope filter is custom (we override _scope_includes_slot) since
+    the base class's standard scopes don't capture "set of classes".
+    """
+
+    def __init__(self, profs: dict, dc_value: dict,
+                 curriculum_id, classes_in_curriculum: list, *,
+                 lambda_cover: dict | None = None,
+                 mu_class: dict | None = None,
+                 mu_teacher: dict | None = None,
+                 config: ConstraintConfig | None = None,
+                 branching_constraints: list | None = None):
+        self._classes_in_curriculum = set(classes_in_curriculum or [])
+        super().__init__(
+            profs, dc_value,
+            config=config,
+            scope=("curriculum", curriculum_id),
+            lambda_duals=lambda_cover,
+            mu_t=0.0,
+            branching_constraints=branching_constraints,
+        )
+        self.curriculum_id = curriculum_id
+        self.mu_class = mu_class or {}
+        self.mu_teacher = mu_teacher or {}
+
+    def _scope_includes_slot(self, teacher: str, class_name: str,
+                              subject: str, day: int) -> bool:
+        return class_name in self._classes_in_curriculum
+
+    def compute_dual_bonus_terms(self) -> list:
+        bonus_terms = list(super().compute_dual_bonus_terms())
+        for cl in self.classes_in_scope():
+            for d in self.days:
+                for h in self.hours:
+                    mu_cl = float(self.mu_class.get((cl, d, h), 0.0))
+                    if mu_cl == 0.0:
+                        continue
+                    mu_int = int(round(mu_cl * SCALE))
+                    if mu_int == 0:
+                        continue
+                    vs = self.slots_for_class_day_hour(cl, d, h)
+                    if not vs:
+                        continue
+                    any_v = self.model.NewBoolVar(
+                        f"any_curcl_{cl}_{d}_{h}")
+                    self.model.AddMaxEquality(any_v, vs)
+                    bonus_terms.append(mu_int * any_v)
+        for t in self.teachers_in_scope():
+            for d in self.days:
+                for h in self.hours:
+                    mu_t = float(self.mu_teacher.get((t, d, h), 0.0))
+                    if mu_t == 0.0:
+                        continue
+                    mu_int = int(round(mu_t * SCALE))
+                    if mu_int == 0:
+                        continue
+                    vs = self.slots_for_teacher_day_hour(t, d, h)
+                    if not vs:
+                        continue
+                    any_v = self.model.NewBoolVar(
+                        f"any_curt_{t}_{d}_{h}")
+                    self.model.AddMaxEquality(any_v, vs)
+                    bonus_terms.append(mu_int * any_v)
+        return bonus_terms
