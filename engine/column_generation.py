@@ -584,6 +584,160 @@ def _compute_rc(
     return float(soft) - float(mu_t) - sum_lambda
 
 
+def _pricing_subproblem_teacher(
+    teacher: str, profs: dict, dc_value: dict,
+    lambda_duals: dict, mu_t: float,
+    *,
+    time_limit: float = 5.0,
+    workers: int = 2,
+    locks: set | None = None,
+    group_assignments: list | None = None,
+    eps: float = 1e-6,
+) -> tuple[dict | None, float]:
+    """CP-SAT pricer for the ``teacher`` granularity (V1 master).
+
+    Builds the WHOLE per-teacher week pattern in a single CP-SAT
+    call: every (class, subject, day) triple in the teacher's
+    catalog gets exactly its hours-count placed across the 6x6
+    slot grid, subject only to teacher-no-overlap and
+    intra-teacher class-no-overlap. The objective is the
+    integer-scaled reduced cost
+    ``-SCALE * sum_dual * placed + PENALTY_SIXTH * placed_at_h13``,
+    so a solution with rc < 0 is an improving column.
+
+    Reduced cost ``rc = soft(p) - mu_t - sum_dual * placed``
+    is recomputed exactly via ``_compute_rc`` after CP-SAT
+    returns. Locks for this teacher (any of the 5-tuples in
+    ``locks`` whose first element == teacher) are forced on.
+
+    Cross-teacher class-no-overlap is NOT enforced here -- that
+    is the master LP's job in variant 1 (per-teacher equality)
+    and the post-pricing assembly's job. The pricer's role is to
+    produce the best column for ONE teacher given current duals.
+    """
+    from ortools.sat.python import cp_model
+
+    pairs_by_t = _profs_iter_with_groups(profs, group_assignments)
+    pairs = pairs_by_t.get(teacher, [])
+    if not pairs:
+        return None, 0.0
+
+    # Assemble the full demand list for this teacher.
+    triples: list[tuple[str, str, int, int]] = []  # (cl, s, d, q)
+    for (cl, s) in pairs:
+        for d in DAYS:
+            q = int(dc_value.get((teacher, cl, s, d), 0))
+            if q > 0:
+                triples.append((cl, s, d, q))
+    if not triples:
+        return None, 0.0
+
+    # Greedy WARM-START hint that respects teacher-no-overlap and
+    # intra-teacher class-no-overlap on each (d, h). Drives CP-SAT
+    # toward a feasible incumbent quickly.
+    hint_set: set = set()  # (cl, s, d, h)
+    occ_t: set = set()     # (d, h) already used by this teacher
+    occ_c: set = set()     # (cl, d, h) already used in this class
+    # Honour caller locks for this teacher.
+    for (p, cl_l, s_l, d_l, h_l) in (locks or ()):
+        if p != teacher:
+            continue
+        hint_set.add((cl_l, s_l, d_l, h_l))
+        occ_t.add((d_l, h_l))
+        occ_c.add((cl_l, d_l, h_l))
+    for (cl, s, d, q) in triples:
+        placed = 0
+        for h in HOURS:
+            if placed >= q:
+                break
+            if (d, h) in occ_t:
+                continue
+            if (cl, d, h) in occ_c:
+                continue
+            hint_set.add((cl, s, d, h))
+            occ_t.add((d, h))
+            occ_c.add((cl, d, h))
+            placed += 1
+
+    model = cp_model.CpModel()
+    slot: dict[tuple, cp_model.IntVar] = {}
+    for (cl, s, d, _q) in triples:
+        for h in HOURS:
+            v = model.NewBoolVar(
+                f"slot_{teacher}_{cl}_{s}_{d}_{h}")
+            slot[(cl, s, d, h)] = v
+            model.AddHint(v, 1 if (cl, s, d, h) in hint_set else 0)
+
+    # Cattedra-day equality: place exactly q hours of (cl, s, d).
+    for (cl, s, d, q) in triples:
+        model.Add(sum(slot[(cl, s, d, h)] for h in HOURS) == q)
+
+    # Teacher no-overlap on (d, h): at most one slot active.
+    for d in DAYS:
+        for h in HOURS:
+            terms = [slot[(cl, s, d, h)]
+                     for (cl, s, d2, _q) in triples if d2 == d
+                     if (cl, s, d, h) in slot]
+            if terms:
+                model.Add(sum(terms) <= 1)
+
+    # Intra-teacher class no-overlap: even if t teaches multiple
+    # subjects in the same class, at most one of them lands on
+    # the same (cl, d, h).
+    classes = sorted({cl for (cl, _s, _d, _q) in triples})
+    for cl in classes:
+        for d in DAYS:
+            for h in HOURS:
+                terms = [slot[(cl_, s, d, h)]
+                         for (cl_, s, d2, _q) in triples
+                         if cl_ == cl and d2 == d
+                         if (cl_, s, d, h) in slot]
+                if len(terms) > 1:
+                    model.Add(sum(terms) <= 1)
+
+    # Apply locks for THIS teacher.
+    for (p, cl_l, s_l, d_l, h_l) in (locks or ()):
+        if p != teacher:
+            continue
+        v = slot.get((cl_l, s_l, d_l, h_l))
+        if v is not None:
+            model.Add(v == 1)
+
+    # Objective: integer-scaled reduced-cost contribution.
+    obj_terms: list = []
+    for (cl, s, d, _q) in triples:
+        lam = float(lambda_duals.get((teacher, cl, s, d), 0.0))
+        lam_int = int(round(lam * _SCALE))
+        for h in HOURS:
+            v = slot[(cl, s, d, h)]
+            if lam_int != 0:
+                obj_terms.append(-lam_int * v)
+            if h == _SIXTH_HOUR:
+                obj_terms.append(_PENALTY_SIXTH * v)
+    if obj_terms:
+        model.Minimize(sum(obj_terms))
+
+    solver = cp_model.CpSolver()
+    solver.parameters.max_time_in_seconds = float(time_limit)
+    solver.parameters.num_search_workers = int(workers)
+    solver.parameters.log_search_progress = False
+    status = solver.Solve(model)
+    if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        return None, 0.0
+
+    full_pat: dict = {}
+    for (cl, s, d, _q) in triples:
+        for h in HOURS:
+            v = slot[(cl, s, d, h)]
+            if solver.Value(v):
+                full_pat[(teacher, cl, s, d, h)] = 1
+
+    rc = _compute_rc(full_pat, teacher, lambda_duals, mu_t, profs)
+    if rc < -eps:
+        return full_pat, rc
+    return None, rc
+
+
 def _pricing_subproblem_teacher_class(
     teacher: str, class_name: str, profs: dict, dc_value: dict,
     lambda_duals: dict, mu_t: float,
@@ -2273,6 +2427,7 @@ _CLASS_TO_CURRICULUM_CTX: dict = {"map": None}
 
 
 _BP_GRANULARITIES = (
+    "teacher",
     "teacher-class",
     "teacher-class-subject",
     "teacher-subject",
@@ -2282,6 +2437,33 @@ _BP_GRANULARITIES = (
     "day",
     "curriculum",
 )
+
+
+def _resolve_auto_granularity(profs: dict) -> str:
+    """Engine-side resolution of ``granularity="auto"``.
+
+    Mirrors the FastAPI-layer heuristic in
+    ``webui/backend/optimization.py:_suggest_cg_granularity``
+    so direct script invocations (benchmarks, tests, batch runs)
+    get the same concrete granularity the dashboard would pick:
+
+    - ``< 15`` classes -> ``teacher``
+    - ``< 30``         -> ``teacher-day``
+    - ``< 50``         -> ``teacher-class``
+    - ``<= 80``        -> ``class``
+    - ``> 80``         -> ``curriculum``
+    """
+    n_classes = len({cl for p in profs.values()
+                      for cl in p.get("classi", {})})
+    if n_classes < 15:
+        return "teacher"
+    if n_classes < 30:
+        return "teacher-day"
+    if n_classes < 50:
+        return "teacher-class"
+    if n_classes <= 80:
+        return "class"
+    return "curriculum"
 
 # Granularities whose columns are MULTI-teacher partial patterns
 # and therefore require master variant 2 (DW with overlap ineqs).
@@ -2297,6 +2479,15 @@ def _enumerate_pricing_keys(granularity: str, profs: dict,
     returned column when its reduced cost is < -eps.
     """
     pairs_by_t = _profs_iter_with_groups(profs, group_assignments)
+    if granularity == "teacher":
+        # One pricing key per teacher with at least one demanded
+        # cattedra-day. The pricer rebuilds the entire week.
+        out = []
+        for t, pairs in pairs_by_t.items():
+            if any(dc_value.get((t, cl, s, d), 0) > 0
+                    for (cl, s) in pairs for d in DAYS):
+                out.append(t)
+        return sorted(out)
     if granularity == "teacher-class":
         out = []
         for t, pairs in pairs_by_t.items():
@@ -2375,6 +2566,16 @@ def _solve_pricing(granularity: str, key,
                     eps: float = 1e-6,
                     ) -> tuple[dict | None, float]:
     """Dispatch a pricing call to the right per-granularity solver."""
+    if granularity == "teacher":
+        teacher = key
+        mu_t = float(mu_duals.get(teacher, 0.0))
+        return _pricing_subproblem_teacher(
+            teacher, profs, dc_value,
+            lambda_duals, mu_t,
+            time_limit=time_limit, workers=workers,
+            locks=locks, group_assignments=group_assignments,
+            eps=eps,
+        )
     if granularity == "teacher-class":
         teacher, class_name = key
         mu_t = float(mu_duals.get(teacher, 0.0))
@@ -3556,10 +3757,19 @@ def run_column_generation(profs: dict, dc_value: dict,
     Estimated effort: 2-3 weeks of OR engineering.
     """
     t0 = time.time()
+    # Resolve granularity="auto" to a concrete granularity right at
+    # entry so every downstream code path sees a real pricer key.
+    # The chosen granularity is recorded as ``granularity_resolved``
+    # so callers can see what auto picked; the original is kept in
+    # ``granularity_requested`` for traceability.
+    granularity_requested = granularity
+    if granularity == "auto":
+        granularity = _resolve_auto_granularity(profs)
     info: dict[str, Any] = {
         "kind": "column_generation",
         "mode": mode,
         "granularity": granularity,
+        "granularity_requested": granularity_requested,
         "bp_max_iterations": bp_max_iterations,
         "pricer_time_limit": pricer_time_limit,
         "pricer_workers": pricer_workers,
@@ -3780,13 +3990,19 @@ def run_column_generation(profs: dict, dc_value: dict,
             best_obj if best_obj != float("inf") else None)
         sol_dw_override = None
     elif use_bp and granularity not in _BP_GRANULARITIES + _BP_GRANULARITIES_DW:
-        # Mode requested BP but granularity has no pricer yet ->
-        # iterative-diversified is the de-facto pricer for that
-        # granularity (matches user intent for granularity=teacher).
-        info["warnings"].append(
-            f"granularity={granularity!r} has no CP-SAT pricer in "
-            f"this commit; iterative-diversified results stand. "
-            f"BP pricers wired so far: {list(_BP_GRANULARITIES)}.")
+        # Should be unreachable now: every concrete granularity has
+        # a pricer (teacher, teacher-day, teacher-class,
+        # teacher-class-subject, teacher-subject, class, class-day,
+        # day, curriculum) and `auto` is resolved to a concrete one
+        # at the top of run_column_generation. The branch is kept
+        # as a defensive guard so any future granularity name slip
+        # surfaces visibly instead of silently falling back to ID.
+        msg = (f"granularity={granularity!r} has no CP-SAT pricer; "
+               f"BP did NOT iterate. Wired granularities: "
+               f"{list(_BP_GRANULARITIES + _BP_GRANULARITIES_DW)}.")
+        info["warnings"].append(msg)
+        info["bp_terminated_reason"] = (
+            f"granularity_not_implemented:{granularity}")
 
     # Step 4: integer recovery. The DW path may have produced its
     # own HARD-feasible integer sol via greedy set-packing -- if so,

@@ -505,6 +505,75 @@ def test_bp_master_dw_solves_smoke():
     assert isinstance(mu_t, dict)
 
 
+_FALLBACK_REASONS = {
+    "granularity_not_implemented",
+}
+
+
+def _is_fallback(info: dict) -> bool:
+    """A run is a 'silent fallback' when BP did not iterate at all
+    AND the reason indicates no pricer was available. We treat
+    'no_improving_column' as a successful BP loop (it iterated and
+    correctly proved no improving column existed)."""
+    reason = (info.get("bp_terminated_reason") or "").split(":")[0]
+    if reason in _FALLBACK_REASONS:
+        return True
+    # Also flag explicitly when warnings call out the missing pricer.
+    for w in info.get("warnings", []):
+        if "has no CP-SAT pricer" in str(w):
+            return True
+    return False
+
+
+@pytest.mark.parametrize(
+    "granularity",
+    [
+        "auto",
+        "teacher",
+        "teacher-day",
+        "teacher-class",
+        "teacher-class-subject",
+        "teacher-subject",
+        "class",
+        "class-day",
+        "day",
+        "curriculum",
+    ],
+)
+def test_bp_iterates_for_every_granularity(granularity):
+    """Every granularity must produce a real BP run -- not a silent
+    fallback to iterative-diversified. We require:
+      - bp_iterations_done >= 1 (BP loop entered)
+      - terminated_reason is one of the expected clean exit codes
+      - no `granularity_not_implemented` reason
+      - no 'has no CP-SAT pricer' warning
+    """
+    import column_generation as cg
+    profs = _two_class_profs()
+    dc_value = _two_class_dc()
+    sol, info = cg.run_column_generation(
+        profs, dc_value, time_budget_s=30.0,
+        patterns_per_teacher=2, max_iterations=2, log=False,
+        mode="branch-and-price", granularity=granularity,
+        bp_max_iterations=3, pricer_time_limit=2.0,
+        pricer_workers=1,
+    )
+    assert info.get("granularity") in (
+        "teacher", "teacher-day", "teacher-class",
+        "teacher-class-subject", "teacher-subject",
+        "class", "class-day", "day", "curriculum"
+    ), info
+    assert not _is_fallback(info), (
+        f"granularity={granularity!r} fell back: "
+        f"reason={info.get('bp_terminated_reason')!r} "
+        f"warnings={info.get('warnings')}")
+    iters = int(info.get("bp_iterations_done") or 0)
+    assert iters >= 1, (
+        f"granularity={granularity!r} did not iterate "
+        f"(bp_iterations_done={iters!r}, "
+        f"reason={info.get('bp_terminated_reason')!r})")
+
+
 def test_bp_master_dw_phase1_handles_colliding_seeds():
     """When seed columns collide on the same (class, day, hour), the
     naive LP without artificials is infeasible. With Phase-1 artificial
