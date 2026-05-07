@@ -149,6 +149,7 @@ funzionare come pre-passo di seeding del pool.
 
 \section{Phase A: il modello matematico del \emph{day count}}
 \label{sec:phase-a-formal}
+\index{Phase A}\index{day count}\index{DayCountModel}
 
 Phase A risolve un problema di \emph{distribuzione}: data la
 domanda settimanale di ogni cattedra (tipicamente 2--6 ore), su
@@ -231,6 +232,7 @@ identico (zero-drift) al solver legacy
 
 \section{Phase B: quattro algoritmi di decomposizione a confronto}
 \label{sec:phase-b-decomp}
+\index{Phase B}\index{decomposizione!spectral}\index{decomposizione!metis}
 
 Quando l'istanza supera le 30 classi il solver CP-SAT integrale
 (\texttt{cp\_sat\_scope=week} senza decomposizione) fatica:
@@ -325,8 +327,9 @@ sez.~\ref{ch:metodo_spettrale} per la dimostrazione completa.
   segmentata in indirizzi disgiunti (es.\ liceo classico +
   scientifico + linguistico in plessi separati) e
   \texttt{spectral} riproduce comunque quel taglio.
-\item \texttt{metis}: scelta per scenari MEGA quando
-  \texttt{spectral} produce un cluster sproporzionato
+\item \texttt{metis}~\parencite{karypis1998metis}: scelta per
+  scenari MEGA quando \texttt{spectral} produce un cluster
+  sproporzionato
   (verifica con \texttt{n\_classes\_per\_cluster} dispari). Il
   controllo automatico \texttt{spectral\_balance\_check}
   suggerisce \texttt{metis} se la deviazione standard supera il
@@ -335,6 +338,7 @@ sez.~\ref{ch:metodo_spettrale} per la dimostrazione completa.
 
 \section{\texttt{cp\_sat\_scope=week}: il modello monolitico}
 \label{sec:scope-week-mono}
+\index{cp\_sat\_scope}\index{MonolithicSolver}
 
 La modalit\`a \texttt{cp\_sat\_scope=week} bypassa la
 decomposizione: il \texttt{MonolithicSolver(scope=None)} costruisce
@@ -358,6 +362,18 @@ ai workers OR-Tools.
 
 \section{Branch-and-Price: anatomia di una iterazione}
 \label{sec:bp-anatomia}
+\index{Branch-and-Price}\index{Dantzig-Wolfe!decomposizione}
+
+La formulazione moderna di Branch-and-Price unifica
+\emph{column generation} e \emph{branch-and-bound} sotto un
+unico framework~\parencite{barnhart1998,vanderbeck2000}. La
+decomposizione di Dantzig e Wolfe~\parencite{dantzigwolfe1960}
+\`e la sua spina dorsale: il problema originale viene riscritto
+in termini di \emph{pattern} che soddisfano vincoli locali
+(sub-problema), e il \emph{master} sceglie una combinazione
+convessa che soddisfa i vincoli globali. La sintesi di Desaulniers,
+Desrosiers e Solomon~\parencite{desaulniers2005} resta il
+testo di riferimento per il trattamento applicato.
 
 \begin{figure}[h]
 \centering
@@ -463,10 +479,12 @@ catalogs gi\`a ottimi sul rispettivo cover.}
 Quando la soluzione del master \`e frazionaria, due pattern
 contengono la stessa coppia $(i, j)$ con quote diverse.
 Ryan-Foster~\parencite{ryanfoster1981} sceglie una coppia
-\emph{attiva} $(i_*, j_*)$ con \emph{score} di Achterberg
-massimo (frazione $\times$ contributo al RHS) e crea due figli:
+\emph{attiva} $(i_*, j_*)$ con \emph{score} di
+Achterberg~\parencite{achterberg2005} massimo (frazione $\times$
+contributo al RHS) e crea due figli:
 \textbf{together} ($\lambda$-pattern devono includere entrambe
 le ore) e \textbf{apart} (devono escluderne una).
+\index{Ryan-Foster (branching rule)}\index{Achterberg!score}
 
 \begin{schemabox}[title={Pseudocodice -- Ryan-Foster recursive tree}]
 \sffamily\small
@@ -566,6 +584,13 @@ perch\'e BP produce gi\`a una soluzione integer e HARD-feasible.}
 
 \section{Metaeuristiche: una matrice di scelta}
 \label{sec:meta-decision-matrix}
+\index{metaeuristiche}\index{ALNS}\index{LNS}
+
+La trattazione canonica di ALNS \`e dovuta a Pisinger e
+Ropke~\parencite{pisinger2010,ropke2006_orig}; il survey di
+Burke e Petrovic~\parencite{burke2002} e quello di
+Pillay~\parencite{pillay2014} restano i riferimenti per
+l'\emph{educational timetabling} in senso ampio.
 
 Le metaeuristiche di \texttt{piTantum} sono pensate come
 \emph{post-processing}: prendono una soluzione HARD-feasible e
