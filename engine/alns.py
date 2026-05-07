@@ -141,22 +141,31 @@ def _repair_cp_sat_window(sol, profs, dc_value, free, time_limit, workers,
                            *, coteach_groups=None,
                            support_assignments=None,
                            parallel_groups=None,
-                           group_assignments=None):
+                           group_assignments=None,
+                           db=None,
+                           via_dsl=False,
+                           extra_dsl_expressions=None):
     """The canonical strong repair: hand the freed slots to a small
-    CP-SAT subproblem (reuses metaheuristics._cp_repair)."""
+    CP-SAT subproblem (reuses metaheuristics._cp_repair, which
+    routes through ``PhaseBDaySolver`` -- the OO entry point)."""
     return meta._cp_repair(sol, profs, dc_value, free, time_limit,
                             workers=workers,
                             coteach_groups=coteach_groups,
                             support_assignments=support_assignments,
                             parallel_groups=parallel_groups,
-                            group_assignments=group_assignments)
+                            group_assignments=group_assignments,
+                            db=db, via_dsl=via_dsl,
+                            extra_dsl_expressions=extra_dsl_expressions)
 
 
 def _repair_greedy_by_soft(sol, profs, dc_value, free, time_limit, workers,
                             *, coteach_groups=None,
                             support_assignments=None,
                             parallel_groups=None,
-                            group_assignments=None):
+                            group_assignments=None,
+                            db=None,
+                            via_dsl=False,
+                            extra_dsl_expressions=None):
     """Cheap repair: try to set each freed slot greedily, picking the
     assignment that minimizes incremental SOFT delta. Falls back to
     'restore previous value' when no feasible single-slot move
@@ -174,7 +183,10 @@ def _repair_bfs_fill_back(sol, profs, dc_value, free, time_limit, workers,
                            *, coteach_groups=None,
                            support_assignments=None,
                            parallel_groups=None,
-                           group_assignments=None):
+                           group_assignments=None,
+                           db=None,
+                           via_dsl=False,
+                           extra_dsl_expressions=None):
     """BFS-ish repair: scan the freed cells in a fixed order and
     assign them in turn while keeping HARD satisfied. Falls back
     to CP-SAT when no manual move keeps feasibility.
@@ -188,7 +200,9 @@ def _repair_bfs_fill_back(sol, profs, dc_value, free, time_limit, workers,
                             coteach_groups=coteach_groups,
                             support_assignments=support_assignments,
                             parallel_groups=parallel_groups,
-                            group_assignments=group_assignments)
+                            group_assignments=group_assignments,
+                            db=db, via_dsl=via_dsl,
+                            extra_dsl_expressions=extra_dsl_expressions)
 
 
 REPAIR_OPS: dict[str, Callable] = {
@@ -259,7 +273,11 @@ def run_alns(sol, profs, dc_value, time_budget_s,
              coteach_groups=None,
              support_assignments=None,
              parallel_groups=None,
-             group_assignments=None) -> tuple[dict, list]:
+             group_assignments=None,
+             db=None,
+             via_dsl: bool = False,
+             extra_dsl_expressions=None,
+             dsl_hard_expressions=None) -> tuple[dict, list]:
     """Adaptive Large Neighborhood Search with SA acceptance.
 
     Args:
@@ -335,7 +353,9 @@ def run_alns(sol, profs, dc_value, time_budget_s,
                               coteach_groups=coteach_groups,
                               support_assignments=support_assignments,
                               parallel_groups=parallel_groups,
-                              group_assignments=group_assignments)
+                              group_assignments=group_assignments,
+                              db=db, via_dsl=via_dsl,
+                              extra_dsl_expressions=extra_dsl_expressions)
         if not ok or new_sol is None:
             d_op.update(0.0); r_op.update(0.0)
             history.append(dict(iter=iter_count, destroy=d_op.name,
@@ -343,7 +363,14 @@ def run_alns(sol, profs, dc_value, time_budget_s,
             T *= alpha
             continue
 
-        if not meta.is_hard_feasible(new_sol, profs, verbose=False):
+        if not meta.is_hard_feasible(
+                new_sol, profs, verbose=False,
+                coteach_groups=coteach_groups,
+                support_assignments=support_assignments,
+                parallel_groups=parallel_groups,
+                group_assignments=group_assignments,
+                dsl_hard_expressions=dsl_hard_expressions,
+                db=db):
             d_op.update(0.0); r_op.update(0.0)
             history.append(dict(iter=iter_count, destroy=d_op.name,
                                  repair=r_op.name, status="hard_violation"))

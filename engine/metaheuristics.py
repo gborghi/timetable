@@ -146,7 +146,9 @@ def is_hard_feasible(sol, profs, verbose=False,
                      *, group_assignments=None,
                      coteach_groups=None,
                      parallel_groups=None,
-                     support_assignments=None):
+                     support_assignments=None,
+                     dsl_hard_expressions=None,
+                     db=None):
     """Ritorna True se la soluzione rispetta tutti gli HARD.
 
     Task C1/C2/C3: optional checks for coteach (principal + codoc
@@ -154,6 +156,28 @@ def is_hard_feasible(sol, profs, verbose=False,
     parallel intra-class (members share busy_key), sostegno
     (excluded from class-busy), and group_assignments
     (n_hours coverage + home_class busy mutual exclusion).
+
+    DSL evaluation hook
+    -------------------
+    The canonical Phase B HARD checks (H1..H_C, coverage, coteach,
+    parallel, support, groups) stay hardcoded -- they are the ground
+    truth of the per-day Phase B problem and are mirrored 1:1 by
+    ``cpsat_v2_timetable.solve_phase_b_for_day`` /
+    ``cp_sat_constraint_model.PhaseBDaySolver``. On TOP of those,
+    callers can supply DSL HARD rules to be evaluated against the
+    solution dict via the post-hoc DSL evaluator.
+
+    - ``dsl_hard_expressions``: list of DSL expression strings (as
+      returned by ``dsl_translator.load_all_dsl_constraints``'s
+      ``"expression"`` field). The function builds a sol/profs-derived
+      ``world`` snapshot and evaluates each expression; returns False
+      on the first violation.
+    - ``db``: convenience -- when given (and
+      ``dsl_hard_expressions`` is None), the function loads HARD DSL
+      rules from the database via ``load_all_dsl_constraints`` and
+      evaluates them against the in-memory solution. Skipped when
+      both are absent (default), so the hardcoded behaviour is
+      backward-compatible with every existing caller.
     """
     cls_set = sorted({c for p in profs.values() for c in p["classi"]})
     profs_set = sorted(profs.keys())
@@ -400,7 +424,163 @@ def is_hard_feasible(sol, profs, verbose=False,
                               f"home {home_cl} also busy")
                     return False
 
+    # ----- DSL HARD layer (DB-driven rules, opt-in) -----
+    # Resolve the list of expressions to check. ``dsl_hard_expressions``
+    # takes precedence; if absent and ``db`` is given, load HARD rules
+    # from the DB via the unified loader. When both are absent the
+    # block is a no-op (preserving zero-drift on every existing call
+    # site that doesn't pass a DB).
+    expressions = dsl_hard_expressions
+    if expressions is None and db is not None:
+        try:
+            try:
+                from . import dsl_translator as _dt  # type: ignore
+            except ImportError:
+                import dsl_translator as _dt  # type: ignore
+            rules = _dt.load_all_dsl_constraints(
+                db, include_soft=False)
+            expressions = [r["expression"] for r in rules
+                           if r.get("is_hard")]
+        except Exception as exc:  # noqa: BLE001
+            if verbose:
+                print(f"  DSL load failed: {type(exc).__name__}:{exc}")
+            expressions = []
+    if expressions:
+        try:
+            try:
+                from webui.backend.utils import (  # type: ignore
+                    general_dsl as _gd)
+            except ImportError:
+                import sys as _sys
+                _here = os.path.dirname(os.path.abspath(__file__))
+                _root = os.path.dirname(_here)
+                if _root not in _sys.path:
+                    _sys.path.insert(0, _root)
+                from webui.backend.utils import (  # type: ignore
+                    general_dsl as _gd)
+        except Exception as exc:  # noqa: BLE001
+            if verbose:
+                print(f"  DSL evaluator unavailable: "
+                      f"{type(exc).__name__}:{exc}")
+            return True
+        world = _build_world_from_sol(
+            sol, profs,
+            group_assignments=group_assignments,
+            coteach_groups=coteach_groups,
+            parallel_groups=parallel_groups,
+            support_assignments=support_assignments,
+        )
+        for expr in expressions:
+            try:
+                tree = _gd.parse(expr)
+                ok, err = _gd.evaluate_safe(tree, world)
+            except Exception as exc:  # noqa: BLE001
+                if verbose:
+                    print(f"  DSL parse failed: {expr!r} -> {exc}")
+                continue
+            if not ok:
+                if verbose:
+                    print(f"  DSL HARD viol: {expr!r}"
+                          + (f" err={err}" if err else ""))
+                return False
+
     return True
+
+
+def _build_world_from_sol(sol, profs, *,
+                           group_assignments=None,
+                           coteach_groups=None,
+                           parallel_groups=None,
+                           support_assignments=None) -> dict:
+    """Construct a ``world`` snapshot for the DSL post-hoc evaluator
+    from an in-memory metaheuristic solution dict.
+
+    The DSL evaluator (``general_dsl.evaluate``) consumes a dict with
+    keys ``lessons``, ``teachers``, ``classes``, ``classrooms``,
+    ``subjects``, ``days``, ``hours``, ``slots``, ``assignments``.
+    Metaheuristics work without a DB session, so we only populate the
+    parts that can be derived from ``sol`` + ``profs``: lessons (the
+    placed slots), and the entity tables in their bare form.
+
+    Classroom-level fields (``l.classroom``, ``l.classroom.type``,
+    ``l.classroom.plesso``) are not available pre-classroom-assignment;
+    DSL rules touching these will not match (the evaluator returns
+    ``None`` for missing attributes which makes equality predicates
+    false). That is consistent with the metaheuristics phase running
+    before classroom assignment.
+    """
+    teacher_set = sorted(profs.keys())
+    class_set = sorted({c for p in profs.values()
+                        for c in p.get("classi", {})})
+    subj_set = sorted({
+        s
+        for p in profs.values()
+        for c in p.get("classi", {}).values()
+        for s in c.keys()
+    })
+    # ``lessons`` from sol: every slot with v == 1 becomes a lesson dict
+    # in the DSL world's expected shape. Group lessons (cl == group_name)
+    # are filtered out so DSL rules indexed by class name don't match
+    # the virtual group as a regular class.
+    grp_keys: set[tuple[str, str, str]] = set()
+    if group_assignments:
+        for ga in group_assignments:
+            grp_keys.add(
+                (ga.get("teacher_name"),
+                 ga.get("group_name"),
+                 ga.get("subject")))
+    lessons = []
+    for (p, cl, subj, d, h), v in sol.items():
+        if int(v) != 1:
+            continue
+        lessons.append({
+            "teacher": p,
+            "class": cl,
+            "class_curriculum": "",
+            "subject": subj,
+            "day": int(d),
+            "hour": int(h),
+            "classroom": "",
+            "classroom_type": "",
+            "classroom_kind": "",
+            "classroom_tags": [],
+            "classroom_plesso": None,
+            "slot": (int(d), int(h)),
+            "_is_group": (p, cl, subj) in grp_keys,
+        })
+    # Assignments derived from profs: every (teacher, class, subject,
+    # ore) cattedra.
+    assignments = []
+    for t, info in profs.items():
+        for cl, sm in info.get("classi", {}).items():
+            for s, meta in sm.items():
+                assignments.append({
+                    "teacher": t,
+                    "class": cl,
+                    "subject": s,
+                    "hours": int(meta.get("ore", 0)),
+                    "locked": False,
+                })
+    return {
+        "teachers": [{"name": t, "group": "", "max_hours": 0,
+                      "free_day": None, "graduatoria_score": 0,
+                      "completion_hours": 0, "exemption_hours": 0,
+                      "subject": [], "subjects": []}
+                     for t in teacher_set],
+        "classes": [{"name": c, "year": 0, "section": "",
+                     "curriculum": "", "n_students": 0}
+                    for c in class_set],
+        "classrooms": [],
+        "subjects": [{"name": s} for s in subj_set],
+        "curricula": [],
+        "students": [],
+        "groups": [],
+        "days": [{"index": d, "name": ""} for d in DAYS],
+        "hours": [{"index": h} for h in HOURS],
+        "slots": [{"day": d, "hour": h} for d in DAYS for h in HOURS],
+        "assignments": assignments,
+        "lessons": lessons,
+    }
 
 
 def deepcopy_sol(sol):
@@ -426,243 +606,82 @@ def _cp_repair(sol, profs, dc_value, free_keys, time_limit, workers=4,
                coteach_groups=None,
                support_assignments=None,
                parallel_groups=None,
-               group_assignments=None):
-    """Risolve un sotto-problema CP-SAT in cui sono "libere" solo le
-    variabili in `free_keys` (set di (p, cl, subj, d, h)) e tutto il
-    resto e\` fissato a sol[k]. Riusa cv2.solve_phase_b_for_day con
-    fixed_slots tramite trick: aggiungiamo `model.Add(slot[k]==v)`
-    per le coppie fissate.
+               group_assignments=None,
+               db=None,
+               via_dsl=False,
+               extra_dsl_expressions=None):
+    """OO repair via ``PhaseBDaySolver``.
 
-    Per semplicita\` operiamo per giorno: estraiamo i giorni unici
-    dei free_keys, e per ciascuno richiamiamo una versione locale.
+    The free variables are those whose 5-tuple key is in ``free_keys``;
+    every other placed slot for the affected days is locked to its
+    current value via ``locked_slots_for_day``. Each affected day is
+    rebuilt by an independent ``PhaseBDaySolver.solve()`` call, which
+    is the canonical OO entry point for the per-day Phase B problem
+    (it composes over the legacy function for zero-drift but exposes
+    the OO surface used uniformly across the DSL+OO paradigm).
 
-    Task C3: when group_assignments / coteach_groups / etc. are
-    present, we delegate to cv2.solve_phase_b_for_day with locks
-    covering the non-free placed slots. The dedicated per-day model
-    below would otherwise miss the C3 constraints (group_slot,
-    home_class busy, group-coteach, group-sostegno).
+    Coteach / sostegno / parallel / group assignments are forwarded
+    through the solver's keyword arguments so the C3 invariants
+    (slot-equality, group-home-class busy propagation, etc.) are
+    enforced just as in the monolithic Phase B path.
 
-    Restituisce (new_sol, success).
+    DSL augmentation: when ``db`` is given (or
+    ``extra_dsl_expressions`` is non-empty) and ``via_dsl=True``,
+    the solver pulls DB-side rules and any extra expressions through
+    the DSL compiler as an additional HARD layer on top of the
+    legacy hardcoded constraints. This is the single-source-of-truth
+    path used by the rest of the DSL+OO pipeline (Phase B mono, BP
+    pricers, ...). ``via_dsl=False`` (the default) keeps the legacy
+    hardcoded behaviour with zero overhead.
+
+    Returns ``(new_sol, success)``.
     """
-    from ortools.sat.python import cp_model
+    try:
+        from . import cp_sat_constraint_model as _csm  # type: ignore
+    except ImportError:
+        import cp_sat_constraint_model as _csm  # type: ignore
+
     days_to_repair = sorted({k[3] for k in free_keys})
     new_sol = deepcopy_sol(sol)
     classes, triples, class_profs = cv2.build_indices(profs)
 
-    # C3 fast path: route the day through solve_phase_b_for_day
-    # (which already models groups + coteach + sostegno + parallel).
-    # Locks come from the placed slots that aren't in free_keys for
-    # that day.
-    has_c3 = bool(group_assignments) or bool(coteach_groups) \
-        or bool(support_assignments) or bool(parallel_groups)
-    if has_c3:
-        for day in days_to_repair:
-            free_in_day = {k for k in free_keys if k[3] == day}
-            # Build per-day locks: every placed (value==1) slot for
-            # this day that is NOT in free_keys is forced to 1.
-            locks_today = [
-                (p, cl, s, h)
-                for (p, cl, s, dd, h), v in new_sol.items()
-                if dd == day and int(v) == 1
-                   and (p, cl, s, dd, h) not in free_in_day
-            ]
-            out, _st = cv2.solve_phase_b_for_day(
-                day, profs, classes, triples, class_profs, dc_value,
-                time_limit=time_limit, workers=workers, log=False,
-                locked_slots_for_day=locks_today,
-                coteach_groups=coteach_groups,
-                support_assignments=support_assignments,
-                parallel_groups=parallel_groups,
-                group_assignments=group_assignments,
-            )
-            if out is None:
-                return None, False
-            # Replace the day's slots with the new assignment
-            for k in list(new_sol.keys()):
-                if k[3] == day:
-                    new_sol[k] = 0
-            new_sol.update(out)
-        return new_sol, True
-
     for day in days_to_repair:
         free_in_day = {k for k in free_keys if k[3] == day}
-
-        model = cp_model.CpModel()
-        slot = {}
-        triples_active = []
-        # Lista di (var, hint_value) per le variabili LIBERE -- saranno
-        # warm-started con il valore corrente. Le variabili FISSATE
-        # sono inutili per AddHint perche' sono gia' = corrente.
-        hints = []
-        for (p, cl, subj, ore) in triples:
-            cnt = dc_value.get((p, cl, subj, day), 0)
-            if cnt == 0:
-                continue
-            triples_active.append((p, cl, subj, cnt))
-            for h in HOURS:
-                v = model.NewBoolVar(f"r_{p}_{cl}_{subj}_{day}_{h}")
-                slot[(p, cl, subj, h)] = v
-                # Se questa key NON e\` libera, fissa al valore
-                # corrente di sol.
-                if (p, cl, subj, day, h) not in free_in_day:
-                    cur = new_sol.get((p, cl, subj, day, h), 0)
-                    model.Add(v == cur)
-                else:
-                    # Warm-start: la soluzione corrente e' feasible,
-                    # quindi e' un punto di partenza valido. CP-SAT usa
-                    # gli AddHint come prima ipotesi nella ricerca.
-                    cur = new_sol.get((p, cl, subj, day, h), 0)
-                    hints.append((v, cur))
-            model.Add(
-                sum(slot[(p, cl, subj, h)] for h in HOURS) == cnt
-            )
-        # Applica gli hint dopo aver aggiunto i vincoli (l'API CP-SAT
-        # accetta hint anche su var non ancora vincolate, ma metterli
-        # qui mantiene il flusso lineare).
-        for v, val in hints:
-            model.AddHint(v, val)
-
-        # No overlap prof
-        for p in {pp for (pp, _, _, _) in triples_active}:
-            for h in HOURS:
-                keys = [
-                    slot[(p, cl, s, h)]
-                    for (pp, cl, s, _) in triples_active if pp == p
-                ]
-                model.Add(sum(keys) <= 1)
-
-        # No overlap classe + no holes + uscita >= 12
-        cls_in_day = {cl for (_, cl, _, _) in triples_active}
-        for cl in cls_in_day:
-            present = []
-            for h in HOURS:
-                slot_keys = [
-                    slot[(pp, cl, s, h)]
-                    for (pp, cc, s, _) in triples_active if cc == cl
-                ]
-                pr = model.NewBoolVar(f"pr_{cl}_{day}_{h}")
-                if slot_keys:
-                    model.AddMaxEquality(pr, slot_keys)
-                    model.Add(sum(slot_keys) == pr)
-                else:
-                    model.Add(pr == 0)
-                present.append(pr)
-            # H1+H2: contigui da 8
-            any_present = model.NewBoolVar(f"ap_{cl}_{day}")
-            model.AddMaxEquality(any_present, present)
-            model.Add(present[0] >= any_present)
-            for i in range(len(present) - 1):
-                model.Add(present[i + 1] <= present[i])
-            # H3
-            if 11 in HOURS:
-                model.Add(present[HOURS.index(11)] == 1)
-
-        # H_A + H_B
-        cv2.add_consecutive_constraints_phase_b(
-            model, slot, day, profs, dc_value
+        # Per-day locks: every placed (value==1) slot for this day
+        # that is NOT in free_keys is forced to 1 by the day solver.
+        locks_today = [
+            (p, cl, s, h)
+            for (p, cl, s, dd, h), v in new_sol.items()
+            if dd == day and int(v) == 1
+            and (p, cl, s, dd, h) not in free_in_day
+        ]
+        solver = _csm.PhaseBDaySolver(
+            profs, dc_value, day,
+            classes=classes, triples=triples,
+            class_profs=class_profs,
+            db=db,
+            extra_dsl_expressions=list(extra_dsl_expressions or []),
         )
-
-        # H_C: max 5 ore consecutive prof
-        for p in {pp for (pp, _, _, _) in triples_active}:
-            present_p = []
-            for h in HOURS:
-                keys = [
-                    slot[(p, cl, s, h)]
-                    for (pp, cl, s, _) in triples_active if pp == p
-                ]
-                pp_var = model.NewBoolVar(f"ppv_{p}_{day}_{h}")
-                if keys:
-                    model.AddMaxEquality(pp_var, keys)
-                else:
-                    model.Add(pp_var == 0)
-                present_p.append(pp_var)
-            # vieta 6 consecutive: in qualsiasi finestra di 6 ore (qui
-            # la giornata ha esattamente 6 slot), almeno 1 deve essere
-            # vuoto.
-            model.Add(sum(present_p) <= 5)
-
-        # SOFT objective: stessa formula compute_soft (ma per il
-        # giorno) -- minimizziamo sixth + buchi + five + one
-        sixth_terms = []
-        if 13 in HOURS:
-            h13_idx = HOURS.index(13)
-            sixth_terms = []
-            for cl in cls_in_day:
-                slot_keys = [
-                    slot[(pp, cl, s, 13)]
-                    for (pp, cc, s, _) in triples_active if cc == cl
-                ]
-                pr13 = model.NewBoolVar(f"pr13_{cl}_{day}")
-                if slot_keys:
-                    model.AddMaxEquality(pr13, slot_keys)
-                else:
-                    model.Add(pr13 == 0)
-                sixth_terms.append(pr13)
-        # buchi del prof
-        gap_terms = []
-        five_terms = []
-        one_terms = []
-        for p in {pp for (pp, _, _, _) in triples_active}:
-            present_p = []
-            for h in HOURS:
-                keys = [
-                    slot[(p, cl, s, h)]
-                    for (pp, cl, s, _) in triples_active if pp == p
-                ]
-                pp_var = model.NewBoolVar(f"pp_{p}_{day}_{h}")
-                if keys:
-                    model.AddMaxEquality(pp_var, keys)
-                else:
-                    model.Add(pp_var == 0)
-                present_p.append(pp_var)
-            for hi in range(1, len(HOURS) - 1):
-                hb = model.NewBoolVar(f"hb_{p}_{day}_{hi}")
-                model.AddMaxEquality(hb, present_p[:hi])
-                ha = model.NewBoolVar(f"ha_{p}_{day}_{hi}")
-                model.AddMaxEquality(ha, present_p[hi + 1:])
-                gap = model.NewBoolVar(f"g_{p}_{day}_{hi}")
-                model.AddBoolAnd(
-                    [present_p[hi].Not(), hb, ha]
-                ).OnlyEnforceIf(gap)
-                model.AddBoolOr(
-                    [present_p[hi], hb.Not(), ha.Not()]
-                ).OnlyEnforceIf(gap.Not())
-                gap_terms.append(gap)
-            ld = model.NewIntVar(0, 5, f"ld_{p}_{day}")
-            model.Add(ld == sum(present_p))
-            is5 = model.NewBoolVar(f"is5_{p}_{day}")
-            model.Add(ld == 5).OnlyEnforceIf(is5)
-            model.Add(ld != 5).OnlyEnforceIf(is5.Not())
-            is1 = model.NewBoolVar(f"is1_{p}_{day}")
-            model.Add(ld == 1).OnlyEnforceIf(is1)
-            model.Add(ld != 1).OnlyEnforceIf(is1.Not())
-            five_terms.append(is5)
-            one_terms.append(is1)
-
-        terms = []
-        if sixth_terms:
-            terms.append(OBJECTIVE_WEIGHTS["sixth"] * sum(sixth_terms))
-        if gap_terms:
-            terms.append(OBJECTIVE_WEIGHTS["buchi"] * sum(gap_terms))
-        if five_terms:
-            terms.append(OBJECTIVE_WEIGHTS["five"] * sum(five_terms))
-        if one_terms:
-            terms.append(OBJECTIVE_WEIGHTS["one"] * sum(one_terms))
-        if terms:
-            model.Minimize(sum(terms))
-
-        solver = cp_model.CpSolver()
-        solver.parameters.max_time_in_seconds = time_limit
-        solver.parameters.num_search_workers = workers
-        solver.parameters.log_search_progress = False
-        status = solver.Solve(model)
-        if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        out, _status = solver.solve(
+            time_limit_s=float(time_limit),
+            workers=int(workers),
+            log=False,
+            via_dsl=bool(via_dsl),
+            locked_slots_for_day=locks_today,
+            coteach_groups=coteach_groups,
+            support_assignments=support_assignments,
+            parallel_groups=parallel_groups,
+            group_assignments=group_assignments,
+        )
+        if out is None:
             return None, False
-        # Aggiorna sol per i giorni risolti
-        for (p, cl, subj, _) in triples_active:
-            for h in HOURS:
-                v = solver.Value(slot[(p, cl, subj, h)])
-                new_sol[(p, cl, subj, day, h)] = v
+        # Replace the day's slots with the new assignment.
+        # ``PhaseBDaySolver.solve`` strips zero-valued entries, so we
+        # zero out the day first and then update with the v==1 keys.
+        for k in list(new_sol.keys()):
+            if k[3] == day:
+                new_sol[k] = 0
+        new_sol.update(out)
     return new_sol, True
 
 
@@ -693,7 +712,10 @@ def run_lns(sol, profs, dc_value, time_budget_s,
             coteach_groups=None,
             support_assignments=None,
             parallel_groups=None,
-            group_assignments=None):
+            group_assignments=None,
+            db=None,
+            via_dsl=False,
+            extra_dsl_expressions=None):
     """Esegui Large Neighborhood Search per `time_budget_s` secondi.
 
     Se `adaptive=True` (default), gli operator non sono scelti uniformi
@@ -775,6 +797,8 @@ def run_lns(sol, profs, dc_value, time_budget_s,
             support_assignments=support_assignments,
             parallel_groups=parallel_groups,
             group_assignments=group_assignments,
+            db=db, via_dsl=via_dsl,
+            extra_dsl_expressions=extra_dsl_expressions,
         )
         op_stats[op]["n_calls"] += 1
         if not ok:
@@ -813,7 +837,8 @@ def run_lns(sol, profs, dc_value, time_budget_s,
 # ============================================================
 
 def _swap_two_lessons_same_prof(sol, profs, dc_value, rng, locks=None,
-                                 *, group_assignments=None):
+                                 *, group_assignments=None,
+                                 dsl_hard_expressions=None):
     """Tenta uno swap di 2 slot dello stesso prof (cambia hour).
     Restituisce nuova_sol o None se non valida.
 
@@ -838,15 +863,18 @@ def _swap_two_lessons_same_prof(sol, profs, dc_value, rng, locks=None,
             new_k2 = (k2[0], k2[1], k2[2], k2[3], k1[4])
             new_sol[new_k1] = 1
             new_sol[new_k2] = 1
-            if is_hard_feasible(new_sol, profs,
-                                 group_assignments=group_assignments):
+            if is_hard_feasible(
+                    new_sol, profs,
+                    group_assignments=group_assignments,
+                    dsl_hard_expressions=dsl_hard_expressions):
                 return new_sol
             return None
     return None
 
 
 def _move_lesson_to_empty_slot(sol, profs, dc_value, rng, locks=None,
-                                *, group_assignments=None):
+                                *, group_assignments=None,
+                                dsl_hard_expressions=None):
     """Sposta una singola lezione (p, cl, s, d, h) a (p, cl, s, d, h')
     con h' libero per il prof e per la classe.
 
@@ -866,14 +894,17 @@ def _move_lesson_to_empty_slot(sol, profs, dc_value, rng, locks=None,
             new_sol = dict(sol)
             new_sol[k] = 0
             new_sol[new_k] = 1
-            if is_hard_feasible(new_sol, profs,
-                                 group_assignments=group_assignments):
+            if is_hard_feasible(
+                    new_sol, profs,
+                    group_assignments=group_assignments,
+                    dsl_hard_expressions=dsl_hard_expressions):
                 return new_sol
     return None
 
 
 def _swap_two_lessons_same_class(sol, profs, dc_value, rng, locks=None,
-                                  *, group_assignments=None):
+                                  *, group_assignments=None,
+                                  dsl_hard_expressions=None):
     """Swap fra due lezioni della stessa classe (potenzialmente prof
     diversi) in slot diversi nello stesso giorno.
 
@@ -896,8 +927,10 @@ def _swap_two_lessons_same_class(sol, profs, dc_value, rng, locks=None,
             new_k2 = (k2[0], k2[1], k2[2], k2[3], k1[4])
             new_sol[new_k1] = 1
             new_sol[new_k2] = 1
-            if is_hard_feasible(new_sol, profs,
-                                 group_assignments=group_assignments):
+            if is_hard_feasible(
+                    new_sol, profs,
+                    group_assignments=group_assignments,
+                    dsl_hard_expressions=dsl_hard_expressions):
                 return new_sol
     return None
 
@@ -919,7 +952,9 @@ def run_sa(sol, profs, dc_value, time_budget_s,
            coteach_groups=None,
            support_assignments=None,
            parallel_groups=None,
-           group_assignments=None):
+           group_assignments=None,
+           db=None,
+           dsl_hard_expressions=None):
     rng = random.Random(123)
     best = dict(sol)
     cur = dict(sol)
@@ -935,7 +970,8 @@ def run_sa(sol, profs, dc_value, time_budget_s,
         iter_count += 1
         move_fn = rng.choice(ATOMIC_MOVES)
         new_sol = move_fn(cur, profs, dc_value, rng, locks=locks,
-                          group_assignments=group_assignments)
+                          group_assignments=group_assignments,
+                          dsl_hard_expressions=dsl_hard_expressions)
         if new_sol is None:
             T *= alpha
             continue
@@ -967,7 +1003,9 @@ def run_tabu(sol, profs, dc_value, time_budget_s,
              coteach_groups=None,
              support_assignments=None,
              parallel_groups=None,
-             group_assignments=None):
+             group_assignments=None,
+             db=None,
+             dsl_hard_expressions=None):
     rng = random.Random(456)
     best = dict(sol)
     cur = dict(sol)
@@ -986,7 +1024,8 @@ def run_tabu(sol, profs, dc_value, time_budget_s,
         for _ in range(30):
             move_fn = rng.choice(ATOMIC_MOVES)
             new_sol = move_fn(cur, profs, dc_value, rng, locks=locks,
-                              group_assignments=group_assignments)
+                              group_assignments=group_assignments,
+                              dsl_hard_expressions=dsl_hard_expressions)
             if new_sol is None:
                 continue
             new_val, _ = compute_soft(new_sol, profs)
@@ -1035,7 +1074,10 @@ def _perturb(sol, profs, dc_value, rng,
              coteach_groups=None,
              support_assignments=None,
              parallel_groups=None,
-             group_assignments=None):
+             group_assignments=None,
+             db=None,
+             via_dsl=False,
+             extra_dsl_expressions=None):
     """Perturbazione: prendi una zona e usa CP-SAT per re-randomizzare
     (mantiene HARD)."""
     # Strategia: scegli un cluster random + 2 giorni random e libera
@@ -1058,6 +1100,8 @@ def _perturb(sol, profs, dc_value, rng,
         support_assignments=support_assignments,
         parallel_groups=parallel_groups,
         group_assignments=group_assignments,
+        db=db, via_dsl=via_dsl,
+        extra_dsl_expressions=extra_dsl_expressions,
     )
     return new_sol if ok else dict(sol)
 
@@ -1070,7 +1114,11 @@ def run_ils(sol, profs, dc_value, time_budget_s,
             coteach_groups=None,
             support_assignments=None,
             parallel_groups=None,
-            group_assignments=None):
+            group_assignments=None,
+            db=None,
+            via_dsl=False,
+            extra_dsl_expressions=None,
+            dsl_hard_expressions=None):
     """Iterated Local Search.
 
     Sequenza per ogni ciclo:
@@ -1101,7 +1149,9 @@ def run_ils(sol, profs, dc_value, time_budget_s,
                        coteach_groups=coteach_groups,
                        support_assignments=support_assignments,
                        parallel_groups=parallel_groups,
-                       group_assignments=group_assignments)
+                       group_assignments=group_assignments,
+                       db=db,
+                       dsl_hard_expressions=dsl_hard_expressions)
         cur_val, _ = compute_soft(cur, profs)
         if cur_val < best_val:
             best = dict(cur)
@@ -1125,6 +1175,8 @@ def run_ils(sol, profs, dc_value, time_budget_s,
                 support_assignments=support_assignments,
                 parallel_groups=parallel_groups,
                 group_assignments=group_assignments,
+                db=db, via_dsl=via_dsl,
+                extra_dsl_expressions=extra_dsl_expressions,
             )
         else:
             if log:
@@ -1134,7 +1186,9 @@ def run_ils(sol, profs, dc_value, time_budget_s,
                            coteach_groups=coteach_groups,
                            support_assignments=support_assignments,
                            parallel_groups=parallel_groups,
-                           group_assignments=group_assignments)
+                           group_assignments=group_assignments,
+                           db=db, via_dsl=via_dsl,
+                           extra_dsl_expressions=extra_dsl_expressions)
     if log:
         print(f"  [ILS] {cycle} cycles, obj {init_val} -> {best_val} "
               f"({100.0 * (init_val - best_val) / max(init_val, 1):.1f}%)")
