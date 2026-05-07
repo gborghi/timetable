@@ -1036,7 +1036,334 @@ def _eval_call(node: Call, env, world):
         return _attr(pos[0], "subject")
     if name == "classroom":
         return _attr(pos[0], "classroom")
+    # ----- Canonical pragma functions (mirror engine.dsl_to_cpsat) -----
+    # Phase B (slot-level)
+    if name == "no_holes_class":
+        if len(pos) != 1:
+            raise DSLError(
+                "no_holes_class richiede 1 argomento (classe)")
+        return _eval_no_holes_class(world, str(pos[0]))
+    if name == "no_holes_all_classes":
+        return all(_eval_no_holes_class(world, cl)
+                   for cl in _classes_in_lessons(world))
+    if name == "class_present_at_hour":
+        if len(pos) != 2:
+            raise DSLError(
+                "class_present_at_hour richiede 2 argomenti "
+                "(classe, ora)")
+        return _eval_class_present_at_hour(
+            world, str(pos[0]), int(pos[1]))
+    if name == "class_present_at_hour_all":
+        if len(pos) != 1:
+            raise DSLError(
+                "class_present_at_hour_all richiede 1 argomento (ora)")
+        hr = int(pos[0])
+        return all(_eval_class_present_at_hour(world, cl, hr)
+                   for cl in _classes_in_lessons(world))
+    if name == "teacher_max_per_day":
+        if len(pos) != 2:
+            raise DSLError(
+                "teacher_max_per_day richiede 2 argomenti "
+                "(prof, max)")
+        return _eval_teacher_max_per_day(
+            world, str(pos[0]), int(pos[1]))
+    if name == "cattedra_max_per_day":
+        if len(pos) != 4:
+            raise DSLError(
+                "cattedra_max_per_day richiede 4 argomenti "
+                "(prof, classe, materia, max)")
+        return _eval_cattedra_max_per_day(
+            world, str(pos[0]), str(pos[1]),
+            str(pos[2]), int(pos[3]))
+    if name in ("subject_pair_must", "subject_pair_exists"):
+        if len(pos) != 2:
+            raise DSLError(
+                f"{name} richiede 2 argomenti (classe, materia)")
+        return _eval_subject_pair(
+            world, str(pos[0]), str(pos[1]))
+    if name in ("class_day_load_in", "class_day_load_in_day_count"):
+        if len(pos) < 2:
+            raise DSLError(
+                f"{name} richiede (classe, allowed...)")
+        cl = str(pos[0])
+        allowed = {int(v) for v in pos[1:]}
+        return _eval_class_day_load_in(world, cl, allowed)
+    # Phase A (day_count); evaluated post-hoc on the lesson schedule
+    if name == "subject_day_count_in":
+        if len(pos) < 3:
+            raise DSLError(
+                "subject_day_count_in richiede "
+                "(classe, materia, allowed...)")
+        return _eval_subject_day_count_in(
+            world, str(pos[0]), str(pos[1]),
+            {int(v) for v in pos[2:]})
+    if name == "subject_day_count_pair":
+        if len(pos) != 4:
+            raise DSLError(
+                "subject_day_count_pair richiede "
+                "(prof, classe, materia, n)")
+        return _eval_subject_day_count_pair(
+            world, str(pos[0]), str(pos[1]),
+            str(pos[2]), int(pos[3]))
+    if name == "hall_bound_prof_day":
+        if len(pos) != 1:
+            raise DSLError(
+                "hall_bound_prof_day richiede 1 argomento (prof)")
+        return _eval_hall_bound_prof_day(world, str(pos[0]))
+    if name == "free_day_choice_3way":
+        if len(pos) < 4:
+            raise DSLError(
+                "free_day_choice_3way richiede almeno 4 argomenti "
+                "(prof, d1, d2, d3, [w1, w2, w3])")
+        return _eval_free_day_choice_3way(
+            world, str(pos[0]),
+            [int(v) for v in pos[1:4]])
     raise DSLError(f"funzione sconosciuta: {name!r}")
+
+
+# ---- Pragma evaluators (post-hoc on the lesson schedule) ----
+
+
+def _hours_in_world(world: dict) -> list[int]:
+    hours = world.get("hours") or []
+    out: list[int] = []
+    for h in hours:
+        if isinstance(h, dict):
+            v = h.get("index")
+            if v is not None:
+                out.append(int(v))
+    if out:
+        return sorted(set(out))
+    slots = world.get("slots") or []
+    return sorted({int(s.get("hour")) for s in slots
+                   if isinstance(s, dict)
+                   and s.get("hour") is not None})
+
+
+def _days_in_world(world: dict) -> list[int]:
+    days = world.get("days") or []
+    out: list[int] = []
+    for d in days:
+        if isinstance(d, dict):
+            v = d.get("index")
+            if v is not None:
+                out.append(int(v))
+    if out:
+        return sorted(set(out))
+    slots = world.get("slots") or []
+    return sorted({int(s.get("day")) for s in slots
+                   if isinstance(s, dict)
+                   and s.get("day") is not None})
+
+
+def _class_busy_hours(world: dict, cl: str, d: int) -> set[int]:
+    """Hours where ``cl`` has a non-group lesson on day ``d``.
+
+    Mirrors the compiler's ``_class_busy_indicators`` exclusion: group
+    lessons (``_is_group=True`` on the lesson dict, which the
+    metaheuristic ``_build_world_from_sol`` tags) do not contribute to
+    the home class's busy-hour set; the standard DB-backed ``world``
+    has no such tag and treats every lesson as a regular class slot.
+    """
+    out: set[int] = set()
+    for l in world.get("lessons", []):
+        if l.get("_is_group"):
+            continue
+        if l.get("class") != cl:
+            continue
+        d_l = l.get("day")
+        if d_l is None or int(d_l) != d:
+            continue
+        h = l.get("hour")
+        if h is not None:
+            out.add(int(h))
+    return out
+
+
+def _classes_in_lessons(world: dict) -> list[str]:
+    """Distinct class names used in the lesson schedule (group virtual
+    classes excluded). Falls back to the ``classes`` table when no
+    lessons reference a class."""
+    out: set[str] = set()
+    for l in world.get("lessons", []):
+        if l.get("_is_group"):
+            continue
+        n = l.get("class")
+        if n:
+            out.add(n)
+    for c in world.get("classes", []) or []:
+        if isinstance(c, dict):
+            n = c.get("name")
+            if n:
+                out.add(n)
+    return sorted(out)
+
+
+def _eval_no_holes_class(world: dict, cl: str) -> bool:
+    """Per (cl, d), the busy hours form a contiguous prefix anchored
+    at the earliest hour in scope. Mirrors
+    ``_compile_no_holes_for_class`` (non-increasing presence chain
+    starting at h_min)."""
+    hours = _hours_in_world(world)
+    if not hours:
+        return True
+    for d in _days_in_world(world):
+        busy = _class_busy_hours(world, cl, d)
+        if not busy:
+            continue
+        k = len(busy)
+        prefix = set(hours[:k])
+        if busy != prefix:
+            return False
+    return True
+
+
+def _eval_class_present_at_hour(world: dict, cl: str, hr: int) -> bool:
+    """If ``cl`` has any lesson on day ``d``, the slot at ``hr`` must
+    be busy. Mirrors ``_compile_class_present_at_hour``."""
+    for d in _days_in_world(world):
+        busy = _class_busy_hours(world, cl, d)
+        if not busy:
+            continue
+        if hr not in busy:
+            return False
+    return True
+
+
+def _eval_teacher_max_per_day(world: dict, t: str, n: int) -> bool:
+    """Per day, sum_{cl, s, h} slot[(t, cl, s, d, h)] <= n."""
+    by_day: dict[int, int] = {}
+    for l in world.get("lessons", []):
+        if l.get("teacher") != t:
+            continue
+        d = l.get("day")
+        if d is None:
+            continue
+        by_day[int(d)] = by_day.get(int(d), 0) + 1
+    return all(c <= n for c in by_day.values())
+
+
+def _eval_cattedra_max_per_day(world: dict, t: str, cl: str,
+                                subj: str, n: int) -> bool:
+    """Per day, sum_h slot[(t, cl, s, d, h)] <= n."""
+    by_day: dict[int, int] = {}
+    for l in world.get("lessons", []):
+        if (l.get("teacher") != t or l.get("class") != cl
+                or l.get("subject") != subj):
+            continue
+        d = l.get("day")
+        if d is None:
+            continue
+        by_day[int(d)] = by_day.get(int(d), 0) + 1
+    return all(c <= n for c in by_day.values())
+
+
+def _eval_subject_pair(world: dict, cl: str, subj: str) -> bool:
+    """For each day, when (cl, subj) has >= 2 hours, at least one
+    consecutive pair must exist. Both ``subject_pair_must`` and
+    ``subject_pair_exists`` reduce to this rule (the compiler's
+    ``must_pair`` mode adds no extra tightening on top)."""
+    by_day: dict[int, set[int]] = {}
+    for l in world.get("lessons", []):
+        if l.get("class") != cl or l.get("subject") != subj:
+            continue
+        d, h = l.get("day"), l.get("hour")
+        if d is None or h is None:
+            continue
+        by_day.setdefault(int(d), set()).add(int(h))
+    for hrs in by_day.values():
+        if len(hrs) < 2:
+            continue
+        if not any((h + 1) in hrs for h in hrs):
+            return False
+    return True
+
+
+def _eval_class_day_load_in(world: dict, cl: str,
+                              allowed: set[int]) -> bool:
+    """Per day, the class's busy-hour count must be in ``allowed``."""
+    for d in _days_in_world(world):
+        if len(_class_busy_hours(world, cl, d)) not in allowed:
+            return False
+    return True
+
+
+def _eval_subject_day_count_in(world: dict, cl: str, subj: str,
+                                 allowed: set[int]) -> bool:
+    """Per day, sum of (cl, subj) lessons over teachers must be in
+    ``allowed``. Mirrors Phase A's ``subject_day_count_in`` over the
+    aggregated day_count."""
+    by_day: dict[int, int] = {}
+    for l in world.get("lessons", []):
+        if l.get("class") != cl or l.get("subject") != subj:
+            continue
+        d = l.get("day")
+        if d is None:
+            continue
+        by_day[int(d)] = by_day.get(int(d), 0) + 1
+    for d in _days_in_world(world):
+        if by_day.get(d, 0) not in allowed:
+            return False
+    return True
+
+
+def _eval_subject_day_count_pair(world: dict, t: str, cl: str,
+                                   subj: str, n: int) -> bool:
+    """At least one day where (t, cl, subj) has >= n hours."""
+    by_day: dict[int, int] = {}
+    for l in world.get("lessons", []):
+        if (l.get("teacher") != t or l.get("class") != cl
+                or l.get("subject") != subj):
+            continue
+        d = l.get("day")
+        if d is None:
+            continue
+        by_day[int(d)] = by_day.get(int(d), 0) + 1
+    return any(c >= n for c in by_day.values())
+
+
+def _eval_hall_bound_prof_day(world: dict, t: str) -> bool:
+    """Per (prof, day): prof_day_load <= max_c cl_day_load over the
+    classes the prof teaches that day. Mirrors the Phase A Hall-like
+    bound in ``_compile_hall_bound_prof_day``."""
+    for d in _days_in_world(world):
+        prof_load = 0
+        classes_today: set[str] = set()
+        for l in world.get("lessons", []):
+            if l.get("teacher") != t:
+                continue
+            d_l = l.get("day")
+            if d_l is None or int(d_l) != d:
+                continue
+            prof_load += 1
+            cn = l.get("class")
+            if cn:
+                classes_today.add(cn)
+        if prof_load == 0:
+            continue
+        max_cl_load = 0
+        for cn in classes_today:
+            cl_load = len(_class_busy_hours(world, cn, d))
+            if cl_load > max_cl_load:
+                max_cl_load = cl_load
+        if prof_load > max_cl_load:
+            return False
+    return True
+
+
+def _eval_free_day_choice_3way(world: dict, t: str,
+                                 candidates: list[int]) -> bool:
+    """HARD facet: at least one of the three candidate days is a free
+    day (no lessons by ``t``). The soft cost weighting (which of the
+    three is preferred) does not apply at the post-hoc HARD layer."""
+    busy_days: set[int] = set()
+    for l in world.get("lessons", []):
+        if l.get("teacher") != t:
+            continue
+        d = l.get("day")
+        if d is not None:
+            busy_days.add(int(d))
+    return any(d not in busy_days for d in candidates)
 
 
 def _attr(obj, attr):
