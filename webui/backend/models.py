@@ -1483,6 +1483,89 @@ class GroupSubjectHours(Base):
     )
 
 
+class WorkingDay(TenantMixin, Base):
+    """Tab Ore: a working day of the week.
+
+    `code` is the canonical 3-letter ISO code (MON, TUE, ..., SUN);
+    `position` is 0-based and determines the column order in the
+    weekly calendar view. The engine uses `position` as `day_idx`.
+
+    `legacy_day_number` lets us keep backwards compatibility with the
+    legacy DAYS=[1..6] convention used by existing
+    TeacherUnavailability / ClassUnavailability rows: when the default
+    config (lun-sab) is in place, MON.legacy_day_number=1, TUE=2, ...
+    SAT=6. Custom configs can keep these numbers stable so old data
+    doesn't drift.
+    """
+    __tablename__ = "working_days"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    code: Mapped[str] = mapped_column(String(8), index=True,
+                                      comment="MON | TUE | ... | SUN")
+    label: Mapped[str] = mapped_column(String(32),
+                                       comment="display label, e.g. 'Lunedi'")
+    position: Mapped[int] = mapped_column(Integer, index=True,
+                                          comment="0-based engine day_idx")
+    legacy_day_number: Mapped[int] = mapped_column(
+        Integer, index=True,
+        comment="day number used by legacy *_unavailability tables"
+                " (1..7 for MON..SUN)"
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True,
+                                            comment="False -> not a working day")
+    slots: Mapped[list["WorkingHourSlot"]] = relationship(
+        back_populates="day", cascade="all, delete-orphan",
+        order_by="WorkingHourSlot.slot_index",
+    )
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "code", name="uq_workingday_tenant_code"),
+        UniqueConstraint("tenant_id", "position",
+                         name="uq_workingday_tenant_position"),
+    )
+
+
+class WorkingHourSlot(Base):
+    """Tab Ore: one timetable slot inside a WorkingDay.
+
+    `slot_index` is the 0-based position of the slot within the day;
+    the engine uses it as `hour_idx`. `start_time` / `end_time` are
+    HH:MM strings used purely for display (the engine sees only the
+    index). `label` is an optional display name like '1ª ora'.
+
+    Per-day variable slot counts are supported by the schema
+    (different days can have different numbers of slots and
+    different time ranges); the WeeklyCalendarView consumes these
+    values to render the calendar grid with the correct row heights.
+    """
+    __tablename__ = "working_hour_slots"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    day_id: Mapped[int] = mapped_column(
+        ForeignKey("working_days.id", ondelete="CASCADE"), index=True
+    )
+    slot_index: Mapped[int] = mapped_column(
+        Integer, index=True,
+        comment="0-based engine hour_idx within this day"
+    )
+    start_time: Mapped[str] = mapped_column(
+        String(5), comment="HH:MM, e.g. '08:00'"
+    )
+    end_time: Mapped[str] = mapped_column(
+        String(5), comment="HH:MM, e.g. '09:00'"
+    )
+    label: Mapped[str | None] = mapped_column(
+        String(32), nullable=True,
+        comment="optional display name, e.g. '1ª ora'"
+    )
+    legacy_hour_number: Mapped[int] = mapped_column(
+        Integer, comment="hour number used by legacy *_unavailability "
+                         "tables; default fills as 8..13"
+    )
+    day: Mapped["WorkingDay"] = relationship(back_populates="slots")
+    __table_args__ = (
+        UniqueConstraint("day_id", "slot_index",
+                         name="uq_slot_day_index"),
+    )
+
+
 class ConstraintIntervention(Base):
     """Audit trail for the interventions applied via the
     FeasibilityPanel "Applica suggerimento" / "Modifica" buttons.

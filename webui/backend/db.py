@@ -439,3 +439,50 @@ def _apply_lightweight_migrations() -> None:
                 "ix_classrooms_plesso_id "
                 "ON classrooms (plesso_id)"
             ))
+
+        # Tab Ore (working_days + working_hour_slots): the tables
+        # themselves are brand-new and created by
+        # Base.metadata.create_all. We only seed the default
+        # configuration (lun-sab, 8:00-14:00, 6 slots/day) when the
+        # working_days table is empty, so existing dev DBs pick up
+        # the defaults the first time they boot after the upgrade.
+        if insp.has_table("working_days") and insp.has_table(
+                "working_hour_slots"):
+            existing = conn.execute(text(
+                "SELECT COUNT(*) FROM working_days WHERE tenant_id = 1"
+            )).scalar()
+            if not existing:
+                _DEFAULT_DAYS = [
+                    ("MON", "Lunedi",    0, 1),
+                    ("TUE", "Martedi",   1, 2),
+                    ("WED", "Mercoledi", 2, 3),
+                    ("THU", "Giovedi",   3, 4),
+                    ("FRI", "Venerdi",   4, 5),
+                    ("SAT", "Sabato",    5, 6),
+                ]
+                for code, label, pos, legacy in _DEFAULT_DAYS:
+                    conn.execute(text(
+                        "INSERT INTO working_days "
+                        "(tenant_id, code, label, position, "
+                        " legacy_day_number, is_active) "
+                        "VALUES (1, :code, :label, :pos, :legacy, 1)"
+                    ), {
+                        "code": code, "label": label,
+                        "pos": pos, "legacy": legacy,
+                    })
+                    day_id = conn.execute(text(
+                        "SELECT id FROM working_days "
+                        "WHERE tenant_id = 1 AND code = :code"
+                    ), {"code": code}).scalar()
+                    for i in range(6):
+                        h = 8 + i
+                        conn.execute(text(
+                            "INSERT INTO working_hour_slots "
+                            "(day_id, slot_index, start_time, "
+                            " end_time, label, legacy_hour_number) "
+                            "VALUES (:d, :i, :s, :e, :l, :leg)"
+                        ), {
+                            "d": day_id, "i": i,
+                            "s": f"{h:02d}:00", "e": f"{h+1:02d}:00",
+                            "l": f"{i+1}ª ora", "leg": h,
+                        })
