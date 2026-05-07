@@ -390,6 +390,44 @@ def _eval_static_call(node, env: dict,
 
 
 # =====================================================================
+# Pragma level registry
+# =====================================================================
+#
+# Each canonical-pattern pragma is tagged with the solver level it
+# applies to:
+#   "phase_b" -- operates on per-(t, c, s, d, h) slot BoolVars; used
+#                by MonolithicSolver / per-day Phase B and any pricer
+#                that has the slot dimension.
+#   "phase_a" -- operates on per-(t, c, s, d) day_count IntVars; used
+#                by DayCountModel (the OO equivalent of solve_phase_a).
+#   "both"    -- pragma is applicable in either context; the compiler
+#                routes to whichever variable set is populated.
+#
+# When the compiler is invoked with ``level="phase_a"`` and a Phase B
+# pragma is encountered, the pragma is recorded in diagnostics and
+# skipped (and vice versa). ``level="both"`` accepts everything --
+# the default, so existing callers see no change.
+PRAGMA_LEVEL: dict[str, str] = {
+    # Phase B (slot Bool) pragmas
+    "no_holes_class": "phase_b",
+    "no_holes_all_classes": "phase_b",
+    "class_present_at_hour": "phase_b",
+    "class_present_at_hour_all": "phase_b",
+    "teacher_max_per_day": "phase_b",
+    "cattedra_max_per_day": "phase_b",
+    "subject_pair_must": "phase_b",
+    "subject_pair_exists": "phase_b",
+    "class_day_load_in": "phase_b",
+    # Phase A (day_count IntVar) pragmas
+    "class_day_load_in_day_count": "phase_a",
+    "hall_bound_prof_day": "phase_a",
+    "free_day_choice_3way": "phase_a",
+    "subject_day_count_pair": "phase_a",
+    "subject_day_count_in": "phase_a",
+}
+
+
+# =====================================================================
 # Compiler
 # =====================================================================
 
@@ -413,23 +451,57 @@ class DSLConstraintCompiler:
         adds penalty BoolVars and returns them so the caller can
         weight + accumulate into the objective). Currently HARD only;
         SOFT support is TODO and falls back to HARD.
+    day_count : dict[(teacher, class, subject, day)] -> IntVar | None
+        the Phase A decision variables (number of hours the cattedra
+        teaches that day). Required for Phase A pragmas; when absent
+        and a Phase A pragma is encountered, the compiler records a
+        diagnostic and skips the rule.
+    level : "phase_a" | "phase_b" | "both", default "both"
+        filters which pragmas the compiler will process. Pragmas
+        whose level does not match (and is not "both") are skipped
+        with a diagnostic. The default preserves the historical
+        behaviour where every recognised pragma is compiled.
 
     Compilation API
     ---------------
     ``compile(node)`` returns:
       - None when the node has been added as a HARD constraint
       - A list of CP-SAT BoolExpr for SOFT integration (TODO)
+
+    Phase A soft cost
+    -----------------
+    Phase A pragmas may need to contribute to a soft objective
+    (e.g. ``free_day_choice_3way`` weights the second/third candidate
+    free day). They append ``(weight, expr)`` tuples to
+    ``self.soft_cost_terms``; the owning model reads the list when
+    building its objective.
     """
 
     def __init__(self, model, slot: dict, *, config=None,
                  is_hard: bool = True,
                  classroom_for_slot: dict | None = None,
                  plessi_data: Any = None,
-                 owner_model: Any = None):
+                 owner_model: Any = None,
+                 day_count: dict | None = None,
+                 level: str = "both"):
         self.model = model
         self.slot = slot
         self.config = config
         self.is_hard = is_hard
+        if level not in ("phase_a", "phase_b", "both"):
+            raise ValueError(
+                f"DSLConstraintCompiler: unknown level={level!r}; "
+                "expected 'phase_a' / 'phase_b' / 'both'")
+        self.level = level
+        self.day_count = dict(day_count) if day_count else {}
+        # Soft-cost terms appended by Phase A pragmas:
+        # list[tuple[int, cp_model.IntVar]] -- weight * indicator.
+        self.soft_cost_terms: list = []
+        # Caches shared across Phase A pragmas so every (cl, d) /
+        # (prof, d) load IntVar is created at most once even when
+        # multiple pragmas reference it.
+        self._cl_day_load_cache: dict = {}
+        self._prof_day_load_cache: dict = {}
         # Optional classroom + plesso resolution carriers. When the
         # caller wants DSL rules that reference ``l.classroom`` /
         # ``l.classroom.plesso`` to be enforced, both must be passed
@@ -793,6 +865,20 @@ class DSLConstraintCompiler:
         Returns True if the call name was recognised AND processed,
         False otherwise (caller falls back to generic eval)."""
         name = node.name
+        # Level filter: a pragma whose level doesn't match the
+        # compiler instance is recorded as skipped and absorbed (we
+        # return True so the caller doesn't fall through to generic
+        # static evaluation, which would raise on a recognised name
+        # invoked in the wrong context).
+        pragma_level = PRAGMA_LEVEL.get(name)
+        if (pragma_level is not None
+                and self.level != "both"
+                and pragma_level != "both"
+                and pragma_level != self.level):
+            self.diagnostics.append(
+                f"pragma {name!r} (level={pragma_level}) skipped: "
+                f"compiler level={self.level}")
+            return True
         # Resolve positional args eagerly in env.
         try:
             arg_values = [self._eval(arg, env)
@@ -886,6 +972,17 @@ class DSLConstraintCompiler:
             cl = str(arg_values[0])
             allowed = [int(v) for v in arg_values[1:]]
             self._compile_class_day_load_in(cl, allowed)
+            return True
+        # ---- Phase A (day_count IntVar) pragmas ----
+        if name == "class_day_load_in_day_count":
+            if len(arg_values) < 2:
+                self.diagnostics.append(
+                    "class_day_load_in_day_count expects "
+                    "(class, allowed...)")
+                return True
+            cl = str(arg_values[0])
+            allowed = [int(v) for v in arg_values[1:]]
+            self._compile_class_day_load_in_day_count(cl, allowed)
             return True
         # Unknown call name: leave for the generic path.
         return False
@@ -1142,3 +1239,69 @@ class DSLConstraintCompiler:
             self.model.Add(count == sum(present_per_h))
             self.model.AddAllowedAssignments(
                 [count], [(v,) for v in allowed_clamped])
+
+    # ============================================================
+    # Phase A pragmas (operate on day_count IntVars)
+    # ============================================================
+
+    def _days_in_dc_scope(self) -> list:
+        return sorted({k[3] for k in self.day_count})
+
+    def _classes_in_dc_scope(self) -> list:
+        return sorted({k[1] for k in self.day_count})
+
+    def _profs_in_dc_scope(self) -> list:
+        return sorted({k[0] for k in self.day_count})
+
+    def _cl_day_load_intvar(self, cl: str, d: int):
+        """Cached IntVar = sum_{(p, s) | (p, cl, s, d) in day_count}
+        day_count[(p, cl, s, d)]. Constant-0 when no terms.
+
+        The aggregation matches Phase A's ``cl_day_load[c, d]``
+        construction in ``cpsat_v2_timetable.solve_phase_a``: every
+        cattedra (p, c, s) that has a day_count entry contributes.
+        Caller-side exclusions (codoc, support, parallel-secondary,
+        group) are expected to be applied by the model that builds
+        ``self.day_count`` -- the compiler simply sums what it sees.
+        """
+        key = (cl, d)
+        if key in self._cl_day_load_cache:
+            return self._cl_day_load_cache[key]
+        terms = [v for (_p, ccl, _s, dd), v in self.day_count.items()
+                 if ccl == cl and dd == d]
+        if not terms:
+            cdl = self.model.NewConstant(0)
+        else:
+            # Generous upper bound; exact constraints (allowed sets,
+            # Hall bound) clamp the value below.
+            cdl = self.model.NewIntVar(
+                0, 100, f"_dsl_cdl_{cl}_{d}")
+            self.model.Add(cdl == sum(terms))
+        self._cl_day_load_cache[key] = cdl
+        return cdl
+
+    def _compile_class_day_load_in_day_count(
+            self, cl: str, allowed: list[int]):
+        """Phase A equivalent of ``class_day_load_in``: the daily
+        class hours (sum of day_count IntVars over all cattedras of
+        the class) must lie in ``allowed``. Mirrors the legacy
+        ``cl_day_load[c, d] in {0, 4, 5, 6}`` rule on
+        ``cpsat_v2_timetable.solve_phase_a``.
+        """
+        if not self.day_count:
+            self.diagnostics.append(
+                "class_day_load_in_day_count: day_count empty; "
+                "did you forget to pass day_count= to the compiler?")
+            return
+        if not allowed:
+            return
+        days = self._days_in_dc_scope()
+        # Filter the allowed values to non-negative ints; bounds from
+        # the actual cl_day_load IntVar (max 100) clamp the rest.
+        allowed_clamped = sorted({int(v) for v in allowed if int(v) >= 0})
+        if not allowed_clamped:
+            return
+        for d in days:
+            cdl = self._cl_day_load_intvar(cl, d)
+            self.model.AddAllowedAssignments(
+                [cdl], [(v,) for v in allowed_clamped])
