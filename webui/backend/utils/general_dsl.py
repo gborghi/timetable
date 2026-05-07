@@ -38,8 +38,13 @@ Sources (collections to iterate):
     subjects | curricula | groups | days | hours | slots
 
 Built-in functions:
-    same_day(s1, s2), consecutive(s1, s2), hour(slot), day(slot),
+    same_day(s1, s2), consecutive(s1, s2), consecutive_days(d1, d2),
+    hour(slot), day(slot),
     teacher(lesson), class(lesson), subject(lesson), classroom(lesson)
+
+  ``consecutive_days(d1, d2)`` returns True iff |d1 - d2| == 1
+  where d1, d2 are day indices 1..6 (lun..sab). Accepts lesson
+  refs (``l1.day``) and integer literals; no wrap-around.
 
 The evaluator runs against an in-memory snapshot built by
 `build_world(db)` so it doesn't hit the DB during evaluation.
@@ -1024,6 +1029,24 @@ def _eval_call(node: Call, env, world):
         a, b = pos[0], pos[1]
         return (_attr(a, "day") == _attr(b, "day")
                 and abs(int(_attr(a, "hour")) - int(_attr(b, "hour"))) == 1)
+    if name == "consecutive_days":
+        if len(pos) != 2:
+            raise DSLError(
+                "consecutive_days richiede 2 argomenti (d1, d2)")
+        a, b = pos[0], pos[1]
+        # Accept lesson/slot dicts (extract .day) or bare day codes.
+        if isinstance(a, dict):
+            a = _attr(a, "day")
+        if isinstance(b, dict):
+            b = _attr(b, "day")
+        if isinstance(a, tuple) and len(a) == 2:
+            a = a[0]
+        if isinstance(b, tuple) and len(b) == 2:
+            b = b[0]
+        try:
+            return abs(int(a) - int(b)) == 1
+        except (TypeError, ValueError):
+            return False
     if name == "hour":
         return _attr(pos[0], "hour")
     if name == "day":

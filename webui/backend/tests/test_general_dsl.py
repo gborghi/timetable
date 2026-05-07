@@ -216,3 +216,67 @@ def test_validate_atom_explosion_guard():
     tree = G.parse("forall s in slots: s.day <= 6")
     res = G.validate(tree)
     assert res.ok
+
+
+# ============================================================
+# consecutive_days predicate
+# ============================================================
+
+
+def test_consecutive_days_int_args():
+    """consecutive_days(d1, d2) = True iff |d1 - d2| == 1, no wrap."""
+    def _ev(d1, d2):
+        return G.evaluate(
+            G.parse(f"consecutive_days({d1}, {d2})"), _world([], []))
+    # Adjacent
+    assert _ev(1, 2) is True
+    assert _ev(2, 1) is True
+    assert _ev(3, 4) is True
+    assert _ev(5, 6) is True
+    # Non-adjacent
+    assert _ev(1, 3) is False
+    assert _ev(1, 1) is False     # same day != consecutive
+    # No wrap-around: 6 (sab) is NOT adjacent to 1 (lun)
+    assert _ev(6, 1) is False
+    assert _ev(1, 6) is False
+
+
+def test_consecutive_days_via_lesson_refs():
+    """Inside a forall over lessons, l1.day extracts the int day; the
+    predicate then compares the two lessons' day indices. This is the
+    Rossi case (a) pattern: 'no two lessons of the same cattedra on
+    consecutive days'."""
+    expr = (
+        "forall l1 in lessons where l1.teacher == Rossi:\n"
+        "  forall l2 in lessons where l2.teacher == Rossi:\n"
+        "    not consecutive_days(l1.day, l2.day)"
+    )
+    tree = G.parse(expr)
+    # Days 1, 3, 5 -> all gaps >= 2 -> ok
+    w_ok = _world([], [
+        {"teacher": "Rossi", "day": 1, "hour": 8, "class": "3A",
+         "subject": "Fisica", "classroom": "", "classroom_type": ""},
+        {"teacher": "Rossi", "day": 3, "hour": 9, "class": "3A",
+         "subject": "Fisica", "classroom": "", "classroom_type": ""},
+        {"teacher": "Rossi", "day": 5, "hour": 10, "class": "3A",
+         "subject": "Fisica", "classroom": "", "classroom_type": ""},
+    ])
+    assert G.evaluate(tree, w_ok) is True
+    # Days 1, 2, 5 -> 1-2 are consecutive -> violation
+    w_bad = _world([], [
+        {"teacher": "Rossi", "day": 1, "hour": 8, "class": "3A",
+         "subject": "Fisica", "classroom": "", "classroom_type": ""},
+        {"teacher": "Rossi", "day": 2, "hour": 9, "class": "3A",
+         "subject": "Fisica", "classroom": "", "classroom_type": ""},
+        {"teacher": "Rossi", "day": 5, "hour": 10, "class": "3A",
+         "subject": "Fisica", "classroom": "", "classroom_type": ""},
+    ])
+    assert G.evaluate(tree, w_bad) is False
+
+
+def test_consecutive_days_arity_check():
+    """Wrong arity raises a clear DSLError."""
+    import pytest
+    tree = G.parse("consecutive_days(1)")
+    with pytest.raises(G.DSLError):
+        G.evaluate(tree, _world([], []))

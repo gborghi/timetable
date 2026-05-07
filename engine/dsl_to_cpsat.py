@@ -339,6 +339,7 @@ def _eval_static_call(node, env: dict,
       same_day(s1, s2): bool   (s1, s2 are slot tuples or refs to
                                  lesson attributes)
       consecutive(s1, s2): bool
+      consecutive_days(d1, d2): bool   (|d1 - d2| == 1; no wrap)
       day(slot): int
       hour(slot): int
       teacher(lesson) / class(lesson) / subject(lesson): str
@@ -374,6 +375,28 @@ def _eval_static_call(node, env: dict,
         else:
             return False
         return ad == bd and abs(ah - bh) == 1
+    if name == "consecutive_days":
+        # |day(d1) - day(d2)| == 1 with day codes 1..6 (lun..sab).
+        # No wrap-around: consecutive_days(6, 1) is False.
+        if len(args) != 2:
+            raise ValueError("consecutive_days takes 2 args (d1, d2)")
+        a, b = args
+        if isinstance(a, tuple) and len(a) == 2:
+            a = a[0]
+        if isinstance(b, tuple) and len(b) == 2:
+            b = b[0]
+        if isinstance(a, str):
+            n = _normalize_day_value(a)
+            if n is not None:
+                a = n
+        if isinstance(b, str):
+            n = _normalize_day_value(b)
+            if n is not None:
+                b = n
+        try:
+            return abs(int(a) - int(b)) == 1
+        except (TypeError, ValueError):
+            return False
     if name in ("day",):
         a = args[0]
         if isinstance(a, tuple):
