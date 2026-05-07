@@ -333,6 +333,61 @@ def test_support_assignment_does_not_double_book_class():
         f"{len(distinct_non_support)}: {distinct_non_support}")
 
 
+def test_potenziamento_pure_no_regular_lessons():
+    """ProfPot has 4 hours of potenziamento and zero regular cattedre.
+    The solver must place 4 distinct (d, h) pot_slots and produce no
+    regular Lesson rows in the output dict.
+    """
+    from cp_sat_constraint_model import (
+        MonolithicSolver, ConstraintConfig)
+    profs = {
+        "ProfPot": {"classi": {}, "glibero": [6], "max_hours": 18},
+    }
+    dc: dict = {}
+    pots = [{"teacher_name": "ProfPot", "n_hours": 4}]
+    ms = MonolithicSolver(profs, dc, ConstraintConfig(
+        enforce_no_holes=False, enforce_h3_presence_at_11=False,
+        potenziamento_assignments=pots))
+    sol, status = ms.solve(time_limit_s=5.0, workers=1)
+    assert sol is not None, status
+    # No regular slots (the prof has no cattedra at all).
+    assert len([k for k in sol if k[0] == "ProfPot"]) == 0
+    # 4 distinct pot_slots in the dedicated dict.
+    pot_sol = ms.pot_solution
+    assert len(pot_sol) == 4, pot_sol
+    pot_for_t = {(d, h) for (t, d, h) in pot_sol if t == "ProfPot"}
+    assert len(pot_for_t) == 4, pot_for_t
+
+
+def test_potenziamento_mutually_exclusive_with_regular_cattedra():
+    """Rossi has 4 hours Mat in 1A AND 2 hours of potenziamento. Per
+    (d, h) the prof can be in class OR in potenziamento, never both.
+    """
+    from cp_sat_constraint_model import (
+        MonolithicSolver, ConstraintConfig)
+    profs = {
+        "Rossi": {"classi": {"1A": {"Mat": {"ore": 4}}},
+                   "glibero": [6], "max_hours": 18},
+    }
+    dc = {("Rossi", "1A", "Mat", d): 1 for d in (1, 2, 3, 4)}
+    pots = [{"teacher_name": "Rossi", "n_hours": 2}]
+    ms = MonolithicSolver(profs, dc, ConstraintConfig(
+        enforce_no_holes=False, enforce_h3_presence_at_11=False,
+        potenziamento_assignments=pots))
+    sol, status = ms.solve(time_limit_s=5.0, workers=1)
+    assert sol is not None, status
+    regular_dh = {(d, h) for (t, _cl, _s, d, h) in sol
+                   if t == "Rossi"}
+    assert len(regular_dh) == 4, regular_dh
+    pot_dh = {(d, h) for (t, d, h) in ms.pot_solution
+               if t == "Rossi"}
+    assert len(pot_dh) == 2, pot_dh
+    # No (d, h) shared between regular + pot.
+    assert regular_dh.isdisjoint(pot_dh), (
+        f"overlap between regular and pot: "
+        f"{regular_dh & pot_dh}")
+
+
 def test_support_assignment_infeasible_when_class_empty():
     """ProfSost has 4 sostegno hours but the class has 0 non-support
     triples -> the shadow constraint forces every support slot to 0,

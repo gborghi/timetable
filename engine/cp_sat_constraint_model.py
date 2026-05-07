@@ -430,6 +430,68 @@ class ConstraintModel:
                         self.model.AddMaxEquality(cb, non_support_vars)
                         self.model.Add(sk <= cb)
 
+    def add_potenziamento_assignments(
+        self, assignments: list | None = None,
+    ):
+        """Potenziamento (cattedra senza classe) HARD constraint.
+
+        For each ``pot_assignment`` ``{teacher_name, n_hours}`` create
+        per-(day, hour) ``pot_slot[(t, d, h)]`` BoolVars whose weekly
+        sum equals ``n_hours``. Multiple pot rows on the same teacher
+        accumulate (the legacy Phase A does the same via
+        ``pot_by_prof[teacher_name] += n_hours``).
+
+        Mutual exclusion with the teacher's regular cattedra:
+        ``pot_slot[(t, d, h)] + sum slot[(t, *, *, d, h)] <= 1`` per
+        (t, d, h). The teacher cannot be in class AND in potenziamento
+        at the same slot. ``add_teacher_no_overlap`` already covers
+        ``sum slot <= 1`` for the regular side; the constraint above
+        is what binds pot to the same calendar.
+
+        The pot_slot vars are exposed on ``self.pot_slot`` so callers
+        (and ``MonolithicSolver.solve``) can read them after solve.
+        They produce no Lesson rows -- a potenziamento prof has no
+        class to teach, the slot just blocks the teacher's calendar
+        for the school's other purposes (e.g. exam prep, project
+        hours, mandated free-time-with-students).
+        """
+        if assignments is None:
+            assignments = list(
+                self.config.potenziamento_assignments or [])
+        if not assignments:
+            return
+        if not hasattr(self, "pot_slot"):
+            self.pot_slot: dict[tuple[str, int, int], Any] = {}
+        # Aggregate n_hours by teacher (multiple pot rows per teacher
+        # merge into one weekly demand, matching the legacy logic).
+        pot_by_teacher: dict[str, int] = {}
+        for pa in assignments:
+            t = pa["teacher_name"]
+            if not self._scope_includes_teacher(t):
+                continue
+            pot_by_teacher[t] = (
+                pot_by_teacher.get(t, 0) + int(pa["n_hours"]))
+        for t, n_hours in pot_by_teacher.items():
+            if n_hours <= 0:
+                continue
+            for d in self.days:
+                for h in self.hours:
+                    pv = self.model.NewBoolVar(f"pot_{t}_{d}_{h}")
+                    self.pot_slot[(t, d, h)] = pv
+            self.model.Add(
+                sum(self.pot_slot[(t, d, h)]
+                    for d in self.days for h in self.hours)
+                == n_hours
+            )
+            for d in self.days:
+                for h in self.hours:
+                    regular_vars = self.slots_for_teacher_day_hour(
+                        t, d, h)
+                    pot_var = self.pot_slot[(t, d, h)]
+                    if regular_vars:
+                        self.model.Add(
+                            pot_var + sum(regular_vars) <= 1)
+
     def add_locks(self, locks: list | None = None):
         """Force ``slot[(t, cl, s, d, h)] == 1`` for every supplied
         lock (5-tuple). Locks pointing at slots not in the model are
@@ -878,6 +940,7 @@ class MonolithicSolver(ConstraintModel):
         self.add_all_hard_constraints(via_dsl=via_dsl)
         self.add_coteach_groups()
         self.add_support_assignments()
+        self.add_potenziamento_assignments()
         self.add_class_no_overlap()
         obj_terms, _ = self.compute_soft_cost_expr()
         if obj_terms:
@@ -898,6 +961,10 @@ class MonolithicSolver(ConstraintModel):
         for k, v in self.slot.items():
             if solver.Value(v):
                 out[k] = 1
+        self.pot_solution: dict[tuple[str, int, int], int] = {}
+        for k, v in getattr(self, "pot_slot", {}).items():
+            if solver.Value(v):
+                self.pot_solution[k] = 1
         return out, solver.StatusName(status)
 
 
