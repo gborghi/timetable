@@ -32,6 +32,7 @@ rilevate dal Feasibility Check; le SOFT alimentano lo score
 globale.
 
 \section{Grammatica BNF}
+\label{sec:dsl-bnf}
 
 \begin{lstlisting}[basicstyle=\ttfamily\small]
 expr           ::= iff_expr
@@ -810,46 +811,349 @@ solver pu\`o piazzare due ore in marted\`i+mercoled\`i pagando
 50 alla volta, ma se esiste una soluzione con marted\`i+gioved\`i
 (non consecutive) la sceglier\`a.
 
+\section{Le quattro famiglie di compilazione}
+\label{sec:dsl-famiglie}
+
+Una sola grammatica, quattro \emph{flavour} di compilazione. La
+distinzione non \`e accademica: ognuna nasce da una domanda
+operativa diversa e produce un manufatto diverso.
+
+\begin{table}[h]
+\centering
+\sffamily\small
+\begin{tabular}{lp{3.4cm}p{3.4cm}p{3.4cm}}
+\toprule
+Famiglia & Domanda operativa & Output & Modulo Python \\
+\midrule
+\textbf{LIST}      & ``elenca tutte le lezioni che soddisfano $\varphi$'' & lista di \texttt{Lesson} & \texttt{utils/dsl\_query.py} \\
+\textbf{LOGIC}     & ``\`e feasible questa configurazione?''               & boolean (DNF/CNF) & \texttt{utils/dsl\_logic.py} \\
+\textbf{OBJECTIVE} & ``quanto costa la violazione?''                      & espressione lineare CP-SAT & \texttt{engine/dsl\_to\_cpsat.py} \\
+\textbf{EVAL}      & ``conta le violazioni in questa soluzione''          & dict \{rule\_id: cost\} & \texttt{utils/general\_dsl.py} \\
+\bottomrule
+\end{tabular}
+\caption{Quattro famiglie di compilazione, una sola grammatica.
+Storicamente erano quattro sub-DSL separati. Dalla v0.4 il parser
+\`e unico (\texttt{general\_dsl.py}) e produce un AST condiviso da
+cui ciascuna famiglia estrae ci\`o che le serve.}
+\label{tab:dsl-famiglie}
+\end{table}
+
+\begin{ideabox}[title={Perch\'e quattro e non un solo backend universale}]
+Un backend universale dovrebbe essere capace di rispondere a
+tutte e quattro le domande \emph{insieme}. Ma le quattro
+domande hanno aspettative di latenza incompatibili: LIST e
+EVAL devono rispondere in millisecondi (servono al frontend e
+ai test), OBJECTIVE deve produrre un modello che il solver
+ingoia in centinaia di millisecondi, LOGIC \`e un check di
+feasibility che non passa per il solver. Quattro back-end
+specializzati su un AST condiviso \`e il compromesso che
+permette test rapidi e modello pulito.
+\end{ideabox}
+
+\section{Logica DNF vs \texttt{forall}/\texttt{count}: due famiglie a confronto}
+\label{sec:dsl-logic-vs-forall}
+
+Il sotto-DSL \texttt{LogicalUnavailability} (presente fino al
+v0.3, ancora in uso nel tab Docente come ``Indisponibilit\`a
+logica'') esprime un sottoinsieme della grammatica generica:
+solo \emph{disgiunzioni di slot proibiti} con scope il singolo
+docente. Il general DSL pu\`o sempre simularlo, l'inverso non
+sempre.
+
+\begin{table}[h]
+\centering
+\sffamily\small
+\begin{tabular}{p{3.6cm}p{4.2cm}p{4.2cm}}
+\toprule
+Espressivit\`a & \texttt{LogicalUnavailability} (DNF) & \texttt{general\_dsl} \\
+\midrule
+slot proibito & $\bullet$ & $\bullet$ \\
+slot vietato condizionatamente & limitato a AND di slot & $\bullet$ (\texttt{=>}, \texttt{<=>}) \\
+quantificatori \texttt{forall x in S} & --- & $\bullet$ \\
+\texttt{count} con limite & --- & $\bullet$ \\
+predicati \texttt{same\_day}/\texttt{consecutive} & --- & $\bullet$ \\
+path \texttt{l.classroom.plesso} & --- & $\bullet$ \\
+aritmetica intera & --- & $\bullet$ (Step 3) \\
+SOFT con peso & --- & $\bullet$ \\
+\bottomrule
+\end{tabular}
+\caption{La DNF logica \`e un \emph{subset} della grammatica
+generale. Migrare un vincolo dalla forma DNF alla forma generale
+\`e sempre possibile (helper
+\texttt{logical\_unavailability\_to\_dsl}); migrare nell'altro
+verso richiede un'\emph{abstraction} del vincolo che spesso non
+esiste.}
+\label{tab:dsl-vs-logic}
+\end{table}
+
+\begin{esempiobox}[title={Lo stesso vincolo, due grammatiche}]
+\textbf{Vincolo}: ``Rossi non insegna mai venerd\`i alle ultime
+due ore.''
+
+DNF (LogicalUnavailability):
+\begin{lstlisting}
+(day == 5 AND hour == 12) OR (day == 5 AND hour == 13)
+\end{lstlisting}
+
+\noindent
+General DSL (equivalente):
+\begin{lstlisting}
+forall l in lessons where l.teacher == Rossi
+                       and l.day == 5
+                       and l.hour >= 12:
+    false
+\end{lstlisting}
+
+\noindent
+La forma generale legge come una frase italiana e si estende
+banalmente: cambiando \texttt{l.hour >= 12} in \texttt{l.hour >= 11}
+estendiamo a tre ore senza dover scrivere tre clausole DNF.
+\end{esempiobox}
+
+\section{Quattordici pragma canonici per la \texttt{Phase A} e la \texttt{Phase B}}
+\label{sec:dsl-pragma-14}
+
+Step 3b ha estratto da \texttt{solve\_phase\_a} e da
+\texttt{solve\_phase\_b\_for\_day} le sequenze pi\`u frequenti
+di vincoli e le ha ribattezzate \emph{pragma}: chiamate di
+funzione di forma standard che il compilatore riconosce e per
+cui emette gruppi compatti di vincoli CP-SAT, byte-per-byte
+identici a quelli che il path legacy emetteva.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.92\linewidth]{manual/figures/fig_pragma_coverage}
+\caption{I 14 pragma canonici, raggruppati per layer della pipeline
+in cui sono compilati. I pragma di \texttt{Phase A} sono i mattoni
+di \texttt{DayCountModel}; quelli di \texttt{Phase B} alimentano
+\texttt{PhaseBDaySolver}; le ultime due forme (\texttt{class\_subject\_same\_day} e
+\texttt{teacher\_class\_consecutive\_days}) sono espresse direttamente
+dalla famiglia \texttt{general\_dsl} senza un canonical helper
+ad hoc.}
+\label{fig:pragma-coverage}
+\end{figure}
+
+\begin{statsbox}
+\begin{itemize}
+\item Pragma totali in \texttt{Phase A}: \textbf{5}
+  (\texttt{class\_day\_load\_in\_day\_count}, \texttt{free\_day\_choice\_3way},
+  \texttt{hall\_bound\_prof\_day}, \texttt{subject\_day\_count\_in},
+  \texttt{subject\_day\_count\_pair}).
+\item Pragma totali in \texttt{Phase B}: \textbf{7}
+  (\texttt{class\_subject\_pair\_diff\_days}, \texttt{teacher\_max\_consecutive\_days},
+  \texttt{teacher\_no\_holes}, \texttt{class\_no\_holes},
+  \texttt{h3\_presence\_at\_11}, \texttt{plesso\_commuting\_rule},
+  \texttt{teacher\_subject\_consecutive}).
+\item Pragma espressi solo via \texttt{general\_dsl} libero: \textbf{2+}.
+\item Test di copertura sui pragma:
+  \texttt{webui/backend/tests/test\_dsl\_canonical\_pragmas.py}
+  +
+  \texttt{test\_dsl\_intvar\_pragmas.py}
+  ($\sim$\,42 funzioni di test totali).
+\end{itemize}
+\end{statsbox}
+
+\section{Workflow: dal tab Docente al solver}
+\label{sec:dsl-workflow}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\linewidth]{manual/figures/fig_dsl_phases}
+\caption{Pipeline del DSL: dal modal nell'UI fino alle quattro
+famiglie di backend. Il pulsante \emph{validate} attiva
+solo il parser (e ritorna gli errori in tempo reale); il
+\emph{save} attiva il loop completo: persistenza in
+\texttt{constraints\_general}, ricarica al successivo
+\texttt{POST /api/optimize}, valutazione post-hoc al termine.}
+\label{fig:dsl-phases}
+\end{figure}
+
+Il percorso operativo di un vincolo DSL \`e fatto di sei
+passaggi tracciabili nei log:
+
+\begin{enumerate}
+\item \textbf{UI -- composizione}: l'utente apre il modal nel
+  tab Docente o nel tab Vincoli. Il textarea \`e popolato dalla
+  galleria di esempi (vedi sez.~\ref{sec:dsl-rossi}).
+\item \textbf{UI -- validate live}: ad ogni keystroke (debounce
+  300\,ms) parte una \texttt{POST /api/constraints/general/validate}
+  con il body parziale; il backend riporta errori sintattici con
+  riga e colonna. Il bottone \emph{Salva} \`e disabilitato finch\'e
+  c'\`e un errore.
+\item \textbf{API -- persistenza}:
+  \texttt{POST /api/constraints/general} valida ancora una volta,
+  scrive una riga in \texttt{constraints\_general} con campi
+  (\texttt{rule\_text}, \texttt{level}, \texttt{weight},
+  \texttt{scope\_kind}, \texttt{owner\_id}, \texttt{is\_hard}).
+\item \textbf{Engine -- caricamento}: il prossimo
+  \texttt{POST /api/optimize} chiama
+  \texttt{load\_all\_dsl\_constraints(db)} che restituisce una
+  lista di \texttt{(expr, level, weight, owner)}.
+\item \textbf{Engine -- compilazione/valutazione}: in funzione
+  del flag \texttt{via\_dsl} il \texttt{MonolithicSolver} invoca
+  \texttt{add\_dsl\_constraint(\dots)} (compilazione strutturale
+  CP-SAT) oppure delega all'evaluator post-hoc (valutazione su
+  soluzione).
+\item \textbf{API -- reporting}: il body della risposta a
+  \texttt{POST /api/optimize} contiene
+  \texttt{dsl\_violations}: lista di \texttt{(rule\_id,
+  rule\_text, n\_violations, soft\_cost\_contributed)} che il
+  frontend renderizza nella card ``Vincoli DSL'' del tab
+  Statistiche.
+\end{enumerate}
+
+\section{Tre casi narrati}
+\label{sec:dsl-tre-casi}
+
+\subsection{Caso Rossi: distribuzione su tre giorni non consecutivi}
+
+Il dirigente di un istituto comprensivo riceve una richiesta
+formale dal docente Rossi: ``vorrei le mie 12 ore settimanali
+distribuite su tre giorni non consecutivi della settimana''. Il
+vincolo abbraccia tre obblighi: (a) la cattedra Rossi insiste su
+esattamente 3 giorni; (b) i 3 giorni non sono consecutivi; (c)
+nei 3 giorni la distribuzione \`e 4+4+4 (vincolo aggiuntivo
+``carico equilibrato'').
+
+\begin{lstlisting}
+% (a) Rossi insiste su 3 giorni
+forall t in teachers where t.name == "Rossi":
+    count d in days
+        where exists l in lessons:
+            l.teacher == t and l.day == d.index: d == 3
+
+% (b) i giorni di Rossi non sono consecutivi
+forall l1 in lessons where l1.teacher == "Rossi":
+    forall l2 in lessons where l2.teacher == "Rossi":
+        (l1.day == l2.day)
+        or not consecutive_days(l1.day, l2.day)
+
+% (c) carico equilibrato (SOFT, peso 30)
+% level=soft, weight=30
+forall t in teachers where t.name == "Rossi":
+    forall d in days:
+        count l in lessons
+            where l.teacher == t and l.day == d.index: l <= 4
+\end{lstlisting}
+
+\noindent
+Salvato come tre vincoli separati nel tab Docente, due HARD e
+uno SOFT. Il solver respinge tutte le configurazioni con quattro
+o pi\`u giorni occupati, tutte le configurazioni in giorni
+adiacenti, e paga 30 di costo aggiuntivo per ogni ora oltre il
+quarto in un singolo giorno.
+
+\subsection{Caso plesso commuting: l'istituto su due edifici}
+
+L'IIS Marconi-Pascoli ha due plessi a 600\,m di distanza
+(\texttt{plessi.id = 1} ``Marconi'', \texttt{plessi.id = 2}
+``Pascoli''). Le delibere RSU vietano transiti durante la
+giornata: nessun docente pu\`o avere lezione in plesso 2 nell'ora
+immediatamente successiva a una lezione in plesso 1, e
+viceversa. Le classi sono affiliate a un unico plesso, quindi il
+vincolo \`e di fatto sui docenti.
+
+\begin{lstlisting}
+forall l1 in lessons where l1.classroom.plesso == 1:
+    forall l2 in lessons where l2.classroom.plesso == 2
+                            and l2.teacher == l1.teacher
+                            and consecutive(l1.slot, l2.slot):
+        false
+\end{lstlisting}
+
+\noindent
+Salvato globalmente (scope=global). La regola viene
+\emph{compilata} dal \texttt{MonolithicSolver} e dal
+\texttt{PhaseBDaySolver} via il pragma canonico
+\texttt{plesso\_commuting\_rule}: il path \texttt{l.classroom.plesso}
+risolve all'identificatore intero del plesso, e per ogni coppia
+di slot adiacenti (stesso giorno, ore $h$ e $h+1$) emette il
+vincolo CP-SAT
+$\mathtt{slot}[t,c_1,s_1,d,h] \implies
+\lnot \mathtt{slot}[t,c_2,s_2,d,h+1]$
+quando $c_1$ e $c_2$ vivono in plessi diversi.
+
+\subsection{Caso compresenza: matematica e sostegno nello stesso giorno}
+
+In una scuola elementare la docente di sostegno deve essere in
+classe \emph{nello stesso giorno} della docente di matematica
+per la classe 2B (compresenza didattica). Il vincolo \`e che
+ogni lezione di sostegno della docente Verdi in 2B cada in un
+giorno in cui la docente Bianchi di matematica \`e in 2B.
+
+\begin{lstlisting}
+forall l in lessons where l.teacher == "Verdi"
+                       and l.class == "2B"
+                       and l.subject == "Sostegno":
+    exists m in lessons where m.teacher == "Bianchi"
+                          and m.class == "2B"
+                          and m.subject == "Matematica"
+                          and same_day(l.slot, m.slot):
+        true
+\end{lstlisting}
+
+\noindent
+Il \texttt{forall \dots: exists \dots: true} \`e l'idioma per
+``$\forall l\,\exists m: P(l,m)$''. Il compilatore lo riconosce
+come reificazione di una BoolVar e lo lega come vincolo
+fattibilit\`a. Sono semantica equivalenti a un \texttt{forall} +
+\texttt{count}, ma il pattern $\exists\,$ \`e pi\`u trasparente
+per la lettura umana.
+
+\subsection{Caso seconda lingua: francese nelle prime tre ore (SOFT)}
+
+Liceo linguistico, indirizzo francese-tedesco, anno 1: la
+seconda lingua (francese) andrebbe collocata preferibilmente
+nelle prime tre ore della mattina, perch\'e \`e l'orario in cui
+gli alunni hanno l'energia per la fonetica. Vincolo SOFT con
+peso 20:
+
+\begin{lstlisting}
+% level=soft, weight=20
+forall l in lessons
+    where l.subject == "Francese"
+      and l.class.curriculum == "Linguistico-FRA-TED"
+      and l.class.year == 1:
+    l.hour <= 10
+\end{lstlisting}
+
+\noindent
+Ogni lezione di francese delle prime FRA-TED che cade alla 4a
+ora o oltre paga 20 di costo aggiuntivo. Quando esiste una
+configurazione \emph{senza} pagare, il solver la sceglie; quando
+serve pagare per soddisfare i vincoli HARD lo fa minimizzando il
+numero di lezioni costate.
+
 \section{Diagramma dell'architettura DSL}
 \label{sec:dsl-archi}
 
-\begin{verbatim}
-+--------------------------------------------------+
-|  UI (modal "+ Nuovo vincolo DSL")                 |
-|  webui/frontend/.../GeneralConstraintsCard.svelte |
-+--------------------+-----------------------------+
-                     |
-                     v
-+--------------------+-----------------------------+
-|  POST /api/constraints/general                   |
-|  webui/backend/routers/constraints.py            |
-+--------------------+-----------------------------+
-                     |
-                     v
-+--------------------+-----------------------------+
-|  Parser + AST                                    |
-|  webui/backend/utils/general_dsl.py              |
-+--------------------+-----------------------------+
-                     |
-                     +---------+---------+
-                     v         v         v
-              post-hoc    compiler    SOFT score
-              evaluator   to CP-SAT   (post-hoc)
-              (cattura    (Step 1+)
-               violazioni
-               HARD)
-                     |         |
-                     v         v
-              +--------------------+
-              |   CP-SAT solver    |
-              |   (Mono / Pricer / |
-              |    PhaseB / RF /   |
-              |    Meta)           |
-              +--------------------+
-\end{verbatim}
+\begin{figure}[h]
+\centering
+\includegraphics[width=\linewidth]{manual/figures/fig_dsl_phases}
+\caption{Architettura del DSL generico: stessa grammatica e
+stesso AST, quattro back-end di traduzione. La differenza fra
+``valutare una soluzione'' (evaluator post-hoc) e ``costruire
+un modello'' (compiler verso CP-SAT) si traduce in due
+attraversamenti diversi dello stesso albero.}
+\label{fig:dsl-archi}
+\end{figure}
 
-Stesso AST, due backend: l'evaluator legge la soluzione e
+Stesso AST, quattro backend: l'evaluator legge la soluzione e
 risponde ``feasible/violato''; il compilatore aggiunge vincoli
-al modello prima della solve. La grammatica \`e unica e i nomi
-delle sorgenti sono identici nei due backend.
+al modello prima della solve; il pragma vocabulary identifica
+sequenze ricorrenti e le emette in forma compatta; la famiglia
+LIST esegue la query sulla soluzione corrente. La grammatica
+\`e unica e i nomi delle sorgenti sono identici nei quattro
+backend.
+
+\begin{biblioparvabox}[title={Reference completo del DSL}]
+La spec completa con galleria estesa di esempi, tabelle di
+ogni attributo per ciascuna sorgente, troubleshooting con
+patologie ricorrenti e quick reference card vive in
+\texttt{docs/general\_dsl.md}. Il presente capitolo \`e una
+sintesi narrativa, pensata per essere letta dall'inizio alla
+fine; il file Markdown \`e pensato come reference da consultare
+mentre si scrive un vincolo concreto. La grammatica BNF in
+sez.~\ref{sec:dsl-bnf} \`e identica nei due documenti.
+\end{biblioparvabox}
 
