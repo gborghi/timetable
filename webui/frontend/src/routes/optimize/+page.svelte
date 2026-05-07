@@ -24,7 +24,28 @@
     optimize_rooms: false,
     rooms_time_limit_s: 30,
     rooms_prefer_home: true,
+    // Phase 3: CP-SAT scope + Phase A interaction.
+    // Cross-field rule (mirror of backend validator):
+    //   day  + always   (default, legacy)
+    //   week + skip      OR  week + soft_hint
+    cp_sat_scope: 'day',
+    phase_a_mode: 'always',
   };
+
+  // Client-side coercion: keep (cp_sat_scope, phase_a_mode) in a
+  // valid combination at all times so the form never submits a
+  // payload the backend's @model_validator would reject. Called
+  // from the scope dropdown's on:change.
+  //   day  -> always
+  //   week -> soft_hint  (only if currently 'always')
+  function coercePhaseAModeForScope() {
+    if (step3.cp_sat_scope === 'day') {
+      step3.phase_a_mode = 'always';
+    } else if (step3.cp_sat_scope === 'week'
+               && step3.phase_a_mode === 'always') {
+      step3.phase_a_mode = 'soft_hint';
+    }
+  }
   let step4 = { budget_s: 60, workers: 4, log: true,
                 n_cycles: 3, ts_budget_per_cycle: 20,
                 sa_T0: 10, sa_alpha: 0.995, tabu_size: 80,
@@ -283,6 +304,58 @@
         <div class="field"><label>workers</label><input type="number" bind:value={step3.workers}/></div>
         <label class="flex gap-2 text-sm col-span-3"><input type="checkbox" bind:checked={step3.use_decomposition}/> Decomposizione spettrale</label>
       </div>
+
+      <!-- Phase 3: CP-SAT scope + Phase A mode (Phase B knobs). -->
+      <div class="mt-3 p-3 rounded border border-ink-200 bg-ink-50/40 space-y-3">
+        <p class="text-xs font-medium">Solver CP-SAT (avanzato)</p>
+        <div class="field">
+          <label>Scope del solver CP-SAT</label>
+          <select bind:value={step3.cp_sat_scope}
+                  on:change={coercePhaseAModeForScope}>
+            <option value="day">Per giorno (default, veloce)</option>
+            <option value="week">Settimana intera (più robusto, più lento)</option>
+          </select>
+          <small class="block text-[11px] text-ink-500 mt-1 leading-snug">
+            <strong>Per giorno</strong>: il solver risolve un giorno alla
+            volta (veloce, scalabile, default).
+            <strong>Settimana intera</strong>: il solver vede tutta la
+            settimana in un unico CP-SAT call (più robusto su scuole
+            complesse con compresenze, sostegno e gruppi, ma più lento).
+          </small>
+        </div>
+        <div class="field">
+          <label>Modalità Phase A
+            <span class="text-[10px] text-ink-400">(distribuzione settimanale ore)</span>
+          </label>
+          <select bind:value={step3.phase_a_mode}>
+            <option value="always"
+                    disabled={step3.cp_sat_scope === 'week'}>
+              Sempre (richiesta per scope = Per giorno)
+            </option>
+            <option value="skip"
+                    disabled={step3.cp_sat_scope === 'day'}>
+              Salta (solo per scope = Settimana intera)
+            </option>
+            <option value="soft_hint"
+                    disabled={step3.cp_sat_scope === 'day'}>
+              Hint morbido (solo per scope = Settimana intera)
+            </option>
+          </select>
+          <small class="block text-[11px] text-ink-500 mt-1 leading-snug">
+            Phase A decide come distribuire le ore di ciascuna cattedra
+            tra i giorni della settimana.
+            <strong>Sempre</strong>: Phase A obbligatoria (consigliato per
+            scope Per giorno).
+            <strong>Salta</strong>: no Phase A, lo scope Settimana intera
+            decide tutto direttamente.
+            <strong>Hint morbido</strong>: Phase A esegue ma il suo
+            output è solo un suggerimento (warm start non vincolante);
+            lo scope Settimana intera può deviare se trova soluzione
+            migliore.
+          </small>
+        </div>
+      </div>
+
       <div class="mt-3 p-3 rounded border border-ink-200 bg-ink-50/40 space-y-2">
         <label class="flex items-center gap-2 text-sm font-medium">
           <input type="checkbox" bind:checked={step3.optimize_rooms}/>
