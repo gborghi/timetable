@@ -264,8 +264,30 @@ class ConstraintModel:
                     if len(vs) > 1:
                         self.model.Add(sum(vs) <= 1)
 
-    def add_class_no_overlap(self):
-        """At most one slot per (class, day, hour).
+    def _classes_with_busy_aggregation(self) -> set[str]:
+        """Real + home classes that should run busy aggregation.
+
+        Excludes virtual group classes (``_group_triples`` keys: the
+        group's ``group_name`` is its virtual class, with no curriculum
+        no_holes / h11 / no_overlap obligation -- those rules apply to
+        the home classes the group serves).
+        """
+        group_triples = getattr(self, "_group_triples", {})
+        virtual = {gn for (_gp, gn, _gs) in group_triples}
+        classes = set(c for c in self.classes_in_scope()
+                      if c not in virtual)
+        for (_gp, _gn, _gs), homes in group_triples.items():
+            classes.update(homes)
+        return classes
+
+    def _build_class_busy_indicators(self, cl: str, d: int, h: int,
+                                       *, name_suffix: str = "") -> list:
+        """Return the list of class-busy indicators at ``(cl, d, h)``
+        using the same bucket-by-busy-key + aggregation rules as
+        ``add_class_no_overlap``. Used by ``add_class_no_overlap``,
+        ``add_class_no_holes``, ``add_h3_presence_at_11`` and the
+        equivalent DSL pragmas so all four enforce the same notion of
+        "the class is busy at this slot".
 
         Aggregation rules (mirror the legacy ``solve_phase_b_for_day``
         ``keys_by_busy`` logic):
@@ -273,7 +295,7 @@ class ConstraintModel:
         * Coteach groups registered via ``add_coteach_groups`` are
           aggregated per (cl, subj) into a single class-busy indicator
           so the k members of a compresenza count as ONE class
-          occupation, not k.
+          occupation.
         * Parallel groups (intra-class) registered via
           ``add_parallel_groups_intra_class`` are aggregated per group
           (different subjects, same slot): the k member slot vars are
@@ -283,89 +305,82 @@ class ConstraintModel:
           ``add_support_assignments`` are excluded from the
           aggregation: the support slot shadows a non-support lesson
           and must not add a fresh class occupation.
+        * Inter-class groups registered via
+          ``add_parallel_groups_inter_class`` append the group's slot
+          to each home class's busy aggregation under a
+          ``__grp__<gn>__<subj>`` busy key.
 
-        The aggregation runs even when those methods have not been
-        called explicitly: the registries
-        (``_coteach_busy_keys`` / ``_support_triples`` /
-        ``_parallel_intra_busy_key``) start empty, and with all three
-        empty this method behaves exactly like the original
-        ``sum(vs) <= 1`` formulation.
+        ``name_suffix`` is appended to the aggregator BoolVar names so
+        callers from different methods don't share names (CP-SAT
+        accepts duplicates but distinct names ease debugging).
         """
         coteach_busy_keys = getattr(self, "_coteach_busy_keys", set())
         support_triples = getattr(self, "_support_triples", set())
         parallel_busy_key = getattr(
             self, "_parallel_intra_busy_key", {})
         group_triples = getattr(self, "_group_triples", {})
-        classes = set(self.classes_in_scope())
-        # Pure home classes (no direct triples) still need busy
-        # aggregation so the group blocks them at the group's hours.
-        for (_gp, _gn, _gs), homes in group_triples.items():
-            classes.update(homes)
-        for cl in classes:
+        by_bk: dict[str, tuple[set[str], list]] = {}
+        for k, v in self.slot.items():
+            t, ccl, s, dd, hh = k
+            if ccl != cl or dd != d or hh != h:
+                continue
+            if (t, ccl, s) in support_triples:
+                continue
+            if (t, ccl, s) in group_triples:
+                # Group's virtual-class slot; aggregated under each
+                # home class via the group_triples loop below.
+                continue
+            bk = parallel_busy_key.get((cl, s), s)
+            if bk not in by_bk:
+                by_bk[bk] = (set(), [])
+            by_bk[bk][0].add(s)
+            by_bk[bk][1].append(v)
+        for (gp, gn, gs), homes in group_triples.items():
+            if cl not in homes:
+                continue
+            if (gp, gn, gs) in support_triples:
+                continue
+            gv = self.slot.get((gp, gn, gs, d, h))
+            if gv is None:
+                continue
+            gbk = f"__grp__{gn}__{gs}"
+            if gbk not in by_bk:
+                by_bk[gbk] = (set(), [])
+            by_bk[gbk][1].append(gv)
+        busy_indicators = []
+        for bk, (subs, vs) in by_bk.items():
+            if len(vs) <= 1:
+                busy_indicators.extend(vs)
+                continue
+            is_aggregated = bk not in subs
+            is_coteach = any(
+                (cl, s) in coteach_busy_keys for s in subs)
+            if is_aggregated or is_coteach:
+                tag = f"_{name_suffix}" if name_suffix else ""
+                ind = self.model.NewBoolVar(
+                    f"agg{tag}_{cl}_{bk}_{d}_{h}")
+                self.model.AddMaxEquality(ind, vs)
+                busy_indicators.append(ind)
+            else:
+                busy_indicators.extend(vs)
+        return busy_indicators
+
+    def add_class_no_overlap(self):
+        """At most one slot per (class, day, hour).
+
+        Aggregation rules: see ``_build_class_busy_indicators``. The
+        registries (``_coteach_busy_keys`` / ``_support_triples`` /
+        ``_parallel_intra_busy_key`` / ``_group_triples``) start empty
+        on a freshly-built model, and with all empty this method
+        behaves exactly like the original ``sum(vs) <= 1`` formulation.
+        """
+        for cl in self._classes_with_busy_aggregation():
             for d in self.days:
                 for h in self.hours:
-                    # Bucket slots by busy key: parallel members share
-                    # ``__par__N`` (a key string distinct from any
-                    # subject), coteach members share their subject.
-                    by_bk: dict[str, tuple[set[str], list]] = {}
-                    for k, v in self.slot.items():
-                        t, ccl, s, dd, hh = k
-                        if ccl != cl or dd != d or hh != h:
-                            continue
-                        if (t, ccl, s) in support_triples:
-                            continue
-                        if (t, ccl, s) in group_triples:
-                            # Group's virtual-class slot; aggregated
-                            # under each home class via the
-                            # group_triples loop below, NOT under
-                            # cl=group_name (the virtual class has
-                            # no other slots so the constraint is
-                            # vacuous there).
-                            continue
-                        bk = parallel_busy_key.get((cl, s), s)
-                        if bk not in by_bk:
-                            by_bk[bk] = (set(), [])
-                        by_bk[bk][0].add(s)
-                        by_bk[bk][1].append(v)
-                    # Inter-class groups: append the group's slot to
-                    # each home class's busy aggregation under a
-                    # ``__grp__<gn>__<subj>`` busy key.
-                    for (gp, gn, gs), homes in group_triples.items():
-                        if cl not in homes:
-                            continue
-                        if (gp, gn, gs) in support_triples:
-                            continue
-                        gv = self.slot.get((gp, gn, gs, d, h))
-                        if gv is None:
-                            continue
-                        gbk = f"__grp__{gn}__{gs}"
-                        if gbk not in by_bk:
-                            by_bk[gbk] = (set(), [])
-                        by_bk[gbk][1].append(gv)
-                    busy_indicators = []
-                    for bk, (subs, vs) in by_bk.items():
-                        if len(vs) <= 1:
-                            busy_indicators.extend(vs)
-                            continue
-                        # ``bk not in subs`` is the parallel/group
-                        # marker: the busy key for a parallel intra
-                        # group is ``__par__<gid>``, for an inter
-                        # group is ``__grp__<gn>__<subj>`` -- neither
-                        # is a subject string. Coteach members share a
-                        # subject and ``(cl, subj)`` is in
-                        # ``_coteach_busy_keys``.
-                        is_aggregated = bk not in subs
-                        is_coteach = any(
-                            (cl, s) in coteach_busy_keys for s in subs)
-                        if is_aggregated or is_coteach:
-                            ind = self.model.NewBoolVar(
-                                f"agg_{cl}_{bk}_{d}_{h}")
-                            self.model.AddMaxEquality(ind, vs)
-                            busy_indicators.append(ind)
-                        else:
-                            busy_indicators.extend(vs)
-                    if len(busy_indicators) > 1:
-                        self.model.Add(sum(busy_indicators) <= 1)
+                    busy = self._build_class_busy_indicators(
+                        cl, d, h, name_suffix="nco")
+                    if len(busy) > 1:
+                        self.model.Add(sum(busy) <= 1)
 
     def add_coteach_groups(self, groups: list | None = None):
         """Co-teaching (compresenza) HARD constraint.
@@ -701,11 +716,24 @@ class ConstraintModel:
         """For each (class, day) in scope, the busy slots must be
         contiguous starting at the earliest hour. Implemented via the
         non-increasing ``present[h+1] <= present[h]`` chain on the
-        per-hour OR of class slots. Virtual group classes (registered
-        via ``add_parallel_groups_inter_class``) are skipped: the
-        legacy Phase B excludes them from ``cls_with_direct_triples``
-        for the same reason -- a group is not subject to the
-        curriculum no-holes / 4-hours-min logic."""
+        per-hour OR of class-busy indicators.
+
+        The per-hour ``present[h]`` indicator is built via
+        ``_build_class_busy_indicators`` so it shares the SAME
+        exclusion + aggregation logic as ``add_class_no_overlap``:
+        sostegno triples are excluded, coteach members are OR'd into a
+        single indicator, parallel intra-class members are OR'd, and
+        inter-class groups appear in their home classes' aggregation.
+        Without this alignment a sostegno hour would falsely "fill"
+        the no-holes chain and a parallel-intra group would be
+        double-counted.
+
+        Virtual group classes (registered via
+        ``add_parallel_groups_inter_class``) are skipped: the legacy
+        Phase B excludes them from ``cls_with_direct_triples`` for the
+        same reason -- a group is not subject to the curriculum
+        no-holes / 4-hours-min logic.
+        """
         virtual = {gn for (_gp, gn, _gs)
                     in getattr(self, "_group_triples", {})}
         classes = [c for c in self.classes_in_scope()
@@ -714,12 +742,18 @@ class ConstraintModel:
             for d in self.days:
                 present_per_h = []
                 for h in self.hours:
-                    vs = self.slots_for_class_day_hour(cl, d, h)
-                    if not vs:
+                    busy = self._build_class_busy_indicators(
+                        cl, d, h, name_suffix="nh")
+                    if not busy:
                         present_per_h.append(self.model.NewConstant(0))
                         continue
+                    if len(busy) == 1:
+                        # Single indicator already represents the
+                        # class-busy state at h; no extra OR needed.
+                        present_per_h.append(busy[0])
+                        continue
                     pr = self.model.NewBoolVar(f"pr_{cl}_{d}_{h}")
-                    self.model.AddMaxEquality(pr, vs)
+                    self.model.AddMaxEquality(pr, busy)
                     present_per_h.append(pr)
                 # Class starts at the earliest hour if any are busy:
                 # ap = OR(present); present[0] >= ap.
@@ -737,31 +771,43 @@ class ConstraintModel:
         is in ``cls_with_direct_triples``; the OO version applies it
         to every class in scope. Virtual group classes (registered
         via ``add_parallel_groups_inter_class``) are skipped --
-        groups have no curriculum h=11 obligation."""
+        groups have no curriculum h=11 obligation.
+
+        Both ``any_d`` (any lesson today) and ``pr11`` (lesson at
+        h=11) are built from ``_build_class_busy_indicators`` so they
+        apply the same exclusion + aggregation as
+        ``add_class_no_overlap`` / ``add_class_no_holes``: sostegno
+        is excluded, coteach/parallel intra members are OR'd into one
+        indicator each, inter-class groups feed their home classes.
+        """
         if 11 not in self.hours:
             return
-        h11_idx = self.hours.index(11)
         virtual = {gn for (_gp, gn, _gs)
                     in getattr(self, "_group_triples", {})}
         classes = [c for c in self.classes_in_scope()
                     if c not in virtual]
         for cl in classes:
             for d in self.days:
-                vs = self.slots_for_class_day_hour(
-                    cl, d, self.hours[h11_idx])
-                if not vs:
+                # Build the per-hour busy indicators ONCE per (cl, d):
+                # ``pr11`` reads the h=11 bucket and ``any_d`` reads
+                # the union across all hours. Calling the helper
+                # twice would create two parallel families of
+                # aggregator BoolVars (wasteful, harmless).
+                busy_per_h: dict[int, list] = {}
+                for h in self.hours:
+                    busy_per_h[h] = (
+                        self._build_class_busy_indicators(
+                            cl, d, h, name_suffix="h11"))
+                bvs_11 = busy_per_h.get(11, [])
+                if not bvs_11:
                     continue
-                # ``any_present`` over the day forces the h=11 slot to
-                # be busy when the class has any lessons.
-                day_vars = [v for (_t, ccl, _s, dd, _h), v
-                             in self.slot.items()
-                             if ccl == cl and dd == d]
-                if not day_vars:
+                all_busy = [v for h in self.hours for v in busy_per_h[h]]
+                if not all_busy:
                     continue
                 any_d = self.model.NewBoolVar(f"ap11_{cl}_{d}")
-                self.model.AddMaxEquality(any_d, day_vars)
+                self.model.AddMaxEquality(any_d, all_busy)
                 pr11 = self.model.NewBoolVar(f"pr11_{cl}_{d}")
-                self.model.AddMaxEquality(pr11, vs)
+                self.model.AddMaxEquality(pr11, bvs_11)
                 self.model.Add(pr11 >= any_d)
 
     # ============================================================
@@ -1016,6 +1062,13 @@ class ConstraintModel:
             self.model, self.slot, config=self.config,
             classroom_for_slot=cfs,
             plessi_data=plessi,
+            # ``owner_model=self`` lets the no_holes / h11 pragmas
+            # share ``_build_class_busy_indicators`` -- the same
+            # exclusion + aggregation logic backing
+            # ``add_class_no_overlap`` -- so rules compiled via the
+            # DSL match the OO methods byte-for-byte even when
+            # sostegno / coteach / parallel intra are registered.
+            owner_model=self,
         )
         compiler.compile(expression)
         self.dsl_diagnostics.extend(compiler.diagnostics)
@@ -1145,11 +1198,18 @@ class MonolithicSolver(ConstraintModel):
         # virtual class; the per-class HARD methods skip virtual
         # group classes when iterating ``classes_in_scope()``.
         self.add_parallel_groups_inter_class()
-        self.add_all_hard_constraints(via_dsl=via_dsl)
+        # Populate the busy-key registries (``_coteach_busy_keys`` /
+        # ``_support_triples`` / ``_parallel_intra_busy_key``) BEFORE
+        # ``add_all_hard_constraints`` so the no_holes + h11 methods
+        # invoked there see the same exclusion + aggregation rules as
+        # ``add_class_no_overlap``. Without this ordering, no_holes
+        # would treat sostegno as a fresh class occupation and
+        # double-count parallel-intra members.
         self.add_coteach_groups()
         self.add_support_assignments()
         self.add_potenziamento_assignments()
         self.add_parallel_groups_intra_class()
+        self.add_all_hard_constraints(via_dsl=via_dsl)
         self.add_class_no_overlap()
         obj_terms, _ = self.compute_soft_cost_expr()
         if obj_terms:

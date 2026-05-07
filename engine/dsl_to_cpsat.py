@@ -424,7 +424,8 @@ class DSLConstraintCompiler:
     def __init__(self, model, slot: dict, *, config=None,
                  is_hard: bool = True,
                  classroom_for_slot: dict | None = None,
-                 plessi_data: Any = None):
+                 plessi_data: Any = None,
+                 owner_model: Any = None):
         self.model = model
         self.slot = slot
         self.config = config
@@ -437,6 +438,16 @@ class DSLConstraintCompiler:
         # ``_resolve_lesson_path`` and never mutated.
         self.classroom_for_slot = classroom_for_slot
         self.plessi_data = plessi_data
+        # Optional ``ConstraintModel`` whose busy-key registries
+        # (``_coteach_busy_keys`` / ``_support_triples`` /
+        # ``_parallel_intra_busy_key`` / ``_group_triples``) the
+        # ``no_holes_class`` / ``class_present_at_hour`` pragmas
+        # delegate to via ``_build_class_busy_indicators``. When
+        # ``None`` (or the model has no helper) the pragmas fall
+        # back to the raw per-(cl, d, h) slot OR -- legacy behavior,
+        # zero-drift on simple scenarios but drifts from Phase B
+        # whenever sostegno / coteach / parallel intra is in play.
+        self.owner_model = owner_model
         # Index slot keys by candidate dimensions for O(1) lookup.
         self._by_t: dict = {}
         self._by_c: dict = {}
@@ -898,11 +909,38 @@ class DSLConstraintCompiler:
     def _hours_in_scope(self) -> list:
         return sorted({k[4] for k in self.slot})
 
+    def _class_busy_indicators(self, cl: str, d: int, h: int,
+                                  *, name_suffix: str) -> list:
+        """Return class-busy indicators for ``(cl, d, h)``.
+
+        When the compiler was constructed with an ``owner_model`` that
+        exposes ``_build_class_busy_indicators``, defer to it so the
+        pragma applies the same exclusion + aggregation as
+        ``add_class_no_overlap`` / ``add_class_no_holes`` /
+        ``add_h3_presence_at_11`` (sostegno excluded, coteach +
+        parallel intra members OR'd into one indicator each,
+        inter-class groups feed home classes). Otherwise fall back to
+        the raw per-slot list (legacy zero-drift behavior on simple
+        scenarios that have no busy registries to honor).
+        """
+        owner = getattr(self, "owner_model", None)
+        if owner is not None and hasattr(
+                owner, "_build_class_busy_indicators"):
+            return owner._build_class_busy_indicators(
+                cl, d, h, name_suffix=f"dsl_{name_suffix}")
+        return self._slots_for_class_day_hour(cl, d, h)
+
     def _compile_no_holes_for_class(self, cl: str):
         """Class no-holes: per (class, day) the busy slots are
         contiguous and start at the earliest hour. Encoded via the
         non-increasing chain on per-hour OR indicators -- identical
-        to ConstraintModel.add_class_no_holes for a single class."""
+        to ConstraintModel.add_class_no_holes for a single class.
+
+        Per-hour ``present[h]`` is built from
+        ``_class_busy_indicators`` so the rule honors the same
+        exclusion + aggregation as the OO method when the compiler
+        was given an ``owner_model``.
+        """
         days = self._days_in_scope()
         hours = self._hours_in_scope()
         if not hours:
@@ -910,13 +948,17 @@ class DSLConstraintCompiler:
         for d in days:
             present_per_h = []
             for h in hours:
-                vs = self._slots_for_class_day_hour(cl, d, h)
-                if not vs:
+                busy = self._class_busy_indicators(
+                    cl, d, h, name_suffix="nh")
+                if not busy:
                     present_per_h.append(self.model.NewConstant(0))
+                    continue
+                if len(busy) == 1:
+                    present_per_h.append(busy[0])
                     continue
                 pr = self.model.NewBoolVar(
                     f"_dsl_pr_{cl}_{d}_{h}")
-                self.model.AddMaxEquality(pr, vs)
+                self.model.AddMaxEquality(pr, busy)
                 present_per_h.append(pr)
             ap = self.model.NewBoolVar(f"_dsl_ap_{cl}_{d}")
             self.model.AddMaxEquality(ap, present_per_h)
@@ -927,28 +969,42 @@ class DSLConstraintCompiler:
 
     def _compile_class_present_at_hour(self, cl: str, hr: int):
         """If the class has any lesson that day, the slot at ``hr``
-        must be busy. Same encoding as add_h3_presence_at_11."""
+        must be busy. Same encoding as ``add_h3_presence_at_11``.
+
+        Both ``any_d`` (any lesson today) and ``pr_h`` (lesson at
+        ``hr``) read ``_class_busy_indicators`` so the pragma honors
+        the OO model's exclusion + aggregation rules when an
+        ``owner_model`` was supplied.
+        """
         days = self._days_in_scope()
         hours = self._hours_in_scope()
         if hr not in hours:
             return
         for d in days:
-            day_vars = self._slots_for_class_day(cl, d)
-            if not day_vars:
-                continue
-            vs_at_hr = self._slots_for_class_day_hour(cl, d, hr)
-            if not vs_at_hr:
-                # Class never reaches that hour: forbid any lesson on
-                # that day (else the rule cannot be satisfied).
+            busy_per_h: dict[int, list] = {}
+            for h in hours:
+                busy_per_h[h] = self._class_busy_indicators(
+                    cl, d, h, name_suffix="h11")
+            bvs_hr = busy_per_h.get(hr, [])
+            if not bvs_hr:
+                # Class has no slot at hr today; forbid any lesson on
+                # that day (else the rule cannot be satisfied). Use
+                # the raw day vars here, not the busy indicators,
+                # since the unsatisfiability target is "any slot",
+                # not "any class-busy occupation".
+                day_vars = self._slots_for_class_day(cl, d)
                 for v in day_vars:
                     self.model.Add(v == 0)
                 continue
+            all_busy = [v for h in hours for v in busy_per_h[h]]
+            if not all_busy:
+                continue
             any_d = self.model.NewBoolVar(
                 f"_dsl_apX_{cl}_{d}_{hr}")
-            self.model.AddMaxEquality(any_d, day_vars)
+            self.model.AddMaxEquality(any_d, all_busy)
             pr_h = self.model.NewBoolVar(
                 f"_dsl_prX_{cl}_{d}_{hr}")
-            self.model.AddMaxEquality(pr_h, vs_at_hr)
+            self.model.AddMaxEquality(pr_h, bvs_hr)
             self.model.Add(pr_h >= any_d)
 
     def _compile_teacher_max_per_day(self, t: str, n: int):
