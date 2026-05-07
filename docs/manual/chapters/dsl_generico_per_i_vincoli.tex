@@ -354,6 +354,205 @@ forall l in lessons where l.subject == Religione
 \end{lstlisting}
 \end{enumerate}
 
+\section{Scope: dove salvare il vincolo}
+\label{sec:dsl-scope}
+
+Il modal ``+ Nuovo vincolo DSL'' compare in due punti dell'app
+e produce regole con \texttt{scope} diverso. La regola di
+selezione \`e: lo \texttt{scope} \`e il dominio della regola, il
+\texttt{forall} sul corpo \`e il filtro di applicazione.
+
+\begin{itemize}
+\item \textbf{Tab Vincoli} (\texttt{/constraints}, modal con
+  \texttt{scope="global"}, \texttt{owner\_id=null}). Vincolo
+  d'istituto: si applica a tutta la scuola. Esempi: ``nessuno
+  alla 14a ora'', ``mai lezioni il sabato pomeriggio''.
+
+\item \textbf{Tab Docente} (\texttt{/teachers/<id>}, scheda
+  ``Custom DSL avanzato'', \texttt{scope="teacher"},
+  \texttt{owner\_id=teacher\_id}). Vincolo per docente: il
+  forall esterno \`e \emph{tipicamente} pre-filtrato su
+  \texttt{l.teacher == NomeDocente}. Esempi: ``Rossi non venerd\`i
+  pomeriggio'', ``Rossi: 3 ore Fisica su giorni non
+  consecutivi''.
+\end{itemize}
+
+In entrambi i casi la regola passa per
+\texttt{POST /api/constraints/general}, viene caricata da
+\texttt{load\_all\_dsl\_constraints(db)} e compilata da
+\texttt{add\_all\_dsl\_constraints\_from\_db}; il campo
+\texttt{scope\_kind} \`e meramente informativo (filtra le regole
+in Feasibility Check + reporting).
+
+\subsection{DSL avanzato vs unavailability logica}
+
+Le \texttt{LogicalUnavailability} (modal ``Indisponibilit\`a
+logica'' nel tab Docente) sono un sotto-DSL pi\`u semplice:
+sono pensate per non-disponibilit\`a (DNF di slot
+\texttt{(day, hour)}) e vengono renderizzate dal sistema in DSL
+generico via \texttt{logical\_unavailability\_to\_dsl}. Il DSL
+generico \`e pi\`u espressivo (count, exists, forall, predicati
+\texttt{same\_day} / \texttt{consecutive\_days}, aritmetica,
+\texttt{l.classroom.plesso}) e dovrebbe essere il punto di
+ingresso per ogni vincolo che vada oltre ``il docente non c'\`e a
+quell'ora''.
+
+\section{Predicati built-in: \texttt{consecutive\_days},
+\texttt{same\_day}, \texttt{consecutive}}
+\label{sec:dsl-predicates-ref}
+
+Tre funzioni built-in che il compilatore risolve a tempo di
+compilazione (e l'evaluator post-hoc valuta sulla soluzione):
+
+\begin{tabular}{lp{8cm}}
+\toprule
+\textbf{Predicato} & \textbf{Semantica} \\
+\midrule
+\texttt{same\_day(s1, s2)} &
+  i due slot cadono nello stesso giorno della settimana.
+  Argomenti: tuple \texttt{(d, h)} oppure \texttt{l.slot}. \\
+
+\texttt{consecutive(s1, s2)} &
+  stesso giorno e \emph{ore} adiacenti ($|h_1-h_2|=1$). Path:
+  \texttt{l.slot}. \\
+
+\texttt{consecutive\_days(d1, d2)} &
+  \emph{giorni} adiacenti senza wrap-around: vero per
+  $|d_1-d_2|=1$ con $d \in \{1,\ldots,6\}$ (lun..sab). Falso
+  per $\{$sab, lun$\}$. Argomenti: \texttt{l.day} (intero) o
+  literal numerico/stringa giorno. \\
+\bottomrule
+\end{tabular}
+
+\section{Aritmetica nel DSL}
+\label{sec:dsl-arithmetic}
+
+Il parser supporta gli operatori binari \texttt{+} e \texttt{-}
+sugli interi: utili per esprimere finestre dipendenti
+dall'indice giorno o per conteggi cumulativi. Esempio: ``Rossi
+ha tante ore in 3A nei primi 3 giorni quante in 3B nei restanti
+3 giorni'':
+\begin{lstlisting}
+(count l in lessons where l.teacher == "Rossi"
+   and l.class == "3A" and l.day <= 3: l)
+== (count l in lessons where l.teacher == "Rossi"
+      and l.class == "3B" and l.day >= 4: l)
+\end{lstlisting}
+
+L'aritmetica fra booleani e numeri non \`e ammessa: il parser
+emette \texttt{aritmetica non valida fra bool e numero} per
+catturare errori del tipo \texttt{(l.hour == 9) + 1}.
+
+\section{Casi d'uso reali (Rossi e dintorni)}
+\label{sec:dsl-rossi}
+
+Tutti gli esempi che seguono sono coperti dalla suite di
+integration test in
+\texttt{webui/backend/tests/test\_rossi\_general\_dsl\_integration.py}
+e
+\texttt{webui/backend/tests/test\_global\_dsl\_and\_soft\_and\_plesso\_commute.py}.
+
+\subsection{Caso (a) -- 3 ore di Fisica in 3A su giorni non
+consecutivi (HARD)}
+
+\begin{lstlisting}
+forall l1 in lessons where l1.teacher == "Rossi"
+                       and l1.class == "3A"
+                       and l1.subject == "Fisica":
+    forall l2 in lessons where l2.teacher == "Rossi"
+                           and l2.class == "3A"
+                           and l2.subject == "Fisica":
+        (l1.day == l2.day)
+        or not consecutive_days(l1.day, l2.day)
+\end{lstlisting}
+
+Salvato dal tab Docente con \texttt{scope="teacher",
+owner\_id=Rossi.id}. Il compilatore apre il forall esterno sui
+candidati slot di Rossi/3A/Fisica e per ogni coppia $(l_1,l_2)$
+con \texttt{consecutive\_days($l_1$.day, $l_2$.day)} e diversa
+\texttt{day} emette \texttt{BoolOr([slot[k1].Not(),
+slot[k2].Not()])}: i due slot non possono essere co-selezionati.
+
+\subsection{Caso (b) -- 3 ore di Fisica in 3C tutte lo stesso
+giorno (HARD)}
+
+\begin{lstlisting}
+forall l1 in lessons where l1.teacher == "Rossi"
+                       and l1.class == "3C"
+                       and l1.subject == "Fisica":
+    forall l2 in lessons where l2.teacher == "Rossi"
+                           and l2.class == "3C"
+                           and l2.subject == "Fisica":
+        same_day(l1.slot, l2.slot)
+\end{lstlisting}
+
+Per la propriet\`a transitiva del same\_day sul \texttt{forall
+forall}, ogni coppia di lezioni di Rossi/3C/Fisica deve essere
+sullo stesso giorno: il solver sceglie un giorno e ci infila
+tutte e 3 le ore.
+
+\subsection{Caso plesso commute -- Rossi mai A@9 $\to$ B@10
+nello stesso giorno (HARD)}
+
+\begin{lstlisting}
+forall l1 in lessons where l1.teacher == "Rossi"
+                       and l1.hour == 9
+                       and l1.classroom.plesso == 1:
+    forall l2 in lessons where l2.teacher == "Rossi"
+                           and l2.hour == 10
+                           and l2.classroom.plesso == 2
+                           and same_day(l1.slot, l2.slot):
+        false
+\end{lstlisting}
+
+Plesso 1 = ``A'', plesso 2 = ``B'' (gli ID interi di
+\texttt{plessi.id}). Funziona compile-time quando il modello \`e
+costruito con \texttt{classroom\_for\_slot} (es. nel solver di
+classroom-assignment) o con plesso fisso per classe; in tutti
+gli altri casi \`e pienamente verificabile post-hoc dal
+Feasibility Check.
+
+\subsection{Caso (Rossi non Fisica venerd\`i) (HARD)}
+
+\begin{lstlisting}
+forall l in lessons where l.teacher == "Rossi"
+                       and l.subject == "Fisica"
+                       and l.day == 5:
+    false
+\end{lstlisting}
+
+Il body \emph{statico} \texttt{false} \`e l'idioma canonico per
+``proibire qualunque slot che soddisfa il where''. Equivalente a
+\texttt{l.day != 5} ma pi\`u esplicito quando il where \`e
+multi-clausola.
+
+\subsection{Caso (compresenza supplementare nello stesso
+giorno) (HARD)}
+
+``Quando Rossi insegna Sostegno in 2B, la lezione di Sostegno
+deve cadere nello stesso giorno di una lezione di Rossi in 2B
+con materia Matematica'':
+\begin{lstlisting}
+forall l in lessons where l.teacher == "Rossi"
+                       and l.class == "2B"
+                       and l.subject == "Sostegno":
+    exists m in lessons where m.teacher == "Rossi"
+                          and m.class == "2B"
+                          and m.subject == "Matematica"
+                          and same_day(l.slot, m.slot):
+        true
+\end{lstlisting}
+
+\subsection{Tutti i casi precedenti come SOFT}
+
+Cambia \texttt{level=hard} in \texttt{level=soft} nel modal e
+imposta \texttt{weight=$W$}. Il solver riceve la regola come
+penalit\`a $W$ per coppia/lezione violante; quando una soluzione
+HARD-feasible che la rispetta esiste, il solver la sceglie per
+primo (perch\'e ha costo aggiuntivo zero); altrimenti accetta la
+violazione minimizzando il numero di coppie/lezioni che pagano
+$W$.
+
 \section{Errori comuni}
 
 \begin{itemize}
@@ -561,31 +760,55 @@ prossimi step il path hardcoded verr\`a deprecato a favore del
 path DSL, e l'esistenza di \texttt{seed\_implicit\_hardcoded}
 permette di farlo senza perdere la copertura dei vincoli.
 
-\section{Stato dei vincoli SOFT}
+\section{Vincoli SOFT con peso}
 \label{sec:dsl-soft-status}
 
-Il DSL accetta sia regole HARD che regole SOFT (con peso
-opzionale). A livello di \emph{evaluator post-hoc} il SOFT \`e
-pienamente implementato: le violazioni di clausole SOFT
-contribuiscono allo score globale della soluzione e sono
-visibili nelle metriche restituite da \texttt{run\_metrics}.
+Il DSL accetta quattro livelli: \texttt{hard}, \texttt{soft},
+\texttt{preferred}, \texttt{enforced}. A livello di
+\emph{evaluator post-hoc} il SOFT \`e pienamente implementato: le
+violazioni contribuiscono allo score globale della soluzione e
+sono visibili nelle metriche di \texttt{run\_metrics}.
 
-A livello di \emph{compilatore CP-SAT} (Step 1+) il SOFT \`e
-attualmente accettato dal parser ma il backend di compilazione
-non emette ancora la traduzione a costo soft (penalit\`a
-positiva sull'obiettivo). Il diagnostico
-\texttt{soft constraint X: SOFT cost not yet wired} \`e emesso
-dal compilatore per ogni regola SOFT incontrata; la regola
-viene archiviata nel modello come \emph{label informativo}, ma
-il solver non aggiusta l'obiettivo. Nei prossimi step la SOFT
-verr\`a integrata: l'utente legge ora la guida tenendo presente
-che il SOFT in DSL \`e semanticamente definito ma il suo
-\emph{enforcement} via CP-SAT \`e ancora in corso.
+Dal commit \texttt{feat(dsl): soft level for general\_dsl} il
+\emph{compilatore CP-SAT} \emph{integra} il SOFT direttamente
+nell'obiettivo del solver. Il path \`e:
 
-In pratica: usare HARD per qualunque cosa che non possa essere
-violata; per le SOFT, usare il DSL come ``contratto
-dichiarativo'' che oggi la pipeline esegue post-hoc e domani
-eseguir\`a anche durante la compilazione.
+\begin{enumerate}
+\item L'utente sceglie \texttt{level=soft} e un peso intero
+  $W$ (es. 50) nel modal di creazione.
+\item \texttt{load\_all\_dsl\_constraints(db, include\_soft=True)}
+  restituisce la regola con \texttt{is\_hard=False, weight=$W$}.
+\item \texttt{add\_dsl\_constraint(expr, is\_hard=False,
+  soft\_weight=$W$)} compila la regola: ogni candidato
+  \texttt{slot[k]} che violerebbe il body emette
+  \texttt{(W, slot[k])} in \texttt{soft\_cost\_terms} invece di
+  \texttt{slot[k] == 0}; nei doppi \texttt{forall} viene reificata
+  una \texttt{BoolVar b} con \texttt{b == s1 \&\& s2} e si emette
+  \texttt{(W, b)}.
+\item \texttt{MonolithicSolver.build()} somma
+  \texttt{dsl\_soft\_cost\_terms} negli \texttt{obj\_terms} prima
+  del \texttt{Minimize(sum(obj\_terms))}.
+\end{enumerate}
+
+\textbf{Semantica}. Una violazione \emph{forall} costa
+$W$ per lezione che cade nella cella vietata; una violazione
+\emph{forall-forall} costa $W$ per coppia co-selezionata. Pesi
+negativi sono accettati come bonus PREFERRED.
+
+\textbf{Esempio}. ``Rossi non dovrebbe avere ore consecutive in
+3A in giorni successivi'' (penalit\`a 50 per coppia):
+\begin{lstlisting}
+forall l1 in lessons where l1.teacher == "Rossi"
+                       and l1.class == "3A":
+    forall l2 in lessons where l2.teacher == "Rossi"
+                           and l2.class == "3A":
+        (l1.day == l2.day)
+        or not consecutive_days(l1.day, l2.day)
+\end{lstlisting}
+Salvato come \texttt{level=soft, weight=50, scope=global}: il
+solver pu\`o piazzare due ore in marted\`i+mercoled\`i pagando
+50 alla volta, ma se esiste una soluzione con marted\`i+gioved\`i
+(non consecutive) la sceglier\`a.
 
 \section{Diagramma dell'architettura DSL}
 \label{sec:dsl-archi}
