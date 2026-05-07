@@ -62,9 +62,51 @@ from collections import defaultdict
 
 from ortools.sat.python import cp_model
 
+# Tab Ore (working hours config) plumbing
+# ---------------------------------------
+# DAYS / HOURS / SLOTS_PER_DAY are now driven by
+# ``engine.working_hours_config`` instead of being hardcoded literals,
+# so the user's customisation in the Tab Ore UI propagates through to
+# every solver in the pipeline. The lists are MUTATED IN PLACE on
+# refresh (``_apply_working_hours_config``) so downstream modules that
+# bind ``DAYS = cv2.DAYS`` keep the same list reference and see the
+# new values transparently. The legacy-fallback defaults (lun..sab,
+# 8..13) are bit-identical to the old hardcoded literals so existing
+# tests run unchanged when the working_hours DB is empty / absent.
+try:
+    from . import working_hours_config as _whc  # type: ignore
+except ImportError:  # direct script import (no package context)
+    import working_hours_config as _whc  # type: ignore
 
-DAYS = list(range(1, 7))                       # 1..6
-HOURS = list(range(8, 14))                     # 8..13 (6 ore)
+
+DAYS: list[int] = list(_whc.get_days())        # default 1..6
+HOURS: list[int] = list(_whc.get_hours())      # default 8..13 (6 ore)
+SLOTS_PER_DAY: dict[int, int] = dict(
+    _whc.get_slots_per_day_map())              # default {1:6,..,6:6}
+
+
+def _apply_working_hours_config() -> None:
+    """Refresh DAYS / HOURS / SLOTS_PER_DAY from
+    ``working_hours_config`` (which re-reads the DB after ``reload()``).
+
+    Lists/dicts are mutated IN PLACE so downstream module-level
+    aliases (``metaheuristics.DAYS = cv2.DAYS`` etc.) keep the same
+    reference and pick up the new values without a re-import.
+    """
+    _whc.reload()
+    DAYS[:] = list(_whc.get_days())
+    HOURS[:] = list(_whc.get_hours())
+    SLOTS_PER_DAY.clear()
+    SLOTS_PER_DAY.update(_whc.get_slots_per_day_map())
+
+
+def slots_for_day(day: int) -> int:
+    """Number of active slots for ``day`` (legacy day number).
+    Falls back to ``len(HOURS)`` for unknown days so existing
+    callers that pass a raw day number always get a sensible cap."""
+    return SLOTS_PER_DAY.get(int(day), len(HOURS))
+
+
 MAX_PER_DAY_TRIPLE = 2                         # max 2 ore al giorno per cattedra
 MAX_PER_DAY_PROF_CL = 3                        # max 3 ore al giorno (prof, classe)
 DAY_HOURS_MIN = 4                              # almeno 4 ore al giorno per classe

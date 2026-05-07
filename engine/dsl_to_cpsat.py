@@ -46,8 +46,8 @@ except ImportError:
     import metaheuristics as meta  # type: ignore
 
 
-DAYS = list(meta.DAYS)
-HOURS = list(meta.HOURS)
+DAYS = meta.DAYS
+HOURS = meta.HOURS
 
 
 # Map between DSL day-name literals and integer codes used in the

@@ -279,3 +279,24 @@ def is_uniform_slot_count() -> bool:
         return True
     target = max(counts)
     return all(c == target for c in counts)
+
+
+def get_slots_per_day_map() -> dict[int, int]:
+    """Map ``legacy_day_number -> active slot count`` for active days.
+
+    Drives the CP-SAT slot-count constraint in solve_phase_a /
+    solve_phase_b_for_day / MonolithicSolver: a day with fewer slots
+    than ``max_slots_per_day`` caps the per-day load and forces the
+    surplus slot vars to 0 so no lesson lands on a non-existent
+    afternoon hour.
+
+    Defaults (legacy fallback): every day gets ``len(_LEGACY_HOURS) = 6``
+    slots so the constraint reduces to a no-op vs the legacy behaviour.
+    """
+    cfg = _load()
+    out: dict[int, int] = {}
+    for d in cfg["days"]:
+        if not d["is_active"]:
+            continue
+        out[int(d["legacy_day_number"])] = len(d["slots"])
+    return out
