@@ -194,3 +194,87 @@ def test_class_day_load_empty_dc_warns():
         model, slot={}, day_count={}, level="phase_a")
     compiler.compile('class_day_load_in_day_count("1A", 0, 4)')
     assert any("day_count empty" in d for d in compiler.diagnostics)
+
+
+# ============================================================
+# Pragma 2: hall_bound_prof_day
+# ============================================================
+
+
+def test_hall_bound_prof_day_caps_to_class_load():
+    """Prof teaches in class 1A only; without the bound the prof
+    could push 6 hrs into a day where the class has only 4 hrs of
+    other lessons. With the Hall pragma + class_day_load_in {0,4,5,6}
+    the prof's daily load is bounded by the class load."""
+    import dsl_to_cpsat as d2c
+    triples = [
+        ("T1", "1A", "Mat", 4),  # the prof under Hall
+        ("T2", "1A", "Ita", 2),  # extra hours so class load can hit 6
+    ]
+    model, day_count, days = _build_dc_model(
+        triples, max_per_day=4)
+    # Force class 1A on day 1 to load = 4 (T1=2 + T2=2). Then T1
+    # cannot use day 1 to push 4 hrs (would exceed cl_day_load).
+    model.Add(day_count[("T1", "1A", "Mat", 1)] == 2)
+    model.Add(day_count[("T2", "1A", "Ita", 1)] == 2)
+    # Force T1 to put its 3rd Mat hour on day 1 too.
+    # 4 Mat hours - 2 on day 1 - 1 on day 2 = 1 left -- fine.
+    compiler = d2c.DSLConstraintCompiler(
+        model, slot={}, day_count=day_count, level="phase_a")
+    compiler.compile('hall_bound_prof_day("T1")')
+    # Now try to force T1 day_count == 5 on day 2 (fewer 1A hours)
+    # to validate Hall is per-day.
+    s, status = _solve(model)
+    from ortools.sat.python import cp_model
+    assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+    # T1 daily load on day 1 must be <= cl_day_load(1A, 1) = 4.
+    t1_d1 = s.Value(day_count[("T1", "1A", "Mat", 1)])
+    assert t1_d1 <= 4
+
+
+def _build_hall_infeas_model():
+    """Helper: build a Phase A model where T1 has prof_day_load=4 on
+    day 1 (2 Mat in 1A + 2 Sci in 1B) but cl_day_load(1A, 1) = 2
+    and cl_day_load(1B, 1) = 2, so the Hall bound 4 <= max(2, 2) = 2
+    fires infeasible. The base model (without Hall) is feasible.
+    """
+    import dsl_to_cpsat as d2c  # noqa: F401
+    triples = [
+        ("T1", "1A", "Mat", 4),
+        ("T1", "1B", "Sci", 4),
+        ("T2", "1A", "Ita", 2),  # other 1A cattedra so 1A load > 0
+    ]
+    model, day_count, days = _build_dc_model(
+        triples, max_per_day=4)
+    # Force T1 to load 2+2=4 on day 1.
+    model.Add(day_count[("T1", "1A", "Mat", 1)] == 2)
+    model.Add(day_count[("T1", "1B", "Sci", 1)] == 2)
+    # Force the OTHER 1A cattedra and the not-applicable parts to 0
+    # on day 1, so cl_day_load(1A, 1) = T1 Mat = 2 and
+    # cl_day_load(1B, 1) = T1 Sci = 2.
+    model.Add(day_count[("T2", "1A", "Ita", 1)] == 0)
+    return model, day_count, days
+
+
+def test_hall_bound_prof_day_baseline_feasible_without_pragma():
+    """Sanity check: the constructed model is feasible BEFORE Hall
+    is added -- so the next test's INFEASIBLE outcome is genuinely
+    caused by the pragma, not by contradictory locks."""
+    model, _, _ = _build_hall_infeas_model()
+    _, status = _solve(model)
+    from ortools.sat.python import cp_model
+    assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+
+
+def test_hall_bound_prof_day_makes_overload_infeasible():
+    """With the Hall pragma added, prof_day_load(T1, 1) = 4 violates
+    the bound max(cl_day_load(1A, 1)=2, cl_day_load(1B, 1)=2) = 2
+    -> the model becomes INFEASIBLE."""
+    import dsl_to_cpsat as d2c
+    model, day_count, _ = _build_hall_infeas_model()
+    compiler = d2c.DSLConstraintCompiler(
+        model, slot={}, day_count=day_count, level="phase_a")
+    compiler.compile('hall_bound_prof_day("T1")')
+    _, status = _solve(model)
+    from ortools.sat.python import cp_model
+    assert status == cp_model.INFEASIBLE

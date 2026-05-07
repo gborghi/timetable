@@ -984,6 +984,14 @@ class DSLConstraintCompiler:
             allowed = [int(v) for v in arg_values[1:]]
             self._compile_class_day_load_in_day_count(cl, allowed)
             return True
+        if name == "hall_bound_prof_day":
+            if len(arg_values) != 1:
+                self.diagnostics.append(
+                    f"hall_bound_prof_day expects 1 arg "
+                    f"(prof), got {len(arg_values)}")
+                return True
+            self._compile_hall_bound_prof_day(str(arg_values[0]))
+            return True
         # Unknown call name: leave for the generic path.
         return False
 
@@ -1279,6 +1287,83 @@ class DSLConstraintCompiler:
             self.model.Add(cdl == sum(terms))
         self._cl_day_load_cache[key] = cdl
         return cdl
+
+    def _prof_day_load_intvar(self, p: str, d: int):
+        """Cached IntVar = sum_{(c, s) | (p, c, s, d) in day_count}
+        day_count[(p, c, s, d)]. Constant-0 when no terms.
+
+        Mirrors ``prof_day_load[p, d]`` in ``solve_phase_a``.
+        """
+        key = (p, d)
+        if key in self._prof_day_load_cache:
+            return self._prof_day_load_cache[key]
+        terms = [v for (pp, _cl, _s, dd), v in self.day_count.items()
+                 if pp == p and dd == d]
+        if not terms:
+            pdl = self.model.NewConstant(0)
+        else:
+            pdl = self.model.NewIntVar(
+                0, 100, f"_dsl_pdl_{p}_{d}")
+            self.model.Add(pdl == sum(terms))
+        self._prof_day_load_cache[key] = pdl
+        return pdl
+
+    def _compile_hall_bound_prof_day(self, p: str):
+        """Phase A Hall-like bound: per (prof, day),
+        ``prof_day_load[p, d] <= max_c cl_day_load[c, d]`` over the
+        classes the prof teaches that day. Mirrors
+        ``cpsat_v2_timetable.solve_phase_a`` lines 685..732.
+
+        Encoded class-by-class via:
+            ind[c, d] := (sum_s day_count[(p, c, s, d)] >= 1)
+            rl[c, d] = cl_day_load[c, d]   when ind == 1
+            rl[c, d] = 0                    when ind == 0
+            prof_day_load[p, d] <= max_c rl[c, d]
+
+        The implication form is the same the legacy uses; ind makes
+        sure that classes the prof doesn't touch on day d don't
+        weaken the bound to 0.
+        """
+        if not self.day_count:
+            self.diagnostics.append(
+                "hall_bound_prof_day: day_count empty")
+            return
+        days = self._days_in_dc_scope()
+        # Classes this prof teaches at all (any subject, any day).
+        classes_of_p = sorted(
+            {cl for (pp, cl, _s, _d) in self.day_count if pp == p}
+        )
+        if not classes_of_p:
+            self.diagnostics.append(
+                f"hall_bound_prof_day: prof {p!r} not in day_count")
+            return
+        for d in days:
+            relevant_loads = []
+            for c in classes_of_p:
+                subj_terms = [
+                    v for (pp, ccl, _s, dd), v in self.day_count.items()
+                    if pp == p and ccl == c and dd == d
+                ]
+                if not subj_terms:
+                    continue
+                ind = self.model.NewBoolVar(
+                    f"_dsl_hb_ind_{p}_{c}_{d}")
+                cnt_pcd = sum(subj_terms)
+                self.model.Add(cnt_pcd >= 1).OnlyEnforceIf(ind)
+                self.model.Add(cnt_pcd == 0).OnlyEnforceIf(ind.Not())
+                rl = self.model.NewIntVar(
+                    0, 100, f"_dsl_hb_rl_{p}_{c}_{d}")
+                cdl = self._cl_day_load_intvar(c, d)
+                self.model.Add(rl == cdl).OnlyEnforceIf(ind)
+                self.model.Add(rl == 0).OnlyEnforceIf(ind.Not())
+                relevant_loads.append(rl)
+            if not relevant_loads:
+                continue
+            max_load = self.model.NewIntVar(
+                0, 100, f"_dsl_hb_max_{p}_{d}")
+            self.model.AddMaxEquality(max_load, relevant_loads)
+            pdl = self._prof_day_load_intvar(p, d)
+            self.model.Add(pdl <= max_load)
 
     def _compile_class_day_load_in_day_count(
             self, cl: str, allowed: list[int]):
