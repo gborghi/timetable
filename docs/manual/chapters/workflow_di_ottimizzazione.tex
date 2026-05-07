@@ -126,6 +126,79 @@ automaticamente \texttt{phase\_a\_mode} quando l'utente cambia
         distribuzione.
 \end{itemize}
 
+\paragraph{Branch-and-Price V1 e \texttt{cp\_sat\_scope=week}.}
+Una domanda emersa durante lo sviluppo della Phase 3 era: se
+Phase A non fissa pi\`u il \texttt{day\_count} come uguaglianza
+rigida (\texttt{phase\_a\_mode=skip} oppure \texttt{soft\_hint}),
+la generazione di colonne V1 -- master con vincoli di copertura
+indicizzati su \texttt{(teacher, class, subject, day)} -- riesce a
+iterare di pi\`u della singola passata
+\texttt{no\_improving\_column} osservata in modalit\`a
+\texttt{day}? L'intuizione era che un \texttt{dc\_value} ``allentato''
+generasse duali $\lambda$ non-zero, sbloccando colonne migliorative.
+
+La risposta empirica, misurata da
+\texttt{tests/benchmarks/run\_bp\_v1\_scope\_week.py} su due scenari
+sintetici (\texttt{small} = 10 docenti / 3 classi, \texttt{medium}
+= 4 docenti / 3 classi con cattedre dense), \`e \emph{no}: le
+cinque granularit\`a V1 (\texttt{teacher}, \texttt{teacher-day},
+\texttt{teacher-class}, \texttt{teacher-class-subject},
+\texttt{teacher-subject}) terminano sempre alla prima iterazione
+con \texttt{bp\_terminated\_reason=no\_improving\_column} e
+\texttt{bp\_columns\_added\_total=0}, sia quando il
+\texttt{dc\_value} viene da Phase A sia quando viene derivato dalla
+soluzione del solver settimanale.
+
+\begin{itemize}
+  \item \texttt{small}: \texttt{dc\_phase\_a} (21 chiavi non-zero)
+        differisce strutturalmente da \texttt{dc\_week} (16 chiavi
+        non-zero) -- 17 chiavi solo in $A$, 12 solo in $B$, 2
+        chiavi in comune con valori diversi -- ma per ogni
+        granularit\`a entrambe le sorgenti producono
+        \texttt{iters=1, cols=0}. La soluzione \`e HARD-feasible
+        in entrambi i casi; il soft score finale \`e $240$ con
+        \texttt{phase\_a} e $0$ con \texttt{week}, ma la
+        differenza viene dal seed pattern, non dalle iterazioni
+        BP.
+  \item \texttt{medium}: \texttt{dc\_phase\_a} (69 chiavi) vs
+        \texttt{dc\_week} (66 chiavi), 34 vs 31 chiavi disgiunte,
+        10 chiavi in comune con valori diversi. Stesso esito:
+        \texttt{iters=1, cols=0} su tutte le granularit\`a, sia
+        con \texttt{phase\_a} sia con \texttt{week}.
+\end{itemize}
+
+\noindent
+La spiegazione \`e strutturale, non un bug della Phase 3. I seed
+pattern di \texttt{column\_generation.\_seed\_patterns} sono
+greedy-ottimali rispetto al \texttt{dc\_value} fornito: per ogni
+docente piazzano esattamente le sue ore nei giorni indicati, in
+ordine \texttt{(class, subject, day, hour)} crescente, evitando
+sovrapposizioni. Il master LP V1 sceglie il pattern con peso
+maggiore -- tipicamente il primo seed -- e i duali $\lambda$ del
+sub-problema di pricing risultano gi\`a saturati: il pricer
+ricostruisce la stessa griglia di ore e non trova \emph{reduced
+cost} negativa. Cambiare la sorgente del \texttt{dc\_value}
+modifica la \emph{distribuzione} delle ore (giorni e quantit\`a)
+ma non cambia il fatto che ciascun docente ha un'unica ``forma''
+greedy-coerente con la propria domanda. Per sbloccare iterazioni
+multiple servirebbe (a) generare seed pattern \emph{strutturalmente
+diversi} (perturbazioni randomiche delle ore o degli ordinamenti),
+(b) introdurre vincoli di accoppiamento cross-teacher gi\`a nel
+master (variante V2 con cover indicizzato su \texttt{(class, day)}
+o \texttt{(curriculum, day)}), oppure (c) iniettare una pricer
+heuristic con duali \emph{stabilizzati} che esplori intorno
+all'ottimo locale del seed. Sono tre direzioni di lavoro distinte
+e fuori dallo scope di Phase 3-5.
+
+In pratica: \texttt{cp\_sat\_scope=week} sblocca il
+\emph{solver settimanale} (la distribuzione delle ore non \`e
+pi\`u prerogativa di Phase A) ma NON sblocca il loop BP V1, che
+resta una single-shot ottimizzazione del seed catalog. Per orario
+di buona qualit\`a su scuole grandi con BP, la leva attuale resta
+la granularit\`a V2 (\texttt{class}, \texttt{class-day},
+\texttt{day}, \texttt{curriculum}) o l'\texttt{iterative-diversified}
+classico, non l'interazione fra scope settimanale e V1.
+
 \section{Metaeuristiche}
 
 \paragraph{Modulo.} \texttt{experiments/metaheuristics.py}.

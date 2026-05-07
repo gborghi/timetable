@@ -30,6 +30,15 @@ Cross-field rule (validated on both client and server): \texttt{day} requires \t
   \item Large school with non-trivial cross-day constraints: \texttt{week + soft\_hint} -- keeps the warm start while letting the solver deviate.
 \end{itemize}
 
+\paragraph{Branch-and-Price V1 vs \texttt{cp\_sat\_scope=week}.}
+An open question during Phase 3 was whether running BP V1 on top of a ``loose'' \texttt{dc\_value} (Phase A skipped or used as a soft hint) would unlock more master iterations than the single \texttt{no\_improving\_column} pass observed in legacy day-mode -- the intuition being that a non-binding cover demand should produce non-zero $\lambda$ duals and improving columns.
+
+The empirical answer, measured by \texttt{tests/benchmarks/run\_bp\_v1\_scope\_week.py} on a small (10 teachers / 3 classes) and a medium (4 teachers / 3 classes, dense cattedre) scenario, is \emph{no}. All five V1 granularities (\texttt{teacher}, \texttt{teacher-day}, \texttt{teacher-class}, \texttt{teacher-class-subject}, \texttt{teacher-subject}) always terminate with \texttt{iters=1, cols=0, terminated=no\_improving\_column} -- both when \texttt{dc\_value} comes from Phase A and when it is derived from the week solver's actual placement, even though the two distributions differ structurally on the medium scenario.
+
+The reason is structural, not a Phase 3 regression: \texttt{column\_generation.\_seed\_patterns} produces greedy-optimal patterns relative to whatever \texttt{dc\_value} you feed it. The V1 master picks the highest-weight seed and the pricing sub-problem reconstructs the same grid -- reduced cost is non-negative because the per-teacher problem already saturates the duals. Changing the \texttt{dc\_value} source changes the per-day distribution, not the fact that each teacher has a single ``shape'' that fits its demand greedily.
+
+Practically: \texttt{cp\_sat\_scope=week} relaxes Phase B's day-distribution constraint, but it does \emph{not} unlock more BP V1 iterations. For column-generation quality on larger schools the current lever is the V2 master (\texttt{class}, \texttt{class-day}, \texttt{day}, \texttt{curriculum}) or the \texttt{iterative-diversified} mode, not the week scope.
+
 \medskip
 \noindent
 \textit{This chapter is an English summary of the corresponding Italian chapter. The full text remains in the Italian edition (\texttt{docs/manual/chapters/workflow\_di\_ottimizzazione.tex}). For the implementation references see the engine modules in \texttt{engine/} and the API documentation at \texttt{docs/api.md}.}
