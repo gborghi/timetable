@@ -278,3 +278,77 @@ def test_hall_bound_prof_day_makes_overload_infeasible():
     _, status = _solve(model)
     from ortools.sat.python import cp_model
     assert status == cp_model.INFEASIBLE
+
+
+# ============================================================
+# Pragma 3: free_day_choice_3way
+# ============================================================
+
+
+def test_free_day_choice_3way_zeros_prof_on_chosen_day():
+    """Prof T1 has 6 hrs over 5 days. With free_day_choice_3way and
+    no soft cost, the solver must pick one of the 3 candidate days
+    as free; the prof's day_count for that day is 0."""
+    import dsl_to_cpsat as d2c
+    triples = [("T1", "1A", "Mat", 6)]
+    model, day_count, days = _build_dc_model(
+        triples, max_per_day=2)
+    compiler = d2c.DSLConstraintCompiler(
+        model, slot={}, day_count=day_count, level="phase_a")
+    compiler.compile('free_day_choice_3way("T1", 1, 2, 3)')
+    s, status = _solve(model)
+    from ortools.sat.python import cp_model
+    assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+    daily = {d: s.Value(day_count[("T1", "1A", "Mat", d)])
+             for d in days}
+    # At least one of days 1/2/3 must be 0.
+    assert any(daily[d] == 0 for d in (1, 2, 3)), daily
+
+
+def test_free_day_choice_3way_records_soft_cost_terms():
+    """Default weights are [0, 50, 100]. Two of the three picks
+    contribute to soft_cost_terms (the first weight is 0 so it is
+    skipped)."""
+    import dsl_to_cpsat as d2c
+    triples = [("T1", "1A", "Mat", 6)]
+    model, day_count, _ = _build_dc_model(triples, max_per_day=2)
+    compiler = d2c.DSLConstraintCompiler(
+        model, slot={}, day_count=day_count, level="phase_a")
+    compiler.compile('free_day_choice_3way("T1", 1, 2, 3)')
+    weights = sorted(w for w, _ in compiler.soft_cost_terms)
+    assert weights == [50, 100]
+
+
+def test_free_day_choice_3way_first_candidate_preferred_under_obj():
+    """With the soft cost term in the objective, the optimal solver
+    picks the FIRST candidate (weight 0) over the others."""
+    import dsl_to_cpsat as d2c
+    from ortools.sat.python import cp_model
+    triples = [("T1", "1A", "Mat", 6)]
+    model, day_count, days = _build_dc_model(
+        triples, max_per_day=2)
+    compiler = d2c.DSLConstraintCompiler(
+        model, slot={}, day_count=day_count, level="phase_a")
+    compiler.compile('free_day_choice_3way("T1", 4, 5, 6)')
+    # Build minimisation objective from compiler-side soft terms.
+    if compiler.soft_cost_terms:
+        model.Minimize(sum(w * v for w, v in compiler.soft_cost_terms))
+    s, status = _solve(model)
+    assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+    daily = {d: s.Value(day_count[("T1", "1A", "Mat", d)])
+             for d in days}
+    # Day 4 (first candidate, weight 0) is the cheap free day.
+    assert daily[4] == 0, daily
+
+
+def test_free_day_choice_3way_custom_weights():
+    """Pragma accepts explicit weights as 4th/5th/6th args."""
+    import dsl_to_cpsat as d2c
+    triples = [("T1", "1A", "Mat", 6)]
+    model, day_count, _ = _build_dc_model(triples, max_per_day=2)
+    compiler = d2c.DSLConstraintCompiler(
+        model, slot={}, day_count=day_count, level="phase_a")
+    compiler.compile(
+        'free_day_choice_3way("T1", 1, 2, 3, 0, 200, 400)')
+    weights = sorted(w for w, _ in compiler.soft_cost_terms)
+    assert weights == [200, 400]

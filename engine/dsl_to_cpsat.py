@@ -992,6 +992,24 @@ class DSLConstraintCompiler:
                 return True
             self._compile_hall_bound_prof_day(str(arg_values[0]))
             return True
+        if name == "free_day_choice_3way":
+            # Args: prof, candidate_day_1, candidate_day_2,
+            # candidate_day_3, [w_1, w_2, w_3]. Defaults: 0, 50, 100.
+            if len(arg_values) < 4:
+                self.diagnostics.append(
+                    "free_day_choice_3way expects "
+                    "(prof, d1, d2, d3, [w1, w2, w3])")
+                return True
+            prof = str(arg_values[0])
+            cands = [_normalize_day_value(arg_values[k]) or
+                     int(arg_values[k]) for k in (1, 2, 3)]
+            if len(arg_values) >= 7:
+                weights = [int(arg_values[4]), int(arg_values[5]),
+                           int(arg_values[6])]
+            else:
+                weights = [0, 50, 100]
+            self._compile_free_day_choice_3way(prof, cands, weights)
+            return True
         # Unknown call name: leave for the generic path.
         return False
 
@@ -1364,6 +1382,60 @@ class DSLConstraintCompiler:
             self.model.AddMaxEquality(max_load, relevant_loads)
             pdl = self._prof_day_load_intvar(p, d)
             self.model.Add(pdl <= max_load)
+
+    def _compile_free_day_choice_3way(
+            self, prof: str, candidates: list[int],
+            weights: list[int]):
+        """Phase A free-day-choice pragma. Mirrors the legacy
+        ``glib_choice`` block in
+        ``cpsat_v2_timetable.solve_phase_a`` (lines 510..530, plus
+        the 50/100 weights at lines 740..749).
+
+        For ``prof``, three BoolVars ``pick[k]`` are introduced
+        with ``sum(pick) == 1``. When ``pick[k]`` is selected, the
+        sum of ``day_count`` over candidate day k must be 0 -- i.e.
+        the prof has no lessons that day. Each pick contributes
+        ``weights[k] * pick[k]`` to ``self.soft_cost_terms`` so the
+        owning model can include them in its objective.
+
+        ``candidates`` is a list of three ints in 1..6 (Monday=1).
+        ``weights`` defaults to ``[0, 50, 100]`` so the first
+        candidate is free, the second penalised at 50, the third
+        at 100 -- the legacy weights.
+        """
+        if not self.day_count:
+            self.diagnostics.append(
+                "free_day_choice_3way: day_count empty")
+            return
+        if len(candidates) != 3 or len(weights) != 3:
+            self.diagnostics.append(
+                "free_day_choice_3way: expected 3 candidates "
+                "and 3 weights")
+            return
+        # Ensure the prof actually has triples; otherwise the rule
+        # is a no-op.
+        prof_terms = [v for (pp, _cl, _s, _d), v in self.day_count.items()
+                       if pp == prof]
+        if not prof_terms:
+            self.diagnostics.append(
+                f"free_day_choice_3way: prof {prof!r} not in day_count")
+            return
+        picks = [self.model.NewBoolVar(
+                    f"_dsl_glib_{prof}_{k}") for k in range(3)]
+        self.model.Add(sum(picks) == 1)
+        for k, day in enumerate(candidates):
+            day_terms = [v for (pp, _cl, _s, dd), v
+                          in self.day_count.items()
+                          if pp == prof and dd == int(day)]
+            if not day_terms:
+                # Edge: candidate day has no demand for this prof;
+                # picking it is a no-op.
+                continue
+            self.model.Add(sum(day_terms) == 0).OnlyEnforceIf(picks[k])
+        for k in range(3):
+            w = int(weights[k])
+            if w != 0:
+                self.soft_cost_terms.append((w, picks[k]))
 
     def _compile_class_day_load_in_day_count(
             self, cl: str, allowed: list[int]):
