@@ -992,6 +992,18 @@ class DSLConstraintCompiler:
                 return True
             self._compile_hall_bound_prof_day(str(arg_values[0]))
             return True
+        if name == "subject_day_count_in":
+            # Args: class, subject, allowed_value_1, allowed_value_2, ...
+            if len(arg_values) < 3:
+                self.diagnostics.append(
+                    "subject_day_count_in expects "
+                    "(class, subject, allowed...)")
+                return True
+            cl = str(arg_values[0])
+            subj = str(arg_values[1])
+            allowed = [int(v) for v in arg_values[2:]]
+            self._compile_subject_day_count_in(cl, subj, allowed)
+            return True
         if name == "subject_day_count_pair":
             # Args: class, n, subj_1, subj_2, ...
             if len(arg_values) < 3:
@@ -1394,6 +1406,45 @@ class DSLConstraintCompiler:
             self.model.AddMaxEquality(max_load, relevant_loads)
             pdl = self._prof_day_load_intvar(p, d)
             self.model.Add(pdl <= max_load)
+
+    def _compile_subject_day_count_in(
+            self, cl: str, subj: str, allowed: list[int]):
+        """Phase A "Motorie" pragma: per (class, subj, day), the
+        sum of ``day_count`` (over teachers) must lie in
+        ``allowed``. Mirrors the legacy
+        ``cpsat_v2_timetable.solve_phase_a`` rule (lines 646..657)
+        ``day_count[(p_mot, cl, "Scienzemotorie", d)] in {0, 2}``.
+
+        Encoded via ``AddAllowedAssignments`` on a per-day IntVar
+        equal to the teacher-sum.
+        """
+        if not self.day_count:
+            self.diagnostics.append(
+                "subject_day_count_in: day_count empty")
+            return
+        if not allowed:
+            return
+        days = self._days_in_dc_scope()
+        allowed_clamped = sorted(
+            {int(v) for v in allowed if int(v) >= 0})
+        if not allowed_clamped:
+            return
+        for d in days:
+            terms = [v for (_pp, ccl, ss, dd), v
+                      in self.day_count.items()
+                      if ccl == cl and ss == subj and dd == d]
+            if not terms:
+                continue
+            if len(terms) == 1:
+                # Single IntVar -> apply allowed-set directly.
+                self.model.AddAllowedAssignments(
+                    [terms[0]], [(v,) for v in allowed_clamped])
+                continue
+            ds = self.model.NewIntVar(
+                0, 100, f"_dsl_sdci_{subj[:3]}_{cl}_{d}")
+            self.model.Add(ds == sum(terms))
+            self.model.AddAllowedAssignments(
+                [ds], [(v,) for v in allowed_clamped])
 
     def _compile_subject_day_count_pair(
             self, cl: str, subjects: list[str], n: int):

@@ -394,6 +394,91 @@ def test_subject_day_count_pair_blocks_full_spread():
     assert status == cp_model.INFEASIBLE
 
 
+# ============================================================
+# Pragma 5: subject_day_count_in
+# ============================================================
+
+
+def test_subject_day_count_in_motorie_zero_or_two():
+    """Scienzemotorie: per (class, subj) day count must be 0 or 2.
+    With 4 hrs total over 6 days, the only option is 2+2+0+0+0+0."""
+    import dsl_to_cpsat as d2c
+    triples = [("T1", "1A", "Scienzemotorie", 4)]
+    model, day_count, days = _build_dc_model(
+        triples, max_per_day=2)
+    compiler = d2c.DSLConstraintCompiler(
+        model, slot={}, day_count=day_count, level="phase_a")
+    compiler.compile(
+        'subject_day_count_in("1A", "Scienzemotorie", 0, 2)')
+    s, status = _solve(model)
+    from ortools.sat.python import cp_model
+    assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+    daily = [s.Value(day_count[("T1", "1A", "Scienzemotorie", d)])
+             for d in days]
+    assert sorted(daily) == [0, 0, 0, 0, 2, 2], daily
+
+
+def test_subject_day_count_in_blocks_3_hour_day():
+    """Force 3 hrs of Motorie on day 1: with allowed = {0, 2} the
+    pragma makes it infeasible."""
+    import dsl_to_cpsat as d2c
+    triples = [("T1", "1A", "Scienzemotorie", 3)]
+    model, day_count, _ = _build_dc_model(
+        triples, max_per_day=3)
+    model.Add(day_count[("T1", "1A", "Scienzemotorie", 1)] == 3)
+    compiler = d2c.DSLConstraintCompiler(
+        model, slot={}, day_count=day_count, level="phase_a")
+    compiler.compile(
+        'subject_day_count_in("1A", "Scienzemotorie", 0, 2)')
+    _, status = _solve(model)
+    from ortools.sat.python import cp_model
+    assert status == cp_model.INFEASIBLE
+
+
+def test_subject_day_count_in_aggregates_compresenza():
+    """Two cattedras teach the same (class, subject) -- compresenza
+    style. The pragma sums over the two and applies the allowed set
+    to the sum, not to each cattedra independently."""
+    import dsl_to_cpsat as d2c
+    triples = [
+        ("T1", "1A", "Scienzemotorie", 2),
+        ("T2", "1A", "Scienzemotorie", 2),
+    ]
+    model, day_count, days = _build_dc_model(
+        triples, max_per_day=2)
+    # Force T1 = 1 on day 1 and T2 = 1 on day 1: sum = 2 (allowed).
+    model.Add(day_count[("T1", "1A", "Scienzemotorie", 1)] == 1)
+    model.Add(day_count[("T2", "1A", "Scienzemotorie", 1)] == 1)
+    compiler = d2c.DSLConstraintCompiler(
+        model, slot={}, day_count=day_count, level="phase_a")
+    compiler.compile(
+        'subject_day_count_in("1A", "Scienzemotorie", 0, 2)')
+    _, status = _solve(model)
+    from ortools.sat.python import cp_model
+    assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+
+
+def test_subject_day_count_in_aggregates_compresenza_blocks_3():
+    """Same compresenza setup but T1+T2 = 3 on day 1 (T1=2, T2=1):
+    the pragma must reject (3 not in {0, 2})."""
+    import dsl_to_cpsat as d2c
+    triples = [
+        ("T1", "1A", "Scienzemotorie", 2),
+        ("T2", "1A", "Scienzemotorie", 2),
+    ]
+    model, day_count, _ = _build_dc_model(
+        triples, max_per_day=2)
+    model.Add(day_count[("T1", "1A", "Scienzemotorie", 1)] == 2)
+    model.Add(day_count[("T2", "1A", "Scienzemotorie", 1)] == 1)
+    compiler = d2c.DSLConstraintCompiler(
+        model, slot={}, day_count=day_count, level="phase_a")
+    compiler.compile(
+        'subject_day_count_in("1A", "Scienzemotorie", 0, 2)')
+    _, status = _solve(model)
+    from ortools.sat.python import cp_model
+    assert status == cp_model.INFEASIBLE
+
+
 def test_subject_day_count_pair_per_subject_independent():
     """With two subjects in the list, each gets its own
     'at least one day with >=2' rule. Force Mat to 2 on day 1 to
