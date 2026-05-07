@@ -127,3 +127,381 @@ update via subgradient ascent
 $\lambda_{k+1} = \max(0, \lambda_k + \alpha_k g_k)$ with
 $\alpha_k = \alpha_0 / (1+k)$. Per-iteration refinement via
 Simulated Annealing.
+
+% =====================================================================
+% Optimization deep-dives mirroring the IT manual
+% =====================================================================
+
+\section{Phase A: the formal \emph{day count} model}
+\label{sec:phase-a-formal-en}
+\index{Phase A}\index{day count}
+
+Phase A solves a \emph{distribution} problem: given the weekly
+demand of every cattedra (typically 2--6 hours), over how many
+days and with what daily load does each teacher work? The
+formulation is a small CP-SAT on integer variables
+\texttt{dc[t,c,s,d]} (\emph{day count}: hours of $(t,c,s)$ on
+day $d$).
+
+\begin{defbox}[title={The \texttt{DayCountModel}}]
+Let $T$ be teachers, $C$ classes, $S$ subjects,
+$D = \{1,\dots,6\}$ days. For each cattedra $(t,c,s) \in
+\mathit{Catt}$ with weekly demand $h_{t,c,s} \in \mathbb{N}_+$
+and each $d \in D$:
+\[
+  dc_{t,c,s,d} \in \{0, 1, \dots, h_{\max}\},\quad h_{\max}=6,
+\]
+subject to
+\begin{align}
+\text{(coverage)}\quad &\sum_d dc_{t,c,s,d} = h_{t,c,s} & \forall (t,c,s) \\
+\text{(class daily load)}\quad &\sum_{(t,s)} dc_{t,c,s,d} \in \{0\}\cup [4,6] & \forall c, d \\
+\text{(teacher daily load)}\quad &\sum_{(c,s)} dc_{t,c,s,d} \le h^{\text{prof}}_{\max} & \forall t, d
+\end{align}
+The objective combines: deviation from the ideal load
+(weight\,4), weekly uniformity (weight\,3), fragmented free-day
+penalty (weight\,1).
+\end{defbox}
+
+The architectural turn of Step 4: the same \texttt{DayCountModel}
+that produces day counts in Phase~A can be \emph{reconstructed}
+from the weekly solver (\texttt{cp\_sat\_scope=week}); the two
+sources of \texttt{dc\_value} become comparable, and the cost
+of Phase~A's rigidity becomes measurable.
+
+\subsection{Migration from hardcoded to DSL pragmas}
+
+\begin{table}[h]
+\centering
+\sffamily\small
+\begin{tabular}{p{4cm}p{8cm}}
+\toprule
+Pragma & Constraint emitted \\
+\midrule
+\texttt{class\_day\_load\_in\_day\_count} &
+  for each $(c,d)$, $\sum_t dc_{t,c,*,d} \in \{0\} \cup [4,6]$ \\
+\texttt{free\_day\_choice\_3way} &
+  every teacher gets at most ONE of \{free day, half-day,
+  full week\} \\
+\texttt{hall\_bound\_prof\_day} &
+  Hall-style bound: $\sum_{c,s} dc_{t,c,s,d} \le K_t$ \\
+\texttt{subject\_day\_count\_in} &
+  for cattedra $(t,c,s)$, allowable counts
+  $dc_{t,c,s,d} \in \{0,1,2\}$ \\
+\texttt{subject\_day\_count\_pair} &
+  two correlated subjects (e.g.\ Maths+Sci) on the same day \\
+\bottomrule
+\end{tabular}
+\caption{The five Phase~A pragmas. All emit CP-SAT bytes
+identical to the legacy \texttt{solve\_phase\_a}
+(zero-drift); migration is tracked in
+\texttt{webui/backend/tests/test\_dsl\_intvar\_pragmas.py}.}
+\label{tab:phase-a-pragmas-en}
+\end{table}
+
+\section{Phase B: four decomposition algorithms compared}
+\label{sec:phase-b-decomp-en}
+\index{Phase B}\index{decomposition!spectral}
+
+\begin{table}[h]
+\centering
+\sffamily\small
+\begin{tabular}{p{2.6cm}p{4.4cm}p{4.4cm}}
+\toprule
+Method & Pro & Con \\
+\midrule
+\textbf{spectral} &
+  natural partition of teachers into near-disjoint pools, small
+  bridge set &
+  costs an eigendecomposition ($O(n^3)$ in teachers); K-means
+  randomness \\
+\textbf{temporal} &
+  trivially parallel (one day per worker); predictable times &
+  no inter-day interaction $\Rightarrow$ daily constraints are
+  perfect, weekly ones must be stitched \\
+\textbf{curriculum} &
+  reflects the school's organisational structure
+  (Scientific, Linguistic, \dots) &
+  uneven curricula $\Rightarrow$ manual load balancing, risk of
+  a 50-class cluster \\
+\textbf{metis}~\parencite{karypis1998metis} &
+  balanced clusters by construction (target $\pm 5\%$);
+  globally minimum cuts &
+  depends on \texttt{networkx-metis}; less transparent for
+  debugging \\
+\bottomrule
+\end{tabular}
+\caption{Phase~B decomposition: pros and cons. \emph{spectral}
+is the default; \emph{temporal} is preferred when daily
+constraints dominate (last-minute substitutions); \emph{metis}
+on MEGA when K-means randomness yields imbalanced clusters.}
+\label{tab:decomp-methods-en}
+\end{table}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\linewidth]{manual/figures/fig_decomp_methods}
+\caption{Phase~B wall-clock per decomposition method, four
+scales. Monolithic times out on \texttt{superhuge}; the four
+decompositions converge in comparable time, with a slight edge
+for \texttt{spectral} and \texttt{metis} on the larger
+regimes. Log scale to fit the dispersion small$\to$superhuge.}
+\label{fig:decomp-methods-en}
+\end{figure}
+
+\begin{proposition}
+Let $G = (V, E)$ be the teacher co-occupation graph (edge if
+two teachers share at least one class). Spectral decomposition
+yields $k$ clusters $C_1, \dots, C_k$ with
+$|E(C_i, C_j)| \le \epsilon |E|$, $\epsilon$ proportional to
+the second eigenvalue $\lambda_2(L_{\mathrm{sym}})$.
+Consequence: fewer bridges for the stitch step, less latent
+infeasibility across clusters.
+\end{proposition}
+
+\section{\texttt{cp\_sat\_scope=week}: the monolithic model}
+\label{sec:scope-week-mono-en}
+\index{cp\_sat\_scope}\index{MonolithicSolver}
+
+\begin{statsbox}
+\begin{itemize}
+\item Boolean variables on \texttt{huge}: $\sim$\,$1.5 \times 10^5$
+\item Boolean variables on \texttt{mega}: $\sim$\,$3.5 \times 10^5$
+\item Peak RAM (mega, 8 workers): $\sim$\,$11$\,GB
+\item Median wall (mega): $\sim$\,$15$\,min within soft target;
+      $30$\,min hard cap in production.
+\item \texttt{phase\_a\_mode=soft\_hint}: typically $-15\%$
+      final SOFT vs \texttt{always}, $+30\%$ wall.
+\end{itemize}
+\end{statsbox}
+
+\section{Branch-and-Price: anatomy of one iteration}
+\label{sec:bp-anatomy-en}
+\index{Branch-and-Price}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\linewidth]{manual/figures/fig_bp_components}
+\caption{Five composable scalability techniques around the
+\emph{Branch-and-Price} loop: Ryan-Foster recursive tree,
+box-step dual stabilization, column management, parallel
+pricing, pricing-in-nodes (Step~4). All five are on by default
+in \texttt{mode="branch-and-price"}.}
+\label{fig:bp-components-en}
+\end{figure}
+
+The modern formulation of Branch-and-Price unifies
+\emph{column generation} and \emph{branch-and-bound} under one
+framework~\parencite{barnhart1998,vanderbeck2000}.
+Dantzig-Wolfe decomposition~\parencite{dantzigwolfe1960} is
+its backbone: the original problem is rewritten in terms of
+\emph{patterns} satisfying local constraints (subproblem),
+and the \emph{master} picks a convex combination meeting the
+global ones. Desaulniers, Desrosiers and
+Solomon~\parencite{desaulniers2005} remain the applied
+reference.
+
+\subsection{Master LP (Dantzig-Wolfe)}
+
+\begin{align}
+\min \quad & \sum_{j \in \mathcal{P}} c_j\, \lambda_j \\
+\text{s.t.} \quad & \sum_j a_{ij}\, \lambda_j \ge b_i & \forall i \in \text{cover}\\
+& \lambda_j \ge 0
+\end{align}
+
+$c_j$ = pattern cost, $a_{ij}$ = hours of cattedra $i$
+covered by pattern $j$, $b_i$ = weekly demand of cattedra $i$.
+The dual vector $\pi$ guides the pricer.
+
+\subsection{CP-SAT pricer: nine granularities}
+
+\begin{table}[h]
+\centering
+\sffamily\small
+\begin{tabular}{p{3.4cm}p{4.0cm}p{4.0cm}}
+\toprule
+Granularity & Column encoding & When \\
+\midrule
+\texttt{teacher}                & weekly orario of one teacher                & small schools, strong teacher constraints \\
+\texttt{teacher-day}            & orario of one (teacher, day)                & tight daily constraints \\
+\texttt{teacher-class}          & orario of a cattedra (t,c)                  & per-cattedra coverage \\
+\texttt{teacher-class-subject}  & orario of a (t,c,s) cattedra-slot           & medium schools, support+curriculum mixing \\
+\texttt{teacher-subject}        & orario of (t,s) across classes              & multiple cattedre on the same subject \\
+\texttt{class}                  & weekly orario of one class                  & class-side hard constraints (no holes) \\
+\texttt{class-day}              & orario of (class, day)                      & daily class constraints (h3 at 11) \\
+\texttt{day}                    & full daily orario                           & explicit canonical Phase B in BP form \\
+\texttt{curriculum}             & orario of a curriculum (Scientific, ...)    & large schools, multi-curriculum \\
+\bottomrule
+\end{tabular}
+\caption{Nine pricer granularities. Each defines what a pattern
+\emph{is} and therefore the CP-SAT model the pricer builds.
+None dominates the others.}
+\label{tab:bp-granularity-en}
+\end{table}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\linewidth]{manual/figures/fig_bp_iter_progress}
+\caption{Master LP soft-cost convergence per granularity
+(\texttt{small} synthetic profile). Finer granularities
+(\texttt{curriculum}, \texttt{teacher-class-subject}) reach
+soft cost $0$; coarser ones plateau because patterns cannot
+change enough. Iter=1 \texttt{no\_improving\_column} runs
+correspond to seed catalogues already optimal.}
+\label{fig:bp-iter-progress-en}
+\end{figure}
+
+\subsection{Ryan-Foster recursive tree}
+
+When the master's solution is fractional, two patterns share
+the same pair $(i, j)$ at different rates. Ryan and
+Foster~\parencite{ryanfoster1981} pick the active pair with
+maximum Achterberg score~\parencite{achterberg2005} (fraction
+$\times$ RHS contribution) and create two children:
+\textbf{together} ($\lambda$-patterns must include both hours)
+and \textbf{apart} (must exclude one).
+
+\begin{schemabox}[title={Pseudocode -- Ryan-Foster recursive tree}]
+\sffamily\small
+\textbf{procedure} \texttt{rf\_branch}($\text{pool}$, $\text{depth}$):\\
+\hphantom{XX} if $\text{depth} > $ MAX\_DEPTH ($=20$): \textbf{return} best\_int\\
+\hphantom{XX} solve master LP on $\text{pool}$ $\to$ $\lambda^*, \pi^*$\\
+\hphantom{XX} if $\lambda^*$ integral: \textbf{return} $\lambda^*$\\
+\hphantom{XX} pick $(i_*, j_*)$ with max Achterberg score\\
+\hphantom{XX} $\text{pool}_T \gets \texttt{branch\_together}(\text{pool}, i_*, j_*)$\\
+\hphantom{XX} $\text{pool}_A \gets \texttt{branch\_apart}(\text{pool}, i_*, j_*)$\\
+\hphantom{XX} return best of \texttt{rf\_branch}($\text{pool}_T$, $\text{depth}+1$),\\
+\hphantom{XXXX} \texttt{rf\_branch}($\text{pool}_A$, $\text{depth}+1$)
+\end{schemabox}
+
+\begin{theorem}[Branch-and-Price termination]
+If CP-SAT pricers always terminate (column found or proved
+absent) and Ryan-Foster has finite depth cap, the BP loop
+terminates in finite time with an integer solution optimal for
+the cover relaxation.
+\end{theorem}
+
+\subsection{Box-step dual stabilization}
+
+Master duals oscillate between iterations (degeneracy). The
+box-step scheme keeps a smoothed
+$\pi_{\text{stable}}$ and feeds the pricers
+$\pi_{\text{blend}} = (1-\alpha)\pi_{\text{stable}} +
+\alpha \pi_{\text{raw}}$ with $\alpha = 0.2$.
+
+\subsection{EWMA column management}
+
+After $50$ iterations a \texttt{teacher} pricer hits
+$\sim 3000$ columns; $80\%$ are inactive. \texttt{piTantum}
+keeps a $20$-iter EWMA of each column's reduced cost and, when
+the pool exceeds $10\,000$, purges the worst while preserving
+(a) columns active in the master basis and (b) seed columns.
+Steady-state pool size: $\sim 8\,000$ columns.
+
+\subsection{Parallel pricing}
+
+CP-SAT pricers across granularities are independent: the BP
+loop runs them in parallel via \texttt{ProcessPoolExecutor}
+with \texttt{workers = $\lfloor$cpu\_count() / 2$\rfloor$}.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\linewidth]{manual/figures/fig_bp_granularity_comparison}
+\caption{Pricing time per granularity, with \texttt{dc\_source}
+between Phase~A (rigid) and weekly (\texttt{cp\_sat\_scope=week}).
+Small scenario shows no practical difference.}
+\label{fig:bp-granularity-en}
+\end{figure}
+
+\subsection{Pricing-in-nodes (Step 4)}
+
+Step 4 introduces \emph{pricing-in-nodes}: at each RF tree
+node the pricer is re-launched with branch decisions
+(\texttt{together}/\texttt{apart}) already applied to its
+CP-SAT model. The benefit: search space at each depth shrinks
+\emph{structurally}, and the quality of generated columns
+grows.
+
+\begin{statsbox}
+Synthetic numbers from MEGA real (1493\,s total):
+\begin{itemize}
+\item Phase~A: 301\,s (20\%)
+\item BP loop (5 iterations): 1192\,s (80\%)
+\item Final soft cost: 530
+\item Final pool: 2075 columns
+\end{itemize}
+\end{statsbox}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.78\linewidth]{manual/figures/fig_mega_real_breakdown}
+\caption{MEGA real (100 classes, 178 teachers, 2653 cattedra-day):
+breakdown of total wall-clock 1493\,s into Phase~A
+(\texttt{301}\,s) + Branch-and-Price (\texttt{1192}\,s) + post
+(\texttt{<0.1}\,s).}
+\label{fig:mega-real-breakdown-en}
+\end{figure}
+
+\section{Metaheuristics: a decision matrix}
+\label{sec:meta-decision-matrix-en}
+\index{metaheuristics}\index{ALNS}
+
+\texttt{piTantum}'s metaheuristics are post-processing: take a
+HARD-feasible solution and polish the SOFT. All respect
+\texttt{is\_hard\_feasible} and delegate micro-fix to
+\texttt{PhaseBDaySolver(\_cp\_repair)}.
+
+The canonical treatment of ALNS is Pisinger and
+Ropke~\parencite{pisinger2010,ropke2006_orig}; the surveys of
+Burke and Petrovic~\parencite{burke2002} and
+Pillay~\parencite{pillay2014} are the standard references for
+educational timetabling at large.
+
+\begin{table}[h]
+\centering
+\sffamily\small
+\begin{tabular}{p{2.0cm}p{4.0cm}p{4.6cm}}
+\toprule
+Method & Neighbourhood & When \\
+\midrule
+\textbf{LNS}        & destroy random window + CP-SAT repair       & default; window $\sim 30\%$ of lessons \\
+\textbf{ALNS}       & 6 destroys + 3 repairs, roulette wheel      & default for medium/large schools \\
+\textbf{SA}         & single-swap, Metropolis acceptance          & final smoothing; fast \\
+\textbf{TS}         & best-improvement with tabu list             & breaks plateaus when SOFT stabilises \\
+\textbf{ILS}        & TS + perturbative kicks (4-opt)             & escape good local optima \\
+\textbf{VNS}        & 1/2/3-swap + gradual k-opt                  & robust, slow; rarely in production \\
+\textbf{Lagrangian} & relax bridges + subgradient ascent          & only for multi-plesso schools with dense bridges \\
+\bottomrule
+\end{tabular}
+\caption{Seven metaheuristics, all selectable from the
+Workflow tab via the ``Post-Phase~B'' dropdown. The default
+cascade is LNS \texttt{->} ALNS \texttt{->} SA.}
+\label{tab:meta-decision-matrix-en}
+\end{table}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\linewidth]{manual/figures/fig_tightness_band}
+\caption{Total time vs scenario tightness for the three
+dominant combinations (Phase~B alone, $+$\,SA, $+$\,ALNS).
+The ivory band is the metaheuristic spread, growing with
+tightness.}
+\label{fig:tightness-band-en}
+\end{figure}
+
+\subsection{The tightness criterion}
+
+\texttt{piTantum} computes a \emph{tightness score} that
+measures how tight the available slots are versus demand:
+\[
+  \text{tightness} = \frac{\sum_t h_t}{|T| \cdot 6 \cdot 6 \cdot \rho},
+\]
+where $\rho \in [0,1]$ is the average per-teacher slot
+availability after applying unavailabilities. Empirical guide:
+\begin{itemize}
+\item tightness $< 0.4$: Phase~B alone, no metaheuristics.
+\item tightness $\in [0.4, 0.6]$: $+$\,SA, $\sim 10\%$ SOFT win.
+\item tightness $> 0.6$: $+$\,ALNS necessary; cascade SA $\to$
+  ALNS $\to$ TS, $5$\,min budget.
+\item tightness $> 0.8$: likely HARD-infeasibility; pre-flight
+  Hall check mandatory.
+\end{itemize}

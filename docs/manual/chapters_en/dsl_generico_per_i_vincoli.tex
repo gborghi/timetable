@@ -25,6 +25,7 @@ predicates (\texttt{==}, \texttt{!=}, \texttt{<},
 translation backend changes.
 
 \section{BNF grammar}
+\label{sec:dsl-bnf-en}
 
 \begin{lstlisting}[basicstyle=\ttfamily\small]
 expr           ::= iff_expr
@@ -450,41 +451,243 @@ solution that respects it exists the solver picks it (zero
 extra cost); otherwise it accepts the violation while
 minimizing how many pairs / lessons pay $W$.
 
+\section{The four compilation families}
+\label{sec:dsl-families-en}
+
+One grammar, four compilation flavours. The distinction is not
+academic: each comes from a different operational question and
+produces a different artefact.
+
+\begin{table}[h]
+\centering
+\sffamily\small
+\begin{tabular}{lp{3.4cm}p{3.4cm}p{3.4cm}}
+\toprule
+Family & Operational question & Output & Python module \\
+\midrule
+\textbf{LIST}      & ``list every lesson satisfying $\varphi$'' & \texttt{Lesson} list & \texttt{utils/dsl\_query.py} \\
+\textbf{LOGIC}     & ``is this configuration feasible?''        & boolean (DNF/CNF) & \texttt{utils/dsl\_logic.py} \\
+\textbf{OBJECTIVE} & ``how much does the violation cost?''      & CP-SAT linear expr. & \texttt{engine/dsl\_to\_cpsat.py} \\
+\textbf{EVAL}      & ``count violations in this solution''      & dict \{rule\_id: cost\} & \texttt{utils/general\_dsl.py} \\
+\bottomrule
+\end{tabular}
+\caption{Four compilation families, one grammar. They were
+historically four separate sub-DSLs; from v0.4 the parser is
+unified (\texttt{general\_dsl.py}) and produces a shared AST
+from which each family extracts what it needs.}
+\label{tab:dsl-families-en}
+\end{table}
+
+\section{Logic DNF vs \texttt{forall}/\texttt{count}}
+\label{sec:dsl-logic-vs-forall-en}
+
+The \texttt{LogicalUnavailability} sub-DSL is a strict subset
+of the general grammar: only \emph{disjunctions of forbidden
+slots} scoped to a single teacher. The general DSL can always
+simulate it; the converse does not hold.
+
+\begin{table}[h]
+\centering
+\sffamily\small
+\begin{tabular}{p{3.6cm}p{4.2cm}p{4.2cm}}
+\toprule
+Expressivity & \texttt{LogicalUnavailability} (DNF) & \texttt{general\_dsl} \\
+\midrule
+forbidden slot & $\bullet$ & $\bullet$ \\
+slot forbidden under condition & limited (AND of slots) & $\bullet$ (\texttt{=>}, \texttt{<=>}) \\
+quantifiers \texttt{forall x in S} & --- & $\bullet$ \\
+\texttt{count} with bound & --- & $\bullet$ \\
+\texttt{same\_day}/\texttt{consecutive} predicates & --- & $\bullet$ \\
+\texttt{l.classroom.plesso} path & --- & $\bullet$ \\
+integer arithmetic & --- & $\bullet$ (Step 3) \\
+SOFT with weight & --- & $\bullet$ \\
+\bottomrule
+\end{tabular}
+\caption{The logical DNF is a subset of the general grammar.
+Migrating from DNF to general form is always possible (helper
+\texttt{logical\_unavailability\_to\_dsl}); the reverse usually
+requires an abstraction the constraint does not have.}
+\label{tab:dsl-vs-logic-en}
+\end{table}
+
+\section{Fourteen canonical pragmas (Phase A and Phase B)}
+\label{sec:dsl-pragma-14-en}
+
+Step 3b extracted the most frequent constraint sequences from
+\texttt{solve\_phase\_a} and \texttt{solve\_phase\_b\_for\_day}
+and renamed them \emph{pragmas}: standard-form function calls
+that the compiler recognises and emits as compact CP-SAT groups,
+byte-identical to what the legacy path emitted.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.92\linewidth]{manual/figures/fig_pragma_coverage}
+\caption{The 14 canonical pragmas grouped by pipeline layer.
+Phase A pragmas are the building blocks of \texttt{DayCountModel};
+Phase B pragmas feed \texttt{PhaseBDaySolver}; the last two
+forms (\texttt{class\_subject\_same\_day} and
+\texttt{teacher\_class\_consecutive\_days}) are expressed
+directly via \texttt{general\_dsl} without a dedicated helper.}
+\label{fig:pragma-coverage-en}
+\end{figure}
+
+\begin{statsbox}
+\begin{itemize}
+\item Phase A pragmas: \textbf{5}.
+\item Phase B pragmas: \textbf{7}.
+\item Pragmas expressed only via free \texttt{general\_dsl}: \textbf{2+}.
+\item Pragma test coverage:
+  \texttt{webui/backend/tests/test\_dsl\_canonical\_pragmas.py}
+  + \texttt{test\_dsl\_intvar\_pragmas.py}
+  ($\sim$\,42 test functions).
+\end{itemize}
+\end{statsbox}
+
+\section{Workflow: from the Teacher tab to the solver}
+\label{sec:dsl-workflow-en}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\linewidth]{manual/figures/fig_dsl_phases}
+\caption{DSL pipeline: from the modal in the UI to the four
+compilation back-ends. The \emph{validate} button only fires
+the parser (returning errors live); \emph{save} runs the full
+loop: persist to \texttt{constraints\_general}, reload at the
+next \texttt{POST /api/optimize}, evaluate post-hoc.}
+\label{fig:dsl-phases-en}
+\end{figure}
+
+Six tracked steps:
+
+\begin{enumerate}
+\item \textbf{UI -- composition}: the user opens the modal in
+  the Teacher tab or the Constraints tab.
+\item \textbf{UI -- live validate}: every keystroke (300\,ms
+  debounce) hits \texttt{POST /api/constraints/general/validate}
+  with the partial text; the back-end reports syntactic errors
+  with line and column. \emph{Save} stays disabled until the
+  parse is clean.
+\item \textbf{API -- persistence}:
+  \texttt{POST /api/constraints/general} validates again and
+  writes one row in \texttt{constraints\_general}
+  (\texttt{rule\_text}, \texttt{level}, \texttt{weight},
+  \texttt{scope\_kind}, \texttt{owner\_id}, \texttt{is\_hard}).
+\item \textbf{Engine -- loading}: the next
+  \texttt{POST /api/optimize} calls
+  \texttt{load\_all\_dsl\_constraints(db)} and gets a list of
+  \texttt{(expr, level, weight, owner)}.
+\item \textbf{Engine -- compile/evaluate}: depending on the
+  \texttt{via\_dsl} flag, the \texttt{MonolithicSolver} either
+  invokes \texttt{add\_dsl\_constraint(\dots)} (structural CP-SAT
+  compilation) or delegates to the post-hoc evaluator.
+\item \textbf{API -- reporting}: the response of
+  \texttt{POST /api/optimize} carries \texttt{dsl\_violations}
+  (one entry per rule with cost contributed); the front-end
+  renders it in the ``DSL constraints'' card of the Statistics
+  tab.
+\end{enumerate}
+
+\section{Three narrated cases}
+\label{sec:dsl-three-cases-en}
+
+\subsection{Case Rossi: distribution over three non-consecutive days}
+
+The Rossi teacher requests her 12 weekly hours spread over
+exactly three non-consecutive days, with balanced 4+4+4
+distribution. Three rules:
+
+\begin{lstlisting}
+% (a) Rossi insists on 3 days
+forall t in teachers where t.name == "Rossi":
+    count d in days
+        where exists l in lessons:
+            l.teacher == t and l.day == d.index: d == 3
+
+% (b) those days are not consecutive
+forall l1 in lessons where l1.teacher == "Rossi":
+    forall l2 in lessons where l2.teacher == "Rossi":
+        (l1.day == l2.day)
+        or not consecutive_days(l1.day, l2.day)
+
+% (c) balanced load (SOFT, weight 30)
+% level=soft, weight=30
+forall t in teachers where t.name == "Rossi":
+    forall d in days:
+        count l in lessons
+            where l.teacher == t and l.day == d.index: l <= 4
+\end{lstlisting}
+
+\subsection{Case plesso commuting: school across two buildings}
+
+Two plessi 600\,m apart. RSU rules forbid mid-day transits: no
+teacher may have a lesson in plesso 2 in the hour right after a
+lesson in plesso 1. Classes are pinned to one plesso, so the
+constraint effectively bites teachers.
+
+\begin{lstlisting}
+forall l1 in lessons where l1.classroom.plesso == 1:
+    forall l2 in lessons where l2.classroom.plesso == 2
+                            and l2.teacher == l1.teacher
+                            and consecutive(l1.slot, l2.slot):
+        false
+\end{lstlisting}
+
+\subsection{Case compresenza: maths and support on the same day}
+
+The support-teacher Verdi must be in classroom 2B \emph{the
+same day} as the maths-teacher Bianchi:
+
+\begin{lstlisting}
+forall l in lessons where l.teacher == "Verdi"
+                       and l.class == "2B"
+                       and l.subject == "Sostegno":
+    exists m in lessons where m.teacher == "Bianchi"
+                          and m.class == "2B"
+                          and m.subject == "Matematica"
+                          and same_day(l.slot, m.slot):
+        true
+\end{lstlisting}
+
+\subsection{Case second language: French in the morning (SOFT)}
+
+Linguistic high-school, FRA-TED curriculum, year~1: the second
+language (French) should preferably fall in the first three
+hours. SOFT, weight 20:
+
+\begin{lstlisting}
+% level=soft, weight=20
+forall l in lessons
+    where l.subject == "Francese"
+      and l.class.curriculum == "Linguistico-FRA-TED"
+      and l.class.year == 1:
+    l.hour <= 10
+\end{lstlisting}
+
 \section{DSL architecture diagram}
+\label{sec:dsl-arch-en}
 
-\begin{verbatim}
-+--------------------------------------------------+
-|  UI ("+ New DSL constraint" modal)                |
-|  webui/frontend/.../GeneralConstraintsCard.svelte |
-+--------------------+-----------------------------+
-                     |
-                     v
-+--------------------+-----------------------------+
-|  POST /api/constraints/general                   |
-+--------------------+-----------------------------+
-                     |
-                     v
-+--------------------+-----------------------------+
-|  Parser + AST -- general_dsl.py                  |
-+--------------------+-----------------------------+
-                     |
-                     +---------+---------+
-                     v         v         v
-              post-hoc    CP-SAT      SOFT score
-              evaluator   compiler    (post-hoc)
-              (HARD       (Step 1+)
-               viol. capture)
-                     |         |
-                     v         v
-              +--------------------+
-              |   CP-SAT solver    |
-              |   (Mono / Pricer / |
-              |    PhaseB / RF /   |
-              |    Meta)           |
-              +--------------------+
-\end{verbatim}
+\begin{figure}[h]
+\centering
+\includegraphics[width=\linewidth]{manual/figures/fig_dsl_phases}
+\caption{Architecture of the general DSL: the same grammar and
+AST, four translation back-ends. Evaluating a solution
+(post-hoc evaluator) and building a model (compiler to CP-SAT)
+are two different traversals of the same tree.}
+\label{fig:dsl-arch-en}
+\end{figure}
 
-One AST, two backends: the evaluator reads a solution and
+One AST, four back-ends: the evaluator reads a solution and
 answers ``feasible / violated''; the compiler emits CP-SAT
-constraints before solving. The grammar is unique and source
-names are identical between backends.
+constraints before solving; the pragma vocabulary recognises
+recurring sequences and emits them in compact form; the LIST
+family runs queries on the current solution. Grammar and
+source names are identical across the four back-ends.
+
+\begin{biblioparvabox}[title={DSL full reference}]
+The full specification with extended example gallery, attribute
+tables for every source, troubleshooting and quick reference
+card lives in \texttt{docs/general\_dsl.md}. This chapter is a
+narrative synthesis; the Markdown file is the reference to
+consult while writing a concrete constraint. The BNF grammar
+(sec.~\ref{sec:dsl-bnf-en}) is identical across the two documents.
+\end{biblioparvabox}
