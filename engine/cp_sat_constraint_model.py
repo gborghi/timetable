@@ -1249,7 +1249,9 @@ class ConstraintModel:
     def add_dsl_constraint(self, expression, *,
                             classroom_for_slot: dict | None = None,
                             plessi_data: Any = None,
-                            level: str = "both"):
+                            level: str = "both",
+                            is_hard: bool = True,
+                            soft_weight: int = 0):
         """Compile a single DSL expression (string or AST) and add
         the resulting CP-SAT constraints to ``self.model``.
 
@@ -1271,6 +1273,13 @@ class ConstraintModel:
         where every recognised pragma is compiled. ``"phase_b"``
         drops the Phase A-only pragmas (their level is
         ``"phase_a"``); ``"phase_a"`` drops the Phase B-only ones.
+
+        ``is_hard`` (default True) controls whether violations force
+        infeasibility (HARD) or contribute ``soft_weight`` per
+        violation to ``self.dsl_soft_cost_terms`` (SOFT). The owning
+        solver subclass (``MonolithicSolver`` etc.) sums those terms
+        into its objective so a SOFT general_dsl rule influences the
+        search by cost rather than by feasibility.
         """
         try:
             from . import dsl_to_cpsat as d2c  # type: ignore
@@ -1278,6 +1287,8 @@ class ConstraintModel:
             import dsl_to_cpsat as d2c  # type: ignore
         if not hasattr(self, "dsl_diagnostics"):
             self.dsl_diagnostics: list[str] = []
+        if not hasattr(self, "dsl_soft_cost_terms"):
+            self.dsl_soft_cost_terms: list = []
         cfs = classroom_for_slot
         if cfs is None:
             cfs = getattr(self, "classroom_for_slot", None)
@@ -1286,6 +1297,8 @@ class ConstraintModel:
             plessi = getattr(self.config, "plessi_data", None)
         compiler = d2c.DSLConstraintCompiler(
             self.model, self.slot, config=self.config,
+            is_hard=is_hard,
+            soft_weight=int(soft_weight),
             classroom_for_slot=cfs,
             plessi_data=plessi,
             # ``owner_model=self`` lets the no_holes / h11 pragmas
@@ -1299,6 +1312,7 @@ class ConstraintModel:
         )
         compiler.compile(expression)
         self.dsl_diagnostics.extend(compiler.diagnostics)
+        self.dsl_soft_cost_terms.extend(compiler.soft_cost_terms)
 
     def add_all_dsl_constraints(self, expressions: list, *,
                                   classroom_for_slot: dict | None = None,
@@ -1330,6 +1344,11 @@ class ConstraintModel:
         special-purpose tables are no longer queried directly by
         each solver -- they are translated by ``dsl_translator``
         and consumed uniformly here.
+
+        When ``include_soft=True`` SOFT general_dsl rules are also
+        compiled with ``is_hard=False, soft_weight=r["weight"]`` so
+        they contribute to ``self.dsl_soft_cost_terms`` and -- via the
+        subclass that owns the objective -- to the soft cost.
         """
         try:
             from . import dsl_translator as dt  # type: ignore
@@ -1338,7 +1357,11 @@ class ConstraintModel:
         rules = dt.load_all_dsl_constraints(
             db, include_soft=include_soft)
         for r in rules:
-            self.add_dsl_constraint(r["expression"])
+            self.add_dsl_constraint(
+                r["expression"],
+                is_hard=bool(r.get("is_hard", True)),
+                soft_weight=int(r.get("weight", 0) or 0),
+            )
         if not hasattr(self, "dsl_diagnostics"):
             self.dsl_diagnostics: list[str] = []
         self.dsl_diagnostics.append(
@@ -1475,6 +1498,12 @@ class MonolithicSolver(ConstraintModel):
         self.add_all_hard_constraints(via_dsl=via_dsl)
         self.add_class_no_overlap()
         obj_terms, _ = self.compute_soft_cost_expr()
+        # Append SOFT general_dsl penalties (filled by
+        # ``add_dsl_constraint`` calls with ``is_hard=False``). Each
+        # entry is ``(weight, BoolVar | IntVar)``; the weight is the
+        # per-violation penalty the user picked in the UI.
+        for w, var in getattr(self, "dsl_soft_cost_terms", []):
+            obj_terms.append(int(w) * var)
         if obj_terms:
             self.model.Minimize(sum(obj_terms))
 

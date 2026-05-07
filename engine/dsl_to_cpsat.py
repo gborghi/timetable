@@ -490,10 +490,20 @@ class DSLConstraintCompiler:
         passthrough configuration; some constraints may use defaults
         from here.
     is_hard : bool, default True
-        when False, SOFT-cost integration is requested (the compiler
-        adds penalty BoolVars and returns them so the caller can
-        weight + accumulate into the objective). Currently HARD only;
-        SOFT support is TODO and falls back to HARD.
+        when True, the compiler emits HARD CP-SAT constraints (a
+        violated body forces ``slot[key] == 0`` or
+        ``BoolOr([s1.Not(), s2.Not()])`` for double-forall pairs).
+        When False, every "violation" is reified into a BoolVar
+        instead and ``(soft_weight, var)`` tuples are appended to
+        ``self.soft_cost_terms``; the owning model reads that list
+        when assembling its soft-cost objective so a SOFT general_dsl
+        rule contributes ``soft_weight`` per violated lesson (forall)
+        or per violated lesson PAIR (double-forall) to the objective.
+        ``soft_weight`` is ignored when ``is_hard`` is True.
+    soft_weight : int, default 0
+        per-violation penalty applied to the BoolVar reifications when
+        ``is_hard=False``. Negative weights are accepted (the caller
+        can use them to express PREFERRED bonuses).
     day_count : dict[(teacher, class, subject, day)] -> IntVar | None
         the Phase A decision variables (number of hours the cattedra
         teaches that day). Required for Phase A pragmas; when absent
@@ -522,6 +532,7 @@ class DSLConstraintCompiler:
 
     def __init__(self, model, slot: dict, *, config=None,
                  is_hard: bool = True,
+                 soft_weight: int = 0,
                  classroom_for_slot: dict | None = None,
                  plessi_data: Any = None,
                  owner_model: Any = None,
@@ -531,6 +542,7 @@ class DSLConstraintCompiler:
         self.slot = slot
         self.config = config
         self.is_hard = is_hard
+        self.soft_weight = int(soft_weight)
         if level not in ("phase_a", "phase_b", "both"):
             raise ValueError(
                 f"DSLConstraintCompiler: unknown level={level!r}; "
@@ -695,8 +707,16 @@ class DSLConstraintCompiler:
         try:
             value = self._eval(node.body, env)
             if value is False:
-                # body false -> the slot must NOT be active.
-                self.model.Add(self.slot[key] == 0)
+                if self.is_hard:
+                    # body false -> the slot must NOT be active.
+                    self.model.Add(self.slot[key] == 0)
+                else:
+                    # SOFT: emit penalty proportional to slot[key].
+                    # The slot variable IS the indicator (1 when the
+                    # lesson is placed in this violating cell), so we
+                    # can append it directly weighted by soft_weight.
+                    self.soft_cost_terms.append(
+                        (self.soft_weight, self.slot[key]))
             # If True, no constraint needed.
             return
         except ValueError:
@@ -741,12 +761,30 @@ class DSLConstraintCompiler:
                         "double-forall body dynamic; skipped")
                     continue
                 if inner_value is False:
-                    # If both slots are 1, the inner body would be
-                    # violated -> not both can be 1.
-                    self.model.AddBoolOr([
-                        self.slot[key].Not(),
-                        self.slot[inner_key].Not(),
-                    ])
+                    if self.is_hard:
+                        # If both slots are 1, the inner body would be
+                        # violated -> not both can be 1.
+                        self.model.AddBoolOr([
+                            self.slot[key].Not(),
+                            self.slot[inner_key].Not(),
+                        ])
+                    else:
+                        # SOFT: pay soft_weight whenever the offending
+                        # PAIR is co-selected. ``b == 1 iff
+                        # (slot[key] AND slot[inner_key])``; we add b
+                        # to the soft cost weighted by soft_weight.
+                        b = self.model.NewBoolVar(
+                            f"_dsl_soft_pair_{id(key)}_{id(inner_key)}")
+                        # b == s1 AND s2 reification.
+                        self.model.AddBoolAnd([
+                            self.slot[key], self.slot[inner_key],
+                        ]).OnlyEnforceIf(b)
+                        self.model.AddBoolOr([
+                            self.slot[key].Not(),
+                            self.slot[inner_key].Not(),
+                        ]).OnlyEnforceIf(b.Not())
+                        self.soft_cost_terms.append(
+                            (self.soft_weight, b))
             return
         self.diagnostics.append(
             "forall body dynamic and not nested-forall; skipped")
