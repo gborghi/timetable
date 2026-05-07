@@ -53,6 +53,7 @@ from backend.routers import (  # noqa: E402
     students,
     subjects,
     teachers,
+    working_hours,
 )
 
 configure_logging()
@@ -139,6 +140,7 @@ app.include_router(dashboard.router)
 app.include_router(constraints.router)
 app.include_router(saved_views.router)
 app.include_router(diagnostics.router)
+app.include_router(working_hours.router)
 
 
 @app.get("/")

@@ -1170,3 +1170,79 @@ class SavedViewIn(SavedViewBase):
 class SavedViewOut(SavedViewBase):
     id: int
     model_config = ConfigDict(from_attributes=True)
+
+
+# ---------- Tab Ore (working hours config) ----------
+
+
+class WorkingHourSlotIn(BaseModel):
+    slot_index: int = Field(ge=0,
+                            description="0-based engine hour_idx")
+    start_time: str = Field(min_length=4, max_length=5,
+                            description="HH:MM, e.g. '08:00'")
+    end_time: str = Field(min_length=4, max_length=5,
+                          description="HH:MM, e.g. '09:00'")
+    label: str | None = None
+    legacy_hour_number: int = Field(ge=0, le=23,
+                                    description="0..23 (default = "
+                                                "start hour for legacy "
+                                                "TeacherUnavailability)")
+
+
+class WorkingHourSlotOut(WorkingHourSlotIn):
+    id: int
+    day_id: int
+    model_config = ConfigDict(from_attributes=True)
+
+
+class WorkingDayIn(BaseModel):
+    code: str = Field(min_length=2, max_length=8,
+                      description="MON | TUE | ... | SUN")
+    label: str = Field(min_length=1, max_length=32)
+    position: int = Field(ge=0, le=6,
+                          description="0-based engine day_idx")
+    legacy_day_number: int = Field(ge=1, le=7,
+                                   description="1..7 (MON..SUN) -- "
+                                               "kept for legacy "
+                                               "*_unavailability rows")
+    is_active: bool = True
+
+
+class WorkingDayPatch(BaseModel):
+    code: str | None = None
+    label: str | None = None
+    position: int | None = None
+    legacy_day_number: int | None = None
+    is_active: bool | None = None
+
+
+class WorkingDayOut(WorkingDayIn):
+    id: int
+    slots: list[WorkingHourSlotOut] = Field(default_factory=list)
+    model_config = ConfigDict(from_attributes=True)
+
+
+class WorkingDaySlotsReplace(BaseModel):
+    """Body for PUT /api/working-hours/days/{id}/slots: replaces the
+    full list of slots for a day in a single transaction. Slots are
+    re-indexed by their order in the list (slot_index field is
+    ignored on input -- the server uses the array position)."""
+    slots: list[WorkingHourSlotIn]
+
+
+class WorkingHoursConfigOut(BaseModel):
+    """GET /api/working-hours/config -- aggregated structure for the
+    frontend (Ore tab + WeeklyCalendarView). All days, in position
+    order; each day carries its slots in slot_index order. Includes
+    derived fields max_slots_per_day and uniform_slot_count for the
+    calendar grid layout."""
+    days: list[WorkingDayOut]
+    max_slots_per_day: int = Field(
+        description="max(len(day.slots)) across active days; the "
+                    "engine uses this as the uniform HOURS length"
+    )
+    uniform_slot_count: bool = Field(
+        description="True iff every active day has the same number "
+                    "of slots (engine integration is simplest in "
+                    "this case)"
+    )

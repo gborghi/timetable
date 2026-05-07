@@ -244,6 +244,45 @@ def _apply_migrations_on(engine):
                 "ALTER TABLE classrooms ADD COLUMN plesso_id INTEGER"
             ))
 
+        # Tab Ore default seed (mirrors db._apply_lightweight_migrations).
+        if insp.has_table("working_days") and insp.has_table(
+                "working_hour_slots"):
+            existing = conn.execute(text(
+                "SELECT COUNT(*) FROM working_days WHERE tenant_id = 1"
+            )).scalar()
+            if not existing:
+                _DEFS = [
+                    ("MON", "Lunedi",    0, 1),
+                    ("TUE", "Martedi",   1, 2),
+                    ("WED", "Mercoledi", 2, 3),
+                    ("THU", "Giovedi",   3, 4),
+                    ("FRI", "Venerdi",   4, 5),
+                    ("SAT", "Sabato",    5, 6),
+                ]
+                for code, label, pos, legacy in _DEFS:
+                    conn.execute(text(
+                        "INSERT INTO working_days "
+                        "(tenant_id, code, label, position, "
+                        " legacy_day_number, is_active) "
+                        "VALUES (1, :c, :l, :p, :ln, 1)"
+                    ), {"c": code, "l": label, "p": pos, "ln": legacy})
+                    day_id = conn.execute(text(
+                        "SELECT id FROM working_days "
+                        "WHERE tenant_id=1 AND code = :c"
+                    ), {"c": code}).scalar()
+                    for i in range(6):
+                        h = 8 + i
+                        conn.execute(text(
+                            "INSERT INTO working_hour_slots "
+                            "(day_id, slot_index, start_time, "
+                            " end_time, label, legacy_hour_number) "
+                            "VALUES (:d, :i, :s, :e, :ll, :lh)"
+                        ), {
+                            "d": day_id, "i": i,
+                            "s": f"{h:02d}:00", "e": f"{h+1:02d}:00",
+                            "ll": f"{i+1}ª ora", "lh": h,
+                        })
+
 
 @pytest.fixture
 def client(app_with_temp_db):
