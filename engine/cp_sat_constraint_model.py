@@ -68,11 +68,23 @@ SCALE = 100
 
 # SOFT penalty constants -- derived from meta.OBJECTIVE_WEIGHTS so
 # the CP-SAT objective tracks meta.compute_soft term by term.
+# These are used by ``compute_soft_cost_expr(mode="default")``.
 PENALTY_SIXTH = meta.OBJECTIVE_WEIGHTS["sixth"] * SCALE
 PENALTY_BUCHI = meta.OBJECTIVE_WEIGHTS["buchi"] * SCALE
 PENALTY_FIVE = meta.OBJECTIVE_WEIGHTS["five"] * SCALE
 PENALTY_ONE = meta.OBJECTIVE_WEIGHTS["one"] * SCALE
 SIXTH_HOUR = 13
+
+# Phase B per-day SOFT penalty constants -- mirror the per-day
+# weights used by ``cpsat_v2_timetable.solve_phase_b_for_day`` so the
+# OO solver can run a Phase B-equivalent per-day objective with the
+# same optima as the legacy code. These are NOT scaled by ``SCALE``
+# because the legacy weights are not scaled either; the per-day
+# objective lives in its own (W_SIXTH_B, W_GAP) weight space and
+# does NOT include the five/one penalties (Phase B per-day cannot
+# observe weekly day-counts).
+PENALTY_SIXTH_PD = 5    # legacy ``W_SIXTH_B``
+PENALTY_BUCHI_PD = 10   # legacy ``W_GAP``
 
 
 @dataclass
@@ -814,27 +826,80 @@ class ConstraintModel:
     # SOFT cost expression
     # ============================================================
 
-    def compute_soft_cost_expr(self) -> tuple[list, list]:
+    def compute_soft_cost_expr(self, *, mode: str = "default",
+                                  ) -> tuple[list, list]:
         """Return ``(obj_terms, aux_vars)`` -- a list of CP-SAT
         objective contributions and the auxiliary BoolVars/IntVars
-        introduced. The four canonical components (sixth, buchi,
-        five, one) are added per (teacher, day) using reified
-        BoolVars that mirror ``meta.compute_soft``.
+        introduced.
+
+        ``mode`` selects the soft-cost formula:
+
+        * ``"default"`` (Phase A canonical): emits ALL four
+          components (sixth, buchi, five, one) per (teacher, day)
+          with weights ``meta.OBJECTIVE_WEIGHTS * SCALE`` (i.e.
+          ``50``, ``10``, ``30``, ``80`` × 100). Sixth is per-slot
+          at ``h = SIXTH_HOUR``. Mirrors ``meta.compute_soft`` so a
+          MonolithicSolver result has the same objective ordering as
+          the weekly per-week formula.
+        * ``"phase_b_per_day"``: mirrors the per-day formulation in
+          ``cpsat_v2_timetable.solve_phase_b_for_day`` -- sixth
+          penalty is per CLASS-busy indicator at ``h = SIXTH_HOUR``
+          with weight ``PENALTY_SIXTH_PD = 5`` (legacy ``W_SIXTH_B``);
+          buchi is per (teacher, day) with weight
+          ``PENALTY_BUCHI_PD = 10`` (legacy ``W_GAP``); five/one
+          penalties are SKIPPED (Phase B per-day cannot observe
+          weekly day-counts -- the legacy emits these in Phase A on
+          ``day_count`` IntVars). The class-busy indicator is built
+          via ``_build_class_busy_indicators`` so it inherits the
+          same exclusion + aggregation rules as
+          ``add_class_no_overlap`` -- a coteach pair counts as ONE
+          class-busy at h=13, sostegno is ignored, parallel-intra
+          members count as ONE.
 
         ``self.fixed_load`` (set by sub-classes when greedy-base
         slots are out of CP-SAT scope) contributes a constant to the
         per-(teacher, day) hour count.
+
+        Raises ``ValueError`` for unknown modes.
         """
+        if mode not in ("default", "phase_b_per_day"):
+            raise ValueError(
+                f"compute_soft_cost_expr: unknown mode={mode!r}; "
+                "expected 'default' or 'phase_b_per_day'")
         obj_terms: list = []
         aux_vars: list = []
         if not self.hours:
             return obj_terms, aux_vars
         h_min, h_max = min(self.hours), max(self.hours)
-        # Sixth-hour penalty: per-slot at h=13 (matches
-        # _cost_of_pattern's per-slot accounting).
-        for (t, cl, s, d, h), v in self.slot.items():
-            if h == SIXTH_HOUR:
-                obj_terms.append(PENALTY_SIXTH * v)
+        # ----- Sixth-hour penalty -----
+        if mode == "default":
+            # Per-slot at SIXTH_HOUR -- matches _cost_of_pattern's
+            # per-slot accounting in meta.compute_soft.
+            for (_t, _cl, _s, _d, h), v in self.slot.items():
+                if h == SIXTH_HOUR:
+                    obj_terms.append(PENALTY_SIXTH * v)
+        else:  # phase_b_per_day
+            # Per-class-busy at SIXTH_HOUR -- matches the legacy
+            # ``sixth_terms = [present_per_class[cl][h13_idx] for cl
+            # in cls_in_day]`` formulation.
+            if SIXTH_HOUR in self.hours:
+                for cl in self._classes_with_busy_aggregation():
+                    for d in self.days:
+                        busy = self._build_class_busy_indicators(
+                            cl, d, SIXTH_HOUR, name_suffix="sixth")
+                        if not busy:
+                            continue
+                        if len(busy) == 1:
+                            ind = busy[0]
+                        else:
+                            ind = self.model.NewBoolVar(
+                                f"sx_{cl}_{d}")
+                            self.model.AddMaxEquality(ind, busy)
+                            aux_vars.append(ind)
+                        obj_terms.append(PENALTY_SIXTH_PD * ind)
+        # ----- Per-(teacher, day) buchi (and five/one in default) -----
+        buchi_weight = (PENALTY_BUCHI if mode == "default"
+                         else PENALTY_BUCHI_PD)
         teachers = self.teachers_in_scope()
         for t in teachers:
             for d in self.days:
@@ -904,19 +969,22 @@ class ConstraintModel:
                     0, max_buchi, f"bch_{t}_{d}")
                 aux_vars.append(buchi)
                 self.model.Add(buchi >= last_h - first_h + 1 - count_d)
-                # is_five, is_one reified
-                is_five = self.model.NewBoolVar(f"5_{t}_{d}")
-                self.model.Add(count_d == 5).OnlyEnforceIf(is_five)
-                self.model.Add(count_d != 5).OnlyEnforceIf(
-                    is_five.Not())
-                is_one = self.model.NewBoolVar(f"1_{t}_{d}")
-                self.model.Add(count_d == 1).OnlyEnforceIf(is_one)
-                self.model.Add(count_d != 1).OnlyEnforceIf(
-                    is_one.Not())
-                aux_vars.extend([is_five, is_one])
-                obj_terms.append(PENALTY_FIVE * is_five)
-                obj_terms.append(PENALTY_ONE * is_one)
-                obj_terms.append(PENALTY_BUCHI * buchi)
+                obj_terms.append(buchi_weight * buchi)
+                if mode == "default":
+                    # is_five, is_one reified -- weekly day-distribution
+                    # penalties; not emitted in the per-day mode since
+                    # the per-day model cannot see the rest of the week.
+                    is_five = self.model.NewBoolVar(f"5_{t}_{d}")
+                    self.model.Add(count_d == 5).OnlyEnforceIf(is_five)
+                    self.model.Add(count_d != 5).OnlyEnforceIf(
+                        is_five.Not())
+                    is_one = self.model.NewBoolVar(f"1_{t}_{d}")
+                    self.model.Add(count_d == 1).OnlyEnforceIf(is_one)
+                    self.model.Add(count_d != 1).OnlyEnforceIf(
+                        is_one.Not())
+                    aux_vars.extend([is_five, is_one])
+                    obj_terms.append(PENALTY_FIVE * is_five)
+                    obj_terms.append(PENALTY_ONE * is_one)
         return obj_terms, aux_vars
 
     def add_subject_pair_constraint(
