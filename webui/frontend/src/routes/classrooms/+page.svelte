@@ -4,7 +4,6 @@
   import { flash, refreshDataset } from '$lib/stores';
   import { ROOM_KINDS } from '$lib/constants';
   import Modal from '$lib/components/Modal.svelte';
-  import AvailabilityMatrix from '$lib/components/AvailabilityMatrix.svelte';
   import WeeklyCalendarView from '$lib/components/WeeklyCalendarView.svelte';
   import SortableQueryableList from '$lib/components/SortableQueryableList.svelte';
   import LogicalUnavailabilitiesPanel from '$lib/components/LogicalUnavailabilitiesPanel.svelte';

@@ -7,7 +7,7 @@
    * slot's (start_time-end_time) label and is colored by the cell's
    * level (free / soft / hard / preferred / enforced).
    *
-   * Data shape (compatible with AvailabilityMatrix):
+   * Data shape:
    *   value = Array<{ day, hour, state, soft_penalty?, reason? }>
    * where `day` is the legacy_day_number (1..7) and `hour` is the
    * slot's legacy_hour_number (0..23) -- same convention as the
@@ -21,7 +21,7 @@
    *   config    -- optional pre-fetched WorkingHoursConfigOut. If not
    *                supplied, the component fetches it on mount.
    *
-   * Keybindings (preserved from AvailabilityMatrix):
+   * Keybindings:
    *   H/P/E/D/A/N + click immediately sets the cell to the
    *   corresponding state, bypassing the click-cycle.
    *
@@ -163,7 +163,7 @@
     return nextState(cur ? cur.state : null);
   }
 
-  // Drag-paint state (identical to AvailabilityMatrix).
+  // Drag-paint state.
   let dragOriginKey = null;
   let dragMoved = false;
   let dragMode = null;

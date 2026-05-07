@@ -14,7 +14,7 @@
 //   N -> NORMAL     (alias of A: clear / reset cella)
 //
 // The actual state name produced depends on the matrix variant -- see
-// `shortcutToMatrixState()` (AvailabilityMatrix-style: free/soft/hard/
+// `shortcutToMatrixState()` (WeeklyCalendarView-style: free/soft/hard/
 // preferred/enforced) and `shortcutToRoomState()` (ClassroomGrid-style:
 // allowed/soft/preferred/forbidden/enforced).
 //
@@ -123,7 +123,7 @@ export type RoomState =
   | "enforced";
 
 /**
- * Resolve the held shortcut to an AvailabilityMatrix-style state.
+ * Resolve the held shortcut to a WeeklyCalendarView-style state.
  * Returns null if no shortcut is held (caller falls back to its own
  * click-cycle).
  */

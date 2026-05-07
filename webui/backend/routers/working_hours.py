@@ -16,9 +16,9 @@ configuration once via the Ore tab (a small N=7 days), so a coarse
 without exposing slot-level CRUD.
 
 The server publishes its config via the same router so the
-frontend's WeeklyCalendarView and AvailabilityMatrix can read the
-authoritative layout (days + slot times) instead of the legacy
-hardcoded constants in webui/frontend/src/lib/constants.ts.
+frontend's WeeklyCalendarView can read the authoritative layout
+(days + slot times) instead of the legacy hardcoded constants in
+webui/frontend/src/lib/constants.ts.
 """
 from __future__ import annotations
 

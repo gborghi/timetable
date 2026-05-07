@@ -13,7 +13,7 @@
   import { heldKey, LEGEND_ITEMS } from "$lib/keyboardConstraintMode";
 
   export let visible = false;
-  /** "matrix" -> labels for AvailabilityMatrix (free/soft/hard/...).
+  /** "matrix" -> labels for WeeklyCalendarView (free/soft/hard/...).
       "room"   -> labels for ClassroomGrid (allowed/forbidden/...). */
   export let variant: "matrix" | "room" = "matrix";
 
