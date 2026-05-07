@@ -1,10 +1,30 @@
 \chapter{Tecniche di ottimizzazione avanzate}
 \label{ch:tecniche_avanzate}
 
-Oltre alle metaeuristiche classiche (LNS / SA / TS / ILS) il
-progetto include cinque tecniche aggiuntive. Vedere
-\texttt{docs/optimization\_strategies.md} per la specifica
-completa.
+\epigraph{``In theory, there is no difference between theory
+and practice. In practice, there is.''}{Yogi Berra (attribuito)}
+
+\lettrine[lines=3]{O}{ltre} alle metaeuristiche classiche (LNS /
+SA / TS / ILS) il progetto include cinque tecniche aggiuntive.
+Vedere \texttt{docs/optimization\_strategies.md} per la
+specifica completa. Questo capitolo entra nel merito
+\emph{matematico} di ciascuna: la formulazione del problema
+risolto, l'algoritmo di base, gli iperparametri tipici, i
+criteri di convergenza, e -- importante per una scelta
+informata -- quando una tecnica brilla rispetto alle altre.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\linewidth]{manual/figures/fig_pipeline_phases}
+\caption{Pipeline a fasi: l'orario nasce dall'anagrafica,
+attraversa Phase A (\emph{day count}), Phase B
+(\emph{slot placement} via decomposizione o monolitica), e
+opzionalmente uno stadio di metaeuristiche di lucidatura.
+Il flag \texttt{mode="branch-and-price"} fonde Phase A e Phase
+B in un unico master Dantzig-Wolfe con loop di pricing
+CP-SAT.}
+\label{fig:pipeline-fasi}
+\end{figure}
 
 \section{Adaptive Large Neighborhood Search (ALNS)}
 
@@ -121,5 +141,505 @@ Il flag \texttt{mode="branch-and-price"} attiva il path
 completo. La modalit\`a precedente
 (\texttt{iterative-diversified}) resta il default e continua a
 funzionare come pre-passo di seeding del pool.
+
+% =====================================================================
+% Approfondimenti aggiunti -- Phase A formulazione, Phase B decomp.,
+% BP textbook, metaheuristics decision matrix
+% =====================================================================
+
+\section{Phase A: il modello matematico del \emph{day count}}
+\label{sec:phase-a-formal}
+
+Phase A risolve un problema di \emph{distribuzione}: data la
+domanda settimanale di ogni cattedra (tipicamente 2--6 ore), su
+quanti giorni e con quale carico ciascun docente lavora? La
+formulazione \`e un piccolo CP-SAT su variabili intere
+\texttt{dc[t,c,s,d]} (\emph{day count}: numero di ore di
+$(t,c,s)$ nel giorno $d$).
+
+\begin{defbox}[title={Modello \texttt{DayCountModel}}]
+Sia $T$ l'insieme docenti, $C$ le classi, $S$ le materie, $D=\{1,\dots,6\}$
+i giorni. Per ogni cattedra $(t,c,s) \in \mathit{Catt}$ con
+domanda $h_{t,c,s} \in \mathbb{N}_+$ ore settimanali e per ogni
+giorno $d \in D$ definiamo
+\[
+  dc_{t,c,s,d} \in \{0, 1, \dots, h_{\max}\}, \qquad h_{\max} = 6.
+\]
+Soggetto a:
+\begin{align}
+\text{(coverage)} \quad & \sum_{d \in D} dc_{t,c,s,d}
+  = h_{t,c,s} & \forall (t,c,s) \in \mathit{Catt} \\
+\text{(per-class daily load)} \quad & \sum_{(t,s) :\,(t,c,s) \in \mathit{Catt}} dc_{t,c,s,d}
+  \in \{0\} \cup [4,6] & \forall c, d \\
+\text{(per-teacher daily load)} \quad & \sum_{(c,s) :\,(t,c,s) \in \mathit{Catt}} dc_{t,c,s,d}
+  \le h^{\text{prof}}_{\max} & \forall t, d
+\end{align}
+La funzione obiettivo minimizza una combinazione lineare di
+componenti: deviazione dal carico ideale (peso 4), uniformit\`a
+sull'arco settimanale (peso 3), penalit\`a sul giorno libero
+\emph{frammentato} (peso 1).
+\end{defbox}
+
+\begin{ideabox}
+La svolta architetturale dello Step 4 \`e che lo stesso
+\texttt{DayCountModel} che genera il \texttt{day count} in
+Phase~A pu\`o essere ricostruito \emph{a posteriori} dal solver
+settimanale (\texttt{cp\_sat\_scope=week}): le due sorgenti di
+\texttt{dc\_value} sono allora confrontabili e si pu\`o
+misurare quanto la rigidit\`a di Phase~A penalizzi il SOFT
+finale.
+\end{ideabox}
+
+\subsection{Migrazione da hardcoded a DSL pragma}
+
+Storicamente i tre vincoli di Phase~A sopra erano emessi da
+\texttt{solve\_phase\_a} con codice Python che scriveva
+direttamente \texttt{model.Add(\dots)}; ogni nuova materia
+con regole speciali (es.\ Matematica e Italiano richiedevano
+\texttt{subject\_day\_count\_in}) significava un nuovo branch nel
+codice del solver. Step 3a-c estrae cinque \emph{pragma} di
+Phase~A che il \texttt{DayCountModel} riconosce e compila:
+
+\begin{table}[h]
+\centering
+\sffamily\small
+\begin{tabular}{p{4cm}p{8cm}}
+\toprule
+Pragma & Vincolo emesso \\
+\midrule
+\texttt{class\_day\_load\_in\_day\_count} &
+  per ogni $(c,d)$, $\sum_t dc_{t,c,*,d} \in \{0\} \cup [4,6]$ \\
+\texttt{free\_day\_choice\_3way} &
+  ogni docente ha al pi\`u UNO fra giorno libero, mezza
+  giornata, o full week \\
+\texttt{hall\_bound\_prof\_day} &
+  bound di Hall sul docente: $\sum_{c,s} dc_{t,c,s,d} \le K_t$ \\
+\texttt{subject\_day\_count\_in} &
+  per cattedra $(t,c,s)$, set di valori ammissibili
+  $dc_{t,c,s,d} \in \{0, 1, 2\}$ \\
+\texttt{subject\_day\_count\_pair} &
+  due materie correlate (es.\ Mat+Sci) sullo stesso giorno per
+  coppie ammesse \\
+\bottomrule
+\end{tabular}
+\caption{I cinque pragma di Phase~A. Tutti emettono CP-SAT
+identico (zero-drift) al solver legacy
+\texttt{solve\_phase\_a}; la migrazione \`e tracciata nei test
+\texttt{webui/backend/tests/test\_dsl\_intvar\_pragmas.py}.}
+\label{tab:phase-a-pragmas}
+\end{table}
+
+\section{Phase B: quattro algoritmi di decomposizione a confronto}
+\label{sec:phase-b-decomp}
+
+Quando l'istanza supera le 30 classi il solver CP-SAT integrale
+(\texttt{cp\_sat\_scope=week} senza decomposizione) fatica:
+i workers spendono il loro tempo a cercare nei rami sbagliati
+dello spazio di ricerca. La pipeline standard usa allora una
+decomposizione che spezza il problema in sotto-problemi
+parzialmente indipendenti.
+
+\begin{table}[h]
+\centering
+\sffamily\small
+\begin{tabular}{p{2.6cm}p{4.4cm}p{4.4cm}}
+\toprule
+Metodo & Pro & Contro \\
+\midrule
+\textbf{spectral} &
+  partizione naturale dei docenti in pool quasi-disgiunti,
+  bridges piccoli &
+  costa una eigendecomp. ($O(n^3)$ rispetto al numero di
+  docenti); randomness del K-means \\
+\textbf{temporal} &
+  trivialmente parallelo (un giorno per worker); tempi
+  prevedibili &
+  nessuna interazione fra giorni $\Rightarrow$ vincoli
+  giornalieri perfetti, vincoli settimanali ricuciti
+  manualmente \\
+\textbf{curriculum} &
+  riflette la struttura organizzativa della scuola
+  (Scientifico, Linguistico, ...) &
+  curriculi di taglia disomogenea $\Rightarrow$ load balancing
+  manuale, risk di un cluster da 50 classi \\
+\textbf{metis} &
+  cluster bilanciati per costruzione (target $\pm 5\%$);
+  cuts globalmente minimi &
+  dipendenza da \texttt{networkx-metis}; meno trasparente per
+  il debugging \\
+\bottomrule
+\end{tabular}
+\caption{Decomposizione di Phase~B: pro e contro. \emph{spectral}
+\`e il default di \texttt{piTantum}; \emph{temporal} \`e
+preferito per scuole con vincoli giornalieri forti (sostituzioni
+dell'ultim'ora); \emph{metis} per istanze MEGA quando la
+randomness di K-means produce cluster troppo squilibrati.}
+\label{tab:decomp-methods}
+\end{table}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\linewidth]{manual/figures/fig_decomp_methods}
+\caption{Wall-clock di Phase~B per metodo di decomposizione, su
+quattro scale (\texttt{small}, \texttt{medium}, \texttt{huge},
+\texttt{superhuge}). La modalit\`a monolitica va in timeout su
+\texttt{superhuge}; le quattro decomposizioni convergono in
+tempo paragonabile, con un leggero vantaggio per \texttt{spectral}
+e \texttt{metis} sui regimi grandi. Scala logaritmica per
+contenere la dispersione fra small e superhuge.}
+\label{fig:decomp-methods}
+\end{figure}
+
+\begin{proposizione}
+Sia $G = (V, E)$ il grafo di co-occupazione fra docenti
+($v \in V$ = docente, $(u,v) \in E$ se $u$ e $v$ condividono
+almeno una classe). La decomposizione spettrale produce $k$
+cluster $C_1, \dots, C_k$ con $|E(C_i, C_j)| \le \epsilon |E|$
+per $\epsilon$ proporzionale al \emph{secondo} autovalore del
+Laplaciano normalizzato, $\lambda_2(L_{\mathrm{sym}})$.
+Conseguenza: meno bridge per il \emph{stitch step}, meno
+infeasibility latente fra cluster.
+\end{proposizione}
+
+\begin{proof}
+Il classico bound di Cheeger~\parencite{chung1997} sul taglio normalizzato
+$h(G) \ge \lambda_2(L_{\mathrm{sym}})/2$ implica che, scegliendo
+i cluster come livelli di un eigenvettore associato a
+$\lambda_2$, il numero di archi tagliati \`e al pi\`u
+$O(\sqrt{\lambda_2 \cdot |E|})$. Per il grafo della scuola
+$\lambda_2$ \`e tipicamente piccolo (cluster naturali
+ben separati), e quindi il numero di bridge \`e ridotto. Vedere
+sez.~\ref{ch:metodo_spettrale} per la dimostrazione completa.
+\end{proof}
+
+\subsection{Quando scegliere quale metodo}
+
+\begin{itemize}
+\item \texttt{spectral}: prima scelta. Default di
+  \texttt{piTantum}, robusto su 90\,\% delle istanze reali.
+\item \texttt{temporal}: quando i vincoli giornalieri dominano
+  (es.\ scuola con molte sostituzioni o calendario perpetuo
+  ribaltato in corso d'anno) e la stitchatura settimanale \`e
+  marginale.
+\item \texttt{curriculum}: quando la scuola \`e fortemente
+  segmentata in indirizzi disgiunti (es.\ liceo classico +
+  scientifico + linguistico in plessi separati) e
+  \texttt{spectral} riproduce comunque quel taglio.
+\item \texttt{metis}: scelta per scenari MEGA quando
+  \texttt{spectral} produce un cluster sproporzionato
+  (verifica con \texttt{n\_classes\_per\_cluster} dispari). Il
+  controllo automatico \texttt{spectral\_balance\_check}
+  suggerisce \texttt{metis} se la deviazione standard supera il
+  20\,\% della media.
+\end{itemize}
+
+\section{\texttt{cp\_sat\_scope=week}: il modello monolitico}
+\label{sec:scope-week-mono}
+
+La modalit\`a \texttt{cp\_sat\_scope=week} bypassa la
+decomposizione: il \texttt{MonolithicSolver(scope=None)} costruisce
+\emph{un solo} modello CP-SAT con tutti i 6 giorni $\times$ 6 ore
+$\times$ $|T|$ $\times$ $|C|$ $\times$ $|S|$ slot, e lo affida
+ai workers OR-Tools.
+
+\begin{statsbox}
+\begin{itemize}
+\item Variabili boolean per scuola \texttt{huge}: $\sim$\,$1{,}5 \cdot 10^5$
+\item Variabili boolean per scuola \texttt{mega}: $\sim$\,$3{,}5 \cdot 10^5$
+\item RAM picco osservato (mega, 8 workers): $\sim$\,$11$\,GB
+\item Tempo wall mediano (mega): $\sim$\,$15$\,min entro target soft;
+      hard cap $30$\,min in produzione.
+\item Modalit\`a complementare \texttt{phase\_a\_mode=soft\_hint}:
+      Phase~A propone una distribuzione iniziale, il solver pu\`o
+      deviare. Tipicamente $-15\,\%$ sul SOFT finale rispetto a
+      \texttt{always}, $+30\,\%$ sul tempo wall.
+\end{itemize}
+\end{statsbox}
+
+\section{Branch-and-Price: anatomia di una iterazione}
+\label{sec:bp-anatomia}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\linewidth]{manual/figures/fig_bp_components}
+\caption{Le cinque tecniche scalabili che si compongono attorno
+al loop \emph{Branch-and-Price}: Ryan-Foster recursive tree,
+box-step dual stabilization, column management, parallel pricing,
+pricing-in-nodes (Step 4). Tutte e cinque sono attive di default
+in \texttt{mode="branch-and-price"}; ciascuna pu\`o essere
+disabilitata via flag.}
+\label{fig:bp-components}
+\end{figure}
+
+\subsection{Master LP Dantzig-Wolfe (DW)}
+
+Il \emph{master} \`e un programma lineare la cui $j$-esima
+colonna codifica un \emph{pattern} valido: una soluzione
+parziale che soddisfa i vincoli ``locali'' (per docente, per
+classe, per giorno, in funzione della granularit\`a; vedi
+tab.~\ref{tab:bp-granularity}). Il master sceglie una combinazione
+convessa di pattern che copre la domanda globale e minimizza il
+costo SOFT.
+
+\begin{align}
+\min \quad & \sum_{j \in \mathcal{P}} c_j \, \lambda_j \\
+\text{s.t.} \quad & \sum_{j} a_{ij}\, \lambda_j \ge b_i & \forall i \in \text{cover}\\
+& \lambda_j \ge 0
+\end{align}
+
+\noindent
+$c_j$ \`e il costo SOFT del pattern $j$, $a_{ij}$ il numero di
+ore della cattedra $i$ coperte dal pattern $j$, $b_i$ la domanda
+settimanale di cattedra $i$. Il vettore duale $\pi$ associato ai
+vincoli di copertura guida il pricer.
+
+\subsection{Pricer CP-SAT: nove granularit\`a}
+
+\begin{table}[h]
+\centering
+\sffamily\small
+\begin{tabular}{p{3.4cm}p{4.0cm}p{4.0cm}}
+\toprule
+Granularit\`a & Codifica colonna & Quando usarla \\
+\midrule
+\texttt{teacher} &
+  pattern = orario settimanale di un docente &
+  scuole piccole, vincoli docente forti \\
+\texttt{teacher-day} &
+  pattern = orario di un (docente, giorno) &
+  vincoli giornalieri serrati \\
+\texttt{teacher-class} &
+  pattern = orario settimanale di una cattedra (t,c) &
+  copertura singolarmente decisa \\
+\texttt{teacher-class-subject} &
+  pattern = orario di un \emph{slot di cattedra} (t,c,s) &
+  scuole medie con vincoli sostegno-curricolo intersecati \\
+\texttt{teacher-subject} &
+  pattern = orario settimanale di una (t,s) &
+  semplifica le cattedre multiple \\
+\texttt{class} &
+  pattern = orario settimanale di una classe &
+  vincoli classe forti, p.\ es.\ niente buchi \\
+\texttt{class-day} &
+  pattern = orario di un (classe, giorno) &
+  vincoli giornalieri di classe (h3 a 11) \\
+\texttt{day} &
+  pattern = orario completo di un giorno &
+  Phase~B canonica resa esplicita in BP \\
+\texttt{curriculum} &
+  pattern = orario di un curriculum (Scient., Ling., \dots) &
+  scuole grandi, indirizzi multipli \\
+\bottomrule
+\end{tabular}
+\caption{Le nove granularit\`a del pricer CP-SAT. Ogni
+granularit\`a definisce \emph{cosa} \`e un pattern e quindi
+quale CP-SAT viene costruito al pricing step. Nessuna domina
+le altre: la scelta dipende dall'istanza.}
+\label{tab:bp-granularity}
+\end{table}
+
+Per ogni iterazione il pricer riceve i duali $\pi$ del master e
+risolve un CP-SAT con obiettivo \emph{reduced cost}
+$\bar{c}_j = c_j - \pi^\top a_j$. Se $\bar{c}_j < 0$, la colonna
+$j$ entra nel master; quando nessun pricer trova colonna
+negativa, l'iterazione termina.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\linewidth]{manual/figures/fig_bp_iter_progress}
+\caption{Convergenza del master LP soft cost per granularit\`a
+(scenario \texttt{small}, profilo sintetico). Le granularit\`a
+pi\`u fini (\texttt{curriculum}, \texttt{teacher-class-subject})
+arrivano a soft cost $0$; quelle pi\`u grossolane si
+stabilizzano oltre $200$ perch\'e i pattern non possono cambiare
+abbastanza per migliorare. Le iterazioni terminate con
+\texttt{no\_improving\_column} a iter=$1$ corrispondono a seed
+catalogs gi\`a ottimi sul rispettivo cover.}
+\label{fig:bp-iter-progress}
+\end{figure}
+
+\subsection{Ryan-Foster recursive tree}
+
+Quando la soluzione del master \`e frazionaria, due pattern
+contengono la stessa coppia $(i, j)$ con quote diverse.
+Ryan-Foster~\parencite{ryanfoster1981} sceglie una coppia
+\emph{attiva} $(i_*, j_*)$ con \emph{score} di Achterberg
+massimo (frazione $\times$ contributo al RHS) e crea due figli:
+\textbf{together} ($\lambda$-pattern devono includere entrambe
+le ore) e \textbf{apart} (devono escluderne una).
+
+\begin{schemabox}[title={Pseudocodice -- Ryan-Foster recursive tree}]
+\sffamily\small
+\textbf{procedure} \texttt{rf\_branch}($\text{pool}$, $\text{depth}$):\\[2pt]
+\hphantom{XX} if $\text{depth} > $ MAX\_DEPTH ($=20$): \textbf{return} best\_int\\
+\hphantom{XX} solve master LP on $\text{pool}$ $\to$ $\lambda^*, \pi^*$\\
+\hphantom{XX} if $\lambda^*$ integral: \textbf{return} $\lambda^*$\\
+\hphantom{XX} pick $(i_*, j_*)$ with max Achterberg score\\
+\hphantom{XX} $\text{pool}_T \gets \texttt{branch\_together}(\text{pool}, i_*, j_*)$\\
+\hphantom{XX} $\text{pool}_A \gets \texttt{branch\_apart}(\text{pool}, i_*, j_*)$\\
+\hphantom{XX} return best of \texttt{rf\_branch}($\text{pool}_T$, $\text{depth}+1$),\\
+\hphantom{XXXX} \texttt{rf\_branch}($\text{pool}_A$, $\text{depth}+1$)
+\end{schemabox}
+
+\begin{teorema}[Convergenza di Branch-and-Price]
+Se i pricer CP-SAT terminano sempre (col col\_min trovata o
+provata assente) e Ryan-Foster ha cap di profondit\`a finito,
+il loop BP termina in tempo finito con una soluzione integer
+ottima per il \emph{cover relaxation}.
+\end{teorema}
+
+\subsection{Box-step dual stabilization}
+
+I duali $\pi$ del master oscillano fortemente fra iterazioni
+consecutive (degeneracy). La stabilizzazione box-step
+mantiene una versione lisciata $\pi_{\text{stable}}$ e fornisce
+ai pricer
+$\pi_{\text{blend}} = (1-\alpha)\pi_{\text{stable}} +
+\alpha \pi_{\text{raw}}$
+con $\alpha = 0{,}2$. Sufficiente per ridurre del $40$--$60\,\%$
+il numero di iterazioni in cui il pricer ritorna ``nessuna
+colonna migliorativa'' falso-positivo.
+
+\subsection{Column management EWMA}
+
+Il pool di colonne cresce: dopo $50$ iterazioni un pricer
+\texttt{teacher} produce $\sim 3000$ colonne, di cui $80\,\%$
+inattive (mai usate dal master). \texttt{piTantum} mantiene una
+EWMA del reduced cost di ciascuna colonna su $20$ iterazioni e,
+quando il pool eccede $10\,000$ colonne, purga le peggiori
+preservando (a) le colonne attive nella basis del master e (b)
+i seed iniziali. Risultato: pool stabile a $\sim 8\,000$ colonne
+in regime stazionario.
+
+\subsection{Parallel pricing}
+
+I pricer CP-SAT delle varie granularit\`a sono indipendenti: il
+loop BP li lancia in parallelo via
+\texttt{ProcessPoolExecutor} con
+\texttt{workers = $\lfloor$cpu\_count() / 2$\rfloor$}. La
+divisione \texttt{cpu/2} \`e empirica: lasciare met\`a CPU al
+master LP riduce il context switching.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\linewidth]{manual/figures/fig_bp_granularity_comparison}
+\caption{Tempo di pricing per granularit\`a, con
+\texttt{dc\_source} fra Phase~A (rigida) e settimana
+(\texttt{cp\_sat\_scope=week}). Lo scenario \texttt{small} non
+mostra differenze pratiche: il pool seed \`e gi\`a ottimo per
+entrambe le sorgenti. Su scenari \texttt{medium} e \texttt{huge}
+la discrepanza emerge.}
+\label{fig:bp-granularity}
+\end{figure}
+
+\subsection{Pricing-in-nodes (Step 4)}
+
+Lo Step 4 introduce il \emph{pricing-in-nodes}: ad ogni nodo
+dell'albero RF si rilancia il pricer con i vincoli di ramo
+\emph{(together/apart)} gi\`a applicati al CP-SAT. Questo \`e
+il textbook BP, contrapposto al precedente che esplorava i
+nodi solo via re-solve del master sul pool esistente. Il
+beneficio: lo spazio di ricerca esplorato dal pricer si riduce
+\emph{strutturalmente} a ogni livello di profondit\`a, e la
+qualit\`a delle colonne generate cresce.
+
+\begin{statsbox}
+Numeri sintetici dello scenario MEGA reale (1493 s totali):
+\begin{itemize}
+\item Phase~A: 301 s (20\,\%)
+\item BP loop (5 iterazioni): 1192 s (80\,\%)
+\item Soft cost finale: 530
+\item Colonne finali nel pool: 2075
+\end{itemize}
+\end{statsbox}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.78\linewidth]{manual/figures/fig_mega_real_breakdown}
+\caption{MEGA reale (100 classi, 178 docenti, 2653 cattedra-day):
+breakdown del wall-clock totale di 1493\,s in Phase~A
+(\texttt{301}\,s) + Branch-and-Price (\texttt{1192}\,s) +
+post-processing (\texttt{<0,1}\,s). Il post \`e trascurabile
+perch\'e BP produce gi\`a una soluzione integer e HARD-feasible.}
+\label{fig:mega-real-breakdown}
+\end{figure}
+
+\section{Metaeuristiche: una matrice di scelta}
+\label{sec:meta-decision-matrix}
+
+Le metaeuristiche di \texttt{piTantum} sono pensate come
+\emph{post-processing}: prendono una soluzione HARD-feasible e
+limano il SOFT. Tutte rispettano \texttt{is\_hard\_feasible} (=
+una mossa che genererebbe violazione HARD viene rifiutata) e
+delegano la riparazione di micro-rotture a
+\texttt{PhaseBDaySolver(\_cp\_repair)}.
+
+\begin{table}[h]
+\centering
+\sffamily\small
+\begin{tabular}{p{2.0cm}p{4.0cm}p{4.6cm}}
+\toprule
+Metodo & Tipo di vicinato & Quando \\
+\midrule
+\textbf{LNS} & destroy random window + CP-SAT repair & Default; finestra
+$\sim 30\,\%$ delle lezioni \\
+\textbf{ALNS} & 6 destroy + 3 repair, roulette wheel & Default per scuole
+medie/grandi (\texttt{huge}+) \\
+\textbf{SA} & single-swap fra slot, Metropolis & Smoothing finale; veloce \\
+\textbf{TS} & best-improvement con tabu list & Quando il SOFT si
+stabilizza: TS rompe il plateau \\
+\textbf{ILS} & TS + kick perturbativi (4-opt) & Quando esiste un buon
+locale ma serve esplorare fuori \\
+\textbf{VNS} & 1/2/3-swap + k-opt graduale & Robusto, lento; raro in
+prod \\
+\textbf{Lagrangian} & rilassa bridges + subgrad. ascent & Solo per scuole
+con plessi multipli e bridges densi \\
+\bottomrule
+\end{tabular}
+\caption{Sette metaeuristiche, tutte attivabili dal tab Workflow
+con il dropdown ``Post-Phase~B''. La cascata di default attiva
+LNS \texttt{->} ALNS \texttt{->} SA. Lagrangian e VNS sono
+tecniche di nicchia, raramente attivate.}
+\label{tab:meta-decision-matrix}
+\end{table}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\linewidth]{manual/figures/fig_tightness_band}
+\caption{Tempo totale vs tightness dello scenario, per le tre
+combinazioni dominanti (Phase~B puro, $+$\,SA, $+$\,ALNS). La
+banda avorio \`e la dispersione delle metaeuristiche: aumenta
+con la tightness, segno che gli scenari pi\`u stretti
+beneficiano di pi\`u esplorazione.}
+\label{fig:tightness-band}
+\end{figure}
+
+\subsection{Il criterio della tightness}
+
+\texttt{piTantum} include un \emph{tightness score} (in
+\texttt{tests/benchmarks/run\_benchmarks.py}) che misura quanto
+gli slot disponibili sono ``stretti'' rispetto alla domanda. La
+formula:
+
+\[
+  \text{tightness} = \frac{\sum_t h_t}{|T| \cdot 6 \cdot 6 \cdot \rho},
+\]
+
+\noindent
+dove $\rho \in [0,1]$ \`e la frazione media di slot
+disponibili (per docente, dopo l'applicazione delle indisponibilit\`a).
+Una tightness $< 0{,}3$ \`e ``aria''; $0{,}3$--$0{,}5$ \`e
+realistica; $> 0{,}7$ \`e ``presso che impossibile''. Il
+criterio empirico:
+
+\begin{itemize}
+\item tightness $< 0{,}4$: Phase~B sufficiente, no
+  metaeuristiche.
+\item tightness $\in [0{,}4, 0{,}6]$: $+$\,SA migliora SOFT del $\sim 10\,\%$.
+\item tightness $> 0{,}6$: $+$\,ALNS necessario; cascata SA $\to$ ALNS
+  $\to$ TS, time budget $5\,$min.
+\item tightness $> 0{,}8$: probabile infeasibility HARD; pre-flight
+  Hall check obbligatorio.
+\end{itemize}
 
 % =========== DSL generico ===========
