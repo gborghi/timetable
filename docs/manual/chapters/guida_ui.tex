@@ -260,6 +260,50 @@ disponibili sono \emph{Dissocia}, \emph{Blocca/Sblocca} e
 \emph{Piazza} (eseguito singolarmente o in massa via
 multi-selezione + toolbar bulk).
 
+\subsection*{Ore}
+Configura i \emph{giorni lavorativi} della settimana e gli \emph{slot
+orari} per ciascun giorno. Default: lun-sab, 6 slot/giorno,
+8:00-14:00 (allineato ai costanti hardcoded che il motore usava
+storicamente). Il tab espone:
+\begin{itemize}
+  \item lista dei 7 codici ISO (MON\dots SUN) con \texttt{position},
+        \texttt{legacy\_day\_number} e checkbox \emph{Attivo} per
+        attivare/disattivare il giorno;
+  \item per ogni giorno una tabella di slot
+        (\texttt{start\_time}, \texttt{end\_time}, etichetta,
+        \texttt{legacy\_hour\_number}) editabile riga per riga;
+  \item bottone \emph{Reset default} che chiama
+        \texttt{POST /api/working-hours/reset} e ricrea la
+        configurazione canonica;
+  \item anteprima \emph{calendarietto} (componente
+        \texttt{WeeklyCalendarView}) che mostra la griglia
+        settimanale come la vedono le matrici di indisponibilit\`a.
+\end{itemize}
+
+Internamente \texttt{WorkingDay.position} \`e l'indice \texttt{day\_idx}
+0-based usato dal solver e \texttt{WorkingHourSlot.slot\_index}
+l'indice \texttt{hour\_idx}; le coppie \texttt{legacy\_day\_number} /
+\texttt{legacy\_hour\_number} preservano la compatibilit\`a con le
+righe gi\`a presenti in \texttt{teacher\_unavailability},
+\texttt{class\_unavailability} e \texttt{classroom\_unavailability}
+(che usano la convenzione DAYS=[1..6] / HOURS=[8..13]).
+
+Con configurazione di default, il comportamento del motore \`e
+identico al passato. Configurazioni custom (es. lun-ven, slot 9-15)
+vengono lette dal modulo
+\texttt{engine/working\_hours\_config.py} e propagate nei consumer
+che usano \texttt{get\_days()} / \texttt{get\_hours()} /
+\texttt{get\_slot\_label()}.
+
+Le matrici di indisponibilit\`a in Docenti / Classi / Aule sono
+state migrate al nuovo componente \texttt{WeeklyCalendarView} che
+legge questa configurazione: stessa palette colore, stesso
+click-cycle e stesse scorciatoie da tastiera (\texttt{H}/\texttt{P}/
+\texttt{E}/\texttt{D}/\texttt{A}/\texttt{N} + click) della vecchia
+\texttt{AvailabilityMatrix}, con le colonne adesso ricavate dai
+giorni lavorativi attivi e gli slot dimensionati sui valori reali
+di \texttt{start\_time}/\texttt{end\_time}.
+
 \subsection*{Vincoli}
 Lista flat di tutti i vincoli editabili con pill colorate per livello.
 Bottone "Cerca conflitti": pannello con conflitti rilevati.

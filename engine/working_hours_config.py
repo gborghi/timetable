@@ -93,6 +93,7 @@ def _load_from_sqlite() -> dict[str, Any] | None:
     if not db_path or not os.path.isfile(db_path):
         return None
     import sqlite3
+    conn = None
     try:
         conn = sqlite3.connect(db_path)
         cur = conn.execute(
@@ -100,7 +101,6 @@ def _load_from_sqlite() -> dict[str, Any] | None:
             "WHERE type='table' AND name='working_days'"
         )
         if not cur.fetchone():
-            conn.close()
             return None
         days_rows = conn.execute(
             "SELECT id, code, label, position, legacy_day_number, "
@@ -109,7 +109,6 @@ def _load_from_sqlite() -> dict[str, Any] | None:
             "ORDER BY position"
         ).fetchall()
         if not days_rows:
-            conn.close()
             return None
         days_out = []
         max_slots = 0
@@ -142,10 +141,15 @@ def _load_from_sqlite() -> dict[str, Any] | None:
                 "is_active": bool(is_active),
                 "slots": slots,
             })
-        conn.close()
         return {"days": days_out, "max_slots_per_day": max_slots}
     except Exception:
         return None
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 
 def _build_legacy_fallback() -> dict[str, Any]:

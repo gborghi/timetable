@@ -1,7 +1,46 @@
 \chapter{UI guide}
 \label{ch:guida_ui_en}
 
-Tour of the 16 SvelteKit tabs: dashboard, anagrafica (teachers/classes/students/classrooms), assignments, monitor, optimize (with iterative-diversified and branch-and-price modes), diagnostics, runs.
+Tour of the SvelteKit tabs: dashboard, anagrafica (teachers /
+classes / students / classrooms / \emph{ore}), assignments, monitor,
+optimize (with iterative-diversified and branch-and-price modes),
+diagnostics, runs.
+
+\section*{Working hours configuration (Tab Ore)}
+
+The \texttt{/ore} tab lets the school administrator configure the
+working week:
+\begin{itemize}
+  \item which days are active (default: Mon-Sat);
+  \item how many timetable slots each day has and at what times
+        (default: 6 slots, 08:00-14:00).
+\end{itemize}
+
+Slots are stored as 0-based indices internally
+(\texttt{WorkingHourSlot.slot\_index}), with explicit
+\texttt{start\_time}/\texttt{end\_time} (HH:MM strings) used only
+for display in the weekly calendar view and reports. Days carry a
+\texttt{position} that the engine consumes as \texttt{day\_idx}, plus
+a \texttt{legacy\_day\_number} (1..7) that keeps backward
+compatibility with the existing \texttt{teacher\_unavailability} /
+\texttt{class\_unavailability} / \texttt{classroom\_unavailability}
+rows keyed on the historical DAYS=[1..6] / HOURS=[8..13]
+convention.
+
+The engine reads this configuration through
+\texttt{engine/working\_hours\_config.py}, which falls back to the
+legacy hardcoded defaults whenever the \texttt{working\_days} table
+is missing or empty so old DBs keep working unchanged.
+
+The unavailability matrices on the Teachers / Classes / Classrooms
+tabs were migrated to a new reusable
+\texttt{<WeeklyCalendarView />} component that consumes the same
+configuration: identical color palette, click-cycle and keyboard
+shortcuts (\texttt{H}/\texttt{P}/\texttt{E}/\texttt{D}/\texttt{A}/
+\texttt{N} + click for HARD/PREFERRED/ENFORCED/SOFT/ALLOWED/RESET)
+as the previous \texttt{AvailabilityMatrix}, but with columns
+driven by the active working days and slot times rendered from
+the configuration.
 
 \medskip
 \noindent
