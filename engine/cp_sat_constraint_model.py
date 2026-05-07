@@ -55,12 +55,18 @@ from ortools.sat.python import cp_model
 
 try:
     from . import metaheuristics as meta  # type: ignore
+    from . import cpsat_v2_timetable as _cv2  # type: ignore
 except ImportError:  # direct script import (no package context)
     import metaheuristics as meta  # type: ignore
+    import cpsat_v2_timetable as _cv2  # type: ignore
 
 
 DAYS = meta.DAYS
 HOURS = meta.HOURS
+# Mapping legacy_day_number -> active slot count (Tab Ore variable
+# slots per day). Lives on cpsat_v2_timetable as the single source of
+# truth so this module sees the same dict object after a refresh.
+SLOTS_PER_DAY = _cv2.SLOTS_PER_DAY
 
 # Integer scaling for fractional duals (kept identical to
 # column_generation.py so reduced-cost arithmetic is consistent).
@@ -359,6 +365,32 @@ class ConstraintModel:
     # ============================================================
     # HARD constraint methods
     # ============================================================
+
+    def add_variable_slots_per_day(self):
+        """Tab Ore -- force slot vars to 0 for hour indices that
+        exceed the active slot count of their day.
+
+        ``self.hours`` is the UNIFORM hour array of length
+        ``max_slots_per_day``. When a particular day in
+        ``self.days`` has fewer active slots than that maximum
+        (e.g. SAT only opens 4 afternoon hours while lun..ven open 6),
+        the slot vars at the surplus hour indices must be zeroed so
+        the solver cannot place a lesson there.
+
+        No-op when every day has the maximum slot count (the legacy
+        default), which keeps the existing 619-test surface
+        bit-identical.
+        """
+        max_slots = len(self.hours)
+        for d in self.days:
+            n_slots = SLOTS_PER_DAY.get(int(d), max_slots)
+            if n_slots >= max_slots:
+                continue
+            for h_idx in range(n_slots, max_slots):
+                h = self.hours[h_idx]
+                for (t, cl, s, dd, hh), v in self.slot.items():
+                    if dd == d and hh == h:
+                        self.model.Add(v == 0)
 
     def add_teacher_no_overlap(self):
         """At most one slot per (teacher, day, hour)."""
@@ -1386,6 +1418,10 @@ class ConstraintModel:
         zero-drift in test_dsl_seed_legacy.py), so this is purely a
         pipeline switch with no behavioural change."""
         self.add_teacher_no_overlap()
+        # Tab Ore: zero out slot vars on hour indices exceeding the
+        # day's active slot count. Cheap no-op when every day has the
+        # uniform max slot count.
+        self.add_variable_slots_per_day()
         if self.config.locks:
             self.add_locks()
         if via_dsl:

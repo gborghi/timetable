@@ -551,7 +551,7 @@ def solve_phase_a(profs, classes, triples, class_profs,
         for d in DAYS:
             model.Add(
                 sum(day_count[(p, cl, s, d)] for cl, s in lst)
-                <= len(HOURS)
+                <= slots_for_day(d)
             )
 
     # Per (cl, day): vincoli HARD aggiornati (richiesta Giovanni).
@@ -581,7 +581,8 @@ def solve_phase_a(profs, classes, triples, class_profs,
     cl_day_load = {}
     for cl, lst in triples_by_cl.items():
         for d in DAYS:
-            load = model.NewIntVar(0, len(HOURS), f"load_{cl}_{d}")
+            load = model.NewIntVar(
+                0, slots_for_day(d), f"load_{cl}_{d}")
             model.Add(
                 load == sum(day_count[(p, cl, s, d)] for p, s in lst)
             )
@@ -695,7 +696,8 @@ def solve_phase_a(profs, classes, triples, class_profs,
             if not group_terms:
                 continue
             model.Add(
-                cl_day_load[(cl, d)] + sum(group_terms) <= len(HOURS)
+                cl_day_load[(cl, d)] + sum(group_terms)
+                <= slots_for_day(d)
             )
 
     # Giorno libero del prof: ``free_day_choice_3way`` DSL pragma
@@ -1091,6 +1093,14 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
         model.Add(
             sum(slot[(p, cl, subj, h)] for h in HOURS) == cnt
         )
+        # Tab Ore -- variable slots per day: when this day has fewer
+        # active slots than ``len(HOURS)`` (e.g., SAT only has 4
+        # afternoon slots while lun..ven have 6), force the surplus
+        # slot vars to 0 so no lesson lands on a non-existent hour.
+        n_slots = slots_for_day(day)
+        if n_slots < len(HOURS):
+            for h_idx in range(n_slots, len(HOURS)):
+                model.Add(slot[(p, cl, subj, HOURS[h_idx])] == 0)
 
     # Native lock constraints: force the matching slot var to 1.
     # If the lock points at a triple Phase A produced 0 hours for, the
