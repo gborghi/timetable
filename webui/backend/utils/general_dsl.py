@@ -22,16 +22,25 @@ Grammar (informal BNF):
     atom        := quant | call | comparison | '(' expr ')' | bool_lit
     quant       := ('forall'|'exists') var_list 'in' source
                    ['where' expr] ':' expr
-                | 'count' var 'in' source ['where' expr] op num
-                | 'sum'   '(' expr ')' 'in' source ... op num
+                | 'count' var 'in' source ['where' expr] op value
+                | 'sum'   '(' expr ')' 'in' source ... op value
     comparison  := value op value
     op          := '==' | '!=' | '<' | '<=' | '>' | '>='
                  | 'in' | 'not_in'
-    value       := identifier ('.' identifier)* | number | string
-                 | function_call
+    value       := addsub
+    addsub      := atom_value ( ('+'|'-') atom_value )*
+    atom_value  := '-' atom_value
+                 | identifier ('.' identifier)* | number | string
+                 | function_call | '(' addsub ')'
     function_call := identifier '(' [arg_list] ')'
     arg_list    := arg ( ',' arg )*
     arg         := identifier '=' value | value
+
+  Arithmetic: only ``+`` and ``-`` are supported (no ``*`` / ``/``
+  / ``%``). Operands are numeric: literals, Refs that resolve to a
+  number (``d.index + 1``, ``h - 2``), or function calls returning
+  a number. Mixing numbers with strings raises a clear evaluator
+  error rather than coercing.
 
 Sources (collections to iterate):
     lessons | assignments | teachers | classes | classrooms |
@@ -79,6 +88,8 @@ _TOKEN_RE = re.compile(
     (?P<iff>\<=\>)                          |
     (?P<op>(<=|>=|!=|==|<|>))               |
     (?P<eq>=)                               |
+    (?P<plus>\+)                            |
+    (?P<minus>-)                            |
     (?P<dq>"(?:[^"\\]|\\.)*")               |
     (?P<sq>'(?:[^'\\]|\\.)*')               |
     # word: any run of [A-Za-z0-9_] that contains at least ONE
@@ -86,7 +97,7 @@ _TOKEN_RE = re.compile(
     # a single IDENT, while pure-digit tokens fall through to `num`
     # below. This matches the convention used by query_parser.py.
     (?P<word>[A-Za-z0-9_]*[A-Za-z_][A-Za-z0-9_]*) |
-    (?P<num>-?\d+(?:\.\d+)?)
+    (?P<num>\d+(?:\.\d+)?)
     """,
     re.VERBOSE,
 )
@@ -159,6 +170,10 @@ def tokenize(text: str) -> list[tuple[str, Any]]:
                 out.append(("IMPLIES", "=>")); break
             if k == "iff":
                 out.append(("IFF", "<=>")); break
+            if k == "plus":
+                out.append(("PLUS", "+")); break
+            if k == "minus":
+                out.append(("MINUS", "-")); break
     return out
 
 
@@ -265,6 +280,18 @@ class Call(Node):
     name: str = ""
     args: list[tuple[str | None, Node]] = field(default_factory=list)
     kind: str = field(default="CALL", init=False)
+
+
+@dataclass
+class Arith(Node):
+    """Binary arithmetic: a + b, a - b. Only `+` and `-` supported.
+    `op` is `'+'` or `'-'`. Numeric operands only -- evaluating
+    against a string raises a DSLError. Unary minus is encoded as
+    Arith with left=Lit(0)."""
+    op: str = ""
+    left: Node | None = None
+    right: Node | None = None
+    kind: str = field(default="ARITH", init=False)
 
 
 # =====================================================================
@@ -459,7 +486,26 @@ class Parser:
         return left   # bare value (e.g. a function call returning bool)
 
     def _parse_value(self):
+        """Top-level value: a + b - c chain over atomic values.
+        Arithmetic precedence: only ``+`` / ``-`` (left-associative).
+        No ``*`` / ``/`` (intentionally excluded)."""
+        left = self._parse_atom_value()
+        while self._peek()[0] in ("PLUS", "MINUS"):
+            op_tok = self._eat()
+            right = self._parse_atom_value()
+            left = Arith(op=op_tok[1], left=left, right=right)
+        return left
+
+    def _parse_atom_value(self):
         tok = self._peek()
+        # Unary minus: encode as 0 - x. (Unary plus is a no-op.)
+        if tok[0] == "MINUS":
+            self._eat()
+            inner = self._parse_atom_value()
+            return Arith(op="-", left=Lit(value=0), right=inner)
+        if tok[0] == "PLUS":
+            self._eat()
+            return self._parse_atom_value()
         if tok[0] == "STRING":
             self._eat()
             return Lit(value=str(tok[1]))
@@ -469,6 +515,12 @@ class Parser:
         if tok[0] == "BOOL":
             self._eat()
             return Lit(value=bool(tok[1]))
+        if tok[0] == "LP":
+            # Parenthesised arithmetic / value.
+            self._eat()
+            inner = self._parse_value()
+            self._eat("RP")
+            return inner
         if tok[0] == "IDENT":
             ident = self._eat()[1]
             # function call?
@@ -630,6 +682,8 @@ def validate(tree: Node, max_atoms: int = 1_000_000
         elif isinstance(n, Call):
             for _, a in n.args:
                 visit(a, env)
+        elif isinstance(n, Arith):
+            visit(n.left, env); visit(n.right, env)
         depth[0] -= 1
 
     visit(tree, {})
@@ -942,7 +996,31 @@ def _eval(node: Node, env: dict, world: dict) -> Any:
         return _apply_op(n, node.op, rhs)
     if isinstance(node, Call):
         return _eval_call(node, env, world)
+    if isinstance(node, Arith):
+        return _eval_arith(node, env, world)
     return None
+
+
+def _eval_arith(node: "Arith", env, world):
+    """Evaluate ``a + b`` / ``a - b``. Both operands must resolve to
+    numbers; mixing with strings raises a DSLError so the user sees
+    a clear failure rather than silent string concatenation."""
+    L = _eval(node.left, env, world)
+    R = _eval(node.right, env, world)
+    if isinstance(L, bool) or isinstance(R, bool):
+        # Reject bool here so `true + 1` doesn't silently become 2.
+        raise DSLError(
+            f"aritmetica non valida fra bool e numero: {L!r} {node.op} {R!r}")
+    if not isinstance(L, (int, float)) or not isinstance(R, (int, float)):
+        raise DSLError(
+            f"aritmetica richiede operandi numerici, "
+            f"trovati {type(L).__name__} e {type(R).__name__} "
+            f"({L!r} {node.op} {R!r})")
+    if node.op == "+":
+        return L + R
+    if node.op == "-":
+        return L - R
+    raise DSLError(f"operatore aritmetico non supportato: {node.op!r}")
 
 
 def _eval_cmp(node: Cmp, env, world):

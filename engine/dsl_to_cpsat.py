@@ -326,6 +326,26 @@ def _eval_static(node, env: dict, key_lookup: dict[str, tuple],
             node, env, key_lookup,
             classroom_for_slot=classroom_for_slot,
             plessi_data=plessi_data)
+    if isinstance(node, gd.Arith):
+        L = _eval_static(
+            node.left, env, key_lookup,
+            classroom_for_slot=classroom_for_slot,
+            plessi_data=plessi_data)
+        R = _eval_static(
+            node.right, env, key_lookup,
+            classroom_for_slot=classroom_for_slot,
+            plessi_data=plessi_data)
+        if (not isinstance(L, (int, float))
+                or not isinstance(R, (int, float))
+                or isinstance(L, bool) or isinstance(R, bool)):
+            raise ValueError(
+                f"arith requires numeric operands, got "
+                f"{type(L).__name__} and {type(R).__name__}")
+        if node.op == "+":
+            return L + R
+        if node.op == "-":
+            return L - R
+        raise ValueError(f"unsupported arith op {node.op!r}")
     raise ValueError(f"unsupported node kind {type(node).__name__}")
 
 
