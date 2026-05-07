@@ -73,6 +73,25 @@
 \usepackage{lettrine}
 \usepackage{marginnote}
 \usepackage{epigraph}
+\usepackage{caption}
+\usepackage{subcaption}
+\captionsetup{font={small,sf}, labelfont={bf,color=cIndaco}, labelsep=endash}
+\captionsetup[sub]{font={footnotesize,sf}, labelfont={bf,color=cIndaco}}
+\usepackage{siunitx}
+\sisetup{group-separator={,}, per-mode=symbol}
+\usepackage{amsthm}
+\newtheoremstyle{pita}{0.6em}{0.6em}{}{0pt}{\sffamily\bfseries\color{cIndaco}}{.}{.5em}{}
+\theoremstyle{pita}
+\newtheorem{theorem}{Theorem}[chapter]
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem*{remark*}{Remark}
+\newtheoremstyle{pitadef}{0.6em}{0.6em}{}{0pt}{\sffamily\bfseries\color{cEnf}}{.}{.5em}{}
+\theoremstyle{pitadef}
+\newtheorem{definition}{Definition}[chapter]
+\newtheorem{examplethm}[definition]{Example}
+\renewcommand{\qedsymbol}{\color{cIndaco}\rule{0.7em}{0.7em}}
 \setlength{\epigraphwidth}{0.65\textwidth}
 \renewcommand{\epigraphsize}{\small}
 \renewcommand{\epigraphflush}{flushright}
@@ -144,62 +163,71 @@
 \lstdefinestyle{shell}{language=bash,
   morekeywords={apt,brew,dnf,pacman,pip,npm,git,curl}}
 
-% ---------- Box editoriali (tcolorbox) ----------
-% Idea / intuizione (azzurro)
+% ---------- Editorial boxes (tcolorbox), English titles ----------
 \newtcolorbox{ideabox}[1][]{enhanced, breakable,
   colback=cPref!8, colframe=cPref!70, boxrule=0.6pt,
   arc=2pt, left=8pt, right=8pt, top=4pt, bottom=4pt,
-  fonttitle=\sffamily\bfseries, title=Intuizione, #1}
+  fonttitle=\sffamily\bfseries, title=Intuition, #1}
 
 \newtcolorbox{defbox}[1][]{enhanced, breakable,
   colback=cEnf!6, colframe=cEnf!60, boxrule=0.6pt,
   arc=2pt, left=8pt, right=8pt, top=4pt, bottom=4pt,
-  fonttitle=\sffamily\bfseries, title=Definizione, #1}
+  fonttitle=\sffamily\bfseries, title=Definition, #1}
 
 \newtcolorbox{esempiobox}[1][]{enhanced, breakable,
   colback=cOro!12, colframe=cOro!75, boxrule=0.6pt,
   arc=2pt, left=8pt, right=8pt, top=4pt, bottom=4pt,
-  fonttitle=\sffamily\bfseries, title=Esempio, #1}
+  fonttitle=\sffamily\bfseries, title=Example, #1}
 
 \newtcolorbox{avvertenzabox}[1][]{enhanced, breakable,
   colback=cHard!8, colframe=cHard!70, boxrule=0.6pt,
   arc=2pt, left=8pt, right=8pt, top=4pt, bottom=4pt,
-  fonttitle=\sffamily\bfseries, title=Attenzione, #1}
+  fonttitle=\sffamily\bfseries, title=Warning, #1}
 
 \newtcolorbox{storiabox}[1][]{enhanced, breakable,
   colback=cSiena!8, colframe=cSiena!70, boxrule=0.6pt,
   arc=2pt, left=8pt, right=8pt, top=4pt, bottom=4pt,
-  fonttitle=\sffamily\bfseries, title=Nota storica, #1}
+  fonttitle=\sffamily\bfseries, title=Historical note, #1}
 
 \newtcolorbox{connessionebox}[1][]{enhanced, breakable,
   colback=cBox!50, colframe=cCode!60, boxrule=0.6pt,
   arc=2pt, left=8pt, right=8pt, top=4pt, bottom=4pt,
-  fonttitle=\sffamily\bfseries, title=Connessioni, #1}
+  fonttitle=\sffamily\bfseries, title=Connections, #1}
 
 \newtcolorbox{biblioparvabox}[1][]{enhanced, breakable,
   colback=cIndaco!6, colframe=cIndaco!60, boxrule=0.6pt,
   arc=2pt, left=8pt, right=8pt, top=4pt, bottom=4pt,
-  fonttitle=\sffamily\bfseries, title=Per approfondire, #1}
+  fonttitle=\sffamily\bfseries, title=Further reading, #1}
 
 \newtcolorbox{approfondimentobox}[1][]{enhanced, breakable,
   colback=cIndaco!4, colframe=cIndaco!50, boxrule=0.6pt,
   arc=2pt, left=8pt, right=8pt, top=4pt, bottom=4pt,
-  fonttitle=\sffamily\bfseries, title=Approfondimento, #1}
+  fonttitle=\sffamily\bfseries, title=In depth, #1}
 
 \newtcolorbox{casostudiobox}[1][]{enhanced, breakable,
   colback=cOro!8, colframe=cSiena!50, boxrule=0.8pt,
   arc=3pt, left=10pt, right=10pt, top=6pt, bottom=6pt,
-  fonttitle=\sffamily\bfseries, title=Caso di studio, #1}
+  fonttitle=\sffamily\bfseries, title=Case study, #1}
 
 \newtcolorbox{curiositabox}[1][]{enhanced, breakable,
   colback=cAvorio!90, colframe=cOro!60, boxrule=0.6pt,
   arc=2pt, left=8pt, right=8pt, top=4pt, bottom=4pt,
-  fonttitle=\sffamily\bfseries, title=Curiosit\`a, #1}
+  fonttitle=\sffamily\bfseries, title=Curiosity, #1}
 
 \newtcolorbox{erroricomunibox}[1][]{enhanced, breakable,
   colback=cHard!5, colframe=cHard!50, boxrule=0.6pt,
   arc=2pt, left=8pt, right=8pt, top=4pt, bottom=4pt,
-  fonttitle=\sffamily\bfseries, title=Errori comuni, #1}
+  fonttitle=\sffamily\bfseries, title=Common pitfalls, #1}
+
+\newtcolorbox{statsbox}[1][]{enhanced, breakable,
+  colback=cAvorio!60, colframe=cIndaco!60, boxrule=0.6pt,
+  arc=2pt, left=8pt, right=8pt, top=4pt, bottom=4pt,
+  fonttitle=\sffamily\bfseries, title=Numbers at a glance, #1}
+
+\newtcolorbox{schemabox}[1][]{enhanced, breakable,
+  colback=white, colframe=cIndaco!40, boxrule=0.4pt,
+  arc=2pt, left=4pt, right=4pt, top=4pt, bottom=4pt,
+  fonttitle=\sffamily\bfseries\color{cIndaco}, title=Schema, #1}
 
 % ---------- Pull-quote (citazione evidenziata) ----------
 \newcommand{\pullquote}[2]{%

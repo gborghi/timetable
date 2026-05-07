@@ -68,6 +68,27 @@
 \usepackage{lettrine}
 \usepackage{marginnote}
 \usepackage{epigraph}
+\usepackage{caption}
+\usepackage{subcaption}
+\captionsetup{font={small,sf}, labelfont={bf,color=cIndaco}, labelsep=endash}
+\captionsetup[sub]{font={footnotesize,sf}, labelfont={bf,color=cIndaco}}
+\usepackage{siunitx}
+\sisetup{output-decimal-marker={,}, group-separator={\,}, per-mode=symbol}
+\usepackage{amsthm}
+% Theorem-style environments (Garamond italic body, indaco header)
+\newtheoremstyle{pita}{0.6em}{0.6em}{}{0pt}{\sffamily\bfseries\color{cIndaco}}{.}{.5em}{}
+\theoremstyle{pita}
+\newtheorem{teorema}{Teorema}[chapter]
+\newtheorem{proposizione}[teorema]{Proposizione}
+\newtheorem{lemma}[teorema]{Lemma}
+\newtheorem{corollario}[teorema]{Corollario}
+\newtheorem*{osservazione*}{Osservazione}
+\newtheoremstyle{pitadef}{0.6em}{0.6em}{}{0pt}{\sffamily\bfseries\color{cEnf}}{.}{.5em}{}
+\theoremstyle{pitadef}
+\newtheorem{definizione}{Definizione}[chapter]
+\newtheorem{esempiothm}[definizione]{Esempio}
+% End-of-proof tombstone
+\renewcommand{\qedsymbol}{\color{cIndaco}\rule{0.7em}{0.7em}}
 \setlength{\epigraphwidth}{0.65\textwidth}
 \renewcommand{\epigraphsize}{\small}
 \renewcommand{\epigraphflush}{flushright}
@@ -195,6 +216,18 @@
   colback=cHard!5, colframe=cHard!50, boxrule=0.6pt,
   arc=2pt, left=8pt, right=8pt, top=4pt, bottom=4pt,
   fonttitle=\sffamily\bfseries, title=Errori comuni, #1}
+
+% Stat-sheet box for numbers/figures synthesis
+\newtcolorbox{statsbox}[1][]{enhanced, breakable,
+  colback=cAvorio!60, colframe=cIndaco!60, boxrule=0.6pt,
+  arc=2pt, left=8pt, right=8pt, top=4pt, bottom=4pt,
+  fonttitle=\sffamily\bfseries, title=Numeri in sintesi, #1}
+
+% Schema/diagram caption box (used to wrap TikZ schematics)
+\newtcolorbox{schemabox}[1][]{enhanced, breakable,
+  colback=white, colframe=cIndaco!40, boxrule=0.4pt,
+  arc=2pt, left=4pt, right=4pt, top=4pt, bottom=4pt,
+  fonttitle=\sffamily\bfseries\color{cIndaco}, title=Schema, #1}
 
 % ---------- Pull-quote (citazione evidenziata) ----------
 \newcommand{\pullquote}[2]{%
