@@ -166,3 +166,90 @@ def test_class_no_holes_constraint_blocks_holey_solutions():
     assert len(hours) == 2
     # No-holes: hours must be consecutive, starting at h=8.
     assert hours == [8, 9], f"no-holes violated: hours={hours}"
+
+
+def test_coteach_groups_force_codoc_to_share_slots():
+    """Two teachers Rossi/Verdi co-teach Italiano in 1A for 2 hrs/week.
+    With ``required=True`` the OO solver creates ``coslot`` BoolVars
+    and ties each member to them so both teachers occupy the same
+    (day, hour) on every active slot. The class-busy aggregation makes
+    the k=2 members count as ONE class occupation per (cl, subj, d, h),
+    so the standard ``add_class_no_overlap`` does not turn the model
+    infeasible (which it would do summing 2 active slots > 1).
+    """
+    from cp_sat_constraint_model import (
+        MonolithicSolver, ConstraintConfig)
+    profs = {
+        "Rossi": {
+            "classi": {"1A": {"Ita": {"ore": 2}}},
+            "glibero": [6], "max_hours": 18,
+        },
+        "Verdi": {
+            "classi": {"1A": {"Ita": {"ore": 2}}},
+            "glibero": [6], "max_hours": 18,
+        },
+    }
+    dc = {("Rossi", "1A", "Ita", 1): 2, ("Verdi", "1A", "Ita", 1): 2}
+    coteach = [{
+        "group_id": 7, "class_name": "1A", "subject": "Ita",
+        "n_hours": 2, "teachers": ["Rossi", "Verdi"], "required": True,
+    }]
+    ms = MonolithicSolver(profs, dc, ConstraintConfig(
+        enforce_no_holes=False, enforce_h3_presence_at_11=False,
+        coteach_groups=coteach))
+    sol, status = ms.solve(time_limit_s=10.0, workers=2)
+    assert sol is not None, f"infeasible: {status}"
+    rossi_slots = {(d, h) for (t, cl, s, d, h) in sol
+                    if t == "Rossi" and cl == "1A" and s == "Ita"}
+    verdi_slots = {(d, h) for (t, cl, s, d, h) in sol
+                    if t == "Verdi" and cl == "1A" and s == "Ita"}
+    assert len(rossi_slots) == 2, f"Rossi count != 2: {rossi_slots}"
+    assert len(verdi_slots) == 2, f"Verdi count != 2: {verdi_slots}"
+    assert rossi_slots == verdi_slots, (
+        f"coteach members not co-active on same slots: "
+        f"Rossi={rossi_slots} Verdi={verdi_slots}")
+
+
+def test_coteach_groups_class_busy_aggregates_correctly():
+    """When a coteach group is active and another teacher also has a
+    different subject in the same class, the class-busy aggregation
+    must count the coteach as ONE occupation, leaving room for the
+    other teacher's slot in the SAME (cl, d, h) — but the standard
+    ``sum <= 1`` would still fire on the aggregated form.
+
+    Concretely: 1A has 2 hrs of (Rossi+Verdi)-coteach Ita and 2 hrs
+    of Bianchi Mat, on day 1 only, in the 6-hour window. Both
+    cattedre demand 2 hours; coteach occupies 2 of them, Bianchi
+    must fit in the remaining 4 — fully feasible because coteach
+    counts as 1 occupation per (1A, d, h)."""
+    from cp_sat_constraint_model import (
+        MonolithicSolver, ConstraintConfig)
+    profs = {
+        "Rossi": {"classi": {"1A": {"Ita": {"ore": 2}}},
+                   "glibero": [6], "max_hours": 18},
+        "Verdi": {"classi": {"1A": {"Ita": {"ore": 2}}},
+                   "glibero": [6], "max_hours": 18},
+        "Bianchi": {"classi": {"1A": {"Mat": {"ore": 2}}},
+                     "glibero": [6], "max_hours": 18},
+    }
+    dc = {("Rossi", "1A", "Ita", 1): 2,
+          ("Verdi", "1A", "Ita", 1): 2,
+          ("Bianchi", "1A", "Mat", 1): 2}
+    coteach = [{
+        "group_id": 9, "class_name": "1A", "subject": "Ita",
+        "n_hours": 2, "teachers": ["Rossi", "Verdi"], "required": True,
+    }]
+    ms = MonolithicSolver(profs, dc, ConstraintConfig(
+        enforce_no_holes=False, enforce_h3_presence_at_11=False,
+        coteach_groups=coteach))
+    sol, status = ms.solve(time_limit_s=10.0, workers=2)
+    assert sol is not None, f"infeasible: {status}"
+    by_class_dh: dict = {}
+    for (t, cl, s, d, h) in sol:
+        by_class_dh.setdefault((cl, d, h), set()).add((t, s))
+    for (cl, d, h), occupants in by_class_dh.items():
+        subjects = {s for (_t, s) in occupants}
+        if len(occupants) > 1:
+            assert subjects == {"Ita"}, (
+                f"class {cl} d={d} h={h}: more than one subject "
+                f"co-active: {occupants}")

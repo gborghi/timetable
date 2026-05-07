@@ -265,16 +265,99 @@ class ConstraintModel:
                         self.model.Add(sum(vs) <= 1)
 
     def add_class_no_overlap(self):
-        """At most one slot per (class, day, hour). Coteach/parallel
-        groups would relax this; handled by ``add_coteaching`` /
-        ``add_parallel_intra``."""
+        """At most one slot per (class, day, hour). Coteach groups
+        registered via ``add_coteach_groups`` (or via
+        ``self.config.coteach_groups``) are aggregated per (cl, subj)
+        into a single class-busy indicator so the k members of a
+        compresenza count as ONE class occupation, not k.
+
+        The aggregation runs even when ``add_coteach_groups`` has not
+        been called explicitly: the coteach-busy registry is populated
+        by ``add_coteach_groups``; if it's empty this method behaves
+        exactly like the original ``sum(vs) <= 1`` formulation.
+        """
+        coteach_busy_keys = getattr(self, "_coteach_busy_keys", set())
         classes = self.classes_in_scope()
         for cl in classes:
             for d in self.days:
                 for h in self.hours:
-                    vs = self.slots_for_class_day_hour(cl, d, h)
-                    if len(vs) > 1:
-                        self.model.Add(sum(vs) <= 1)
+                    by_subj: dict[str, list] = {}
+                    for k, v in self.slot.items():
+                        t, ccl, s, dd, hh = k
+                        if ccl != cl or dd != d or hh != h:
+                            continue
+                        by_subj.setdefault(s, []).append(v)
+                    busy_indicators = []
+                    for s, vs in by_subj.items():
+                        if (cl, s) in coteach_busy_keys and len(vs) > 1:
+                            ind = self.model.NewBoolVar(
+                                f"cobusy_{cl}_{s}_{d}_{h}")
+                            self.model.AddMaxEquality(ind, vs)
+                            busy_indicators.append(ind)
+                        else:
+                            busy_indicators.extend(vs)
+                    if len(busy_indicators) > 1:
+                        self.model.Add(sum(busy_indicators) <= 1)
+
+    def add_coteach_groups(self, groups: list | None = None):
+        """Co-teaching (compresenza) HARD constraint.
+
+        For each group ``g = {group_id, class_name, subject, n_hours,
+        teachers, required}`` create per-(day, hour) ``coslot`` BoolVars
+        and force every active member's ``slot[(T, cl, subj, d, h)]``
+        to equal ``coslot[g, d, h]``. The weekly total of ``coslot``
+        equals ``n_hours`` so each member's count is exactly
+        ``n_hours`` and the k members are co-active on the same slots.
+
+        The pair ``(class_name, subject)`` is registered in
+        ``self._coteach_busy_keys`` so the next
+        ``add_class_no_overlap`` call aggregates the k member slots
+        into a single class-busy indicator (as the legacy Phase B does
+        via the ``coteach_members_by_cl_subj`` map).
+
+        When ``groups`` is None, ``self.config.coteach_groups`` is
+        used. SOFT groups (``required=False``) are skipped here; SOFT
+        coteach belongs to the objective layer (TODO).
+        """
+        if groups is None:
+            groups = list(self.config.coteach_groups or [])
+        if not groups:
+            return
+        if not hasattr(self, "_coteach_busy_keys"):
+            self._coteach_busy_keys: set[tuple[str, str]] = set()
+        for g in groups:
+            if not g.get("required"):
+                continue
+            gid = g["group_id"]
+            gcl = g["class_name"]
+            gsub = g["subject"]
+            n_hours = int(g["n_hours"])
+            teachers = list(g["teachers"])
+            usable = [
+                t for t in teachers
+                if any((t, gcl, gsub, d, h) in self.slot
+                       for d in self.days for h in self.hours)
+            ]
+            if len(usable) < 2:
+                continue
+            self._coteach_busy_keys.add((gcl, gsub))
+            coslot: dict[tuple[int, int], Any] = {}
+            for d in self.days:
+                for h in self.hours:
+                    cv = self.model.NewBoolVar(
+                        f"co_{gid}_{d}_{h}")
+                    coslot[(d, h)] = cv
+                    for t in usable:
+                        v = self.slot.get((t, gcl, gsub, d, h))
+                        if v is None:
+                            self.model.Add(cv == 0)
+                        else:
+                            self.model.Add(v == cv)
+            self.model.Add(
+                sum(coslot[(d, h)]
+                    for d in self.days for h in self.hours)
+                == n_hours
+            )
 
     def add_locks(self, locks: list | None = None):
         """Force ``slot[(t, cl, s, d, h)] == 1`` for every supplied
@@ -722,6 +805,7 @@ class MonolithicSolver(ConstraintModel):
 
     def build(self, *, via_dsl: bool = False):
         self.add_all_hard_constraints(via_dsl=via_dsl)
+        self.add_coteach_groups()
         self.add_class_no_overlap()
         obj_terms, _ = self.compute_soft_cost_expr()
         if obj_terms:
