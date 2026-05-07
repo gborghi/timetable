@@ -352,3 +352,67 @@ def test_free_day_choice_3way_custom_weights():
         'free_day_choice_3way("T1", 1, 2, 3, 0, 200, 400)')
     weights = sorted(w for w, _ in compiler.soft_cost_terms)
     assert weights == [200, 400]
+
+
+# ============================================================
+# Pragma 4: subject_day_count_pair
+# ============================================================
+
+
+def test_subject_day_count_pair_forces_2hr_in_some_day():
+    """Mat curriculum: 4 hrs per week, max 2/day. Without the pragma
+    the solver could spread 1+1+1+1+0+0; with the pragma at least
+    one day must have exactly 2 (or more) Mat hours."""
+    import dsl_to_cpsat as d2c
+    triples = [("T1", "1A", "Mat", 4)]
+    model, day_count, days = _build_dc_model(
+        triples, max_per_day=2)
+    compiler = d2c.DSLConstraintCompiler(
+        model, slot={}, day_count=day_count, level="phase_a")
+    compiler.compile(
+        'subject_day_count_pair("1A", 2, "Mat")')
+    s, status = _solve(model)
+    from ortools.sat.python import cp_model
+    assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+    daily = [s.Value(day_count[("T1", "1A", "Mat", d)]) for d in days]
+    assert max(daily) >= 2, daily
+
+
+def test_subject_day_count_pair_blocks_full_spread():
+    """4 hrs of Mat with max_per_day=1 globally: no day can have 2,
+    so the pragma must make the model INFEAS."""
+    import dsl_to_cpsat as d2c
+    triples = [("T1", "1A", "Mat", 4)]
+    model, day_count, _ = _build_dc_model(
+        triples, max_per_day=1)
+    compiler = d2c.DSLConstraintCompiler(
+        model, slot={}, day_count=day_count, level="phase_a")
+    compiler.compile(
+        'subject_day_count_pair("1A", 2, "Mat")')
+    _, status = _solve(model)
+    from ortools.sat.python import cp_model
+    assert status == cp_model.INFEASIBLE
+
+
+def test_subject_day_count_pair_per_subject_independent():
+    """With two subjects in the list, each gets its own
+    'at least one day with >=2' rule. Force Mat to 2 on day 1 to
+    satisfy Mat side; then Ita must also pile up >=2 somewhere."""
+    import dsl_to_cpsat as d2c
+    triples = [
+        ("T1", "1A", "Mat", 4),
+        ("T2", "1A", "Ita", 4),
+    ]
+    model, day_count, days = _build_dc_model(
+        triples, max_per_day=2)
+    compiler = d2c.DSLConstraintCompiler(
+        model, slot={}, day_count=day_count, level="phase_a")
+    compiler.compile(
+        'subject_day_count_pair("1A", 2, "Mat", "Ita")')
+    s, status = _solve(model)
+    from ortools.sat.python import cp_model
+    assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+    mat_daily = [s.Value(day_count[("T1", "1A", "Mat", d)]) for d in days]
+    ita_daily = [s.Value(day_count[("T2", "1A", "Ita", d)]) for d in days]
+    assert max(mat_daily) >= 2 and max(ita_daily) >= 2, (
+        mat_daily, ita_daily)

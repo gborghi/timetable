@@ -992,6 +992,18 @@ class DSLConstraintCompiler:
                 return True
             self._compile_hall_bound_prof_day(str(arg_values[0]))
             return True
+        if name == "subject_day_count_pair":
+            # Args: class, n, subj_1, subj_2, ...
+            if len(arg_values) < 3:
+                self.diagnostics.append(
+                    "subject_day_count_pair expects "
+                    "(class, n, subj_1, subj_2, ...)")
+                return True
+            cl = str(arg_values[0])
+            n = int(arg_values[1])
+            subjects = [str(s) for s in arg_values[2:]]
+            self._compile_subject_day_count_pair(cl, subjects, n)
+            return True
         if name == "free_day_choice_3way":
             # Args: prof, candidate_day_1, candidate_day_2,
             # candidate_day_3, [w_1, w_2, w_3]. Defaults: 0, 50, 100.
@@ -1382,6 +1394,53 @@ class DSLConstraintCompiler:
             self.model.AddMaxEquality(max_load, relevant_loads)
             pdl = self._prof_day_load_intvar(p, d)
             self.model.Add(pdl <= max_load)
+
+    def _compile_subject_day_count_pair(
+            self, cl: str, subjects: list[str], n: int):
+        """Phase A "≥1 day with ≥n hours per subject" pragma.
+
+        Mirrors the legacy Mat/Ita rule in
+        ``cpsat_v2_timetable.solve_phase_a`` (lines 613..644): for
+        every subject in ``subjects`` and every class ``cl``, at
+        least one day must have at least ``n`` total hours of that
+        (class, subject) combination. The total is summed over all
+        teachers active for that (cl, subj) -- typically one but a
+        compresenza splits across two and the sum still represents
+        the class' load on that subject.
+
+        Encoded by computing per-day sums into IntVars, taking the
+        weekly max, and forcing ``max >= n``. The constraint fires
+        per subject independently (the "pair" name reflects the
+        typical 2-subject usage Mat+Ita, not a coupled rule).
+        """
+        if not self.day_count:
+            self.diagnostics.append(
+                "subject_day_count_pair: day_count empty")
+            return
+        if not subjects:
+            return
+        days = self._days_in_dc_scope()
+        if not days:
+            return
+        for subj in subjects:
+            day_sums = []
+            for d in days:
+                terms = [v for (_pp, ccl, ss, dd), v
+                          in self.day_count.items()
+                          if ccl == cl and ss == subj and dd == d]
+                if not terms:
+                    day_sums.append(self.model.NewConstant(0))
+                    continue
+                ds = self.model.NewIntVar(
+                    0, 100, f"_dsl_sdcp_{subj[:3]}_{cl}_{d}")
+                self.model.Add(ds == sum(terms))
+                day_sums.append(ds)
+            if not day_sums:
+                continue
+            mx = self.model.NewIntVar(
+                0, 100, f"_dsl_sdcp_max_{subj[:3]}_{cl}")
+            self.model.AddMaxEquality(mx, day_sums)
+            self.model.Add(mx >= int(n))
 
     def _compile_free_day_choice_3way(
             self, prof: str, candidates: list[int],
