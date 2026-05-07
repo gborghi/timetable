@@ -333,6 +333,85 @@ def test_support_assignment_does_not_double_book_class():
         f"{len(distinct_non_support)}: {distinct_non_support}")
 
 
+def test_parallel_groups_intra_class_force_same_slot():
+    """Religione (T1) and Alternativa (T2) are parallel in 3B for 2
+    hrs/week each. Their slots must coincide every (d, h): the
+    students choose one or the other and the school must schedule
+    them simultaneously."""
+    from cp_sat_constraint_model import (
+        MonolithicSolver, ConstraintConfig)
+    profs = {
+        "T1": {"classi": {"3B": {"Religione": {"ore": 2}}},
+                "glibero": [6], "max_hours": 18},
+        "T2": {"classi": {"3B": {"Alternativa": {"ore": 2}}},
+                "glibero": [6], "max_hours": 18},
+    }
+    dc = {("T1", "3B", "Religione", 1): 2,
+          ("T2", "3B", "Alternativa", 1): 2}
+    pgs = [{"group_id": 11, "class_name": "3B",
+             "members": [
+                 {"teacher_name": "T1", "subject": "Religione"},
+                 {"teacher_name": "T2", "subject": "Alternativa"},
+             ]}]
+    ms = MonolithicSolver(profs, dc, ConstraintConfig(
+        enforce_no_holes=False, enforce_h3_presence_at_11=False,
+        parallel_groups=pgs))
+    sol, status = ms.solve(time_limit_s=10.0, workers=2)
+    assert sol is not None, f"infeasible: {status}"
+    rel_dh = {(d, h) for (t, cl, s, d, h) in sol
+               if t == "T1" and s == "Religione"}
+    alt_dh = {(d, h) for (t, cl, s, d, h) in sol
+               if t == "T2" and s == "Alternativa"}
+    assert len(rel_dh) == 2, rel_dh
+    assert len(alt_dh) == 2, alt_dh
+    assert rel_dh == alt_dh, (
+        f"parallel members not on same slots: "
+        f"Rel={rel_dh} Alt={alt_dh}")
+
+
+def test_parallel_groups_intra_class_busy_aggregates_as_one():
+    """When religione+alternativa are parallel and another teacher
+    has Mat in the same class at the same day, the class-busy rule
+    must count the parallel pair as ONE occupation per (d, h),
+    leaving room for Mat. With the standard ``sum <= 1`` over slot
+    vars (no parallel aggregation) the model would be infeasible at
+    the parallel hours.
+    """
+    from cp_sat_constraint_model import (
+        MonolithicSolver, ConstraintConfig)
+    profs = {
+        "T1": {"classi": {"3B": {"Religione": {"ore": 2}}},
+                "glibero": [6], "max_hours": 18},
+        "T2": {"classi": {"3B": {"Alternativa": {"ore": 2}}},
+                "glibero": [6], "max_hours": 18},
+        "Mat1": {"classi": {"3B": {"Mat": {"ore": 4}}},
+                  "glibero": [6], "max_hours": 18},
+    }
+    dc = {("T1", "3B", "Religione", 1): 2,
+          ("T2", "3B", "Alternativa", 1): 2,
+          ("Mat1", "3B", "Mat", 1): 4}
+    pgs = [{"group_id": 11, "class_name": "3B",
+             "members": [
+                 {"teacher_name": "T1", "subject": "Religione"},
+                 {"teacher_name": "T2", "subject": "Alternativa"},
+             ]}]
+    ms = MonolithicSolver(profs, dc, ConstraintConfig(
+        enforce_no_holes=False, enforce_h3_presence_at_11=False,
+        parallel_groups=pgs))
+    sol, status = ms.solve(time_limit_s=10.0, workers=2)
+    assert sol is not None, f"infeasible: {status}"
+    # In the parallel hours, both T1 and T2 are present.
+    parallel_hours = {(d, h) for (t, cl, s, d, h) in sol
+                       if t in ("T1", "T2")}
+    # No hour can have Mat AND parallel: 6 hours, parallel takes 2,
+    # Mat takes 4 -> exactly 6 distinct slots.
+    distinct_3b = {(d, h) for (_t, cl, _s, d, h) in sol
+                    if cl == "3B"}
+    assert len(distinct_3b) == 6, (
+        f"3B occupies {len(distinct_3b)} hrs (expected 6), "
+        f"parallel_hours={parallel_hours}")
+
+
 def test_potenziamento_pure_no_regular_lessons():
     """ProfPot has 4 hours of potenziamento and zero regular cattedre.
     The solver must place 4 distinct (d, h) pot_slots and produce no

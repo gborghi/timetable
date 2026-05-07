@@ -265,43 +265,71 @@ class ConstraintModel:
                         self.model.Add(sum(vs) <= 1)
 
     def add_class_no_overlap(self):
-        """At most one slot per (class, day, hour). Coteach groups
-        registered via ``add_coteach_groups`` (or via
-        ``self.config.coteach_groups``) are aggregated per (cl, subj)
-        into a single class-busy indicator so the k members of a
-        compresenza count as ONE class occupation, not k.
+        """At most one slot per (class, day, hour).
 
-        Sostegno (DVA) triples registered via
-        ``add_support_assignments`` are excluded from the per-(cl, d, h)
-        busy aggregation: the support slot shadows a non-support lesson
-        and must not add a fresh class occupation (the legacy Phase B
-        does the same via ``support_triples_set``).
+        Aggregation rules (mirror the legacy ``solve_phase_b_for_day``
+        ``keys_by_busy`` logic):
 
-        The aggregation runs even when ``add_coteach_groups`` /
-        ``add_support_assignments`` have not been called explicitly:
-        the registries (``_coteach_busy_keys`` / ``_support_triples``)
-        are populated by those methods; if both are empty this method
-        behaves exactly like the original ``sum(vs) <= 1`` formulation.
+        * Coteach groups registered via ``add_coteach_groups`` are
+          aggregated per (cl, subj) into a single class-busy indicator
+          so the k members of a compresenza count as ONE class
+          occupation, not k.
+        * Parallel groups (intra-class) registered via
+          ``add_parallel_groups_intra_class`` are aggregated per group
+          (different subjects, same slot): the k member slot vars are
+          OR'd into a single indicator and count as ONE class
+          occupation.
+        * Sostegno (DVA) triples registered via
+          ``add_support_assignments`` are excluded from the
+          aggregation: the support slot shadows a non-support lesson
+          and must not add a fresh class occupation.
+
+        The aggregation runs even when those methods have not been
+        called explicitly: the registries
+        (``_coteach_busy_keys`` / ``_support_triples`` /
+        ``_parallel_intra_busy_key``) start empty, and with all three
+        empty this method behaves exactly like the original
+        ``sum(vs) <= 1`` formulation.
         """
         coteach_busy_keys = getattr(self, "_coteach_busy_keys", set())
         support_triples = getattr(self, "_support_triples", set())
+        parallel_busy_key = getattr(
+            self, "_parallel_intra_busy_key", {})
         classes = self.classes_in_scope()
         for cl in classes:
             for d in self.days:
                 for h in self.hours:
-                    by_subj: dict[str, list] = {}
+                    # Bucket slots by busy key: parallel members share
+                    # ``__par__N`` (a key string distinct from any
+                    # subject), coteach members share their subject.
+                    by_bk: dict[str, tuple[set[str], list]] = {}
                     for k, v in self.slot.items():
                         t, ccl, s, dd, hh = k
                         if ccl != cl or dd != d or hh != h:
                             continue
                         if (t, ccl, s) in support_triples:
                             continue
-                        by_subj.setdefault(s, []).append(v)
+                        bk = parallel_busy_key.get((cl, s), s)
+                        if bk not in by_bk:
+                            by_bk[bk] = (set(), [])
+                        by_bk[bk][0].add(s)
+                        by_bk[bk][1].append(v)
                     busy_indicators = []
-                    for s, vs in by_subj.items():
-                        if (cl, s) in coteach_busy_keys and len(vs) > 1:
+                    for bk, (subs, vs) in by_bk.items():
+                        if len(vs) <= 1:
+                            busy_indicators.extend(vs)
+                            continue
+                        # ``bk not in subs`` is the parallel marker:
+                        # the busy key for a parallel group is
+                        # ``__par__<gid>``, which is not a subject
+                        # string. Coteach members share a subject and
+                        # ``(cl, subj)`` is in ``_coteach_busy_keys``.
+                        is_parallel = bk not in subs
+                        is_coteach = any(
+                            (cl, s) in coteach_busy_keys for s in subs)
+                        if is_parallel or is_coteach:
                             ind = self.model.NewBoolVar(
-                                f"cobusy_{cl}_{s}_{d}_{h}")
+                                f"agg_{cl}_{bk}_{d}_{h}")
                             self.model.AddMaxEquality(ind, vs)
                             busy_indicators.append(ind)
                         else:
@@ -491,6 +519,64 @@ class ConstraintModel:
                     if regular_vars:
                         self.model.Add(
                             pot_var + sum(regular_vars) <= 1)
+
+    def add_parallel_groups_intra_class(
+        self, groups: list | None = None,
+    ):
+        """Parallel groups (intra-class) HARD constraint.
+
+        For each ``parallel_group`` ``{group_id, class_name, members}``
+        with ``members`` a list of ``{teacher_name, subject}`` dicts,
+        tie every (d, h) slot var of every member: they are all equal,
+        so the k Assignments march together in their actual slot. The
+        canonical use-case is religione/alternativa in the same class:
+        two distinct subjects, same hour, students choose one or the
+        other.
+
+        Each member's ``(class_name, subject)`` is registered in
+        ``self._parallel_intra_busy_key`` mapping to a stable group key
+        ``__par__<gid>`` so the next ``add_class_no_overlap`` call
+        aggregates the k member slot vars under a single class-busy
+        indicator: they count as ONE class occupation per (cl, d, h),
+        not k. Mirrors the legacy ``parallel_subj_to_busy_key`` map
+        used by ``solve_phase_b_for_day``.
+
+        Groups with fewer than 2 members are skipped (no parallelism
+        to enforce).
+        """
+        if groups is None:
+            groups = list(self.config.parallel_groups or [])
+        if not groups:
+            return
+        if not hasattr(self, "_parallel_intra_busy_key"):
+            self._parallel_intra_busy_key: dict[
+                tuple[str, str], str] = {}
+        for pg in groups:
+            cl_name = pg["class_name"]
+            members = pg.get("members", [])
+            if len(members) < 2:
+                continue
+            gid = pg.get("group_id", id(pg))
+            bkey = f"__par__{gid}"
+            for m in members:
+                self._parallel_intra_busy_key[
+                    (cl_name, m["subject"])] = bkey
+            m_keys = [(m["teacher_name"], cl_name, m["subject"])
+                      for m in members]
+            for d in self.days:
+                for h in self.hours:
+                    usable = [k for k in m_keys
+                              if (k[0], k[1], k[2], d, h)
+                              in self.slot]
+                    if len(usable) < 2:
+                        continue
+                    ref = self.slot[
+                        (usable[0][0], usable[0][1],
+                         usable[0][2], d, h)]
+                    for k in usable[1:]:
+                        self.model.Add(
+                            self.slot[(k[0], k[1], k[2], d, h)]
+                            == ref)
 
     def add_locks(self, locks: list | None = None):
         """Force ``slot[(t, cl, s, d, h)] == 1`` for every supplied
@@ -941,6 +1027,7 @@ class MonolithicSolver(ConstraintModel):
         self.add_coteach_groups()
         self.add_support_assignments()
         self.add_potenziamento_assignments()
+        self.add_parallel_groups_intra_class()
         self.add_class_no_overlap()
         obj_terms, _ = self.compute_soft_cost_expr()
         if obj_terms:
