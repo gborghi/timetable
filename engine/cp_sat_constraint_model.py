@@ -271,12 +271,20 @@ class ConstraintModel:
         into a single class-busy indicator so the k members of a
         compresenza count as ONE class occupation, not k.
 
-        The aggregation runs even when ``add_coteach_groups`` has not
-        been called explicitly: the coteach-busy registry is populated
-        by ``add_coteach_groups``; if it's empty this method behaves
-        exactly like the original ``sum(vs) <= 1`` formulation.
+        Sostegno (DVA) triples registered via
+        ``add_support_assignments`` are excluded from the per-(cl, d, h)
+        busy aggregation: the support slot shadows a non-support lesson
+        and must not add a fresh class occupation (the legacy Phase B
+        does the same via ``support_triples_set``).
+
+        The aggregation runs even when ``add_coteach_groups`` /
+        ``add_support_assignments`` have not been called explicitly:
+        the registries (``_coteach_busy_keys`` / ``_support_triples``)
+        are populated by those methods; if both are empty this method
+        behaves exactly like the original ``sum(vs) <= 1`` formulation.
         """
         coteach_busy_keys = getattr(self, "_coteach_busy_keys", set())
+        support_triples = getattr(self, "_support_triples", set())
         classes = self.classes_in_scope()
         for cl in classes:
             for d in self.days:
@@ -285,6 +293,8 @@ class ConstraintModel:
                     for k, v in self.slot.items():
                         t, ccl, s, dd, hh = k
                         if ccl != cl or dd != d or hh != h:
+                            continue
+                        if (t, ccl, s) in support_triples:
                             continue
                         by_subj.setdefault(s, []).append(v)
                     busy_indicators = []
@@ -358,6 +368,67 @@ class ConstraintModel:
                     for d in self.days for h in self.hours)
                 == n_hours
             )
+
+    def add_support_assignments(self, assignments: list | None = None):
+        """Sostegno (DVA support) HARD shadow constraint.
+
+        For each ``support_assignment`` ``{teacher_name, class_name,
+        subject, n_hours}`` the support teacher is in the class only
+        when a non-support lesson is also in the class at the same
+        (day, hour): ``slot[(t_sost, cl, subj_sost, d, h)]`` <= OR over
+        non-support slots ``slot[(t, cl, *, d, h)]``. The (t, cl, subj)
+        triple is registered in ``self._support_triples`` so the next
+        ``add_class_no_overlap`` call EXCLUDES it from the per-(cl, d,
+        h) busy aggregation: the support shadows the existing lesson,
+        it does not add a fresh class occupation. Mirrors the legacy
+        ``solve_phase_b_for_day`` shadow logic on
+        ``support_triples_set``.
+
+        ``is_group_target=True`` assignments (sostegno targeting an
+        interclass StudyGroup) are skipped here -- they belong with
+        Pattern 4 (``add_parallel_groups_inter_class``) since the
+        shadow target is a group slot, not a class slot.
+        """
+        if assignments is None:
+            assignments = list(self.config.support_assignments or [])
+        if not assignments:
+            return
+        if not hasattr(self, "_support_triples"):
+            self._support_triples: set[tuple[str, str, str]] = set()
+        # Register every triple first so the OR-of-non-support check
+        # below filters out ALL support entries even when multiple
+        # support assignments share a class.
+        for sa in assignments:
+            if sa.get("is_group_target"):
+                continue
+            self._support_triples.add(
+                (sa["teacher_name"], sa["class_name"], sa["subject"]))
+        for sa in assignments:
+            if sa.get("is_group_target"):
+                continue
+            sp = sa["teacher_name"]
+            sc = sa["class_name"]
+            ss = sa["subject"]
+            for d in self.days:
+                for h in self.hours:
+                    sk = self.slot.get((sp, sc, ss, d, h))
+                    if sk is None:
+                        continue
+                    non_support_vars = [
+                        v for k, v in self.slot.items()
+                        if k[1] == sc and k[3] == d and k[4] == h
+                        and (k[0], k[1], k[2]) not in
+                        self._support_triples
+                    ]
+                    if not non_support_vars:
+                        self.model.Add(sk == 0)
+                    elif len(non_support_vars) == 1:
+                        self.model.Add(sk <= non_support_vars[0])
+                    else:
+                        cb = self.model.NewBoolVar(
+                            f"clbusy_{sc}_{d}_{h}")
+                        self.model.AddMaxEquality(cb, non_support_vars)
+                        self.model.Add(sk <= cb)
 
     def add_locks(self, locks: list | None = None):
         """Force ``slot[(t, cl, s, d, h)] == 1`` for every supplied
@@ -806,6 +877,7 @@ class MonolithicSolver(ConstraintModel):
     def build(self, *, via_dsl: bool = False):
         self.add_all_hard_constraints(via_dsl=via_dsl)
         self.add_coteach_groups()
+        self.add_support_assignments()
         self.add_class_no_overlap()
         obj_terms, _ = self.compute_soft_cost_expr()
         if obj_terms:

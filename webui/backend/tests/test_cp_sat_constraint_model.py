@@ -253,3 +253,103 @@ def test_coteach_groups_class_busy_aggregates_correctly():
             assert subjects == {"Ita"}, (
                 f"class {cl} d={d} h={h}: more than one subject "
                 f"co-active: {occupants}")
+
+
+def test_support_assignment_shadows_non_support_lesson():
+    """ProfSost has 4 sostegno hours in 3B; the 3B class has Mat (4h)
+    and Ita (4h) split across days. Every Sost slot must coincide
+    with a non-support 3B lesson at the same (day, hour).
+    """
+    from cp_sat_constraint_model import (
+        MonolithicSolver, ConstraintConfig)
+    profs = {
+        "Rossi": {"classi": {"3B": {"Mat": {"ore": 4}}},
+                   "glibero": [6], "max_hours": 18},
+        "Bianchi": {"classi": {"3B": {"Ita": {"ore": 4}}},
+                     "glibero": [6], "max_hours": 18},
+        "ProfSost": {"classi": {"3B": {"sostegno": {"ore": 4}}},
+                      "glibero": [6], "max_hours": 18},
+    }
+    dc = {}
+    for d in (1, 2, 3, 4):
+        dc[("Rossi", "3B", "Mat", d)] = 1
+        dc[("Bianchi", "3B", "Ita", d)] = 1
+        dc[("ProfSost", "3B", "sostegno", d)] = 1
+    sup = [{"teacher_name": "ProfSost", "class_name": "3B",
+            "subject": "sostegno", "n_hours": 4}]
+    ms = MonolithicSolver(profs, dc, ConstraintConfig(
+        enforce_no_holes=False, enforce_h3_presence_at_11=False,
+        support_assignments=sup))
+    sol, status = ms.solve(time_limit_s=10.0, workers=2)
+    assert sol is not None, f"infeasible: {status}"
+    sost_slots = {(d, h) for (t, cl, s, d, h) in sol
+                   if t == "ProfSost" and cl == "3B"
+                   and s == "sostegno"}
+    assert len(sost_slots) == 4, sost_slots
+    non_support_slots = {(d, h) for (t, cl, s, d, h) in sol
+                          if cl == "3B" and t != "ProfSost"
+                          and s != "sostegno"}
+    for sd, sh in sost_slots:
+        assert (sd, sh) in non_support_slots, (
+            f"support slot ({sd},{sh}) without any non-support "
+            f"lesson in 3B")
+
+
+def test_support_assignment_does_not_double_book_class():
+    """The support slot must NOT count as a fresh class occupation:
+    the (3B, d, h) where Sost is co-active with Mat must allow Mat
+    (the non-support) to occupy the slot freely. Without the support
+    exclusion in ``add_class_no_overlap`` the model would be
+    infeasible at the shadow hours (sum of 2 active slots > 1)."""
+    from cp_sat_constraint_model import (
+        MonolithicSolver, ConstraintConfig)
+    profs = {
+        "Rossi": {"classi": {"3B": {"Mat": {"ore": 4}}},
+                   "glibero": [6], "max_hours": 18},
+        "Bianchi": {"classi": {"3B": {"Ita": {"ore": 4}}},
+                     "glibero": [6], "max_hours": 18},
+        "ProfSost": {"classi": {"3B": {"sostegno": {"ore": 4}}},
+                      "glibero": [6], "max_hours": 18},
+    }
+    dc = {}
+    for d in (1, 2, 3, 4):
+        dc[("Rossi", "3B", "Mat", d)] = 1
+        dc[("Bianchi", "3B", "Ita", d)] = 1
+        dc[("ProfSost", "3B", "sostegno", d)] = 1
+    sup = [{"teacher_name": "ProfSost", "class_name": "3B",
+            "subject": "sostegno", "n_hours": 4}]
+    ms = MonolithicSolver(profs, dc, ConstraintConfig(
+        enforce_no_holes=False, enforce_h3_presence_at_11=False,
+        support_assignments=sup))
+    sol, status = ms.solve(time_limit_s=10.0, workers=2)
+    assert sol is not None, f"infeasible: {status}"
+    # Total NON-support 3B slots: 4 Mat + 4 Ita = 8 distinct (d, h).
+    distinct_non_support = {
+        (d, h) for (t, cl, s, d, h) in sol
+        if cl == "3B" and s != "sostegno"
+    }
+    assert len(distinct_non_support) == 8, (
+        f"expected 8 distinct non-support 3B (d, h), got "
+        f"{len(distinct_non_support)}: {distinct_non_support}")
+
+
+def test_support_assignment_infeasible_when_class_empty():
+    """ProfSost has 4 sostegno hours but the class has 0 non-support
+    triples -> the shadow constraint forces every support slot to 0,
+    which contradicts ``sum slots == n_hours = 4``. Infeasible."""
+    from cp_sat_constraint_model import (
+        MonolithicSolver, ConstraintConfig)
+    profs = {
+        "ProfSost": {"classi": {"3B": {"sostegno": {"ore": 4}}},
+                      "glibero": [6], "max_hours": 18},
+    }
+    dc = {}
+    for d in (1, 2, 3, 4):
+        dc[("ProfSost", "3B", "sostegno", d)] = 1
+    sup = [{"teacher_name": "ProfSost", "class_name": "3B",
+            "subject": "sostegno", "n_hours": 4}]
+    ms = MonolithicSolver(profs, dc, ConstraintConfig(
+        enforce_no_holes=False, enforce_h3_presence_at_11=False,
+        support_assignments=sup))
+    sol, status = ms.solve(time_limit_s=5.0, workers=1)
+    assert sol is None, f"expected infeasible, got sol={sol}"
