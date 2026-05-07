@@ -218,13 +218,12 @@ def build_phase_a_pragmas(
       * ``free_day_choice_3way(prof, d1, d2, d3)`` for every prof whose
         ``glibero`` list has at least three candidates (default
         weights 0/50/100 -- the legacy values).
-      * ``subject_day_count_pair(cl, 2, "Matematica" [, "Italiano"])``
-        per class for the subjects (Mat / Ita) whose hours in the
-        class are at least 2; gated on ``tot_in_cl >= 2`` (the legacy
-        gate). When the prof teaches multiple subjects one of which
-        is below 2 hours, the pragma is skipped for that subject (it
-        would be infeasible: the pragma sums teachers per (cl, subj),
-        not subjects per (cl, prof)).
+      * ``subject_day_count_pair(t, cl, subj, 2)`` per (teacher, class,
+        subject) cattedra where ``subj`` is "Matematica" or "Italiano"
+        and the cattedra has at least 2 hours. Per-teacher per-subject:
+        each such cattedra independently needs >=1 day with >=2 hours
+        of that specific (teacher, class, subject). Replaces the
+        legacy per-prof cross-subject Mat/Ita HARD block.
       * ``subject_day_count_in(cl, "Scienzemotorie", 0, 2)`` per class
         with a Scienzemotorie cattedra in ``day_count``.
 
@@ -280,16 +279,29 @@ def build_phase_a_pragmas(
         pragmas.append(
             f'free_day_choice_3way({p!r}, {d1}, {d2}, {d3})'
         )
-    # 4. Mat/Ita "≥1 day with ≥2 hours" -- intentionally NOT emitted
-    # as a DSL pragma. The existing ``subject_day_count_pair`` is
-    # per-subject (sums teachers for one subject), but the legacy
-    # constraint is per-prof cross-subject (sums all subjs of the
-    # Mat/Ita prof). When the prof teaches multiple < 2-hour
-    # subjects in the class (e.g. Italian=1 + Storia=1), the legacy
-    # forces ``max_d (Ita + Storia) >= 2`` while the pragma can only
-    # bound Italian alone (which becomes infeasible). Until a
-    # cross-subject pragma exists, ``solve_phase_a`` keeps a
-    # hardcoded HARD block for this case.
+    # 4. Mat/Ita "≥1 day with ≥2 hours" -- per-teacher per-subject.
+    # Emit one pragma per cattedra (t, cl, subj) where subj is
+    # Matematica or Italiano and ore >= 2 (the per-cattedra
+    # feasibility gate). Profs teaching the subject with < 2 hours
+    # are skipped (the rule is infeasible for them and the legacy
+    # cross-subject form is no longer the contract -- the user
+    # explicit rule is "stesso prof stessa materia devono avere la
+    # coppia di ore").
+    for cl in sorted(classes):
+        for subject in ("Matematica", "Italiano"):
+            for p in sorted(profs):
+                cmap = profs[p].get("classi", {}) or {}
+                if cl not in cmap:
+                    continue
+                if subject not in cmap[cl]:
+                    continue
+                ore = int(cmap[cl][subject].get("ore", 0))
+                if ore < 2:
+                    continue
+                pragmas.append(
+                    f'subject_day_count_pair({p!r}, {cl!r}, '
+                    f'{subject!r}, 2)'
+                )
     # 5. subject_day_count_in -- per class with a Scienzemotorie
     # cattedra in day_count, restrict daily count to {0, 2}.
     for cl in sorted(classes):
@@ -746,44 +758,10 @@ def solve_phase_a(profs, classes, triples, class_profs,
             sum(pot_day_count_vars[(p, d)] for d in DAYS) == pot_total
         )
 
-    # HARD (A) -- Mat/Ita: per ogni classe, almeno UN giorno deve avere
-    # >= 2 ore del docente (qualunque materia, ma stesso prof).
-    # Intentionally NOT delegated to the DSL pragma family yet -- the
-    # existing ``subject_day_count_pair`` is per-subject, but the
-    # legacy semantic is per-prof cross-subject (sums the prof's
-    # subjects in the class). See ``build_phase_a_pragmas`` rule #4
-    # for the rationale.
-    for cl in classes:
-        for subject in ("Matematica", "Italiano"):
-            p = find_prof_subject(profs, cl, subject)
-            if p is None:
-                continue
-            subjs_of_p = list(profs[p]["classi"][cl].keys())
-            tot_in_cl = sum(
-                profs[p]["classi"][cl][s]["ore"] for s in subjs_of_p
-            )
-            if tot_in_cl < 2:
-                continue                # impossibile soddisfare
-            # max_d sum_subj day_count[(p, cl, s, d)] >= 2
-            day_sums = []
-            for d in DAYS:
-                ds = model.NewIntVar(
-                    0, MAX_PER_DAY_PROF_CL,
-                    f"dayHrs_{subject[:3]}_{p}_{cl}_{d}"
-                )
-                model.Add(
-                    ds == sum(
-                        day_count[(p, cl, s, d)] for s in subjs_of_p
-                    )
-                )
-                day_sums.append(ds)
-            mx = model.NewIntVar(
-                0, MAX_PER_DAY_PROF_CL,
-                f"maxDay_{subject[:3]}_{p}_{cl}"
-            )
-            model.AddMaxEquality(mx, day_sums)
-            model.Add(mx >= 2)
-
+    # HARD (A) Mat/Ita "≥1 day with ≥2 hours" -- compiled below by
+    # the ``subject_day_count_pair`` DSL pragma. Per-teacher
+    # per-subject: each (t, cl, subj) cattedra with subj in
+    # {Matematica, Italiano} and ore >= 2 gets the rule independently.
     # HARD (B) Motorie {0, 2} -- compiled below by the
     # ``subject_day_count_in`` DSL pragma.
 

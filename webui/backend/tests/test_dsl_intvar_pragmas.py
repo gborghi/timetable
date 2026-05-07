@@ -900,12 +900,23 @@ def test_build_phase_a_pragmas_emits_canonical_set():
     assert any("free_day_choice_3way('T2', 1, 2, 6)" == p
                 for p in pragmas)
     assert not any("free_day_choice_3way('T3'" in p for p in pragmas)
-    # Mat/Ita: NOT emitted as a pragma. The legacy is per-prof
-    # cross-subject (incompatible with the per-subject pragma);
-    # solve_phase_a keeps a hardcoded HARD block for it.
-    assert not any("subject_day_count_pair" in p for p in pragmas), (
-        pragmas)
-    # Motorie: present.
+    # Mat/Ita: per-teacher per-subject pragma. T1 has Matematica=4
+    # (>= 2) -> emit. T2 has Italiano=5 (>= 2) -> emit. Storia=1
+    # is < 2 and is not Mat/Ita anyway -> skip. T3 has Motorie
+    # only -> skip Mat/Ita.
+    assert any(
+        "subject_day_count_pair('T1', '1A', 'Matematica', 2)" == p
+        for p in pragmas), pragmas
+    assert any(
+        "subject_day_count_pair('T2', '1A', 'Italiano', 2)" == p
+        for p in pragmas), pragmas
+    # No spurious emission for Storia / Motorie:
+    assert not any("'Storia'" in p and "subject_day_count_pair" in p
+                    for p in pragmas), pragmas
+    assert not any(
+        "'Scienzemotorie'" in p and "subject_day_count_pair" in p
+        for p in pragmas), pragmas
+    # Motorie: present (subject_day_count_in, NOT _pair).
     assert any("subject_day_count_in('1A'" in p
                 and "Scienzemotorie" in p
                 and "0, 2" in p for p in pragmas), pragmas
@@ -969,14 +980,10 @@ def test_build_phase_a_pragmas_emits_hall_when_cl_day_load_empty():
                 for p in pragmas), pragmas
 
 
-def test_build_phase_a_pragmas_never_emits_subject_pair():
-    """The helper never emits subject_day_count_pair: Mat/Ita stays
-    hardcoded in solve_phase_a because the legacy is per-prof
-    cross-subject (sums all subjs of the prof in cl) while the
-    pragma is per-subject (sums teachers for one subject) -- they
-    diverge whenever the prof teaches multiple < 2-hour subjects in
-    the class. Until a cross-subject pragma is added, the helper
-    skips this rule entirely."""
+def test_build_phase_a_pragmas_emits_subject_pair_per_teacher():
+    """Per-teacher per-subject Mat/Ita pragma: one emission per
+    (teacher, class, subject) where subject in {Matematica,
+    Italiano} and ore >= 2."""
     import cpsat_v2_timetable as cv2
     profs = {
         "T1": {"classi": {"1A": {"Matematica": {"ore": 4}}}},
@@ -994,7 +1001,41 @@ def test_build_phase_a_pragmas_never_emits_subject_pair():
         triples_by_prof=triples_by_prof,
         day_count_keys=day_count_keys,
     )
-    # Always skipped, even when Mat=4 and Ita=5 satisfy the
-    # per-subject feasibility gate.
-    assert not any("subject_day_count_pair" in p for p in pragmas), (
-        pragmas)
+    assert any(
+        "subject_day_count_pair('T1', '1A', 'Matematica', 2)" == p
+        for p in pragmas), pragmas
+    assert any(
+        "subject_day_count_pair('T2', '1A', 'Italiano', 2)" == p
+        for p in pragmas), pragmas
+
+
+def test_build_phase_a_pragmas_skips_subject_pair_when_below_2_ore():
+    """A Mat/Ita cattedra with < 2 hours is skipped (the per-teacher
+    per-subject pragma would be infeasible)."""
+    import cpsat_v2_timetable as cv2
+    profs = {
+        # Italian = 1 hour: skip.
+        "T1": {"classi": {"1A": {"Italiano": {"ore": 1},
+                                   "Storia": {"ore": 3}}}},
+        # Mat = 2 hours: emit.
+        "T2": {"classi": {"1A": {"Matematica": {"ore": 2}}}},
+    }
+    triples_by_prof = {
+        "T1": [("1A", "Italiano"), ("1A", "Storia")],
+        "T2": [("1A", "Matematica")],
+    }
+    day_count_keys = {(p, cl, s, d)
+                       for p, lst in triples_by_prof.items()
+                       for (cl, s) in lst
+                       for d in range(1, 7)}
+    pragmas = cv2.build_phase_a_pragmas(
+        profs, ["1A"],
+        cl_day_load_classes={"1A"},
+        triples_by_prof=triples_by_prof,
+        day_count_keys=day_count_keys,
+    )
+    assert not any("'Italiano'" in p and "subject_day_count_pair" in p
+                    for p in pragmas), pragmas
+    assert any(
+        "subject_day_count_pair('T2', '1A', 'Matematica', 2)" == p
+        for p in pragmas), pragmas
