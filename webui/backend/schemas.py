@@ -5,7 +5,7 @@ from __future__ import annotations
 import datetime as dt
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 # ---------- Error response (Section 2.3 P2) ----------
@@ -459,6 +459,52 @@ class PhaseBRunIn(BaseModel):
     optimize_rooms: bool = False
     rooms_time_limit_s: float = 30.0
     rooms_prefer_home: bool = True
+    # Phase 3 -- monolithic solver scope.
+    #   "day"  (default, legacy): per-day decomposition, optionally
+    #          spectral. Phase A always runs to produce day_count.
+    #   "week": single CP-SAT call covering the whole week via
+    #          ``MonolithicSolver(scope=None)``. Phase A behaviour is
+    #          controlled by ``phase_a_mode`` below.
+    cp_sat_scope: str = "day"
+    # Phase 3 -- Phase A interaction with the monolithic solver.
+    #   "always":   run Phase A and feed dc_value as HARD per-day
+    #               equality (legacy day-mode requires this).
+    #   "skip":     skip Phase A; the week solver picks its own
+    #               day distribution. Only valid with cp_sat_scope="week".
+    #   "soft_hint": run Phase A, then push dc_value as ``model.AddHint``
+    #               on the week solver's day_count_for_hint vars (warm
+    #               start, not enforced). Only valid with cp_sat_scope="week".
+    phase_a_mode: str = "always"
+
+    @model_validator(mode="after")
+    def _validate_scope_and_phase_a_mode(self) -> "PhaseBRunIn":
+        if self.cp_sat_scope not in ("day", "week"):
+            raise ValueError(
+                f"cp_sat_scope must be 'day' or 'week', "
+                f"got {self.cp_sat_scope!r}")
+        if self.phase_a_mode not in ("always", "skip", "soft_hint"):
+            raise ValueError(
+                f"phase_a_mode must be 'always' / 'skip' / 'soft_hint', "
+                f"got {self.phase_a_mode!r}")
+        # Cross-field rules:
+        # - day-mode always runs Phase A (the legacy path needs dc_value)
+        # - week-mode + phase_a_mode='always' is meaningless (the week
+        #   solver picks its own day distribution; forcing Phase A's
+        #   dc_value as HARD equality would defeat the point of week
+        #   scope and just reproduce day-mode semantics).
+        if self.cp_sat_scope == "day" and self.phase_a_mode != "always":
+            raise ValueError(
+                "cp_sat_scope='day' requires phase_a_mode='always' "
+                "(the legacy per-day pipeline needs Phase A's dc_value)")
+        if (self.cp_sat_scope == "week"
+                and self.phase_a_mode == "always"):
+            raise ValueError(
+                "cp_sat_scope='week' is incompatible with "
+                "phase_a_mode='always': the week solver decides its own "
+                "day distribution, so Phase A's dc_value would either "
+                "be ignored or collapse week-mode back to day-mode. "
+                "Use phase_a_mode='skip' or 'soft_hint' instead.")
+        return self
 
 
 class MetaRunIn(BaseModel):

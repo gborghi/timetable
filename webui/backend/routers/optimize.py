@@ -398,6 +398,8 @@ def launch_phase_b(payload: schemas.PhaseBRunIn):
         optimize_rooms=payload.optimize_rooms,
         rooms_time_limit_s=payload.rooms_time_limit_s,
         rooms_prefer_home=payload.rooms_prefer_home,
+        cp_sat_scope=payload.cp_sat_scope,
+        phase_a_mode=payload.phase_a_mode,
     )
     return {"run_id": rid}
 
