@@ -475,7 +475,10 @@ def load_all_dsl_constraints(db,
     The returned ordering is stable: TeacherUnavailability rows
     first, then ClassUnavailability, then ClassroomUnavailability,
     then TeacherMandatoryFreeDay, then CoteachGroup, then
-    LogicalUnavailability, then CurriculumLogicalConstraint. This
+    LogicalUnavailability, then CurriculumLogicalConstraint, then
+    GeneralConstraint (the user-authored DSL rules saved via
+    /api/constraints/general for any scope -- global / teacher /
+    class / classroom / group / subject / curriculum). This
     determinism keeps the CP-SAT model construction order stable
     across runs.
     """
@@ -618,6 +621,26 @@ def load_all_dsl_constraints(db,
                 "weight": 0 if is_hard else int(r.soft_penalty or 100),
                 "label": (r.label
                           or f"Curriculum#{r.curriculum_id}"),
+            })
+
+    # 8. GeneralConstraint (user-authored DSL via /api/constraints/general).
+    # Any scope is forwarded to the compiler via scope_kind/scope_id; the
+    # DSLConstraintCompiler treats the expression as a top-level rule and
+    # the entity scoping is informational (the rule body itself filters
+    # via `forall l in lessons where l.teacher == ...`).
+    if hasattr(models, "GeneralConstraint"):
+        for r in db.query(models.GeneralConstraint).all():
+            is_hard = (r.level in ("hard", "enforced"))
+            if not is_hard and not include_soft:
+                continue
+            out.append({
+                "source": "general_constraint",
+                "scope_kind": r.scope or "global",
+                "scope_id": r.owner_id,
+                "expression": r.expression,
+                "is_hard": is_hard,
+                "weight": 0 if is_hard else int(r.weight or 100),
+                "label": (r.label or f"DSL #{r.id}"),
             })
 
     return out

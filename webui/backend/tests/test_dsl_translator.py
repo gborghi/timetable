@@ -179,6 +179,65 @@ def test_load_all_dsl_constraints_includes_teacher_unavail(
     assert tu["is_hard"] is True
 
 
+def test_load_all_dsl_constraints_includes_general_constraint(
+    client_and_session,
+):
+    """A GeneralConstraint with scope=teacher must appear in the
+    loader output as 'general_constraint' so the DSLConstraintCompiler
+    receives the expression. Regression: before Fix 1 the loader
+    aggregated 7 tables and silently dropped GeneralConstraint."""
+    from webui.backend import models
+    from webui.backend.utils import general_dsl as gd
+    import dsl_translator as dt
+    client, TestSession = client_and_session
+    with TestSession() as db:
+        t = models.Teacher(name="Rossi", max_hours=18)
+        db.add(t); db.flush()
+        db.add(models.GeneralConstraint(
+            expression=("forall l in lessons where l.teacher == Rossi: "
+                        "l.hour != 6"),
+            label="Rossi mai alla 6a", level="hard", weight=0,
+            scope="teacher", owner_id=t.id,
+        ))
+        db.add(models.GeneralConstraint(
+            expression="forall l in lessons: l.hour <= 13",
+            label="cap-globale", level="enforced", weight=0,
+            scope="global", owner_id=None,
+        ))
+        # Soft rule: skipped when include_soft=False.
+        db.add(models.GeneralConstraint(
+            expression="forall l in lessons: l.hour != 12",
+            label="soft-12", level="soft", weight=50,
+            scope="global", owner_id=None,
+        ))
+        db.commit()
+
+    with TestSession() as db:
+        rules = dt.load_all_dsl_constraints(db)
+    sources = [r["source"] for r in rules]
+    gc_rules = [r for r in rules if r["source"] == "general_constraint"]
+    assert len(gc_rules) == 2, (
+        f"expected 2 hard GeneralConstraint rules (soft excluded); "
+        f"got {gc_rules}, all sources={sources}")
+    teacher_rule = next(r for r in gc_rules
+                         if r["scope_kind"] == "teacher")
+    assert teacher_rule["is_hard"] is True
+    assert teacher_rule["scope_id"] is not None
+    # The DSL parses cleanly so the compiler can consume it.
+    gd.parse(teacher_rule["expression"])
+
+    # include_soft=True now returns the soft rule too.
+    with TestSession() as db:
+        rules_full = dt.load_all_dsl_constraints(db, include_soft=True)
+    gc_full = [r for r in rules_full
+                if r["source"] == "general_constraint"]
+    assert len(gc_full) == 3
+    soft_rule = next(r for r in gc_full
+                      if r["label"] == "soft-12")
+    assert soft_rule["is_hard"] is False
+    assert soft_rule["weight"] == 50
+
+
 @pytest.fixture
 def client_and_session(app_with_temp_db):
     """Returns (TestClient, TestSession) bound to the same temp DB
