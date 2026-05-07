@@ -10,6 +10,7 @@
   import AvailabilityMatrix from '$lib/components/AvailabilityMatrix.svelte';
   import SortableQueryableList from '$lib/components/SortableQueryableList.svelte';
   import LogicalUnavailabilitiesPanel from '$lib/components/LogicalUnavailabilitiesPanel.svelte';
+  import GeneralDSLPanel from '$lib/components/GeneralDSLPanel.svelte';
   import ImportButton from '$lib/components/ImportButton.svelte';
   import BulkApplyModal from '$lib/components/BulkApplyModal.svelte';
   import ClassroomGrid from '$lib/components/ClassroomGrid.svelte';
@@ -591,6 +592,12 @@
 
     <div class="mt-4">
       <LogicalUnavailabilitiesPanel entityType="teachers" entityId={editing.id ?? null}/>
+    </div>
+
+    <div class="mt-4">
+      <GeneralDSLPanel scope="teacher"
+                       ownerId={editing.id ?? null}
+                       scopeLabel={editing.name ? `Docente ${editing.name}` : ''}/>
     </div>
 
     <!-- Phase-A only preferences: class + curriculum (5-state) -->
