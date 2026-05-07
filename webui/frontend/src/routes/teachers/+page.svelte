@@ -8,6 +8,7 @@
   } from '$lib/queries';
   import Modal from '$lib/components/Modal.svelte';
   import AvailabilityMatrix from '$lib/components/AvailabilityMatrix.svelte';
+  import WeeklyCalendarView from '$lib/components/WeeklyCalendarView.svelte';
   import SortableQueryableList from '$lib/components/SortableQueryableList.svelte';
   import LogicalUnavailabilitiesPanel from '$lib/components/LogicalUnavailabilitiesPanel.svelte';
   import GeneralDSLPanel from '$lib/components/GeneralDSLPanel.svelte';
@@ -476,7 +477,7 @@
     </div>
 
     <div class="mt-4">
-      <AvailabilityMatrix
+      <WeeklyCalendarView
         title="Disponibilita oraria del docente"
         value={editing.unavailability}
         onChange={onMatrixChange}/>

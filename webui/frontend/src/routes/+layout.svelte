@@ -42,6 +42,7 @@
       { href: '/subjects',   label: 'Materie'   },
       { href: '/classrooms', label: 'Aule'      },
       { href: '/plessi',     label: 'Plessi'    },
+      { href: '/ore',        label: 'Ore'       },
     ] },
     { kind: 'menu', label: 'Pianificazione', children: [
       { href: '/coteaching',  label: 'Compresenze' },
