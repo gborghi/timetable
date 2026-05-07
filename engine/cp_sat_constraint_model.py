@@ -295,7 +295,12 @@ class ConstraintModel:
         support_triples = getattr(self, "_support_triples", set())
         parallel_busy_key = getattr(
             self, "_parallel_intra_busy_key", {})
-        classes = self.classes_in_scope()
+        group_triples = getattr(self, "_group_triples", {})
+        classes = set(self.classes_in_scope())
+        # Pure home classes (no direct triples) still need busy
+        # aggregation so the group blocks them at the group's hours.
+        for (_gp, _gn, _gs), homes in group_triples.items():
+            classes.update(homes)
         for cl in classes:
             for d in self.days:
                 for h in self.hours:
@@ -309,25 +314,50 @@ class ConstraintModel:
                             continue
                         if (t, ccl, s) in support_triples:
                             continue
+                        if (t, ccl, s) in group_triples:
+                            # Group's virtual-class slot; aggregated
+                            # under each home class via the
+                            # group_triples loop below, NOT under
+                            # cl=group_name (the virtual class has
+                            # no other slots so the constraint is
+                            # vacuous there).
+                            continue
                         bk = parallel_busy_key.get((cl, s), s)
                         if bk not in by_bk:
                             by_bk[bk] = (set(), [])
                         by_bk[bk][0].add(s)
                         by_bk[bk][1].append(v)
+                    # Inter-class groups: append the group's slot to
+                    # each home class's busy aggregation under a
+                    # ``__grp__<gn>__<subj>`` busy key.
+                    for (gp, gn, gs), homes in group_triples.items():
+                        if cl not in homes:
+                            continue
+                        if (gp, gn, gs) in support_triples:
+                            continue
+                        gv = self.slot.get((gp, gn, gs, d, h))
+                        if gv is None:
+                            continue
+                        gbk = f"__grp__{gn}__{gs}"
+                        if gbk not in by_bk:
+                            by_bk[gbk] = (set(), [])
+                        by_bk[gbk][1].append(gv)
                     busy_indicators = []
                     for bk, (subs, vs) in by_bk.items():
                         if len(vs) <= 1:
                             busy_indicators.extend(vs)
                             continue
-                        # ``bk not in subs`` is the parallel marker:
-                        # the busy key for a parallel group is
-                        # ``__par__<gid>``, which is not a subject
-                        # string. Coteach members share a subject and
-                        # ``(cl, subj)`` is in ``_coteach_busy_keys``.
-                        is_parallel = bk not in subs
+                        # ``bk not in subs`` is the parallel/group
+                        # marker: the busy key for a parallel intra
+                        # group is ``__par__<gid>``, for an inter
+                        # group is ``__grp__<gn>__<subj>`` -- neither
+                        # is a subject string. Coteach members share a
+                        # subject and ``(cl, subj)`` is in
+                        # ``_coteach_busy_keys``.
+                        is_aggregated = bk not in subs
                         is_coteach = any(
                             (cl, s) in coteach_busy_keys for s in subs)
-                        if is_parallel or is_coteach:
+                        if is_aggregated or is_coteach:
                             ind = self.model.NewBoolVar(
                                 f"agg_{cl}_{bk}_{d}_{h}")
                             self.model.AddMaxEquality(ind, vs)
@@ -578,6 +608,80 @@ class ConstraintModel:
                             self.slot[(k[0], k[1], k[2], d, h)]
                             == ref)
 
+    def add_parallel_groups_inter_class(
+        self, assignments: list | None = None,
+    ):
+        """Parallel groups (inter-class / StudyGroup) HARD constraint.
+
+        Each ``group_assignment`` ``{teacher_name, group_id,
+        group_name, subject, n_hours, home_class_names}`` represents
+        an interclass group: students from multiple home classes
+        (e.g. 2A+2B for a second-language Spagnolo group) attend a
+        shared lesson with one teacher. The group occupies the same
+        slot for all home classes simultaneously -- whenever the
+        group meets at (d, h), NONE of the home classes can hold a
+        regular lesson at the same (d, h).
+
+        Implementation:
+
+        1. Slot vars are created at ``slot[(prof_g, group_name,
+           subject, d, h)]`` (the group_name acts as a virtual class).
+           If they already exist (e.g. group registered in
+           ``profs[t]["classi"]`` and ``dc_value`` carries the
+           per-day count via the standard cattedra path), this
+           method only registers the home-class metadata; otherwise
+           the vars are created here with weekly sum equal to
+           ``n_hours``.
+
+        2. ``(teacher_name, group_name, subject)`` is registered in
+           ``self._group_triples`` -> list of home classes, so the
+           next ``add_class_no_overlap`` call appends the group's
+           slot var to each home class's busy aggregation under a
+           ``__grp__<gn>__<subj>`` key. The home class is busy
+           whenever the group meets, mirroring the legacy
+           ``solve_phase_b_for_day`` ``__grp__`` busy-key extension.
+
+        Note: ``add_class_no_holes`` does not (yet) propagate the
+        group's busy state to the home class's per-hour presence,
+        so users running with ``enforce_no_holes=True`` and an
+        interclass group must be aware that holes around the group
+        hour may not be detected. Tests for this method disable
+        no_holes; full integration is a follow-up.
+        """
+        if assignments is None:
+            assignments = list(self.config.group_assignments or [])
+        if not assignments:
+            return
+        if not hasattr(self, "_group_triples"):
+            self._group_triples: dict[
+                tuple[str, str, str], list[str]] = {}
+        for ga in assignments:
+            gp = ga["teacher_name"]
+            gn = ga["group_name"]
+            gs = ga["subject"]
+            n_hours = int(ga["n_hours"])
+            home_classes = list(ga.get("home_class_names", []))
+            gkey = (gp, gn, gs)
+            self._group_triples[gkey] = home_classes
+            if not self._scope_includes_teacher(gp):
+                continue
+            already_present = any(
+                (gp, gn, gs, d, h) in self.slot
+                for d in self.days for h in self.hours)
+            if already_present:
+                continue
+            wk_vars = []
+            for d in self.days:
+                for h in self.hours:
+                    if not self._scope_includes_slot(gp, gn, gs, d):
+                        continue
+                    v = self.model.NewBoolVar(
+                        f"grp_{gp}_{gn}_{gs}_{d}_{h}")
+                    self.slot[(gp, gn, gs, d, h)] = v
+                    wk_vars.append(v)
+            if wk_vars:
+                self.model.Add(sum(wk_vars) == n_hours)
+
     def add_locks(self, locks: list | None = None):
         """Force ``slot[(t, cl, s, d, h)] == 1`` for every supplied
         lock (5-tuple). Locks pointing at slots not in the model are
@@ -597,8 +701,15 @@ class ConstraintModel:
         """For each (class, day) in scope, the busy slots must be
         contiguous starting at the earliest hour. Implemented via the
         non-increasing ``present[h+1] <= present[h]`` chain on the
-        per-hour OR of class slots."""
-        classes = self.classes_in_scope()
+        per-hour OR of class slots. Virtual group classes (registered
+        via ``add_parallel_groups_inter_class``) are skipped: the
+        legacy Phase B excludes them from ``cls_with_direct_triples``
+        for the same reason -- a group is not subject to the
+        curriculum no-holes / 4-hours-min logic."""
+        virtual = {gn for (_gp, gn, _gs)
+                    in getattr(self, "_group_triples", {})}
+        classes = [c for c in self.classes_in_scope()
+                    if c not in virtual]
         for cl in classes:
             for d in self.days:
                 present_per_h = []
@@ -624,11 +735,16 @@ class ConstraintModel:
         """If the class has any lessons that day, h=11 must be
         occupied. Phase B currently enforces this whenever the class
         is in ``cls_with_direct_triples``; the OO version applies it
-        to every class in scope."""
+        to every class in scope. Virtual group classes (registered
+        via ``add_parallel_groups_inter_class``) are skipped --
+        groups have no curriculum h=11 obligation."""
         if 11 not in self.hours:
             return
         h11_idx = self.hours.index(11)
-        classes = self.classes_in_scope()
+        virtual = {gn for (_gp, gn, _gs)
+                    in getattr(self, "_group_triples", {})}
+        classes = [c for c in self.classes_in_scope()
+                    if c not in virtual]
         for cl in classes:
             for d in self.days:
                 vs = self.slots_for_class_day_hour(
@@ -1023,6 +1139,12 @@ class MonolithicSolver(ConstraintModel):
     """
 
     def build(self, *, via_dsl: bool = False):
+        # Create slot vars for inter-class groups first so subsequent
+        # teacher_no_overlap / class_no_holes / class_no_overlap pick
+        # the group teacher up. These slots key on group_name as a
+        # virtual class; the per-class HARD methods skip virtual
+        # group classes when iterating ``classes_in_scope()``.
+        self.add_parallel_groups_inter_class()
         self.add_all_hard_constraints(via_dsl=via_dsl)
         self.add_coteach_groups()
         self.add_support_assignments()

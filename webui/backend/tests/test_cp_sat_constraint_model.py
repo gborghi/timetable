@@ -412,6 +412,97 @@ def test_parallel_groups_intra_class_busy_aggregates_as_one():
         f"parallel_hours={parallel_hours}")
 
 
+def test_inter_class_group_creates_n_distinct_slots():
+    """Gruppo Spagnolo: ProfSpa, 3h/week, members from 2A and 2B.
+    The OO solver creates 3 group slots at distinct (d, h) and
+    forces neither 2A nor 2B to have a regular lesson at any of
+    those slots.
+    """
+    from cp_sat_constraint_model import (
+        MonolithicSolver, ConstraintConfig)
+    profs = {
+        "ProfMat": {
+            "classi": {"2A": {"Mat": {"ore": 4}},
+                        "2B": {"Mat": {"ore": 4}}},
+            "glibero": [6], "max_hours": 18,
+        },
+        "ProfSpa": {"classi": {}, "glibero": [6], "max_hours": 18},
+    }
+    dc = {}
+    for d in (1, 2, 3, 4):
+        dc[("ProfMat", "2A", "Mat", d)] = 1
+        dc[("ProfMat", "2B", "Mat", d)] = 1
+    grps = [{"teacher_name": "ProfSpa", "group_id": 1,
+              "group_name": "_GruppoSpa_", "subject": "Spagnolo",
+              "n_hours": 3, "home_class_names": ["2A", "2B"]}]
+    ms = MonolithicSolver(profs, dc, ConstraintConfig(
+        enforce_no_holes=False, enforce_h3_presence_at_11=False,
+        group_assignments=grps))
+    sol, status = ms.solve(time_limit_s=10.0, workers=2)
+    assert sol is not None, f"infeasible: {status}"
+    grp_slots = [k for k in sol if k[0] == "ProfSpa"]
+    assert len(grp_slots) == 3, grp_slots
+    grp_dh = {(k[3], k[4]) for k in grp_slots}
+    assert len(grp_dh) == 3, grp_dh
+    # No 2A nor 2B regular lesson collides with a group slot.
+    for k in sol:
+        t, cl, _s, d, h = k
+        if cl in ("2A", "2B") and t != "ProfSpa":
+            assert (d, h) not in grp_dh, (
+                f"{cl} regular lesson {k} clashes with group "
+                f"slot at ({d},{h})")
+
+
+def test_inter_class_group_marks_home_classes_busy():
+    """Each (d, h) where the group meets, both home classes 2A and
+    2B are 'busy' (no regular lesson allowed). Verify by checking
+    the count of distinct home-class (d, h) occupancies relative
+    to the regular cattedra demand."""
+    from cp_sat_constraint_model import (
+        MonolithicSolver, ConstraintConfig)
+    profs = {
+        "ProfMat": {
+            "classi": {"2A": {"Mat": {"ore": 3}},
+                        "2B": {"Mat": {"ore": 3}}},
+            "glibero": [6], "max_hours": 18,
+        },
+        "ProfIta": {
+            "classi": {"2A": {"Ita": {"ore": 3}},
+                        "2B": {"Ita": {"ore": 3}}},
+            "glibero": [6], "max_hours": 18,
+        },
+        "ProfSpa": {"classi": {}, "glibero": [6], "max_hours": 18},
+    }
+    dc = {}
+    for d in (1, 2, 3):
+        dc[("ProfMat", "2A", "Mat", d)] = 1
+        dc[("ProfMat", "2B", "Mat", d)] = 1
+        dc[("ProfIta", "2A", "Ita", d)] = 1
+        dc[("ProfIta", "2B", "Ita", d)] = 1
+    grps = [{"teacher_name": "ProfSpa", "group_id": 2,
+              "group_name": "_GruppoSpa_", "subject": "Spagnolo",
+              "n_hours": 2, "home_class_names": ["2A", "2B"]}]
+    ms = MonolithicSolver(profs, dc, ConstraintConfig(
+        enforce_no_holes=False, enforce_h3_presence_at_11=False,
+        group_assignments=grps))
+    sol, status = ms.solve(time_limit_s=10.0, workers=2)
+    assert sol is not None, f"infeasible: {status}"
+    grp_dh = {(k[3], k[4]) for k in sol if k[0] == "ProfSpa"}
+    assert len(grp_dh) == 2, grp_dh
+    a2_dh = {(k[3], k[4]) for k in sol
+              if k[1] == "2A" and k[0] != "ProfSpa"}
+    b2_dh = {(k[3], k[4]) for k in sol
+              if k[1] == "2B" and k[0] != "ProfSpa"}
+    # 2A regular: 3 Mat + 3 Ita = 6 distinct (d, h).
+    assert len(a2_dh) == 6, a2_dh
+    assert len(b2_dh) == 6, b2_dh
+    # No overlap with the group slots.
+    assert a2_dh.isdisjoint(grp_dh), (
+        f"2A regular collides with group: {a2_dh & grp_dh}")
+    assert b2_dh.isdisjoint(grp_dh), (
+        f"2B regular collides with group: {b2_dh & grp_dh}")
+
+
 def test_potenziamento_pure_no_regular_lessons():
     """ProfPot has 4 hours of potenziamento and zero regular cattedre.
     The solver must place 4 distinct (d, h) pot_slots and produce no
