@@ -3,6 +3,33 @@
 
 The pipeline orchestrator: Hall pre-check, Phase A (assignment + day-count), Phase B (per-day slot placement), optional metaheuristic post-processing (LNS / ALNS / SA / TS / ILS / VNS), classroom assignment.
 
+\section*{CP-SAT scope and Phase A mode (Phase 3)}
+
+Card 3 of \texttt{/optimize} now exposes two dropdowns that control how Phase B drives the CP-SAT solver:
+
+\begin{itemize}
+  \item \textbf{CP-SAT scope} (\texttt{cp\_sat\_scope}, default \texttt{day}):
+        \begin{itemize}
+          \item \texttt{day}: solve one weekday at a time, using Phase A's pre-computed weekly distribution (\emph{day\_count}) as a hard equality. Fast, scales to large schools, default.
+          \item \texttt{week}: a single \texttt{MonolithicSolver(scope=None)} call covers the whole week. More robust on schools with many cross-day constraints (co-teaching, support, group rotations) but significantly slower because the solver explores a six-times-larger search space.
+        \end{itemize}
+  \item \textbf{Phase A mode} (\texttt{phase\_a\_mode}, default \texttt{always}):
+        \begin{itemize}
+          \item \texttt{always}: Phase A always runs and \texttt{day\_count} is enforced as a hard equality. Mandatory for \texttt{cp\_sat\_scope=day}.
+          \item \texttt{skip}: skip Phase A entirely; the week solver picks its own day distribution. Only valid with \texttt{cp\_sat\_scope=week}.
+          \item \texttt{soft\_hint}: run Phase A but inject \texttt{day\_count} as \texttt{model.AddHint} on the week solver -- a warm start, not a hard constraint. Only valid with \texttt{cp\_sat\_scope=week}.
+        \end{itemize}
+\end{itemize}
+
+Cross-field rule (validated on both client and server): \texttt{day} requires \texttt{always}; \texttt{week} forbids \texttt{always}. The UI disables invalid options and auto-corrects \texttt{phase\_a\_mode} when \texttt{cp\_sat\_scope} changes.
+
+\paragraph{Picking the right combination.}
+\begin{itemize}
+  \item Standard school, speed-first: \texttt{day + always} (the default).
+  \item Small school with many co-teaching / support constraints: \texttt{week + skip} -- Phase A's hard \texttt{day\_count} can make a feasible schedule look infeasible.
+  \item Large school with non-trivial cross-day constraints: \texttt{week + soft\_hint} -- keeps the warm start while letting the solver deviate.
+\end{itemize}
+
 \medskip
 \noindent
 \textit{This chapter is an English summary of the corresponding Italian chapter. The full text remains in the Italian edition (\texttt{docs/manual/chapters/workflow\_di\_ottimizzazione.tex}). For the implementation references see the engine modules in \texttt{engine/} and the API documentation at \texttt{docs/api.md}.}

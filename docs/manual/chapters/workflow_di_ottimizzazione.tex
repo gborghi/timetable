@@ -59,6 +59,73 @@ indipendente; un secondo step "bridges" risolve solo i bordi; un
 terzo step "ricucitura" fa full-CPSAT con tutto il problema partendo
 dalla soluzione stitched.
 
+\paragraph{Scope del solver CP-SAT (\texttt{cp\_sat\_scope}).}
+Nella card 3 di \texttt{/optimize} il dropdown \emph{Scope del
+solver CP-SAT} sceglie come la Phase B passa il problema al
+risolutore:
+\begin{itemize}
+  \item \textbf{Per giorno} (\texttt{day}, default).
+        Il solver risolve un giorno alla volta. La distribuzione
+        settimanale delle ore di ciascuna cattedra (\emph{day count})
+        viene precalcolata da Phase A e iniettata come uguaglianza
+        rigida per ogni giorno. Veloce, scalabile fino a scuole grandi.
+  \item \textbf{Settimana intera} (\texttt{week}).
+        Il solver \texttt{MonolithicSolver(scope=None)} vede tutta
+        la settimana in un solo modello CP-SAT. Pi\`u robusto sui
+        vincoli che attraversano i giorni (compresenze, sostegno,
+        gruppi a geometria variabile) ma significativamente pi\`u
+        lento: i workers devono esplorare uno spazio di ricerca di
+        sei volte la cardinalit\`a del per-giorno.
+\end{itemize}
+
+\paragraph{Modalit\`a Phase A (\texttt{phase\_a\_mode}).}
+Phase A \`e il pre-step che decide quante ore di ciascuna cattedra
+cadono su ciascun giorno della settimana (\emph{day count}). Il
+secondo dropdown della card 3 controlla come questo output viene
+combinato con il solver:
+\begin{itemize}
+  \item \textbf{Sempre} (\texttt{always}, default per scope = Per
+        giorno). Phase A esegue e il \texttt{day\_count} viene
+        imposto come uguaglianza rigida. Obbligatorio in modalit\`a
+        Per giorno -- senza \texttt{day\_count} il solver per-giorno
+        non sa quante ore sono "previste" in quel giorno.
+  \item \textbf{Salta} (\texttt{skip}, solo con scope = Settimana
+        intera). Phase A non viene eseguita; \`e la Settimana intera
+        a decidere autonomamente come distribuire le ore. Massima
+        libert\`a per il solver, costo: nessun warm start.
+  \item \textbf{Hint morbido} (\texttt{soft\_hint}, solo con scope
+        = Settimana intera). Phase A esegue come al solito ma il
+        suo output viene iniettato nel solver tramite
+        \texttt{model.AddHint} sui contatori per-giorno -- il solver
+        parte dalla distribuzione di Phase A come prima soluzione
+        ammissibile e pu\`o deviare se trova qualcosa di meglio.
+        Tipicamente il compromesso preferibile per scuole complesse:
+        si tiene il warm start, si toglie la rigidit\`a.
+\end{itemize}
+
+Vincolo incrociato (validato sia dal frontend sia dal backend):
+\texttt{day} richiede \texttt{always}; \texttt{week} esclude
+\texttt{always}. La UI disabilita le combinazioni invalide e ricorregge
+automaticamente \texttt{phase\_a\_mode} quando l'utente cambia
+\texttt{cp\_sat\_scope}.
+
+\paragraph{Quando scegliere cosa.}
+\begin{itemize}
+  \item \emph{Scuola standard, focus sulla velocit\`a}: \texttt{day
+        + always}. \`E il default per qualcosa: scala bene e produce
+        soluzioni di buona qualit\`a in tempo lineare nel numero di
+        classi.
+  \item \emph{Scuola piccola con molte compresenze e sostegno}:
+        \texttt{week + skip}. La rigidit\`a del \texttt{day\_count}
+        di Phase A pu\`o rendere infeasibile un orario che invece
+        esiste; lasciar decidere alla Settimana intera evita il
+        problema.
+  \item \emph{Scuola grande ma con vincoli incrociati notevoli}:
+        \texttt{week + soft\_hint}. Il warm start velocizza la
+        ricerca e la Settimana intera resta libera di adattare la
+        distribuzione.
+\end{itemize}
+
 \section{Metaeuristiche}
 
 \paragraph{Modulo.} \texttt{experiments/metaheuristics.py}.
