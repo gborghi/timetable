@@ -137,7 +137,7 @@ class ConstraintModel:
     def __init__(
         self,
         profs: dict,
-        dc_value: dict,
+        dc_value: dict | None,
         config: ConstraintConfig | None = None,
         *,
         scope: tuple | None = None,
@@ -146,7 +146,14 @@ class ConstraintModel:
         classroom_for_slot: dict | None = None,
     ):
         self.profs = profs
-        self.dc_value = dc_value
+        # ``dc_value=None`` is the sentinel for "weekly mode": the model
+        # has no per-day Phase A counts, slot vars are populated from
+        # ``profs[t]["classi"][cl][s]["ore"]`` with a WEEKLY equality
+        # ``sum_{d,h} slot == ore`` instead of a per-day equality. The
+        # ``self.dc_value`` attribute is normalized to ``{}`` so existing
+        # ``.get()`` callers keep working.
+        self.weekly_mode = (dc_value is None)
+        self.dc_value = {} if dc_value is None else dc_value
         self.config = config or ConstraintConfig()
         self.scope = scope
         self.days = list(days) if days is not None else list(DAYS)
@@ -161,6 +168,11 @@ class ConstraintModel:
         # Cattedra-day demand expanded from dc_value, scoped:
         # triples[(teacher, class, subject)] = list[(day, q)] with q>0
         self.triples: dict[tuple, list] = {}
+        # Optional per-(t,cl,s,d) day_count IntVars created in weekly
+        # mode and tied to ``sum_h slot == day_count`` so callers can
+        # ``AddHint`` Phase A solutions without forcing them as HARD
+        # equalities. Empty dict in non-weekly mode.
+        self.day_count_for_hint: dict[tuple, Any] = {}
         # Optional ``(class, day, hour) -> classroom_name`` mapping,
         # used by the DSL compiler to resolve ``l.classroom`` /
         # ``l.classroom.plesso`` references when the post-CG
@@ -224,10 +236,27 @@ class ConstraintModel:
         """Populate ``self.slot`` and ``self.triples`` from
         ``self.profs`` and ``self.dc_value``, filtered by scope.
 
-        Adds the cattedra-day equality constraint
-            sum_h slot[(t, cl, s, d, h)] == dc_value[(t, cl, s, d)]
-        for every active (t, cl, s, d).
+        Two modes:
+
+        * Per-day (``self.weekly_mode == False``, the default): for each
+          ``(t, cl, s, d)`` with ``dc_value[(...)] > 0`` create the
+          per-hour slot vars and enforce the cattedra-day equality
+          ``sum_h slot == dc_value``. Triples whose dc_value is 0 (or
+          missing) get NO slot vars -- the day-count input dictates the
+          model surface, mirroring the legacy Phase B per-day path.
+
+        * Weekly (``self.weekly_mode == True``): for each ``(t, cl, s)``
+          with ``profs[t]["classi"][cl][s]["ore"] > 0`` create slot
+          vars for ALL ``(d, h)`` in scope and enforce the WEEKLY
+          equality ``sum_{d,h} slot == ore``. The per-(t,cl,s,d)
+          ``day_count`` is left free for CP-SAT to choose; an IntVar
+          tied to ``sum_h slot`` is exposed on
+          ``self.day_count_for_hint`` so callers can ``AddHint`` a
+          Phase A solution without forcing it as a HARD equality.
         """
+        if self.weekly_mode:
+            self._build_slot_variables_weekly()
+            return
         for teacher, pdata in self.profs.items():
             if not self._scope_includes_teacher(teacher):
                 continue
@@ -255,6 +284,59 @@ class ConstraintModel:
                             sum(self.slot[(teacher, class_name,
                                             subject, d, h)]
                                  for h in self.hours) == q)
+
+    def _build_slot_variables_weekly(self):
+        """Weekly-mode variant of ``_build_slot_variables``: build slot
+        BoolVars for every ``(t, cl, s, d, h)`` in scope and enforce the
+        weekly equality ``sum_{d,h} slot == ore`` per cattedra. Also
+        register a per-(t,cl,s,d) IntVar in ``self.day_count_for_hint``
+        tied via ``sum_h slot == day_count`` so the OO solver caller
+        can ``AddHint`` a Phase A solution without locking it in HARD.
+        """
+        cap_per_day = len(self.hours)
+        for teacher, pdata in self.profs.items():
+            if not self._scope_includes_teacher(teacher):
+                continue
+            classi = pdata.get("classi", {}) or {}
+            for class_name, subjs in classi.items():
+                for subject, sdata in subjs.items():
+                    if isinstance(sdata, dict):
+                        ore = int(sdata.get("ore", 0))
+                    else:
+                        ore = 0
+                    if ore <= 0:
+                        continue
+                    triples_key = (teacher, class_name, subject)
+                    week_vars = []
+                    for d in self.days:
+                        if not self._scope_includes_slot(
+                                teacher, class_name, subject, d):
+                            continue
+                        day_vars = []
+                        for h in self.hours:
+                            v = self.model.NewBoolVar(
+                                f"slot_{teacher}_{class_name}_"
+                                f"{subject}_{d}_{h}")
+                            self.slot[(teacher, class_name, subject,
+                                        d, h)] = v
+                            week_vars.append(v)
+                            day_vars.append(v)
+                        if day_vars:
+                            dc = self.model.NewIntVar(
+                                0, min(cap_per_day, ore),
+                                f"dch_{teacher}_{class_name}_"
+                                f"{subject}_{d}")
+                            self.day_count_for_hint[
+                                (teacher, class_name, subject, d)] = dc
+                            self.model.Add(sum(day_vars) == dc)
+                            # Keep ``self.triples`` populated for
+                            # downstream methods that iterate over it
+                            # (e.g. add_subject_pair_constraint reads
+                            # nothing from it but other helpers may).
+                            self.triples.setdefault(
+                                triples_key, [])
+                    if week_vars:
+                        self.model.Add(sum(week_vars) == ore)
 
     # ----- helpers -----
 
@@ -1012,8 +1094,15 @@ class ConstraintModel:
             of busy hours must exist (used for Matematica/Italiano
             -- doppia consecutiva).
 
-        Day-counts are read from ``self.dc_value`` so the constraint
-        only fires when the cattedra-day demand triggers it.
+        In per-day mode the day-count is read statically from
+        ``self.dc_value`` so the constraint only fires when the
+        cattedra-day demand triggers it. In weekly mode (where the
+        day-count is itself a CP-SAT decision) the trigger is reified
+        through ``sum_h slot``: the pair constraint is added under
+        ``OnlyEnforceIf(is_two)`` for ``must_pair`` and
+        ``OnlyEnforceIf(is_ge_two)`` for ``pair_exists``, so it kicks
+        in exactly when the chosen day distribution would activate it
+        in per-day mode. Equivalent semantics, no static gating.
         """
         if not self.hours:
             return
@@ -1031,15 +1120,67 @@ class ConstraintModel:
                 if subject_name not in subjs:
                     continue
                 for d in self.days:
-                    presence = []
-                    keys_for_day = []
-                    for h in self.hours:
-                        keys_for_day.append(
-                            (teacher, class_name, subject_name, d, h))
+                    keys_for_day = [
+                        (teacher, class_name, subject_name, d, h)
+                        for h in self.hours
+                    ]
                     vs = [self.slot.get(k) for k in keys_for_day]
                     vs = [v for v in vs if v is not None]
                     if len(vs) != len(self.hours):
                         # subject not in scope on this day
+                        continue
+                    if self.weekly_mode:
+                        # Reified gate: the day-count is a CP-SAT
+                        # decision, so we cannot statically skip
+                        # day-pairs. Build is_two / is_ge_two from
+                        # ``sum(vs)`` and gate the pair constraint
+                        # on it.
+                        day_sum = sum(vs)
+                        pairs = []
+                        for i in range(len(self.hours) - 1):
+                            pair = self.model.NewBoolVar(
+                                f"pair_{subject_name[:3]}_"
+                                f"{teacher}_{class_name}_{d}_{i}")
+                            self.model.AddBoolAnd(
+                                [vs[i], vs[i + 1]]
+                            ).OnlyEnforceIf(pair)
+                            self.model.AddBoolOr(
+                                [vs[i].Not(), vs[i + 1].Not()]
+                            ).OnlyEnforceIf(pair.Not())
+                            pairs.append(pair)
+                        if not pairs:
+                            continue
+                        any_pair = self.model.NewBoolVar(
+                            f"anyp_{subject_name[:3]}_"
+                            f"{teacher}_{class_name}_{d}")
+                        self.model.AddMaxEquality(any_pair, pairs)
+                        if mode == "must_pair":
+                            is_two = self.model.NewBoolVar(
+                                f"isTwo_{subject_name[:3]}_"
+                                f"{teacher}_{class_name}_{d}")
+                            self.model.Add(
+                                day_sum == 2).OnlyEnforceIf(is_two)
+                            self.model.Add(
+                                day_sum != 2).OnlyEnforceIf(
+                                    is_two.Not())
+                            self.model.AddImplication(is_two, any_pair)
+                        elif mode == "pair_exists":
+                            is_ge_two = self.model.NewBoolVar(
+                                f"isGE2_{subject_name[:3]}_"
+                                f"{teacher}_{class_name}_{d}")
+                            # is_ge_two <-> day_sum >= 2
+                            self.model.Add(
+                                day_sum >= 2).OnlyEnforceIf(is_ge_two)
+                            self.model.Add(
+                                day_sum <= 1).OnlyEnforceIf(
+                                    is_ge_two.Not())
+                            self.model.AddImplication(
+                                is_ge_two, any_pair)
+                        else:
+                            raise ValueError(
+                                f"add_subject_pair_constraint: "
+                                f"unknown mode={mode!r}; expected "
+                                "'must_pair' or 'pair_exists'")
                         continue
                     day_total = int(self.dc_value.get(
                         (teacher, class_name, subject_name, d), 0))
@@ -1050,18 +1191,16 @@ class ConstraintModel:
                     # presence[h] is just slot[(t, cl, subj, d, h)]
                     # since each hour has exactly one slot var per
                     # cattedra.
-                    presence = vs
                     pairs = []
                     for i in range(len(self.hours) - 1):
                         pair = self.model.NewBoolVar(
                             f"pair_{subject_name[:3]}_"
                             f"{teacher}_{class_name}_{d}_{i}")
                         self.model.AddBoolAnd(
-                            [presence[i], presence[i + 1]]
+                            [vs[i], vs[i + 1]]
                         ).OnlyEnforceIf(pair)
                         self.model.AddBoolOr(
-                            [presence[i].Not(),
-                             presence[i + 1].Not()]
+                            [vs[i].Not(), vs[i + 1].Not()]
                         ).OnlyEnforceIf(pair.Not())
                         pairs.append(pair)
                     if pairs:
@@ -1109,7 +1248,8 @@ class ConstraintModel:
 
     def add_dsl_constraint(self, expression, *,
                             classroom_for_slot: dict | None = None,
-                            plessi_data: Any = None):
+                            plessi_data: Any = None,
+                            level: str = "both"):
         """Compile a single DSL expression (string or AST) and add
         the resulting CP-SAT constraints to ``self.model``.
 
@@ -1125,6 +1265,12 @@ class ConstraintModel:
         (``self.classroom_for_slot`` / ``self.config.plessi_data``)
         are used. They unlock DSL rules that reference
         ``l.classroom`` / ``l.classroom.plesso``.
+
+        ``level`` selects the pragma level filter passed to the
+        compiler. ``"both"`` (default) keeps the historical behaviour
+        where every recognised pragma is compiled. ``"phase_b"``
+        drops the Phase A-only pragmas (their level is
+        ``"phase_a"``); ``"phase_a"`` drops the Phase B-only ones.
         """
         try:
             from . import dsl_to_cpsat as d2c  # type: ignore
@@ -1149,21 +1295,25 @@ class ConstraintModel:
             # DSL match the OO methods byte-for-byte even when
             # sostegno / coteach / parallel intra are registered.
             owner_model=self,
+            level=level,
         )
         compiler.compile(expression)
         self.dsl_diagnostics.extend(compiler.diagnostics)
 
     def add_all_dsl_constraints(self, expressions: list, *,
                                   classroom_for_slot: dict | None = None,
-                                  plessi_data: Any = None):
+                                  plessi_data: Any = None,
+                                  level: str = "both"):
         """Convenience: compile every expression in the list. Useful
         when the caller has loaded a batch of LogicalUnavailability
-        rows and wants to push them all into the model."""
+        rows and wants to push them all into the model. ``level``
+        forwards to the compiler's pragma level filter."""
         for expr in expressions or []:
             self.add_dsl_constraint(
                 expr,
                 classroom_for_slot=classroom_for_slot,
                 plessi_data=plessi_data,
+                level=level,
             )
 
     def add_all_dsl_constraints_from_db(self, db, *,
@@ -1254,6 +1404,39 @@ class ConstraintModel:
                 self.add_math_italian_pair()
         if self.config.plessi_data is not None:
             self.add_plessi_commuting_constraints()
+
+    def add_phase_a_hint(self, dc_value: dict) -> int:
+        """Push a Phase A solution into the model as a SOFT hint via
+        ``model.AddHint`` on the ``self.day_count_for_hint`` IntVars
+        (which are tied to ``sum_h slot``). The solver is free to
+        ignore the hint, but a good Phase A solution often warm-starts
+        the search. Only available in weekly mode (``self.weekly_mode
+        == True``); a no-op otherwise. Returns the number of
+        ``(t,c,s,d)`` keys that were hinted.
+        """
+        if not self.weekly_mode:
+            return 0
+        if not dc_value:
+            return 0
+        n = 0
+        for k, n_val in dc_value.items():
+            if not isinstance(k, tuple) or len(k) != 4:
+                # Skip unrelated keys (e.g. legacy ``("__coday__",
+                # group_id, day)`` markers) -- they are not part of
+                # the day_count_for_hint surface.
+                continue
+            dc_var = self.day_count_for_hint.get(k)
+            if dc_var is None:
+                continue
+            try:
+                self.model.AddHint(dc_var, int(n_val))
+                n += 1
+            except Exception:  # noqa: BLE001
+                # AddHint rejects out-of-domain values silently in
+                # newer or-tools, but raises in some versions; the
+                # hint is best-effort, never blocking.
+                pass
+        return n
 
 
 # ============================================================

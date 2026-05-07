@@ -520,14 +520,37 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                 use_decomposition: bool = True,
                 optimize_rooms: bool = False,
                 rooms_time_limit_s: float = 30.0,
-                rooms_prefer_home: bool = True) -> int:
+                rooms_prefer_home: bool = True,
+                cp_sat_scope: str = "day",
+                phase_a_mode: str = "always") -> int:
+    # Phase 3 -- enforce the same (cp_sat_scope, phase_a_mode)
+    # cross-field rules as PhaseBRunIn so direct callers (full
+    # pipeline, programmatic harness, tests) get the same guard. The
+    # router validator catches API usage; this catches everything
+    # else.
+    if cp_sat_scope not in ("day", "week"):
+        raise ValueError(
+            f"cp_sat_scope must be 'day' or 'week', got {cp_sat_scope!r}")
+    if phase_a_mode not in ("always", "skip", "soft_hint"):
+        raise ValueError(
+            f"phase_a_mode must be 'always' / 'skip' / 'soft_hint', "
+            f"got {phase_a_mode!r}")
+    if cp_sat_scope == "day" and phase_a_mode != "always":
+        raise ValueError(
+            "cp_sat_scope='day' requires phase_a_mode='always'")
+    if cp_sat_scope == "week" and phase_a_mode == "always":
+        raise ValueError(
+            "cp_sat_scope='week' is incompatible with "
+            "phase_a_mode='always'; use 'skip' or 'soft_hint'")
     params = dict(k=k, time_a=time_a, time_bridges=time_bridges,
                   time_cluster=time_cluster, time_ricucitura=time_ricucitura,
                   time_mono=time_mono, workers=workers, log=log,
                   use_decomposition=use_decomposition,
                   optimize_rooms=optimize_rooms,
                   rooms_time_limit_s=rooms_time_limit_s,
-                  rooms_prefer_home=rooms_prefer_home)
+                  rooms_prefer_home=rooms_prefer_home,
+                  cp_sat_scope=cp_sat_scope,
+                  phase_a_mode=phase_a_mode)
     _preflight_lock_check()
     run_id = create_run("phase_b", "Schedulazione orario", None, params)
 
@@ -577,144 +600,165 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
         classes, triples, class_profs = cv2.build_indices(profs)
         print(f"[phaseB] {len(profs)} profs, {len(classes)} classes, "
               f"{len(triples)} triples")
+        print(f"[phaseB] cp_sat_scope={cp_sat_scope!r} "
+              f"phase_a_mode={phase_a_mode!r}")
         update_run(rid, progress=0.05)
         # Phase A inside the timetable: day_count. Native locks are
         # passed both on the monolithic and on the decomposed path
         # (decomposed forwards them to the 4 stages below).
         locked_dc = _locked_day_count_from_snapshot(locked_snap)
         locked_by_day = _locked_slots_by_day(locked_snap)
-        dc_value = cv2.solve_phase_a(
-            profs, classes, triples, class_profs,
-            time_limit=time_a, workers=workers, log=log,
-            locked_day_count=locked_dc or None,
-            coteach_groups=coteach_groups or None,
-            support_assignments=support_assignments or None,
-            potenziamento_assignments=potenziamento_assignments or None,
-            parallel_groups=parallel_groups or None,
-            group_assignments=group_assignments or None,
-        )
-        with open(os.path.join(ws, "phase_a_dc.pkl"), "wb") as f:
-            pickle.dump(dc_value, f)
-        update_run(rid, progress=0.20)
+        if cp_sat_scope == "week":
+            full_solution: dict = _solve_phase_b_week(
+                rid=rid, ws=ws, profs=profs, classes=classes,
+                triples=triples, class_profs=class_profs,
+                phase_a_mode=phase_a_mode,
+                time_a=time_a, time_mono=time_mono,
+                workers=workers, log=log,
+                locked_dc=locked_dc,
+                locked_by_day=locked_by_day,
+                coteach_groups=coteach_groups,
+                support_assignments=support_assignments,
+                potenziamento_assignments=potenziamento_assignments,
+                parallel_groups=parallel_groups,
+                group_assignments=group_assignments,
+            )
+            update_run(rid, progress=0.90)
+        else:
+            dc_value = cv2.solve_phase_a(
+                profs, classes, triples, class_profs,
+                time_limit=time_a, workers=workers, log=log,
+                locked_day_count=locked_dc or None,
+                coteach_groups=coteach_groups or None,
+                support_assignments=support_assignments or None,
+                potenziamento_assignments=potenziamento_assignments or None,
+                parallel_groups=parallel_groups or None,
+                group_assignments=group_assignments or None,
+            )
+            with open(os.path.join(ws, "phase_a_dc.pkl"), "wb") as f:
+                pickle.dump(dc_value, f)
+            update_run(rid, progress=0.20)
 
-        full_solution: dict = {}
-        # Task C3: spectral stages A/B/C don't model group_slot vars.
-        # When group_assignments are present, force the per-day
-        # monolithic path so groups are scheduled correctly. The
-        # overall run still benefits from the cached `dc_value` from
-        # Phase A above.
-        if use_decomposition and len(classes) >= 8 and not group_assignments:
-            import decomposition_spectral_v2 as dec  # type: ignore
-            M, classes_v, _ = dec.build_adjacency(profs)
-            labels, _ = dec.spectral_cluster(M, k)
-            bridges, cl_to_label = dec.find_bridges(profs, classes_v, labels)
-            classes_per_cluster: dict[int, set] = defaultdict(set)
-            for c, lbl in cl_to_label.items():
-                classes_per_cluster[lbl].add(c)
-            print(f"[phaseB] cluster sizes="
-                  f"{ {int(c): len(s) for c, s in classes_per_cluster.items()} }, "
-                  f"bridges={len(bridges)}/{len(profs)}")
-            bridges_set = set(bridges.keys())
-            bridge_solutions: dict[int, dict] = {}
-            a_failed = []
-            for di, d in enumerate(DAYS):
-                out, status = dec.stage_a_bridges(
-                    d, profs, bridges_set, triples, dc_value,
-                    time_bridges, workers,
-                    locked_slots_for_day=locked_by_day.get(d) or None,
-                )
-                if out is None:
-                    a_failed.append(d)
-                else:
-                    bridge_solutions[d] = out
-                # Stage A spans 0.20 -> 0.40 of the run.
-                update_run(rid,
-                           progress=0.20 + 0.20 * (di + 1) / max(len(DAYS), 1))
-            cluster_solutions: dict[tuple[int, int], dict] = {}
-            b_failed: dict[int, set] = defaultdict(set)
-            for di, d in enumerate(DAYS):
-                if d not in bridge_solutions:
-                    continue
-                for k_id in sorted(classes_per_cluster,
-                                    key=lambda kk: -len(classes_per_cluster[kk])):
-                    cl_set = classes_per_cluster[k_id]
-                    if not cl_set:
-                        continue
-                    out, status = dec.stage_b_cluster_internals(
-                        cl_set, d, profs, bridges_set, triples, dc_value,
-                        bridge_solutions[d], time_cluster, workers,
+            full_solution = {}
+            # Task C3: spectral stages A/B/C don't model group_slot
+            # vars. When group_assignments are present, force the
+            # per-day monolithic path so groups are scheduled
+            # correctly. The overall run still benefits from the
+            # cached `dc_value` from Phase A above.
+            if (use_decomposition and len(classes) >= 8
+                    and not group_assignments):
+                import decomposition_spectral_v2 as dec  # type: ignore
+                M, classes_v, _ = dec.build_adjacency(profs)
+                labels, _ = dec.spectral_cluster(M, k)
+                bridges, cl_to_label = dec.find_bridges(
+                    profs, classes_v, labels)
+                classes_per_cluster: dict[int, set] = defaultdict(set)
+                for c, lbl in cl_to_label.items():
+                    classes_per_cluster[lbl].add(c)
+                print(f"[phaseB] cluster sizes="
+                      f"{ {int(c): len(s) for c, s in classes_per_cluster.items()} }, "
+                      f"bridges={len(bridges)}/{len(profs)}")
+                bridges_set = set(bridges.keys())
+                bridge_solutions: dict[int, dict] = {}
+                a_failed = []
+                for di, d in enumerate(DAYS):
+                    out, status = dec.stage_a_bridges(
+                        d, profs, bridges_set, triples, dc_value,
+                        time_bridges, workers,
                         locked_slots_for_day=locked_by_day.get(d) or None,
                     )
                     if out is None:
-                        b_failed[d].add(k_id)
+                        a_failed.append(d)
                     else:
-                        cluster_solutions[(k_id, d)] = out
-                # Stage B spans 0.40 -> 0.80 of the run.
-                update_run(rid,
-                           progress=0.40 + 0.40 * (di + 1) / max(len(DAYS), 1))
-            for d in DAYS:
-                if d in bridge_solutions:
-                    full_solution.update(bridge_solutions[d])
-                for k_id in classes_per_cluster:
-                    if (k_id, d) in cluster_solutions:
-                        full_solution.update(cluster_solutions[(k_id, d)])
-            days_C = sorted(set(b_failed.keys()) | set(a_failed))
-            c_failed = []
-            n_C = max(len(days_C), 1)
-            for ci, d in enumerate(days_C):
-                succ = {}
-                for k_id in classes_per_cluster:
-                    if k_id in b_failed.get(d, set()):
+                        bridge_solutions[d] = out
+                    # Stage A spans 0.20 -> 0.40 of the run.
+                    update_run(rid,
+                               progress=0.20 + 0.20 * (di + 1) / max(len(DAYS), 1))
+                cluster_solutions: dict[tuple[int, int], dict] = {}
+                b_failed: dict[int, set] = defaultdict(set)
+                for di, d in enumerate(DAYS):
+                    if d not in bridge_solutions:
                         continue
-                    if (k_id, d) in cluster_solutions:
-                        succ.update(cluster_solutions[(k_id, d)])
-                out, status = dec.stage_c_ricucitura(
-                    d, profs, bridges_set, triples, dc_value, succ,
-                    time_ricucitura, workers,
-                    locked_slots_for_day=locked_by_day.get(d) or None,
-                )
-                if out is None:
-                    c_failed.append(d)
-                else:
-                    full_solution = {
-                        kk: vv for kk, vv in full_solution.items()
-                        if kk[3] != d
-                    }
-                    full_solution.update(out)
-                # Stage C ricucitura spans 0.80 -> 0.90 of the run.
-                update_run(rid, progress=0.80 + 0.10 * (ci + 1) / n_C)
-            for d in c_failed:
-                out, status = dec.solve_monolithic_day(
-                    d, profs, triples, dc_value,
-                    time_mono, workers,
-                    locked_slots_for_day=locked_by_day.get(d) or None,
-                )
-                if out is not None:
-                    full_solution = {
-                        kk: vv for kk, vv in full_solution.items()
-                        if kk[3] != d
-                    }
-                    full_solution.update(out)
-        else:
-            # monolithic per day -- locks + coteach + sostegno + parallel
-            for d in DAYS:
-                out, status = cv2.solve_phase_b_for_day(
-                    d, profs, classes, triples, class_profs, dc_value,
-                    time_limit=time_mono, workers=workers, log=log,
-                    locked_slots_for_day=locked_by_day.get(d, []),
-                    coteach_groups=coteach_groups or None,
-                    support_assignments=support_assignments or None,
-                    parallel_groups=parallel_groups or None,
-                    group_assignments=group_assignments or None,
-                )
-                if out is None and locked_by_day.get(d):
-                    raise RuntimeError(
-                        f"Phase B (giorno {d}) INFEASIBLE: i lock di "
-                        f"quel giorno sono incompatibili con i vincoli "
-                        f"correnti. Rimuovi o adatta lock e ritenta."
+                    for k_id in sorted(classes_per_cluster,
+                                        key=lambda kk: -len(classes_per_cluster[kk])):
+                        cl_set = classes_per_cluster[k_id]
+                        if not cl_set:
+                            continue
+                        out, status = dec.stage_b_cluster_internals(
+                            cl_set, d, profs, bridges_set, triples, dc_value,
+                            bridge_solutions[d], time_cluster, workers,
+                            locked_slots_for_day=locked_by_day.get(d) or None,
+                        )
+                        if out is None:
+                            b_failed[d].add(k_id)
+                        else:
+                            cluster_solutions[(k_id, d)] = out
+                    # Stage B spans 0.40 -> 0.80 of the run.
+                    update_run(rid,
+                               progress=0.40 + 0.40 * (di + 1) / max(len(DAYS), 1))
+                for d in DAYS:
+                    if d in bridge_solutions:
+                        full_solution.update(bridge_solutions[d])
+                    for k_id in classes_per_cluster:
+                        if (k_id, d) in cluster_solutions:
+                            full_solution.update(cluster_solutions[(k_id, d)])
+                days_C = sorted(set(b_failed.keys()) | set(a_failed))
+                c_failed = []
+                n_C = max(len(days_C), 1)
+                for ci, d in enumerate(days_C):
+                    succ = {}
+                    for k_id in classes_per_cluster:
+                        if k_id in b_failed.get(d, set()):
+                            continue
+                        if (k_id, d) in cluster_solutions:
+                            succ.update(cluster_solutions[(k_id, d)])
+                    out, status = dec.stage_c_ricucitura(
+                        d, profs, bridges_set, triples, dc_value, succ,
+                        time_ricucitura, workers,
+                        locked_slots_for_day=locked_by_day.get(d) or None,
                     )
-                if out is not None:
-                    full_solution.update(out)
+                    if out is None:
+                        c_failed.append(d)
+                    else:
+                        full_solution = {
+                            kk: vv for kk, vv in full_solution.items()
+                            if kk[3] != d
+                        }
+                        full_solution.update(out)
+                    # Stage C ricucitura spans 0.80 -> 0.90 of the run.
+                    update_run(rid, progress=0.80 + 0.10 * (ci + 1) / n_C)
+                for d in c_failed:
+                    out, status = dec.solve_monolithic_day(
+                        d, profs, triples, dc_value,
+                        time_mono, workers,
+                        locked_slots_for_day=locked_by_day.get(d) or None,
+                    )
+                    if out is not None:
+                        full_solution = {
+                            kk: vv for kk, vv in full_solution.items()
+                            if kk[3] != d
+                        }
+                        full_solution.update(out)
+            else:
+                # monolithic per day -- locks + coteach + sostegno + parallel
+                for d in DAYS:
+                    out, status = cv2.solve_phase_b_for_day(
+                        d, profs, classes, triples, class_profs, dc_value,
+                        time_limit=time_mono, workers=workers, log=log,
+                        locked_slots_for_day=locked_by_day.get(d, []),
+                        coteach_groups=coteach_groups or None,
+                        support_assignments=support_assignments or None,
+                        parallel_groups=parallel_groups or None,
+                        group_assignments=group_assignments or None,
+                    )
+                    if out is None and locked_by_day.get(d):
+                        raise RuntimeError(
+                            f"Phase B (giorno {d}) INFEASIBLE: i lock di "
+                            f"quel giorno sono incompatibili con i vincoli "
+                            f"correnti. Rimuovi o adatta lock e ritenta."
+                        )
+                    if out is not None:
+                        full_solution.update(out)
 
         with open(os.path.join(ws, "solution.pkl"), "wb") as f:
             pickle.dump(full_solution, f)
@@ -758,6 +802,173 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
 
     start_thread(run_id, target)
     return run_id
+
+
+def _solve_phase_b_week(*, rid: int, ws: str, profs: dict,
+                          classes: list, triples: list,
+                          class_profs: dict,
+                          phase_a_mode: str,
+                          time_a: float, time_mono: float,
+                          workers: int, log: bool,
+                          locked_dc: dict | None,
+                          locked_by_day: dict,
+                          coteach_groups: list | None,
+                          support_assignments: list | None,
+                          potenziamento_assignments: list | None,
+                          parallel_groups: list | None,
+                          group_assignments: list | None) -> dict:
+    """Phase 3 -- single CP-SAT call covering the whole week via
+    ``MonolithicSolver(scope=None)``.
+
+    Routing:
+
+    * ``phase_a_mode == "skip"``: ``dc_value`` stays ``None``; the
+      solver builds slot vars with weekly equality
+      ``sum_{d,h} slot == ore`` and decides the day distribution
+      itself (gated by HARD constraints + the canonical soft cost).
+    * ``phase_a_mode == "soft_hint"``: run ``cv2.solve_phase_a`` to
+      produce ``dc_value``, persist it to the workspace pickle (so
+      downstream meta steps can reuse it), and push it into the week
+      solver via ``model.AddHint`` on the per-(t,c,s,d)
+      ``day_count_for_hint`` IntVars. Hints are best-effort: CP-SAT
+      may ignore them when the warm-started assignment violates a
+      late-discovered HARD rule.
+
+    HARD constraints applied to the model:
+
+    * teacher / class / class_no_holes / h11 presence (via
+      ``add_all_hard_constraints``)
+    * coteach groups / sostegno shadows / potenziamento /
+      parallel intra + inter
+    * native locks (``add_locks``)
+    * DSL pragmas loaded from the DB at level ``phase_b`` (Phase A
+      pragmas are filtered out -- they operate on day_count IntVars
+      that don't exist in the week-mode HARD surface)
+    """
+    import cpsat_v2_timetable as cv2  # type: ignore
+    from ortools.sat.python import cp_model  # type: ignore
+    try:
+        from engine import cp_sat_constraint_model as csm  # type: ignore
+    except ImportError:
+        import cp_sat_constraint_model as csm  # type: ignore
+
+    dc_value: dict | None = None
+    if phase_a_mode == "soft_hint":
+        print(f"[phaseB.week] running Phase A for soft_hint "
+              f"(time_limit={time_a}s)")
+        dc_value = cv2.solve_phase_a(
+            profs, classes, triples, class_profs,
+            time_limit=time_a, workers=workers, log=log,
+            locked_day_count=locked_dc or None,
+            coteach_groups=coteach_groups or None,
+            support_assignments=support_assignments or None,
+            potenziamento_assignments=potenziamento_assignments or None,
+            parallel_groups=parallel_groups or None,
+            group_assignments=group_assignments or None,
+        )
+        with open(os.path.join(ws, "phase_a_dc.pkl"), "wb") as f:
+            pickle.dump(dc_value, f)
+        update_run(rid, progress=0.20)
+    else:
+        # phase_a_mode == "skip"
+        update_run(rid, progress=0.10)
+
+    # Build the monolithic week-scope solver. dc_value=None puts the
+    # model in weekly_mode; the slot vars use weekly equality from
+    # profs[..]["ore"] and the day distribution becomes a CP-SAT
+    # decision.
+    cfg = csm.ConstraintConfig(
+        enforce_no_holes=True,
+        enforce_h3_presence_at_11=True,
+        enforce_motorie_pair=True,
+        enforce_math_italian_pair=True,
+        locks=[],  # native locks are added below via add_locks
+        coteach_groups=list(coteach_groups or []),
+        support_assignments=list(support_assignments or []),
+        potenziamento_assignments=list(potenziamento_assignments or []),
+        parallel_groups=list(parallel_groups or []),
+        group_assignments=list(group_assignments or []),
+    )
+    solver = csm.MonolithicSolver(profs, dc_value=None, config=cfg,
+                                    scope=None)
+    print(f"[phaseB.week] slot vars: {len(solver.slot)}, "
+          f"day_count hint vars: {len(solver.day_count_for_hint)}")
+
+    # Wire up DB-driven DSL pragmas at level=phase_b (skip phase_a-only
+    # pragmas: their day_count IntVars don't exist on the slot-only
+    # week model).
+    try:
+        from engine import dsl_translator as dt  # type: ignore
+    except ImportError:
+        import dsl_translator as dt  # type: ignore
+    with SessionLocal() as db:
+        rules = dt.load_all_dsl_constraints(db, include_soft=False)
+    if rules:
+        print(f"[phaseB.week] loading {len(rules)} DSL HARD rules "
+              "(level=phase_b + both)")
+        for r in rules:
+            solver.add_dsl_constraint(r["expression"], level="phase_b")
+
+    # Inter-class group slots first so subsequent helpers see them.
+    solver.add_parallel_groups_inter_class()
+    solver.add_coteach_groups()
+    solver.add_support_assignments()
+    solver.add_potenziamento_assignments()
+    solver.add_parallel_groups_intra_class()
+    solver.add_all_hard_constraints()
+    solver.add_class_no_overlap()
+
+    # Native locks: turn the snapshot into 5-tuples (t, cl, s, d, h)
+    # and apply them as slot==1 equalities.
+    locks_5: list = []
+    for d, lst in (locked_by_day or {}).items():
+        for entry in lst:
+            if len(entry) == 4:
+                t, cl, s, h = entry
+                locks_5.append((t, cl, s, d, h))
+    if locks_5:
+        print(f"[phaseB.week] applying {len(locks_5)} native locks")
+        solver.add_locks(locks_5)
+
+    # Soft cost as objective.
+    obj_terms, _ = solver.compute_soft_cost_expr(mode="default")
+    if obj_terms:
+        solver.model.Minimize(sum(obj_terms))
+
+    # Phase A as soft hint, if applicable.
+    if dc_value:
+        n_hints = solver.add_phase_a_hint(dc_value)
+        print(f"[phaseB.week] applied {n_hints} Phase A hints "
+              "via AddHint")
+
+    update_run(rid, progress=0.30)
+    cp_solver = cp_model.CpSolver()
+    cp_solver.parameters.max_time_in_seconds = float(time_mono)
+    cp_solver.parameters.num_search_workers = int(workers)
+    cp_solver.parameters.log_search_progress = bool(log)
+    print(f"[phaseB.week] solving (time_limit={time_mono}s, "
+          f"workers={workers})")
+    status = cp_solver.Solve(solver.model)
+    status_name = cp_solver.StatusName(status)
+    print(f"[phaseB.week] status={status_name}")
+    if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        if locks_5:
+            raise RuntimeError(
+                "Phase B (week scope) INFEASIBLE: i lock correnti "
+                "sono incompatibili con i vincoli. Rimuovi o adatta "
+                "i lock e ritenta.")
+        raise RuntimeError(
+            f"Phase B (week scope) returned {status_name}: nessuna "
+            "soluzione settimanale entro il time limit. Aumenta "
+            "time_mono o passa a cp_sat_scope='day'.")
+
+    # Extract the solution dict in the same shape the legacy day-mode
+    # produces: {(t, cl, subj, d, h): 1}.
+    full_solution: dict = {}
+    for k, v in solver.slot.items():
+        if cp_solver.Value(v):
+            full_solution[k] = 1
+    return full_solution
 
 
 # ----------------------------------------------------------------------
