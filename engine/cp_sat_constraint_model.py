@@ -86,6 +86,18 @@ SIXTH_HOUR = 13
 PENALTY_SIXTH_PD = 5    # legacy ``W_SIXTH_B``
 PENALTY_BUCHI_PD = 10   # legacy ``W_GAP``
 
+# Phase A SOFT penalty constants -- mirror the weights at
+# ``cpsat_v2_timetable.solve_phase_a`` line ~760 so DayCountModel's
+# objective tracks the legacy function's optimum.
+PHASE_A_W_UNIFORM_CL = 4
+PHASE_A_W_UNIFORM_PR = 3
+PHASE_A_W_GLIB = 1       # multiplier on compiler.soft_cost_terms
+PHASE_A_W_SIXTH = 50
+PHASE_A_W_FIVE = 30
+PHASE_A_W_ONE = 80
+PHASE_A_MAX_PER_DAY_TRIPLE = 2
+PHASE_A_MAX_PROF_HOURS_PER_DAY = 5
+
 
 @dataclass
 class ConstraintConfig:
@@ -1302,6 +1314,286 @@ class MonolithicSolver(ConstraintModel):
         for k, v in getattr(self, "pot_slot", {}).items():
             if solver.Value(v):
                 self.pot_solution[k] = 1
+        return out, solver.StatusName(status)
+
+
+# ============================================================
+# DayCountModel -- Phase A equivalent (day_count IntVars only)
+# ============================================================
+
+
+class DayCountModel(ConstraintModel):
+    """Phase A equivalent of MonolithicSolver: builds per-(p, c, s, d)
+    ``day_count`` IntVars instead of per-(p, c, s, d, h) slot
+    BoolVars. The constraint catalogue is supplied through the DSL
+    compiler at level ``"phase_a"`` -- the five Phase A canonical
+    pragmas (``class_day_load_in_day_count``, ``hall_bound_prof_day``,
+    ``free_day_choice_3way``, ``subject_day_count_pair``,
+    ``subject_day_count_in``) cover the HARD surface of the legacy
+    function ``cpsat_v2_timetable.solve_phase_a`` plus the SOFT
+    free-day choice.
+
+    Lifecycle
+    ---------
+    1. ``__init__`` reads ``profs`` and (optionally) ``ore_per_triple``,
+       overrides ``_build_slot_variables`` to populate ``self.day_count``
+       with the IntVars and the weekly ``sum_d == ore`` equality.
+       ``self.slot`` is left empty (Phase A has no hour dimension).
+    2. ``add_dsl_constraint(expr)`` routes through the compiler at
+       level ``"phase_a"``; Phase B pragmas are skipped with a
+       diagnostic. Soft-cost contributions from Phase A pragmas
+       (e.g. ``free_day_choice_3way``) are accumulated on
+       ``self.dsl_soft_cost_terms``.
+    3. ``compute_soft_cost_expr(mode="phase_a")`` assembles the
+       Phase A objective (uniform_class, uniform_prof, sixth-hour,
+       five, one, plus weighted DSL soft terms).
+    4. ``solve()`` builds the objective, runs the solver, returns
+       ``(dc_value_dict, status_name)``.
+
+    Slot key convention
+    -------------------
+    ``self.day_count[(teacher, class_name, subject, day)] -> IntVar``
+    in ``[0, min(MAX_PER_DAY_TRIPLE, ore)]``.
+
+    Cattedra ``ore`` are read from ``profs[teacher]["classi"][cl]
+    [subj]["ore"]``; pass an explicit ``ore_per_triple`` dict to
+    override (useful when the caller knows the curriculum directly).
+    """
+
+    def __init__(
+        self,
+        profs: dict,
+        config: ConstraintConfig | None = None,
+        *,
+        ore_per_triple: dict | None = None,
+        scope: tuple | None = None,
+        days: Iterable[int] | None = None,
+    ):
+        self._ore_per_triple = ore_per_triple
+        # ``dc_value`` is intentionally left empty: Phase A SCHEDULES
+        # day_count, it is not a fixed input. Provide an empty dict to
+        # keep the parent's ``_scope_includes_slot`` path happy.
+        super().__init__(profs, dc_value={}, config=config,
+                          scope=scope, days=days, hours=[])
+
+    def _build_slot_variables(self):
+        """Override: build day_count IntVars instead of slot BoolVars.
+
+        For every triple ``(teacher, class, subject)`` that resolves
+        within scope and has positive ``ore``, create six (one per
+        day) IntVars in ``[0, min(MAX_PER_DAY_TRIPLE, ore)]`` and
+        enforce ``sum_d == ore``.
+
+        ``self.slot`` stays an empty dict so any inherited Phase B
+        method that looks up slot vars yields a sensible no-op.
+        """
+        self.slot = {}
+        self.day_count: dict[tuple, Any] = {}
+        self.weekly_ore: dict[tuple, int] = {}
+        for teacher, pdata in self.profs.items():
+            if not self._scope_includes_teacher(teacher):
+                continue
+            classi = pdata.get("classi", {}) or {}
+            for class_name, subjs in classi.items():
+                for subject, sdata in subjs.items():
+                    triples_key = (teacher, class_name, subject)
+                    if self._ore_per_triple is not None:
+                        ore = int(self._ore_per_triple.get(
+                            triples_key, sdata.get("ore", 0)))
+                    else:
+                        ore = int(sdata.get("ore", 0)) if isinstance(
+                            sdata, dict) else 0
+                    if ore <= 0:
+                        continue
+                    self.weekly_ore[triples_key] = ore
+                    cap = min(PHASE_A_MAX_PER_DAY_TRIPLE, ore)
+                    for d in self.days:
+                        if not self._scope_includes_slot(
+                                teacher, class_name, subject, d):
+                            continue
+                        v = self.model.NewIntVar(
+                            0, cap,
+                            f"dc_{teacher}_{class_name}_"
+                            f"{subject}_{d}")
+                        self.day_count[
+                            (teacher, class_name, subject, d)] = v
+                    day_vars = [
+                        self.day_count[
+                            (teacher, class_name, subject, d)]
+                        for d in self.days
+                        if (teacher, class_name, subject, d)
+                        in self.day_count]
+                    if day_vars:
+                        self.model.Add(sum(day_vars) == ore)
+
+    # ----- DSL integration -----
+
+    def add_dsl_constraint(self, expression, *,
+                            classroom_for_slot: dict | None = None,
+                            plessi_data: Any = None):
+        """Override: route the expression through the compiler at
+        level ``"phase_a"`` so only Phase A pragmas land. Soft-cost
+        contributions are accumulated on
+        ``self.dsl_soft_cost_terms`` for the objective.
+        """
+        try:
+            from . import dsl_to_cpsat as d2c  # type: ignore
+        except ImportError:
+            import dsl_to_cpsat as d2c  # type: ignore
+        if not hasattr(self, "dsl_diagnostics"):
+            self.dsl_diagnostics = []
+        if not hasattr(self, "dsl_soft_cost_terms"):
+            self.dsl_soft_cost_terms: list = []
+        compiler = d2c.DSLConstraintCompiler(
+            self.model, self.slot, config=self.config,
+            classroom_for_slot=classroom_for_slot,
+            plessi_data=plessi_data,
+            owner_model=self,
+            day_count=self.day_count,
+            level="phase_a",
+        )
+        compiler.compile(expression)
+        self.dsl_diagnostics.extend(compiler.diagnostics)
+        self.dsl_soft_cost_terms.extend(compiler.soft_cost_terms)
+
+    # ----- objective -----
+
+    def compute_soft_cost_expr(self, *, mode: str = "phase_a"
+                                  ) -> tuple[list, list]:
+        """Phase A objective: uniformity penalties (per-cattedra and
+        per-prof spread), the sixth-hour count on cl_day_load==6,
+        the prof_day_load five/one indicators, plus DSL-side soft
+        contributions (e.g. free_day_choice_3way weights).
+
+        Mirrors ``cpsat_v2_timetable.solve_phase_a`` lines 757..767.
+        """
+        if mode != "phase_a":
+            raise ValueError(
+                f"DayCountModel.compute_soft_cost_expr: unknown "
+                f"mode={mode!r}; expected 'phase_a'")
+        obj_terms: list = []
+        aux_vars: list = []
+        # ----- 1. uniform_class_pen ------------------------------
+        # sum_(t,cl,s,d) |day_count*6 - ore|
+        abs_terms: list = []
+        for triples_key, ore in self.weekly_ore.items():
+            for d in self.days:
+                dv = self.day_count.get(triples_key + (d,))
+                if dv is None:
+                    continue
+                diff = self.model.NewIntVar(
+                    -12, 12,
+                    f"_pa_dif_{triples_key[0]}_{triples_key[1]}_"
+                    f"{triples_key[2]}_{d}")
+                self.model.Add(diff == dv * 6 - ore)
+                ad = self.model.NewIntVar(
+                    0, 12,
+                    f"_pa_adif_{triples_key[0]}_{triples_key[1]}_"
+                    f"{triples_key[2]}_{d}")
+                self.model.AddAbsEquality(ad, diff)
+                abs_terms.append(ad)
+                aux_vars.extend([diff, ad])
+        if abs_terms:
+            obj_terms.append(PHASE_A_W_UNIFORM_CL * sum(abs_terms))
+        # ----- 2. uniform_prof_pen + 3. five/one  -----------------
+        triples_by_prof: dict[str, list] = {}
+        for (t, cl, s) in self.weekly_ore:
+            triples_by_prof.setdefault(t, []).append((cl, s))
+        ore_by_prof = {
+            t: sum(self.weekly_ore[(t, cl, s)] for (cl, s) in lst)
+            for t, lst in triples_by_prof.items()
+        }
+        prof_day_load: dict[tuple, Any] = {}
+        abs_prof_terms: list = []
+        five_inds: list = []
+        one_inds: list = []
+        for p, lst in triples_by_prof.items():
+            for d in self.days:
+                ld = self.model.NewIntVar(
+                    0, PHASE_A_MAX_PROF_HOURS_PER_DAY,
+                    f"_pa_pld_{p}_{d}")
+                self.model.Add(
+                    ld == sum(self.day_count[(p, cl, s, d)]
+                              for (cl, s) in lst
+                              if (p, cl, s, d) in self.day_count)
+                )
+                prof_day_load[(p, d)] = ld
+                aux_vars.append(ld)
+                # uniform_prof_pen contribution
+                ore_tot = ore_by_prof[p]
+                diff = self.model.NewIntVar(
+                    -30, 30, f"_pa_pdif_{p}_{d}")
+                self.model.Add(diff == ld * 6 - ore_tot)
+                ad = self.model.NewIntVar(
+                    0, 30, f"_pa_padif_{p}_{d}")
+                self.model.AddAbsEquality(ad, diff)
+                abs_prof_terms.append(ad)
+                aux_vars.extend([diff, ad])
+                # five/one indicators
+                is5 = self.model.NewBoolVar(f"_pa_is5_{p}_{d}")
+                self.model.Add(ld == 5).OnlyEnforceIf(is5)
+                self.model.Add(ld != 5).OnlyEnforceIf(is5.Not())
+                is1 = self.model.NewBoolVar(f"_pa_is1_{p}_{d}")
+                self.model.Add(ld == 1).OnlyEnforceIf(is1)
+                self.model.Add(ld != 1).OnlyEnforceIf(is1.Not())
+                five_inds.append(is5)
+                one_inds.append(is1)
+                aux_vars.extend([is5, is1])
+        if abs_prof_terms:
+            obj_terms.append(PHASE_A_W_UNIFORM_PR * sum(abs_prof_terms))
+        if five_inds:
+            obj_terms.append(PHASE_A_W_FIVE * sum(five_inds))
+        if one_inds:
+            obj_terms.append(PHASE_A_W_ONE * sum(one_inds))
+        # ----- 4. n_sixth_hour ------------------------------------
+        # cl_day_load[c, d] == 6 -> contributes 1.
+        sixth_inds: list = []
+        for cl in sorted({k[1] for k in self.day_count}):
+            for d in self.days:
+                terms = [v for (_pp, ccl, _s, dd), v
+                          in self.day_count.items()
+                          if ccl == cl and dd == d]
+                if not terms:
+                    continue
+                cdl = self.model.NewIntVar(
+                    0, 100, f"_pa_cdl_{cl}_{d}")
+                self.model.Add(cdl == sum(terms))
+                is6 = self.model.NewBoolVar(f"_pa_is6_{cl}_{d}")
+                self.model.Add(cdl == 6).OnlyEnforceIf(is6)
+                self.model.Add(cdl != 6).OnlyEnforceIf(is6.Not())
+                sixth_inds.append(is6)
+                aux_vars.extend([cdl, is6])
+        if sixth_inds:
+            obj_terms.append(PHASE_A_W_SIXTH * sum(sixth_inds))
+        # ----- 5. DSL soft cost terms (free_day_choice_3way) ------
+        for w, v in getattr(self, "dsl_soft_cost_terms", []):
+            obj_terms.append(int(w) * PHASE_A_W_GLIB * v)
+        return obj_terms, aux_vars
+
+    # ----- solve -----
+
+    def build(self):
+        obj_terms, _ = self.compute_soft_cost_expr(mode="phase_a")
+        if obj_terms:
+            self.model.Minimize(sum(obj_terms))
+
+    def solve(self, *, time_limit_s: float = 10.0,
+              workers: int = 4, log: bool = False):
+        """Build the Phase A objective and run the solver. Returns
+        ``({(teacher, class, subject, day): int}, status_name)``."""
+        self.build()
+        solver = cp_model.CpSolver()
+        solver.parameters.max_time_in_seconds = float(time_limit_s)
+        solver.parameters.num_search_workers = int(workers)
+        solver.parameters.log_search_progress = log
+        status = solver.Solve(self.model)
+        if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+            return None, solver.StatusName(status)
+        out: dict = {}
+        for k, v in self.day_count.items():
+            val = int(solver.Value(v))
+            if val > 0:
+                out[k] = val
         return out, solver.StatusName(status)
 
 

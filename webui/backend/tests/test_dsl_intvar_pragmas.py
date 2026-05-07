@@ -479,6 +479,159 @@ def test_subject_day_count_in_aggregates_compresenza_blocks_3():
     assert status == cp_model.INFEASIBLE
 
 
+# ============================================================
+# DayCountModel: end-to-end Phase A scenarios
+# ============================================================
+
+
+def test_daycountmodel_builds_day_count_intvars_per_triple():
+    from cp_sat_constraint_model import DayCountModel
+    profs = {
+        "T1": {"classi": {"1A": {"Mat": {"ore": 4}}},
+                "max_hours": 18},
+    }
+    m = DayCountModel(profs)
+    assert m.slot == {}
+    assert len(m.day_count) == 6  # 6 days
+    for d in range(1, 7):
+        assert ("T1", "1A", "Mat", d) in m.day_count
+    assert m.weekly_ore[("T1", "1A", "Mat")] == 4
+
+
+def test_daycountmodel_solves_simple_curriculum():
+    """Phase A on a 1-cattedra curriculum: solver finds a feasible
+    distribution with sum_d == 4."""
+    from cp_sat_constraint_model import DayCountModel
+    profs = {
+        "T1": {"classi": {"1A": {"Mat": {"ore": 4}}},
+                "max_hours": 18},
+    }
+    m = DayCountModel(profs)
+    sol, status = m.solve(time_limit_s=2.0, workers=1)
+    assert sol is not None, status
+    daily = sum(sol.values())
+    assert daily == 4
+
+
+def test_daycountmodel_dsl_pragma_filters_to_phase_a():
+    """A Phase B pragma (no_holes_class) routed to DayCountModel
+    must be skipped with a diagnostic; a Phase A pragma must apply.
+    Two cattedras (2+2 ore each) so cl_day_load can reach 4 within
+    the per-cattedra MAX_PER_DAY_TRIPLE=2 cap."""
+    from cp_sat_constraint_model import DayCountModel
+    profs = {
+        "T1": {"classi": {"1A": {"Mat": {"ore": 2}}},
+                "max_hours": 18},
+        "T2": {"classi": {"1A": {"Ita": {"ore": 2}}},
+                "max_hours": 18},
+    }
+    m = DayCountModel(profs)
+    m.add_dsl_constraint('no_holes_class("1A")')
+    # Phase B pragma was skipped:
+    assert any("no_holes_class" in d and "skipped" in d
+               for d in m.dsl_diagnostics)
+    # Phase A pragma applies:
+    m.add_dsl_constraint(
+        'class_day_load_in_day_count("1A", 0, 4)')
+    sol, status = m.solve(time_limit_s=2.0, workers=1)
+    assert sol is not None, status
+    # Per-day load must be in {0, 4}; with 2+2=4 available, exactly
+    # one day must hit load=4 (both cattedras at 2).
+    daily_load = {}
+    for (_t, cl, _s, d), n in sol.items():
+        daily_load[(cl, d)] = daily_load.get((cl, d), 0) + n
+    assert all(v in {0, 4} for v in daily_load.values()), daily_load
+    assert max(daily_load.values()) == 4
+
+
+def test_daycountmodel_combined_phase_a_pragmas_replicate_legacy():
+    """End-to-end: build the Phase A HARD surface for a tiny school
+    via the 5 pragmas + DayCountModel and verify the resulting
+    day_count matches a hand-computed feasible region.
+
+    Scenario:
+      - Class 1A: T1 teaches Mat (4 hrs), T2 teaches Motorie (2 hrs),
+        T3 teaches Ita (4 hrs). Total 10 hrs over 6 days.
+      - Constraints: cl_day_load in {0, 4, 5, 6}; Mat needs >=1 day
+        with >=2 ore; Motorie day_count in {0, 2}.
+      - Expected feasible patterns: e.g. 6+4+0+0+0+0 (Mot+Mat+Ita
+        compressed) or 5+5+0+0+0+0 (5+5 needs Mot=1 which is
+        forbidden, hence not reachable).
+    """
+    from cp_sat_constraint_model import DayCountModel
+    profs = {
+        "T1": {"classi": {"1A": {"Mat": {"ore": 4}}},
+                "max_hours": 18},
+        "T2": {"classi": {"1A": {"Scienzemotorie": {"ore": 2}}},
+                "max_hours": 18},
+        "T3": {"classi": {"1A": {"Ita": {"ore": 4}}},
+                "max_hours": 18},
+    }
+    m = DayCountModel(profs)
+    m.add_dsl_constraint(
+        'class_day_load_in_day_count("1A", 0, 4, 5, 6)')
+    m.add_dsl_constraint(
+        'subject_day_count_pair("1A", 2, "Mat", "Ita")')
+    m.add_dsl_constraint(
+        'subject_day_count_in("1A", "Scienzemotorie", 0, 2)')
+    m.add_dsl_constraint('hall_bound_prof_day("T1")')
+    m.add_dsl_constraint('hall_bound_prof_day("T2")')
+    m.add_dsl_constraint('hall_bound_prof_day("T3")')
+    sol, status = m.solve(time_limit_s=5.0, workers=1)
+    assert sol is not None, status
+    # cl_day_load in {0, 4, 5, 6}
+    daily_load: dict = {}
+    for (_t, cl, _s, d), n in sol.items():
+        daily_load[(cl, d)] = daily_load.get((cl, d), 0) + n
+    assert all(v in {0, 4, 5, 6} for v in daily_load.values()), (
+        daily_load)
+    # Motorie totals on each day in {0, 2}
+    mot_per_day: dict = {}
+    for (_t, cl, s, d), n in sol.items():
+        if s == "Scienzemotorie":
+            mot_per_day[d] = mot_per_day.get(d, 0) + n
+    for d in range(1, 7):
+        assert mot_per_day.get(d, 0) in (0, 2), mot_per_day
+    # Mat: at least 1 day with >= 2 hrs
+    mat_per_day = [sol.get(("T1", "1A", "Mat", d), 0)
+                   for d in range(1, 7)]
+    assert max(mat_per_day) >= 2, mat_per_day
+    # Ita: at least 1 day with >= 2 hrs
+    ita_per_day = [sol.get(("T3", "1A", "Ita", d), 0)
+                   for d in range(1, 7)]
+    assert max(ita_per_day) >= 2, ita_per_day
+
+
+def test_daycountmodel_free_day_pragma_picks_first_candidate():
+    """End-to-end soft-cost integration: free_day_choice_3way for
+    T1 with weights [0, 50, 100]. Optimum picks day 1 (weight 0)."""
+    from cp_sat_constraint_model import DayCountModel
+    profs = {
+        "T1": {"classi": {"1A": {"Mat": {"ore": 6}}},
+                "max_hours": 18},
+    }
+    m = DayCountModel(profs)
+    m.add_dsl_constraint(
+        'free_day_choice_3way("T1", 1, 2, 3)')
+    sol, status = m.solve(time_limit_s=2.0, workers=1)
+    assert sol is not None, status
+    daily = {d: sol.get(("T1", "1A", "Mat", d), 0)
+             for d in range(1, 7)}
+    # Optimal: day 1 free (weight 0).
+    assert daily[1] == 0, daily
+
+
+def test_daycountmodel_compute_soft_cost_expr_rejects_default_mode():
+    from cp_sat_constraint_model import DayCountModel
+    profs = {
+        "T1": {"classi": {"1A": {"Mat": {"ore": 4}}},
+                "max_hours": 18},
+    }
+    m = DayCountModel(profs)
+    with pytest.raises(ValueError, match="phase_a"):
+        m.compute_soft_cost_expr(mode="default")
+
+
 def test_subject_day_count_pair_per_subject_independent():
     """With two subjects in the list, each gets its own
     'at least one day with >=2' rule. Force Mat to 2 on day 1 to
