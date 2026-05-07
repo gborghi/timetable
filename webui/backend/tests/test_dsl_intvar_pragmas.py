@@ -632,6 +632,162 @@ def test_daycountmodel_compute_soft_cost_expr_rejects_default_mode():
         m.compute_soft_cost_expr(mode="default")
 
 
+# ============================================================
+# Cross-validation against legacy solve_phase_a
+# ============================================================
+#
+# These tests build the same tiny school via two paths and verify
+# the resulting day_count distributions are equivalent (same
+# feasible region; same hard constraint envelope). Because the
+# legacy ``solve_phase_a`` carries non-DSL surface (parallel groups,
+# coteach codoc tying, sostegno following the class) that the
+# Phase 1 pragmas don't yet replicate, the comparison is restricted
+# to scenarios with no codoc / sostegno / parallel groups -- a
+# vanilla curriculum where the two paths see the same model.
+
+
+def _legacy_solve_phase_a(profs, time_limit=2.0):
+    """Run the legacy ``cpsat_v2_timetable.solve_phase_a`` on the
+    given profs dict. Returns the dc_value mapping (only the
+    ``(p, cl, subj, d)`` keys; ``__coday__`` / ``__pot__`` entries
+    are filtered out)."""
+    import cpsat_v2_timetable as cv2
+    classes, triples, class_profs = cv2.build_indices(profs)
+    dc = cv2.solve_phase_a(
+        profs, classes, triples, class_profs,
+        time_limit=time_limit, workers=1, log=False)
+    out = {}
+    for k, v in dc.items():
+        if isinstance(k, tuple) and len(k) == 4 and isinstance(
+                k[0], str) and not k[0].startswith("__"):
+            out[k] = int(v)
+    return out
+
+
+def test_xvalidate_phase_a_simple_two_cattedras():
+    """Two cattedras (Mat 4 + Ita 4) in 1A. Both legacy and DSL
+    paths must yield: every active day's load = 4 (no class load
+    of 1, 2, 3); both must visit at least one day with >= 2 hrs of
+    each subject."""
+    from cp_sat_constraint_model import DayCountModel
+    profs = {
+        "T1": {"classi": {"1A": {"Mat": {"ore": 4}}},
+                "max_hours": 18},
+        "T2": {"classi": {"1A": {"Ita": {"ore": 4}}},
+                "max_hours": 18},
+    }
+    legacy = _legacy_solve_phase_a(profs)
+    # Legacy enforces cl_day_load in {0,4,5,6} hard-coded:
+    legacy_loads: dict = {}
+    for (_t, cl, _s, d), n in legacy.items():
+        legacy_loads[(cl, d)] = legacy_loads.get((cl, d), 0) + n
+    assert all(v in {0, 4, 5, 6} for v in legacy_loads.values()), (
+        legacy_loads)
+
+    # DSL path: replicate the legacy HARD surface via pragmas.
+    m = DayCountModel(profs)
+    m.add_dsl_constraint(
+        'class_day_load_in_day_count("1A", 0, 4, 5, 6)')
+    m.add_dsl_constraint(
+        'subject_day_count_pair("1A", 2, "Mat", "Ita")')
+    m.add_dsl_constraint('hall_bound_prof_day("T1")')
+    m.add_dsl_constraint('hall_bound_prof_day("T2")')
+    dsl, status = m.solve(time_limit_s=2.0, workers=1)
+    assert dsl is not None, status
+    dsl_loads: dict = {}
+    for (_t, cl, _s, d), n in dsl.items():
+        dsl_loads[(cl, d)] = dsl_loads.get((cl, d), 0) + n
+    assert all(v in {0, 4, 5, 6} for v in dsl_loads.values()), (
+        dsl_loads)
+    # Both must satisfy: at least one day with >=2 of each subject.
+    for subj_pat, src in (("Mat", legacy), ("Ita", legacy),
+                           ("Mat", dsl), ("Ita", dsl)):
+        per_day = [v for k, v in src.items() if k[2] == subj_pat]
+        assert max(per_day) >= 2, (subj_pat, per_day)
+
+
+def test_xvalidate_phase_a_with_motorie():
+    """Add Scienzemotorie (2 hrs): legacy enforces day_count in
+    {0, 2}; DSL replicates via subject_day_count_in."""
+    from cp_sat_constraint_model import DayCountModel
+    profs = {
+        "T1": {"classi": {"1A": {"Mat": {"ore": 4}}},
+                "max_hours": 18},
+        "T2": {"classi": {"1A": {"Scienzemotorie": {"ore": 2}}},
+                "max_hours": 18},
+        "T3": {"classi": {"1A": {"Ita": {"ore": 4}}},
+                "max_hours": 18},
+    }
+    legacy = _legacy_solve_phase_a(profs)
+    # Legacy: Motorie per day in {0, 2}.
+    mot_legacy = {}
+    for (t, cl, s, d), n in legacy.items():
+        if s == "Scienzemotorie":
+            mot_legacy[d] = mot_legacy.get(d, 0) + n
+    for d in range(1, 7):
+        assert mot_legacy.get(d, 0) in (0, 2), mot_legacy
+
+    # DSL replicates the constraint surface.
+    m = DayCountModel(profs)
+    m.add_dsl_constraint(
+        'class_day_load_in_day_count("1A", 0, 4, 5, 6)')
+    m.add_dsl_constraint(
+        'subject_day_count_pair("1A", 2, "Mat", "Ita")')
+    m.add_dsl_constraint(
+        'subject_day_count_in("1A", "Scienzemotorie", 0, 2)')
+    m.add_dsl_constraint('hall_bound_prof_day("T1")')
+    m.add_dsl_constraint('hall_bound_prof_day("T2")')
+    m.add_dsl_constraint('hall_bound_prof_day("T3")')
+    dsl, status = m.solve(time_limit_s=3.0, workers=1)
+    assert dsl is not None, status
+    mot_dsl = {}
+    for (_t, cl, s, d), n in dsl.items():
+        if s == "Scienzemotorie":
+            mot_dsl[d] = mot_dsl.get(d, 0) + n
+    for d in range(1, 7):
+        assert mot_dsl.get(d, 0) in (0, 2), mot_dsl
+    # Class load matches legacy's allowed-set on both paths.
+    for sol in (legacy, dsl):
+        loads: dict = {}
+        for (_t, cl, _s, d), n in sol.items():
+            loads[(cl, d)] = loads.get((cl, d), 0) + n
+        assert all(v in {0, 4, 5, 6} for v in loads.values()), loads
+
+
+def test_xvalidate_phase_a_total_ore_preserved():
+    """Both paths must place exactly the curriculum total ore for
+    every cattedra (sum_d == ore)."""
+    from cp_sat_constraint_model import DayCountModel
+    profs = {
+        "T1": {"classi": {"1A": {"Mat": {"ore": 4},
+                                   "Geo": {"ore": 2}}},
+                "max_hours": 18},
+        "T2": {"classi": {"1A": {"Ita": {"ore": 4}}},
+                "max_hours": 18},
+    }
+    legacy = _legacy_solve_phase_a(profs)
+    legacy_per_triple: dict = {}
+    for (t, cl, s, _d), n in legacy.items():
+        legacy_per_triple[(t, cl, s)] = (
+            legacy_per_triple.get((t, cl, s), 0) + n)
+    assert legacy_per_triple == {
+        ("T1", "1A", "Mat"): 4,
+        ("T1", "1A", "Geo"): 2,
+        ("T2", "1A", "Ita"): 4,
+    }, legacy_per_triple
+
+    m = DayCountModel(profs)
+    m.add_dsl_constraint(
+        'class_day_load_in_day_count("1A", 0, 4, 5, 6)')
+    dsl, status = m.solve(time_limit_s=2.0, workers=1)
+    assert dsl is not None, status
+    dsl_per_triple: dict = {}
+    for (t, cl, s, _d), n in dsl.items():
+        dsl_per_triple[(t, cl, s)] = (
+            dsl_per_triple.get((t, cl, s), 0) + n)
+    assert dsl_per_triple == legacy_per_triple, dsl_per_triple
+
+
 def test_subject_day_count_pair_per_subject_independent():
     """With two subjects in the list, each gets its own
     'at least one day with >=2' rule. Force Mat to 2 on day 1 to
