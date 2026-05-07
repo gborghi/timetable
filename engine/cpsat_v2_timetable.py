@@ -72,6 +72,31 @@ DAY_HOURS_MAX = 6                              # max 6 (= len HOURS)
 MAX_PROF_HOURS_PER_DAY = 5                     # HARD (C): max 5 ore prof/giorno
 
 
+def _ensure_dsl_imports_available() -> None:
+    """Bootstrap sys.path so ``dsl_to_cpsat`` can ``from
+    webui.backend.utils import general_dsl as gd`` regardless of how
+    the caller set up the import roots. The compiler hardcodes that
+    import path; if the parent directory of ``webui/`` is not on
+    sys.path, the import fails. We add it here so any caller of
+    ``solve_phase_a`` works without needing to set sys.path in tests
+    or scripts.
+
+    Safe and idempotent: skips when already importable.
+    """
+    import importlib
+    import os
+    import sys
+    try:
+        importlib.import_module("webui.backend.utils.general_dsl")
+        return
+    except ImportError:
+        pass
+    here = os.path.dirname(os.path.abspath(__file__))
+    repo_root = os.path.dirname(here)
+    if repo_root not in sys.path:
+        sys.path.insert(0, repo_root)
+
+
 def find_prof_subject(profs, cl, subject):
     r"""Ritorna il nome del docente che insegna `subject` in `cl`,
     o None se non esiste in questa classe."""
@@ -231,12 +256,18 @@ def build_phase_a_pragmas(
         pragmas.append(
             f'class_day_load_in_day_count({cl!r}, 0, 4, 5, 6)'
         )
-    # 2. hall_bound_prof_day -- one pragma per prof with at least one
-    # triple in a real class. Profs whose only classes are virtual
-    # groups are skipped (the legacy ``only_group_classes`` bypass).
+    # 2. hall_bound_prof_day -- emit per prof unless the legacy
+    # ``only_group_classes`` bypass applies, which fires only when
+    # ``cl_day_load_classes`` is non-empty AND none of the prof's
+    # classes are in it (a prof whose only classes are virtual
+    # groups). When ``cl_day_load_classes`` is empty, the legacy
+    # still emits Hall (the bound becomes prof_day_load <= 0, which
+    # is the desired infeasibility signal for all-sostegno classes
+    # etc.).
     for p in sorted(triples_by_prof):
         classes_of_p = {cl for (cl, _s) in triples_by_prof[p]}
-        if not (classes_of_p & cl_day_load_classes):
+        if cl_day_load_classes and not (
+                classes_of_p & cl_day_load_classes):
             continue
         pragmas.append(f'hall_bound_prof_day({p!r})')
     # 3. free_day_choice_3way -- one pragma per prof with >= 3
@@ -249,35 +280,16 @@ def build_phase_a_pragmas(
         pragmas.append(
             f'free_day_choice_3way({p!r}, {d1}, {d2}, {d3})'
         )
-    # 4. subject_day_count_pair -- per class, per (Mat / Ita) subject
-    # whose prof's class total >= 2 AND whose subject hours >= 2 (the
-    # pragma is per-subject so we need each subject feasible alone).
-    for cl in sorted(classes):
-        qualifying: list[str] = []
-        for subject in ("Matematica", "Italiano"):
-            p = find_prof_subject(profs, cl, subject)
-            if p is None:
-                continue
-            subjmap = profs[p]["classi"].get(cl, {}) or {}
-            tot_in_cl = sum(
-                int(meta.get("ore", 0))
-                for meta in subjmap.values()
-                if isinstance(meta, dict)
-            )
-            if tot_in_cl < 2:
-                continue
-            subj_hours = int(subjmap.get(subject, {}).get("ore", 0)
-                             if isinstance(subjmap.get(subject),
-                                            dict) else 0)
-            if subj_hours < 2:
-                continue
-            qualifying.append(subject)
-        if not qualifying:
-            continue
-        subj_args = ", ".join(repr(s) for s in qualifying)
-        pragmas.append(
-            f'subject_day_count_pair({cl!r}, 2, {subj_args})'
-        )
+    # 4. Mat/Ita "≥1 day with ≥2 hours" -- intentionally NOT emitted
+    # as a DSL pragma. The existing ``subject_day_count_pair`` is
+    # per-subject (sums teachers for one subject), but the legacy
+    # constraint is per-prof cross-subject (sums all subjs of the
+    # Mat/Ita prof). When the prof teaches multiple < 2-hour
+    # subjects in the class (e.g. Italian=1 + Storia=1), the legacy
+    # forces ``max_d (Ita + Storia) >= 2`` while the pragma can only
+    # bound Italian alone (which becomes infeasible). Until a
+    # cross-subject pragma exists, ``solve_phase_a`` keeps a
+    # hardcoded HARD block for this case.
     # 5. subject_day_count_in -- per class with a Scienzemotorie
     # cattedra in day_count, restrict daily count to {0, 2}.
     for cl in sorted(classes):
@@ -520,8 +532,10 @@ def solve_phase_a(profs, classes, triples, class_profs,
                 load == sum(day_count[(p, cl, s, d)] for p, s in lst)
             )
             cl_day_load[(cl, d)] = load
-            # Vincolo HARD: load in {0, 4, 5, 6}. Esclude 1, 2, 3.
-            model.AddAllowedAssignments([load], [(0,), (4,), (5,), (6,)])
+            # HARD ``cl_day_load in {0, 4, 5, 6}`` is added below by
+            # the ``class_day_load_in_day_count`` DSL pragma; the
+            # compiler's cl_day_load cache is pre-populated with this
+            # IntVar so the pragma uses the same (excluded-set) load.
 
     # SOFT (4): minimizziamo il totale degli slot di 6^a ora occupati
     # nella scuola, cioe\` il numero di (cl, d) con load == 6.
@@ -630,21 +644,20 @@ def solve_phase_a(profs, classes, triples, class_profs,
                 cl_day_load[(cl, d)] + sum(group_terms) <= len(HOURS)
             )
 
-    # Giorno libero del prof: scegli 1 fra 3 candidati (in glibero)
-    glib_choice = {}                           # (prof, k=0/1/2) -> Bool
+    # Giorno libero del prof: ``free_day_choice_3way`` DSL pragma
+    # (HARD pick + soft 0/50/100 weights) is compiled below; for
+    # profs with < 3 ``glibero`` candidates the helper skips emission
+    # and we fall back to a hardcoded 1- or 2-candidate version
+    # (the pragma requires exactly 3 candidates).
+    glib_choice_legacy: dict = {}              # only fallback profs
     for p, info in profs.items():
-        glibero = info.get("glibero", [])
-        if not glibero:
-            continue
-        choices = [
-            model.NewBoolVar(f"glib_{p}_{k}") for k in range(3)
-        ]
+        glibero = list(info.get("glibero", []) or [])
+        if not glibero or len(glibero) >= 3:
+            continue                # >=3 handled by the DSL pragma
+        # Legacy fallback: 1 or 2 candidates, weights 0/50/(100).
+        choices = [model.NewBoolVar(f"glib_{p}_{k}") for k in range(3)]
         model.Add(sum(choices) == 1)
-        # symmetry break: il primo candidato e\` premiato (vedi obj)
-        glib_choice[p] = (glibero, choices)
-
-        # Per ogni candidato, se scelto, la somma del prof in quel
-        # giorno deve essere 0
+        glib_choice_legacy[p] = choices
         for k, day in enumerate(glibero[:3]):
             model.Add(
                 sum(day_count[(p, cl, s, day)]
@@ -735,6 +748,11 @@ def solve_phase_a(profs, classes, triples, class_profs,
 
     # HARD (A) -- Mat/Ita: per ogni classe, almeno UN giorno deve avere
     # >= 2 ore del docente (qualunque materia, ma stesso prof).
+    # Intentionally NOT delegated to the DSL pragma family yet -- the
+    # existing ``subject_day_count_pair`` is per-subject, but the
+    # legacy semantic is per-prof cross-subject (sums the prof's
+    # subjects in the class). See ``build_phase_a_pragmas`` rule #4
+    # for the rationale.
     for cl in classes:
         for subject in ("Matematica", "Italiano"):
             p = find_prof_subject(profs, cl, subject)
@@ -766,18 +784,8 @@ def solve_phase_a(profs, classes, triples, class_profs,
             model.AddMaxEquality(mx, day_sums)
             model.Add(mx >= 2)
 
-    # HARD (B) -- Scienzemotorie: tutte le ore in coppie. Quindi
-    # day_count[(p_mot, cl, "Scienzemotorie", d)] in {0, 2}.
-    for cl in classes:
-        p = find_prof_subject(profs, cl, "Scienzemotorie")
-        if p is None:
-            continue
-        for d in DAYS:
-            key = (p, cl, "Scienzemotorie", d)
-            if key in day_count:
-                model.AddAllowedAssignments(
-                    [day_count[key]], [(0,), (2,)]
-                )
+    # HARD (B) Motorie {0, 2} -- compiled below by the
+    # ``subject_day_count_in`` DSL pragma.
 
     # SOFT (D) -- penalita\` per prof_day_load == 5
     # SOFT (E) -- penalita\` per prof_day_load == 1
@@ -805,54 +813,58 @@ def solve_phase_a(profs, classes, triples, class_profs,
     else:
         model.Add(n_one == 0)
 
-    # HARD aggiuntivo (Hall-like): per ogni (prof, day), il prof non
-    # puo\` lavorare piu\` ore di quante una delle sue classi resta
-    # aperta quel giorno. Sotto no-holes hard, ogni classe e\` aperta
-    # da h=8 a h=8+L-1 dove L = cl_day_load[c, d]. Quindi prof_hours
-    # <= max_{c che insegna} L. Senza questo bound, Phase B diventa
-    # infeasible (es. prof con 6 ore in un giorno dove tutte le
-    # classi che insegna hanno load=5: solo 5 slot disponibili).
-    for p, lst in triples_by_prof.items():
-        classes_of_p = sorted({c for c, _ in lst})
-        # Task C3: skip Hall constraint for profs whose only classes
-        # are virtual groups (no cl_day_load entry). The Hall bound
-        # `prof_day_load <= max(cl_day_load)` would force the prof's
-        # daily hours to 0 since a group has no cl_day_load, which
-        # contradicts the sum_d == ore constraint on the group hours.
-        only_group_classes = all(
-            c not in cl_day_load_classes
-            for c in classes_of_p
-        ) if (cl_day_load_classes := {cl for (cl, _) in cl_day_load.keys()}) else False
-        if only_group_classes:
-            continue
+    # HARD Hall-like (per (prof, day): prof_day_load <= max_c
+    # cl_day_load) is compiled below by the ``hall_bound_prof_day``
+    # DSL pragma. The compiler's prof_day_load and cl_day_load
+    # caches are pre-populated with the IntVars built above so the
+    # pragma uses the same exclusion-aware loads.
+
+    # ============================================================
+    # DSL Phase A pragmas: cl_day_load {0,4,5,6}, hall_bound,
+    # free_day_choice (HARD pick + soft weights), Mat/Ita pair,
+    # Motorie {0, 2}. The compiler's load caches are pre-populated
+    # with the IntVars built above so codoc / support /
+    # parallel-secondary / group exclusions and the
+    # only_group_classes Hall bypass are preserved transparently.
+    # ============================================================
+    _ensure_dsl_imports_available()
+    try:
+        from . import dsl_to_cpsat as _d2c  # type: ignore
+    except ImportError:
+        import dsl_to_cpsat as _d2c  # type: ignore
+    _compiler = _d2c.DSLConstraintCompiler(
+        model, slot={}, day_count=day_count, level="phase_a")
+    # Pre-populate cl_day_load cache with the (excluded-set) IntVars.
+    for (cl, d), v in cl_day_load.items():
+        _compiler._cl_day_load_cache[(cl, d)] = v
+    # For classes touched by day_count but excluded from cl_day_load
+    # (e.g. a class with only sostegno / codoc / parallel-secondary
+    # entries), force the cache entry to a constant 0. The legacy
+    # Hall block treats those classes' load as 0 even when the prof
+    # has lessons there; without this seed the pragma would call
+    # ``_cl_day_load_intvar`` which falls back to summing raw
+    # day_count, breaking the infeasibility signal for all-sostegno
+    # classes.
+    _zero_const = model.NewConstant(0)
+    _classes_touched = {k[1] for k in day_count}
+    for cl in _classes_touched:
         for d in DAYS:
-            # rl[c] = cl_day_load[c, d] se prof p ha lezione con c in d,
-            #        0 altrimenti.
-            relevant_loads = []
-            for c in classes_of_p:
-                subj_list = [s for (cc, s) in lst if cc == c]
-                cnt_pcd = sum(
-                    day_count[(p, c, s, d)] for s in subj_list
-                )
-                ind = model.NewBoolVar(f"ind_{p}_{c}_{d}")
-                model.Add(cnt_pcd >= 1).OnlyEnforceIf(ind)
-                model.Add(cnt_pcd == 0).OnlyEnforceIf(ind.Not())
-                rl = model.NewIntVar(0, len(HOURS), f"rl_{p}_{c}_{d}")
-                if (c, d) in cl_day_load:
-                    model.Add(rl == cl_day_load[(c, d)]).OnlyEnforceIf(ind)
-                    model.Add(rl == 0).OnlyEnforceIf(ind.Not())
-                else:
-                    # Class has no non-support triples; treat its
-                    # load as 0 always.
-                    model.Add(rl == 0)
-                relevant_loads.append(rl)
-            max_load = model.NewIntVar(0, len(HOURS), f"mlh_{p}_{d}")
-            if relevant_loads:
-                model.AddMaxEquality(max_load, relevant_loads)
-            else:
-                model.Add(max_load == 0)
-            # Hall: prof_hours[p, d] <= max_load
-            model.Add(prof_day_load[(p, d)] <= max_load)
+            if (cl, d) not in _compiler._cl_day_load_cache:
+                _compiler._cl_day_load_cache[(cl, d)] = _zero_const
+    # Pre-populate prof_day_load cache so the Hall pragma re-uses the
+    # IntVars above (built with the same sum-over-triples_by_prof[p]).
+    for (p, d), v in prof_day_load.items():
+        _compiler._prof_day_load_cache[(p, d)] = v
+    cl_day_load_classes = {cl for (cl, _d) in cl_day_load.keys()}
+    _pragmas = build_phase_a_pragmas(
+        profs, classes,
+        cl_day_load_classes=cl_day_load_classes,
+        triples_by_prof={p: list(lst)
+                          for p, lst in triples_by_prof.items()},
+        day_count_keys=day_count.keys(),
+    )
+    for _src in _pragmas:
+        _compiler.compile(_src)
 
     uniform_prof_pen = model.NewIntVar(0, 100000, "uppen")
     if abs_prof_terms:
@@ -860,9 +872,14 @@ def solve_phase_a(profs, classes, triples, class_profs,
     else:
         model.Add(uniform_prof_pen == 0)
 
-    # Penalita\` giorno libero non-primo:
-    glib_pen_terms = []
-    for p, (glibero, choices) in glib_choice.items():
+    # Penalita\` giorno libero non-primo: weights 0/50/100 contributed
+    # per-prof. The free_day_choice_3way DSL pragma populates
+    # ``_compiler.soft_cost_terms`` with ``(weight, pick)`` tuples
+    # (50 * pick[1] + 100 * pick[2]); profs with < 3 glibero
+    # candidates fall back to the legacy hardcoded path
+    # (``glib_choice_legacy``) and are added explicitly below.
+    glib_pen_terms = [int(w) * v for (w, v) in _compiler.soft_cost_terms]
+    for p, choices in glib_choice_legacy.items():
         glib_pen_terms.append(50 * choices[1])
         glib_pen_terms.append(100 * choices[2])
     glib_pen = model.NewIntVar(0, 100000, "glibpen")

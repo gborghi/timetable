@@ -863,9 +863,11 @@ def test_build_phase_a_pragmas_emits_canonical_set():
     assert any("free_day_choice_3way('T2', 1, 2, 6)" == p
                 for p in pragmas)
     assert not any("free_day_choice_3way('T3'" in p for p in pragmas)
-    # Mat/Ita pair: both qualify (Mat=4, Ita=5).
-    assert any("subject_day_count_pair('1A', 2, 'Matematica',"
-                " 'Italiano')" == p for p in pragmas)
+    # Mat/Ita: NOT emitted as a pragma. The legacy is per-prof
+    # cross-subject (incompatible with the per-subject pragma);
+    # solve_phase_a keeps a hardcoded HARD block for it.
+    assert not any("subject_day_count_pair" in p for p in pragmas), (
+        pragmas)
     # Motorie: present.
     assert any("subject_day_count_in('1A'" in p
                 and "Scienzemotorie" in p
@@ -873,37 +875,78 @@ def test_build_phase_a_pragmas_emits_canonical_set():
 
 
 def test_build_phase_a_pragmas_skips_hall_for_group_only_prof():
-    """A prof whose only classes are virtual groups (no entry in
-    cl_day_load_classes) must not get a hall_bound_prof_day pragma."""
+    """A prof whose only classes are virtual groups must skip the
+    hall_bound pragma -- but only when ``cl_day_load_classes`` is
+    non-empty AND none of the prof's classes are in it. The legacy
+    ``only_group_classes`` bypass requires a non-empty
+    cl_day_load_classes set; an all-empty Phase A still emits Hall
+    so the bound prof_day_load <= 0 surfaces sostegno-only
+    infeasibilities."""
     import cpsat_v2_timetable as cv2
     profs = {
         "TG": {"classi": {"__group_X__": {"Mat": {"ore": 4}}},
                 "glibero": []},
+        "TR": {"classi": {"1A": {"Mat": {"ore": 4}}}, "glibero": []},
     }
-    triples_by_prof = {"TG": [("__group_X__", "Mat")]}
-    day_count_keys = {("TG", "__group_X__", "Mat", d)
-                       for d in range(1, 7)}
+    triples_by_prof = {
+        "TG": [("__group_X__", "Mat")],
+        "TR": [("1A", "Mat")],
+    }
+    day_count_keys = set()  # not consumed by Hall path
+    # 1A is a real class -> cl_day_load_classes = {"1A"}.
     pragmas = cv2.build_phase_a_pragmas(
-        profs, [],
-        cl_day_load_classes=set(),       # no real classes
+        profs, ["1A"],
+        cl_day_load_classes={"1A"},
         triples_by_prof=triples_by_prof,
         day_count_keys=day_count_keys,
     )
-    assert not any("hall_bound_prof_day" in p for p in pragmas), (
-        pragmas)
+    # TG has only __group_X__ (not in cl_day_load_classes) -> skip.
+    assert not any("hall_bound_prof_day('TG')" == p
+                    for p in pragmas), pragmas
+    # TR has 1A (real class) -> emit.
+    assert any("hall_bound_prof_day('TR')" == p
+                for p in pragmas), pragmas
 
 
-def test_build_phase_a_pragmas_skips_subject_pair_when_subj_below_two():
-    """Mat = 1 hour: legacy gates the constraint via tot_in_cl < 2;
-    the pragma is per-subject so a subject with hours < 2 makes the
-    pragma infeasible -- the helper must skip it."""
+def test_build_phase_a_pragmas_emits_hall_when_cl_day_load_empty():
+    """When ``cl_day_load_classes`` is empty (e.g., a class with
+    only sostegno triples), the helper must still emit Hall pragmas
+    -- the bound becomes ``prof_day_load <= 0`` and surfaces the
+    infeasibility (the prof has hours but no class day to host them).
+    The compiler's cl_day_load cache is seeded with zero constants
+    by ``solve_phase_a`` so the pragma builds the right bound."""
     import cpsat_v2_timetable as cv2
     profs = {
-        "T1": {"classi": {"1A": {"Matematica": {"ore": 1},
-                                   "Storia": {"ore": 5}}}},
+        "ProfSost": {"classi": {"3B": {"sostegno": {"ore": 4}}},
+                      "glibero": []},
     }
-    triples_by_prof = {"T1": [("1A", "Matematica"),
-                                ("1A", "Storia")]}
+    triples_by_prof = {"ProfSost": [("3B", "sostegno")]}
+    day_count_keys = set()
+    pragmas = cv2.build_phase_a_pragmas(
+        profs, ["3B"],
+        cl_day_load_classes=set(),       # no real-cattedra classes
+        triples_by_prof=triples_by_prof,
+        day_count_keys=day_count_keys,
+    )
+    assert any("hall_bound_prof_day('ProfSost')" == p
+                for p in pragmas), pragmas
+
+
+def test_build_phase_a_pragmas_never_emits_subject_pair():
+    """The helper never emits subject_day_count_pair: Mat/Ita stays
+    hardcoded in solve_phase_a because the legacy is per-prof
+    cross-subject (sums all subjs of the prof in cl) while the
+    pragma is per-subject (sums teachers for one subject) -- they
+    diverge whenever the prof teaches multiple < 2-hour subjects in
+    the class. Until a cross-subject pragma is added, the helper
+    skips this rule entirely."""
+    import cpsat_v2_timetable as cv2
+    profs = {
+        "T1": {"classi": {"1A": {"Matematica": {"ore": 4}}}},
+        "T2": {"classi": {"1A": {"Italiano": {"ore": 5}}}},
+    }
+    triples_by_prof = {"T1": [("1A", "Matematica")],
+                        "T2": [("1A", "Italiano")]}
     day_count_keys = {(p, cl, s, d)
                        for p, lst in triples_by_prof.items()
                        for (cl, s) in lst
@@ -914,7 +957,7 @@ def test_build_phase_a_pragmas_skips_subject_pair_when_subj_below_two():
         triples_by_prof=triples_by_prof,
         day_count_keys=day_count_keys,
     )
-    # No subject_day_count_pair emitted (Mat=1 fails per-subject
-    # gate; Italiano not present).
+    # Always skipped, even when Mat=4 and Ita=5 satisfy the
+    # per-subject feasibility gate.
     assert not any("subject_day_count_pair" in p for p in pragmas), (
         pragmas)
