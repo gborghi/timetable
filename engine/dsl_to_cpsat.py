@@ -1005,16 +1005,21 @@ class DSLConstraintCompiler:
             self._compile_subject_day_count_in(cl, subj, allowed)
             return True
         if name == "subject_day_count_pair":
-            # Args: class, n, subj_1, subj_2, ...
-            if len(arg_values) < 3:
+            # Per-teacher per-subject: (teacher, class, subject, n).
+            # Each (t, cl, s) cattedra gets its own ">=1 day with >=n
+            # hours" rule. Mirrors the legacy Mat/Ita HARD block but
+            # restricted to a single (t, cl, s) so it composes cleanly
+            # when a prof teaches multiple subjects.
+            if len(arg_values) != 4:
                 self.diagnostics.append(
                     "subject_day_count_pair expects "
-                    "(class, n, subj_1, subj_2, ...)")
+                    "(teacher, class, subject, n)")
                 return True
-            cl = str(arg_values[0])
-            n = int(arg_values[1])
-            subjects = [str(s) for s in arg_values[2:]]
-            self._compile_subject_day_count_pair(cl, subjects, n)
+            teacher = str(arg_values[0])
+            cl = str(arg_values[1])
+            subj = str(arg_values[2])
+            n = int(arg_values[3])
+            self._compile_subject_day_count_pair(teacher, cl, subj, n)
             return True
         if name == "free_day_choice_3way":
             # Args: prof, candidate_day_1, candidate_day_2,
@@ -1447,51 +1452,56 @@ class DSLConstraintCompiler:
                 [ds], [(v,) for v in allowed_clamped])
 
     def _compile_subject_day_count_pair(
-            self, cl: str, subjects: list[str], n: int):
-        """Phase A "≥1 day with ≥n hours per subject" pragma.
+            self, teacher: str, cl: str, subj: str, n: int):
+        """Phase A "≥1 day with ≥n hours" rule for one cattedra.
 
-        Mirrors the legacy Mat/Ita rule in
-        ``cpsat_v2_timetable.solve_phase_a`` (lines 613..644): for
-        every subject in ``subjects`` and every class ``cl``, at
-        least one day must have at least ``n`` total hours of that
-        (class, subject) combination. The total is summed over all
-        teachers active for that (cl, subj) -- typically one but a
-        compresenza splits across two and the sum still represents
-        the class' load on that subject.
+        Per-teacher per-subject: for the cattedra ``(teacher, cl,
+        subj)``, at least one day must have at least ``n`` hours.
+        Encoded with a per-day reified BoolVar
+        ``has_pair_day[t,c,s,d] == (day_count[(t,c,s,d)] >= n)`` and
+        ``sum_d has_pair_day >= 1``.
 
-        Encoded by computing per-day sums into IntVars, taking the
-        weekly max, and forcing ``max >= n``. The constraint fires
-        per subject independently (the "pair" name reflects the
-        typical 2-subject usage Mat+Ita, not a coupled rule).
+        Replaces the legacy per-prof cross-subject Mat/Ita HARD block
+        in ``cpsat_v2_timetable.solve_phase_a``. The per-teacher
+        per-subject formulation is strictly stronger (each subject
+        gets its own day with >=n) but matches the user-stated rule
+        "stesso prof stessa materia devono avere la coppia di ore".
         """
         if not self.day_count:
             self.diagnostics.append(
                 "subject_day_count_pair: day_count empty")
             return
-        if not subjects:
-            return
         days = self._days_in_dc_scope()
         if not days:
             return
-        for subj in subjects:
-            day_sums = []
-            for d in days:
-                terms = [v for (_pp, ccl, ss, dd), v
-                          in self.day_count.items()
-                          if ccl == cl and ss == subj and dd == d]
-                if not terms:
-                    day_sums.append(self.model.NewConstant(0))
-                    continue
-                ds = self.model.NewIntVar(
-                    0, 100, f"_dsl_sdcp_{subj[:3]}_{cl}_{d}")
-                self.model.Add(ds == sum(terms))
-                day_sums.append(ds)
-            if not day_sums:
+        # Collect day_count vars for this (teacher, class, subject).
+        # If the cattedra is unknown to day_count (e.g. zero-hour),
+        # silently skip rather than crash -- the caller already gates
+        # on "ore >= n" in build_phase_a_pragmas.
+        per_day = {}
+        for (pp, ccl, ss, dd), v in self.day_count.items():
+            if pp == teacher and ccl == cl and ss == subj:
+                per_day[dd] = v
+        if not per_day:
+            self.diagnostics.append(
+                f"subject_day_count_pair: no day_count for "
+                f"({teacher!r}, {cl!r}, {subj!r})")
+            return
+        sub_tag = subj[:3]
+        has_pair_days = []
+        for d in days:
+            v = per_day.get(d)
+            if v is None:
                 continue
-            mx = self.model.NewIntVar(
-                0, 100, f"_dsl_sdcp_max_{subj[:3]}_{cl}")
-            self.model.AddMaxEquality(mx, day_sums)
-            self.model.Add(mx >= int(n))
+            b = self.model.NewBoolVar(
+                f"_dsl_sdcp_has_{teacher}_{cl}_{sub_tag}_{d}")
+            # Reified: b == (v >= n).
+            self.model.Add(v >= int(n)).OnlyEnforceIf(b)
+            self.model.Add(v < int(n)).OnlyEnforceIf(b.Not())
+            has_pair_days.append(b)
+        if not has_pair_days:
+            return
+        self.model.Add(sum(has_pair_days) >= 1)
 
     def _compile_free_day_choice_3way(
             self, prof: str, candidates: list[int],

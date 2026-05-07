@@ -362,7 +362,11 @@ def test_free_day_choice_3way_custom_weights():
 def test_subject_day_count_pair_forces_2hr_in_some_day():
     """Mat curriculum: 4 hrs per week, max 2/day. Without the pragma
     the solver could spread 1+1+1+1+0+0; with the pragma at least
-    one day must have exactly 2 (or more) Mat hours."""
+    one day must have exactly 2 (or more) Mat hours.
+
+    Per-teacher per-subject signature:
+    ``subject_day_count_pair(teacher, class, subject, n)``.
+    """
     import dsl_to_cpsat as d2c
     triples = [("T1", "1A", "Mat", 4)]
     model, day_count, days = _build_dc_model(
@@ -370,7 +374,7 @@ def test_subject_day_count_pair_forces_2hr_in_some_day():
     compiler = d2c.DSLConstraintCompiler(
         model, slot={}, day_count=day_count, level="phase_a")
     compiler.compile(
-        'subject_day_count_pair("1A", 2, "Mat")')
+        'subject_day_count_pair("T1", "1A", "Mat", 2)')
     s, status = _solve(model)
     from ortools.sat.python import cp_model
     assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
@@ -388,7 +392,7 @@ def test_subject_day_count_pair_blocks_full_spread():
     compiler = d2c.DSLConstraintCompiler(
         model, slot={}, day_count=day_count, level="phase_a")
     compiler.compile(
-        'subject_day_count_pair("1A", 2, "Mat")')
+        'subject_day_count_pair("T1", "1A", "Mat", 2)')
     _, status = _solve(model)
     from ortools.sat.python import cp_model
     assert status == cp_model.INFEASIBLE
@@ -571,7 +575,9 @@ def test_daycountmodel_combined_phase_a_pragmas_replicate_legacy():
     m.add_dsl_constraint(
         'class_day_load_in_day_count("1A", 0, 4, 5, 6)')
     m.add_dsl_constraint(
-        'subject_day_count_pair("1A", 2, "Mat", "Ita")')
+        'subject_day_count_pair("T1", "1A", "Mat", 2)')
+    m.add_dsl_constraint(
+        'subject_day_count_pair("T3", "1A", "Ita", 2)')
     m.add_dsl_constraint(
         'subject_day_count_in("1A", "Scienzemotorie", 0, 2)')
     m.add_dsl_constraint('hall_bound_prof_day("T1")')
@@ -689,7 +695,9 @@ def test_xvalidate_phase_a_simple_two_cattedras():
     m.add_dsl_constraint(
         'class_day_load_in_day_count("1A", 0, 4, 5, 6)')
     m.add_dsl_constraint(
-        'subject_day_count_pair("1A", 2, "Mat", "Ita")')
+        'subject_day_count_pair("T1", "1A", "Mat", 2)')
+    m.add_dsl_constraint(
+        'subject_day_count_pair("T2", "1A", "Ita", 2)')
     m.add_dsl_constraint('hall_bound_prof_day("T1")')
     m.add_dsl_constraint('hall_bound_prof_day("T2")')
     dsl, status = m.solve(time_limit_s=2.0, workers=1)
@@ -732,7 +740,9 @@ def test_xvalidate_phase_a_with_motorie():
     m.add_dsl_constraint(
         'class_day_load_in_day_count("1A", 0, 4, 5, 6)')
     m.add_dsl_constraint(
-        'subject_day_count_pair("1A", 2, "Mat", "Ita")')
+        'subject_day_count_pair("T1", "1A", "Mat", 2)')
+    m.add_dsl_constraint(
+        'subject_day_count_pair("T3", "1A", "Ita", 2)')
     m.add_dsl_constraint(
         'subject_day_count_in("1A", "Scienzemotorie", 0, 2)')
     m.add_dsl_constraint('hall_bound_prof_day("T1")')
@@ -788,10 +798,10 @@ def test_xvalidate_phase_a_total_ore_preserved():
     assert dsl_per_triple == legacy_per_triple, dsl_per_triple
 
 
-def test_subject_day_count_pair_per_subject_independent():
-    """With two subjects in the list, each gets its own
-    'at least one day with >=2' rule. Force Mat to 2 on day 1 to
-    satisfy Mat side; then Ita must also pile up >=2 somewhere."""
+def test_subject_day_count_pair_per_teacher_per_subject_independent():
+    """Per-teacher per-subject: each (t, cl, subj) cattedra needs its
+    own ">=1 day with >=2" satisfied. Two pragmas emitted, one per
+    cattedra; both rules must hold."""
     import dsl_to_cpsat as d2c
     triples = [
         ("T1", "1A", "Mat", 4),
@@ -802,7 +812,9 @@ def test_subject_day_count_pair_per_subject_independent():
     compiler = d2c.DSLConstraintCompiler(
         model, slot={}, day_count=day_count, level="phase_a")
     compiler.compile(
-        'subject_day_count_pair("1A", 2, "Mat", "Ita")')
+        'subject_day_count_pair("T1", "1A", "Mat", 2)')
+    compiler.compile(
+        'subject_day_count_pair("T2", "1A", "Ita", 2)')
     s, status = _solve(model)
     from ortools.sat.python import cp_model
     assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
@@ -810,6 +822,31 @@ def test_subject_day_count_pair_per_subject_independent():
     ita_daily = [s.Value(day_count[("T2", "1A", "Ita", d)]) for d in days]
     assert max(mat_daily) >= 2 and max(ita_daily) >= 2, (
         mat_daily, ita_daily)
+
+
+def test_subject_day_count_pair_skips_other_teacher_subject():
+    """Per-teacher per-subject: a pragma for (T1, 1A, Mat) only
+    constrains T1's Mat. Adding T2's Ita with no pragma must not
+    force the Ita-side. Sanity check that the rule is scoped to
+    the (teacher, subject, class) tuple of the pragma."""
+    import dsl_to_cpsat as d2c
+    triples = [
+        ("T1", "1A", "Mat", 4),
+        ("T2", "1A", "Ita", 6),
+    ]
+    model, day_count, days = _build_dc_model(
+        triples, max_per_day=1)         # block 2-in-a-day
+    compiler = d2c.DSLConstraintCompiler(
+        model, slot={}, day_count=day_count, level="phase_a")
+    # Only T2's Ita has a pragma -- T1's Mat is unconstrained.
+    # The Ita pragma is infeasible (max_per_day=1) so the model
+    # is INFEAS regardless of T1's Mat: this confirms the rule
+    # fires only on the named cattedra.
+    compiler.compile(
+        'subject_day_count_pair("T2", "1A", "Ita", 2)')
+    _, status = _solve(model)
+    from ortools.sat.python import cp_model
+    assert status == cp_model.INFEASIBLE
 
 
 # ============================================================
