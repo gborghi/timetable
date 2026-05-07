@@ -810,3 +810,111 @@ def test_subject_day_count_pair_per_subject_independent():
     ita_daily = [s.Value(day_count[("T2", "1A", "Ita", d)]) for d in days]
     assert max(mat_daily) >= 2 and max(ita_daily) >= 2, (
         mat_daily, ita_daily)
+
+
+# ============================================================
+# build_phase_a_pragmas helper
+# ============================================================
+
+
+def test_build_phase_a_pragmas_emits_canonical_set():
+    """Helper emits the five canonical Phase A pragmas given a tiny
+    school: cl_day_load + Hall (one per prof in real classes) +
+    free_day (only for profs with >= 3 glibero) + Mat/Ita pair (only
+    for subjects with >= 2 hours) + Motorie (only when present)."""
+    import cpsat_v2_timetable as cv2
+    profs = {
+        "T1": {"classi": {"1A": {"Matematica": {"ore": 4}}},
+                "glibero": [3, 4, 5], "max_hours": 18},
+        "T2": {"classi": {"1A": {"Italiano": {"ore": 5},
+                                   "Storia": {"ore": 1}}},
+                "glibero": [1, 2, 6], "max_hours": 18},
+        "T3": {"classi": {"1A": {"Scienzemotorie": {"ore": 2}}},
+                "glibero": [], "max_hours": 18},
+    }
+    triples_by_prof = {
+        "T1": [("1A", "Matematica")],
+        "T2": [("1A", "Italiano"), ("1A", "Storia")],
+        "T3": [("1A", "Scienzemotorie")],
+    }
+    day_count_keys = {
+        (p, cl, s, d)
+        for p, lst in triples_by_prof.items()
+        for (cl, s) in lst
+        for d in range(1, 7)
+    }
+    pragmas = cv2.build_phase_a_pragmas(
+        profs, ["1A"],
+        cl_day_load_classes={"1A"},
+        triples_by_prof=triples_by_prof,
+        day_count_keys=day_count_keys,
+    )
+    # cl_day_load: one per real class.
+    assert any("class_day_load_in_day_count" in p
+                and "'1A'" in p
+                and "0, 4, 5, 6" in p for p in pragmas), pragmas
+    # Hall: one per prof (all three teach in the real class).
+    for prof in ("T1", "T2", "T3"):
+        assert any(f"hall_bound_prof_day('{prof}')" == p
+                    for p in pragmas), pragmas
+    # free_day: T1, T2 (T3 has empty glibero, must be skipped).
+    assert any("free_day_choice_3way('T1', 3, 4, 5)" == p
+                for p in pragmas)
+    assert any("free_day_choice_3way('T2', 1, 2, 6)" == p
+                for p in pragmas)
+    assert not any("free_day_choice_3way('T3'" in p for p in pragmas)
+    # Mat/Ita pair: both qualify (Mat=4, Ita=5).
+    assert any("subject_day_count_pair('1A', 2, 'Matematica',"
+                " 'Italiano')" == p for p in pragmas)
+    # Motorie: present.
+    assert any("subject_day_count_in('1A'" in p
+                and "Scienzemotorie" in p
+                and "0, 2" in p for p in pragmas), pragmas
+
+
+def test_build_phase_a_pragmas_skips_hall_for_group_only_prof():
+    """A prof whose only classes are virtual groups (no entry in
+    cl_day_load_classes) must not get a hall_bound_prof_day pragma."""
+    import cpsat_v2_timetable as cv2
+    profs = {
+        "TG": {"classi": {"__group_X__": {"Mat": {"ore": 4}}},
+                "glibero": []},
+    }
+    triples_by_prof = {"TG": [("__group_X__", "Mat")]}
+    day_count_keys = {("TG", "__group_X__", "Mat", d)
+                       for d in range(1, 7)}
+    pragmas = cv2.build_phase_a_pragmas(
+        profs, [],
+        cl_day_load_classes=set(),       # no real classes
+        triples_by_prof=triples_by_prof,
+        day_count_keys=day_count_keys,
+    )
+    assert not any("hall_bound_prof_day" in p for p in pragmas), (
+        pragmas)
+
+
+def test_build_phase_a_pragmas_skips_subject_pair_when_subj_below_two():
+    """Mat = 1 hour: legacy gates the constraint via tot_in_cl < 2;
+    the pragma is per-subject so a subject with hours < 2 makes the
+    pragma infeasible -- the helper must skip it."""
+    import cpsat_v2_timetable as cv2
+    profs = {
+        "T1": {"classi": {"1A": {"Matematica": {"ore": 1},
+                                   "Storia": {"ore": 5}}}},
+    }
+    triples_by_prof = {"T1": [("1A", "Matematica"),
+                                ("1A", "Storia")]}
+    day_count_keys = {(p, cl, s, d)
+                       for p, lst in triples_by_prof.items()
+                       for (cl, s) in lst
+                       for d in range(1, 7)}
+    pragmas = cv2.build_phase_a_pragmas(
+        profs, ["1A"],
+        cl_day_load_classes={"1A"},
+        triples_by_prof=triples_by_prof,
+        day_count_keys=day_count_keys,
+    )
+    # No subject_day_count_pair emitted (Mat=1 fails per-subject
+    # gate; Italiano not present).
+    assert not any("subject_day_count_pair" in p for p in pragmas), (
+        pragmas)

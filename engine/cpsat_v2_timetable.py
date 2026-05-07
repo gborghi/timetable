@@ -171,6 +171,129 @@ def build_indices(profs):
     return classes, triples, class_profs
 
 
+def build_phase_a_pragmas(
+    profs,
+    classes,
+    *,
+    cl_day_load_classes,
+    triples_by_prof,
+    day_count_keys,
+):
+    """Emit the canonical list of Phase A DSL pragmas for the given
+    Phase A state. Mirrors the HARD/SOFT surface of the legacy
+    ``solve_phase_a``:
+
+      * ``class_day_load_in_day_count(cl, 0, 4, 5, 6)`` per real class
+        (subset of ``classes`` with a ``cl_day_load`` IntVar after
+        codoc / support / parallel-secondary / group exclusions).
+      * ``hall_bound_prof_day(prof)`` for every prof with at least one
+        triple in a real class -- profs whose only classes are virtual
+        groups are skipped, mirroring the legacy ``only_group_classes``
+        bypass.
+      * ``free_day_choice_3way(prof, d1, d2, d3)`` for every prof whose
+        ``glibero`` list has at least three candidates (default
+        weights 0/50/100 -- the legacy values).
+      * ``subject_day_count_pair(cl, 2, "Matematica" [, "Italiano"])``
+        per class for the subjects (Mat / Ita) whose hours in the
+        class are at least 2; gated on ``tot_in_cl >= 2`` (the legacy
+        gate). When the prof teaches multiple subjects one of which
+        is below 2 hours, the pragma is skipped for that subject (it
+        would be infeasible: the pragma sums teachers per (cl, subj),
+        not subjects per (cl, prof)).
+      * ``subject_day_count_in(cl, "Scienzemotorie", 0, 2)`` per class
+        with a Scienzemotorie cattedra in ``day_count``.
+
+    The returned list is a list of pragma strings ready for
+    ``DSLConstraintCompiler.compile``.
+
+    Parameters
+    ----------
+    profs : dict
+        the same ``profs`` dict ``solve_phase_a`` consumes.
+    classes : list[str]
+        all classes (including ones with no real-cattedra triples).
+    cl_day_load_classes : Iterable[str]
+        the subset of ``classes`` that have a ``cl_day_load`` IntVar
+        (after codoc / support / parallel-secondary / group
+        exclusions).
+    triples_by_prof : dict[str, list[tuple[str, str]]]
+        prof -> list of ``(class, subject)`` (after the augmentation
+        with group_assignments). Used to gate ``hall_bound_prof_day``.
+    day_count_keys : Iterable[tuple[str, str, str, int]]
+        the keys of the ``day_count`` IntVar dict; used to gate
+        ``subject_day_count_in`` (Motorie cattedra present).
+    """
+    pragmas: list[str] = []
+    cl_day_load_classes = set(cl_day_load_classes)
+    day_count_keys = set(day_count_keys)
+    # 1. cl_day_load -- one pragma per class with a cl_day_load entry.
+    for cl in sorted(cl_day_load_classes):
+        pragmas.append(
+            f'class_day_load_in_day_count({cl!r}, 0, 4, 5, 6)'
+        )
+    # 2. hall_bound_prof_day -- one pragma per prof with at least one
+    # triple in a real class. Profs whose only classes are virtual
+    # groups are skipped (the legacy ``only_group_classes`` bypass).
+    for p in sorted(triples_by_prof):
+        classes_of_p = {cl for (cl, _s) in triples_by_prof[p]}
+        if not (classes_of_p & cl_day_load_classes):
+            continue
+        pragmas.append(f'hall_bound_prof_day({p!r})')
+    # 3. free_day_choice_3way -- one pragma per prof with >= 3
+    # glibero candidates. Default weights 0/50/100 (legacy).
+    for p in sorted(profs):
+        glibero = list(profs[p].get("glibero", []) or [])
+        if len(glibero) < 3:
+            continue
+        d1, d2, d3 = int(glibero[0]), int(glibero[1]), int(glibero[2])
+        pragmas.append(
+            f'free_day_choice_3way({p!r}, {d1}, {d2}, {d3})'
+        )
+    # 4. subject_day_count_pair -- per class, per (Mat / Ita) subject
+    # whose prof's class total >= 2 AND whose subject hours >= 2 (the
+    # pragma is per-subject so we need each subject feasible alone).
+    for cl in sorted(classes):
+        qualifying: list[str] = []
+        for subject in ("Matematica", "Italiano"):
+            p = find_prof_subject(profs, cl, subject)
+            if p is None:
+                continue
+            subjmap = profs[p]["classi"].get(cl, {}) or {}
+            tot_in_cl = sum(
+                int(meta.get("ore", 0))
+                for meta in subjmap.values()
+                if isinstance(meta, dict)
+            )
+            if tot_in_cl < 2:
+                continue
+            subj_hours = int(subjmap.get(subject, {}).get("ore", 0)
+                             if isinstance(subjmap.get(subject),
+                                            dict) else 0)
+            if subj_hours < 2:
+                continue
+            qualifying.append(subject)
+        if not qualifying:
+            continue
+        subj_args = ", ".join(repr(s) for s in qualifying)
+        pragmas.append(
+            f'subject_day_count_pair({cl!r}, 2, {subj_args})'
+        )
+    # 5. subject_day_count_in -- per class with a Scienzemotorie
+    # cattedra in day_count, restrict daily count to {0, 2}.
+    for cl in sorted(classes):
+        p = find_prof_subject(profs, cl, "Scienzemotorie")
+        if p is None:
+            continue
+        if not any(k[0] == p and k[1] == cl
+                    and k[2] == "Scienzemotorie"
+                    for k in day_count_keys):
+            continue
+        pragmas.append(
+            f'subject_day_count_in({cl!r}, "Scienzemotorie", 0, 2)'
+        )
+    return pragmas
+
+
 # -----------------------------
 # PHASE A: assegnazione GIORNO
 # -----------------------------
