@@ -552,8 +552,8 @@ realistici, riferirsi alle istanze PATAT
 
 \subsection{Tecniche \emph{unwired} e perch\'e}
 
-Tre tecniche concettualmente attese non hanno una via
-diretta nell'attuale codebase:
+Una sola tecnica resta concettualmente attesa ma non ha
+oggi una via diretta nell'attuale codebase:
 
 \begin{description}
 \item[\texttt{greedy\_pure}.] In $\pi$Tantum non esiste un
@@ -564,25 +564,40 @@ diretta nell'attuale codebase:
   ma agisce solo sull'assegnazione delle aule, non sulla
   distribuzione settimanale. Il manuale segna questa
   cella come \texttt{unwired} e ne discute la natura.
-
-\item[\texttt{cpsat\_week} (monolitica).] La pipeline
-  $\pi$Tantum \`e per costruzione \emph{Phase A + Phase B
-  per giorno}: Phase A distribuisce i conteggi di ore per
-  giorno per cattedra, Phase B fissa lo slot orario.
-  Una formulazione monolitica della settimana richiederebbe
-  un nuovo modello CP-SAT con $\sim N \times 36$ variabili
-  da risolvere insieme; \`e una direzione di ricerca, non
-  un'opzione corrente.
-
-\item[\texttt{cpsat\_day\_skip\_phase\_a} e
-\texttt{cpsat\_day\_soft\_hint}.] Le varianti
-  \texttt{phase\_a\_mode=skip} e
-  \texttt{phase\_a\_mode=soft\_hint} sono nominali nella
-  letteratura interna ma non esposte come parametri di
-  \texttt{solve\_phase\_b\_for\_day}: senza un \texttt{dc\_value}
-  che provenga da Phase A non c'\`e materiale per la
-  Phase B. Idea ben formulata ma non implementata.
 \end{description}
+
+\paragraph{Tecniche prima \emph{unwired}, ora attive.}
+Le tre celle \texttt{cpsat\_week},
+\texttt{cpsat\_day\_skip\_phase\_a} e
+\texttt{cpsat\_day\_soft\_hint} sono ora wirate sul
+solver OO \texttt{MonolithicSolver(scope=None)} in
+\texttt{engine/cp\_sat\_constraint\_model.py}, equivalente
+al cammino di produzione
+\texttt{cp\_sat\_scope='week'} di
+\texttt{webui/backend/optimization.\_solve\_phase\_b\_week}:
+
+\begin{itemize}
+\item \texttt{cpsat\_week} usa
+  \texttt{MonolithicSolver(scope=None, dc\_value=None)}
+  con tutto il budget \texttt{cap\_total} sulla singola
+  chiamata: una sola CP-SAT che decide \emph{insieme}
+  Phase~A e Phase~B (la distribuzione di ore per giorno
+  diventa una variabile interna).
+\item \texttt{cpsat\_day\_skip\_phase\_a} \`e lo stesso
+  motore ma con budget riallineato a
+  \texttt{t\_b $\times$ NUM\_DAYS}, cos\`i da confrontarsi
+  con \texttt{cpsat\_day} sullo stesso pool di tempo
+  Phase~B. Mostra il costo del rinunciare al partizionamento
+  per giorno a parit\`a di tempo speso sui buchi orari.
+\item \texttt{cpsat\_day\_soft\_hint} risolve prima Phase~A
+  via \texttt{DayCountModel} per produrre un
+  \texttt{dc\_value}, poi lo passa al
+  \texttt{MonolithicSolver(scope=None)} tramite
+  \texttt{add\_phase\_a\_hint}: l'hint \`e un warm start
+  \emph{best-effort}, non un vincolo HARD, dunque CP-SAT
+  pu\`o ignorarlo se l'assegnazione viola un vincolo
+  scoperto in seguito.
+\end{itemize}
 
 \subsection{Risultati misurati}
 
