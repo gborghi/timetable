@@ -376,10 +376,11 @@
   };
 </script>
 
-<div class="space-y-4">
+<div class="space-y-4" data-testid="teachers-page">
   <div class="flex items-baseline gap-3 flex-wrap">
     <h1>Docenti</h1>
-    <button class="btn-primary ml-auto" on:click={newTeacher}>+ Nuovo docente</button>
+    <button class="btn-primary ml-auto" on:click={newTeacher}
+            data-testid="add-teacher-btn">+ Nuovo docente</button>
     <ImportButton entity="teachers" onDone={() => listRef?.reload()}/>
     <button class="btn !text-xs" on:click={() => (showBulk = true)}
             disabled={selectedIds.length === 0}
@@ -417,8 +418,14 @@
     <td class="text-center">{row.scheduled_hours}</td>
     <td class="text-center text-xs">{row.soft_penalty_total}</td>
     <td class="whitespace-nowrap">
-      <button class="btn !text-xs !px-2 !py-1" on:click={() => edit(row)}>Modifica</button>
-      <button class="btn-danger !text-xs !px-2 !py-1" on:click={() => del(row)}>Elimina</button>
+      <button class="btn !text-xs !px-2 !py-1"
+              data-testid="teacher-edit-btn"
+              data-teacher-id={row.id}
+              on:click={() => edit(row)}>Modifica</button>
+      <button class="btn-danger !text-xs !px-2 !py-1"
+              data-testid="teacher-delete-btn"
+              data-teacher-id={row.id}
+              on:click={() => del(row)}>Elimina</button>
     </td>
   </SortableQueryableList>
 </div>
@@ -429,14 +436,16 @@
 
 <Modal open={!!editing} title={editing?._new ? 'Nuovo docente' : 'Modifica docente'} onClose={() => (editing = null)}>
   {#if editing}
-    <div class="grid grid-cols-2 gap-3">
+    <div class="grid grid-cols-2 gap-3" data-testid="teacher-form">
       <div class="field">
         <label>Cognome</label>
-        <input bind:value={editing.last_name} on:input={syncName}/>
+        <input bind:value={editing.last_name} on:input={syncName}
+               data-testid="teacher-last-name-input"/>
       </div>
       <div class="field">
         <label>Nome</label>
-        <input bind:value={editing.first_name} on:input={syncName}/>
+        <input bind:value={editing.first_name} on:input={syncName}
+               data-testid="teacher-first-name-input"/>
       </div>
       <div class="field col-span-2">
         <label>Nickname (mostrato nell'orario)
@@ -447,7 +456,7 @@
       </div>
       <div class="field"><label>Matricola</label><input bind:value={editing.matricola}/></div>
       <div class="field"><label>Classe di concorso</label><input bind:value={editing.group}/></div>
-      <div class="field"><label>Max ore-cattedra</label><input type="number" bind:value={editing.max_hours}/></div>
+      <div class="field"><label>Max ore-cattedra</label><input type="number" bind:value={editing.max_hours} data-testid="teacher-max-hours-input"/></div>
       <div class="field"><label>Ore di completamento</label><input type="number" bind:value={editing.completion_hours}/></div>
       <div class="field"><label>Ore di esonero</label><input type="number" bind:value={editing.exemption_hours}/></div>
       <div class="field">
@@ -625,8 +634,10 @@
     </div>
 
     <div class="mt-5 flex justify-end gap-2">
-      <button class="btn" on:click={() => (editing = null)}>Annulla</button>
-      <button class="btn-primary focus-ring" on:click={save} disabled={saving}>
+      <button class="btn" on:click={() => (editing = null)}
+              data-testid="teacher-cancel-btn">Annulla</button>
+      <button class="btn-primary focus-ring" on:click={save} disabled={saving}
+              data-testid="teacher-save-btn">
         {saving ? 'Salvataggio...' : 'Salva'}
       </button>
     </div>

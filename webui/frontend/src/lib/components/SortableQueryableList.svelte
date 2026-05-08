@@ -616,6 +616,9 @@
             <tr class:bg-accent-500={false}
                 class:!bg-accent-500={false}
                 style={isSelected(row) ? 'background-color: rgba(59,130,246,0.10);' : ''}
+                data-testid="entity-row"
+                data-entity={entity}
+                data-row-id={rowKey(row)}
                 on:click={(e) => onRowClick(e, row, idx)}>
               <td class="w-6 text-center">
                 <input type="checkbox" checked={isSelected(row)}
@@ -629,7 +632,9 @@
             </tr>
           {:else}
             <slot {row} {columns} {idx}>
-              <tr>
+              <tr data-testid="entity-row"
+                  data-entity={entity}
+                  data-row-id={rowKey(row)}>
                 {#each columns as col}
                   <td>{col.render ? col.render(row) : (row[col.key] ?? '')}</td>
                 {/each}
