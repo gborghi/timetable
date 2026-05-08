@@ -173,6 +173,107 @@ def run_cpsat_day_e2e(profs, school, c2curr, *, cap):
                   "dc": dc}
 
 
+def _import_cpsat_oo():
+    """Resolve MonolithicSolver/DayCountModel/ConstraintConfig from
+    engine.cp_sat_constraint_model. The engine dir is already on
+    sys.path so the bare-import path works either way."""
+    try:
+        from cp_sat_constraint_model import (  # type: ignore
+            MonolithicSolver, DayCountModel, ConstraintConfig)
+    except ImportError:
+        from engine.cp_sat_constraint_model import (  # type: ignore
+            MonolithicSolver, DayCountModel, ConstraintConfig)
+    return MonolithicSolver, DayCountModel, ConstraintConfig
+
+
+def _default_config():
+    """ConstraintConfig matching the production webui call site
+    in optimization._solve_phase_b_week (no_holes + h11 + motorie +
+    math_italian). All group/lock fields default to []."""
+    _, _, ConstraintConfig = _import_cpsat_oo()
+    return ConstraintConfig(
+        enforce_no_holes=True,
+        enforce_h3_presence_at_11=True,
+        enforce_motorie_pair=True,
+        enforce_math_italian_pair=True,
+    )
+
+
+def _n_days():
+    import cpsat_v2_timetable as cv2  # type: ignore
+    return len(cv2.DAYS)
+
+
+def run_cpsat_week_e2e(profs, school, c2curr, *, cap):
+    """Pure monolithic-week solver. Uses
+    ``MonolithicSolver(scope=None, dc_value=None)``: weekly_mode is
+    on, the slot vars carry the weekly equality
+    ``sum_{d,h} slot == ore``, and the day distribution is a CP-SAT
+    decision (no Phase A at all). Equivalent to the production path
+    ``cp_sat_scope='week', phase_a_mode='skip'``. Full cap budget
+    spent on the single mono solve."""
+    cap_total, _t_a, _t_b, _ = cap
+    MonolithicSolver, _DayCountModel, _CC = _import_cpsat_oo()
+    cfg = _default_config()
+    started = time.time()
+    ms = MonolithicSolver(profs, dc_value=None, config=cfg, scope=None)
+    sol, status = ms.solve(time_limit_s=cap_total, workers=2, log=False)
+    elapsed = time.time() - started
+    return sol, {"t_phase_a": 0.0, "t_phase_b": elapsed,
+                 "note": f"week+skip, {len(ms.slot)} slot vars, "
+                          f"status={status}"}
+
+
+def run_cpsat_day_skip_phase_a_e2e(profs, school, c2curr, *, cap):
+    """``phase_a_mode='skip'`` flavour matched to the per-day time
+    budget so the comparison vs ``cpsat_day`` is on the same Phase B
+    pool. Same engine as ``cpsat_week`` but with mono budget
+    ``t_b * NUM_DAYS`` instead of full ``cap_total``."""
+    _cap_total, _t_a, t_b, _ = cap
+    MonolithicSolver, _DayCountModel, _CC = _import_cpsat_oo()
+    cfg = _default_config()
+    nd = _n_days()
+    budget = float(t_b) * nd
+    started = time.time()
+    ms = MonolithicSolver(profs, dc_value=None, config=cfg, scope=None)
+    sol, status = ms.solve(time_limit_s=budget, workers=2, log=False)
+    elapsed = time.time() - started
+    return sol, {"t_phase_a": 0.0, "t_phase_b": elapsed,
+                 "note": f"week+skip, mono_budget=t_b*{nd}={budget}s, "
+                          f"status={status}"}
+
+
+def run_cpsat_day_soft_hint_e2e(profs, school, c2curr, *, cap):
+    """``phase_a_mode='soft_hint'``: solve Phase A via
+    ``DayCountModel`` to get a ``dc_value``, then push it into the
+    week-mode ``MonolithicSolver`` through ``add_phase_a_hint``
+    (best-effort warm start, NOT a HARD constraint). Time split
+    matches ``cpsat_day``: ``t_a`` for Phase A + ``t_b * NUM_DAYS``
+    for the mono solve."""
+    _cap_total, t_a, t_b, _ = cap
+    MonolithicSolver, DayCountModel, _CC = _import_cpsat_oo()
+    cfg = _default_config()
+    nd = _n_days()
+    mono_budget = float(t_b) * nd
+    started_a = time.time()
+    dcm = DayCountModel(profs, config=cfg)
+    dc_value, status_a = dcm.solve(
+        time_limit_s=float(t_a), workers=2, log=False)
+    elapsed_a = time.time() - started_a
+    if not dc_value:
+        return None, {"t_phase_a": elapsed_a, "t_phase_b": 0.0,
+                      "note": f"DayCountModel returned {status_a}"}
+    started_b = time.time()
+    ms = MonolithicSolver(profs, dc_value=None, config=cfg, scope=None)
+    n_hints = ms.add_phase_a_hint(dc_value)
+    sol, status_b = ms.solve(time_limit_s=mono_budget, workers=2,
+                              log=False)
+    elapsed_b = time.time() - started_b
+    return sol, {"t_phase_a": elapsed_a, "t_phase_b": elapsed_b,
+                 "note": f"week+soft_hint, {n_hints} hints, "
+                          f"status={status_b}"}
+
+
 def run_decomp_temporal(profs, school, c2curr, *, cap):
     """Phase A + per-day decomposition_temporal.solve_day."""
     import decomposition_temporal as dt  # type: ignore
@@ -333,13 +434,10 @@ def make_run_meta(label: str, fn_name: str):
 E2E_TECHNIQUES = [
     ("greedy_pure", "greedy", None,
      "no standalone greedy Phase A in codebase; Phase A is CP-SAT-based"),
-    ("cpsat_week", "cpsat", None,
-     "no monolithic-week solver; closest is cpsat_day (Phase A + per-day)"),
+    ("cpsat_week", "cpsat", run_cpsat_week_e2e, ""),
     ("cpsat_day", "cpsat", run_cpsat_day_e2e, ""),
-    ("cpsat_day_skip_phase_a", "cpsat", None,
-     "phase_a_mode=skip not exposed; per-day Phase B requires dc from Phase A"),
-    ("cpsat_day_soft_hint", "cpsat", None,
-     "phase_a_mode=soft_hint not exposed as parameter"),
+    ("cpsat_day_skip_phase_a", "cpsat", run_cpsat_day_skip_phase_a_e2e, ""),
+    ("cpsat_day_soft_hint", "cpsat", run_cpsat_day_soft_hint_e2e, ""),
     ("decomp_temporal", "decomp", run_decomp_temporal, ""),
     ("decomp_spectral_v2", "decomp", run_decomp_spectral, ""),
     ("decomp_curriculum", "decomp", run_decomp_curriculum, ""),
