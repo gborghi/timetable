@@ -344,29 +344,29 @@
   }
 </script>
 
-<div class="space-y-4">
+<div class="space-y-4" data-testid="schedule-page">
   <div class="flex items-baseline gap-3 flex-wrap">
     <h1>Orario</h1>
     {#if classData}
-      <span class="text-sm text-ink-500">
+      <span class="text-sm text-ink-500" data-testid="schedule-obj-value">
         obj=<code>{classData.obj_value}</code>
         - {Object.entries(classData.metrics || {}).map(([k, v]) => `${k}=${v}`).join(' ')}
       </span>
     {/if}
     <div class="ml-auto flex gap-1">
-      <button class="btn !text-xs" class:bg-ink-100={view === 'classes'} on:click={() => (view = 'classes')}>per classe</button>
-      <button class="btn !text-xs" class:bg-ink-100={view === 'teachers'} on:click={() => (view = 'teachers')}>per docente</button>
-      <button class="btn !text-xs" class:bg-ink-100={view === 'rooms'} on:click={() => (view = 'rooms')}>per aula</button>
-      <button class="btn !text-xs" class:bg-ink-100={view === 'slot'} on:click={() => { view = 'slot'; loadSlot(); }}>per slot</button>
+      <button class="btn !text-xs" class:bg-ink-100={view === 'classes'} on:click={() => (view = 'classes')} data-testid="schedule-view-classes">per classe</button>
+      <button class="btn !text-xs" class:bg-ink-100={view === 'teachers'} on:click={() => (view = 'teachers')} data-testid="schedule-view-teachers">per docente</button>
+      <button class="btn !text-xs" class:bg-ink-100={view === 'rooms'} on:click={() => (view = 'rooms')} data-testid="schedule-view-rooms">per aula</button>
+      <button class="btn !text-xs" class:bg-ink-100={view === 'slot'} on:click={() => { view = 'slot'; loadSlot(); }} data-testid="schedule-view-slot">per slot</button>
     </div>
-    <a class="btn-primary !text-xs" href={downloadUrl('/api/schedule/export/xlsx-classes')}>xlsx classi</a>
-    <a class="btn !text-xs" href={downloadUrl('/api/schedule/export/xlsx-teachers')}>xlsx docenti</a>
-    <a class="btn !text-xs" href={downloadUrl('/api/schedule/export/pdf-classes')}>pdf classi</a>
-    <a class="btn !text-xs" href={downloadUrl('/api/schedule/export/pdf-teachers')}>pdf docenti</a>
+    <a class="btn-primary !text-xs" href={downloadUrl('/api/schedule/export/xlsx-classes')} data-testid="schedule-export-xlsx-classes">xlsx classi</a>
+    <a class="btn !text-xs" href={downloadUrl('/api/schedule/export/xlsx-teachers')} data-testid="schedule-export-xlsx-teachers">xlsx docenti</a>
+    <a class="btn !text-xs" href={downloadUrl('/api/schedule/export/pdf-classes')} data-testid="schedule-export-pdf-classes">pdf classi</a>
+    <a class="btn !text-xs" href={downloadUrl('/api/schedule/export/pdf-teachers')} data-testid="schedule-export-pdf-teachers">pdf docenti</a>
   </div>
 
   {#if !classData}
-    <div class="card p-6 text-center text-ink-500">
+    <div class="card p-6 text-center text-ink-500" data-testid="schedule-empty-state">
       Nessuna soluzione attiva. Vai al
       <a class="text-accent-500 underline" href="/optimize">Workflow</a>
       e lancia almeno la Phase B, oppure importa un pickle dalla
@@ -375,10 +375,10 @@
   {:else}
 
   {#if view === 'classes'}
-    <div class="card p-3 flex items-center gap-3 flex-wrap">
+    <div class="card p-3 flex items-center gap-3 flex-wrap" data-testid="schedule-classes-view">
       {#if classesViewMode === 'matrix'}
         <label class="text-sm">Classe</label>
-        <select class="ml-2 px-2 py-1.5 rounded-md border border-ink-200" bind:value={selectedClass}>
+        <select class="ml-2 px-2 py-1.5 rounded-md border border-ink-200" bind:value={selectedClass} data-testid="schedule-class-select">
           {#each classData.classes as c}<option>{c}</option>{/each}
         </select>
       {:else}
@@ -386,9 +386,9 @@
       {/if}
       <div class="ml-auto flex gap-1">
         <button class="btn !text-xs" class:bg-ink-100={classesViewMode === 'matrix'}
-                on:click={() => (classesViewMode = 'matrix')}>matrice</button>
+                on:click={() => (classesViewMode = 'matrix')} data-testid="schedule-classes-mode-matrix">matrice</button>
         <button class="btn !text-xs" class:bg-ink-100={classesViewMode === 'list'}
-                on:click={() => (classesViewMode = 'list')}>lista</button>
+                on:click={() => (classesViewMode = 'list')} data-testid="schedule-classes-mode-list">lista</button>
       </div>
     </div>
     {#if classesViewMode === 'matrix' && selClassGrid}
@@ -527,10 +527,10 @@
       </div>
     {/if}
   {:else if view === 'teachers'}
-    <div class="card p-3 flex items-center gap-3 flex-wrap">
+    <div class="card p-3 flex items-center gap-3 flex-wrap" data-testid="schedule-teachers-view">
       {#if teachersViewMode === 'matrix'}
         <label class="text-sm">Docente</label>
-        <select class="ml-2 px-2 py-1.5 rounded-md border border-ink-200" bind:value={selectedTeacher}>
+        <select class="ml-2 px-2 py-1.5 rounded-md border border-ink-200" bind:value={selectedTeacher} data-testid="schedule-teacher-select">
           {#each teacherData.teachers as t}<option>{t}</option>{/each}
         </select>
       {:else}
@@ -538,9 +538,9 @@
       {/if}
       <div class="ml-auto flex gap-1">
         <button class="btn !text-xs" class:bg-ink-100={teachersViewMode === 'matrix'}
-                on:click={() => (teachersViewMode = 'matrix')}>matrice</button>
+                on:click={() => (teachersViewMode = 'matrix')} data-testid="schedule-teachers-mode-matrix">matrice</button>
         <button class="btn !text-xs" class:bg-ink-100={teachersViewMode === 'list'}
-                on:click={() => (teachersViewMode = 'list')}>lista</button>
+                on:click={() => (teachersViewMode = 'list')} data-testid="schedule-teachers-mode-list">lista</button>
       </div>
     </div>
     {#if teachersViewMode === 'matrix' && selTeacherGrid}
@@ -676,10 +676,10 @@
     {/if}
   {:else if view === 'rooms'}
     {#if roomData}
-    <div class="card p-3 flex items-center gap-3 flex-wrap">
+    <div class="card p-3 flex items-center gap-3 flex-wrap" data-testid="schedule-rooms-view">
       {#if roomsViewMode === 'matrix'}
         <label class="text-sm">Aula</label>
-        <select class="ml-2 px-2 py-1.5 rounded-md border border-ink-200" bind:value={selectedRoom}>
+        <select class="ml-2 px-2 py-1.5 rounded-md border border-ink-200" bind:value={selectedRoom} data-testid="schedule-room-select">
           {#each roomData.rooms as r}<option>{r}</option>{/each}
         </select>
         {#if selectedRoom && roomData.rooms_meta[selectedRoom]}
@@ -691,9 +691,9 @@
       {/if}
       <div class="ml-auto flex gap-1">
         <button class="btn !text-xs" class:bg-ink-100={roomsViewMode === 'matrix'}
-                on:click={() => (roomsViewMode = 'matrix')}>matrice</button>
+                on:click={() => (roomsViewMode = 'matrix')} data-testid="schedule-rooms-mode-matrix">matrice</button>
         <button class="btn !text-xs" class:bg-ink-100={roomsViewMode === 'list'}
-                on:click={() => (roomsViewMode = 'list')}>lista</button>
+                on:click={() => (roomsViewMode = 'list')} data-testid="schedule-rooms-mode-list">lista</button>
       </div>
     </div>
     {#if roomsViewMode === 'matrix' && selRoomGrid}
@@ -813,32 +813,33 @@
     {/if}
     {/if}
   {:else if view === 'slot'}
-    <div class="card p-3 flex gap-3 items-end">
+    <div class="card p-3 flex gap-3 items-end" data-testid="schedule-slot-view">
       <div class="field">
         <label>Giorno</label>
-        <select bind:value={slotDay} on:change={loadSlot}>
+        <select bind:value={slotDay} on:change={loadSlot} data-testid="schedule-slot-day">
           {#each DAYS as d}<option value={d}>{DAY_NAMES_IT[d]}</option>{/each}
         </select>
       </div>
       <div class="field">
         <label>Ora</label>
-        <select bind:value={slotHour} on:change={loadSlot}>
+        <select bind:value={slotHour} on:change={loadSlot} data-testid="schedule-slot-hour">
           {#each HOURS as h}<option value={h}>{h}:00</option>{/each}
         </select>
       </div>
-      <button class="btn" on:click={loadSlot}>Aggiorna</button>
+      <button class="btn" on:click={loadSlot} data-testid="schedule-slot-refresh">Aggiorna</button>
       <button class="btn-primary ml-auto"
-              on:click={() => openAddLesson('slot', slotDay, slotHour, {})}>
+              on:click={() => openAddLesson('slot', slotDay, slotHour, {})}
+              data-testid="schedule-add-event-slot-btn">
         + Nuovo evento in questo slot
       </button>
     </div>
     {#if slotData}
-      <div class="card overflow-x-auto">
+      <div class="card overflow-x-auto" data-testid="schedule-slot-table">
         <table class="tbl">
           <thead><tr><th>Classe</th><th>Materia</th><th>Docente</th><th>Aula</th></tr></thead>
           <tbody>
             {#each slotData.lessons as l}
-              <tr>
+              <tr data-testid="schedule-slot-row">
                 <td><strong>{l.class_name}</strong></td>
                 <td>{l.subject}</td>
                 <td>{l.teacher}</td>

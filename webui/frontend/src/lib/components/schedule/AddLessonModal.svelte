@@ -148,7 +148,7 @@
 </script>
 
 <Modal {open} title={`Nuovo evento - ${titleSlot}`} {onClose}>
-  <div class="space-y-3">
+  <div class="space-y-3" data-testid="add-lesson-modal">
     <div class="text-xs text-ink-500">
       Modalita': <code>{mode}</code> -- compila i campi mancanti per
       creare una nuova lezione nello slot scelto. La materia dipende
@@ -162,9 +162,11 @@
         <label>Classe {mode === 'class' ? '(fissa)' : ''} *</label>
         {#if mode === 'class'}
           <input value={className} disabled
-                 class="bg-ink-50 {fieldClass(className, true)}"/>
+                 class="bg-ink-50 {fieldClass(className, true)}"
+                 data-testid="add-lesson-class-input"/>
         {:else}
-          <select bind:value={className} class={fieldClass(className, true)}>
+          <select bind:value={className} class={fieldClass(className, true)}
+                  data-testid="add-lesson-class-select">
             <option value="">-- scegli --</option>
             {#each classes as c}<option value={c}>{c}</option>{/each}
           </select>
@@ -175,10 +177,12 @@
         <label>Docente {mode === 'teacher' ? '(fisso)' : ''} *</label>
         {#if mode === 'teacher'}
           <input value={teacherName} disabled
-                 class="bg-ink-50 {fieldClass(teacherName, true)}"/>
+                 class="bg-ink-50 {fieldClass(teacherName, true)}"
+                 data-testid="add-lesson-teacher-input"/>
         {:else}
           <select bind:value={teacherName}
-                  class={fieldClass(teacherName, true)}>
+                  class={fieldClass(teacherName, true)}
+                  data-testid="add-lesson-teacher-select">
             <option value="">-- scegli --</option>
             {#each teacherNames as t}<option value={t}>{t}</option>{/each}
           </select>
@@ -190,11 +194,13 @@
         {#if teacherSubjects.length === 0 && teacherName}
           <input bind:value={subject}
                  class={fieldClass(subject, false)}
-                 placeholder="docente senza abilitazioni elencate"/>
+                 placeholder="docente senza abilitazioni elencate"
+                 data-testid="add-lesson-subject-input"/>
         {:else}
           <select bind:value={subject}
                   class={fieldClass(subject, false)}
-                  disabled={!teacherName}>
+                  disabled={!teacherName}
+                  data-testid="add-lesson-subject-select">
             <option value="">{teacherName
               ? 'auto (se la coppia ha una sola cattedra)'
               : '-- scegli prima il docente --'}</option>
@@ -209,10 +215,12 @@
         <label>Aula {mode === 'room' ? '(fissa)' : ''}</label>
         {#if mode === 'room'}
           <input value={classroomName} disabled
-                 class="bg-ink-50 {fieldClass(classroomName, false)}"/>
+                 class="bg-ink-50 {fieldClass(classroomName, false)}"
+                 data-testid="add-lesson-room-input"/>
         {:else}
           <select bind:value={classroomName}
-                  class={fieldClass(classroomName, false)}>
+                  class={fieldClass(classroomName, false)}
+                  data-testid="add-lesson-room-select">
             <option value="">(nessuna)</option>
             {#each rooms as r}<option value={r}>{r}</option>{/each}
           </select>
@@ -221,9 +229,11 @@
     </div>
 
     <div class="flex justify-end gap-2 pt-3 border-t border-ink-100">
-      <button class="btn" on:click={onClose} disabled={busy}>Annulla</button>
+      <button class="btn" on:click={onClose} disabled={busy}
+              data-testid="add-lesson-cancel-btn">Annulla</button>
       <button class="btn-primary" on:click={() => trySubmit('dry_run')}
-              disabled={busy}>
+              disabled={busy}
+              data-testid="add-lesson-submit-btn">
         Crea evento
       </button>
     </div>

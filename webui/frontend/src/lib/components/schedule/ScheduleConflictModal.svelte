@@ -40,12 +40,13 @@
 </script>
 
 <Modal {open} {title} onClose={onCancel}>
+  <div data-testid="schedule-conflict-modal">
   {#if subject}
     <p class="text-sm text-ink-500 mb-3">{subject}</p>
   {/if}
 
   {#if hasTeacher}
-    <div class="mb-3">
+    <div class="mb-3" data-testid="schedule-conflict-teacher">
       <h3 class="text-sm font-medium mb-1">Conflitto docente</h3>
       <ul class="text-sm list-disc pl-5 text-ink-700">
         {#each details.teacher_busy as r}
@@ -55,7 +56,7 @@
     </div>
   {/if}
   {#if hasClass}
-    <div class="mb-3">
+    <div class="mb-3" data-testid="schedule-conflict-class">
       <h3 class="text-sm font-medium mb-1">Conflitto classe</h3>
       <ul class="text-sm list-disc pl-5 text-ink-700">
         {#each details.class_busy as r}
@@ -65,7 +66,7 @@
     </div>
   {/if}
   {#if hasRoom}
-    <div class="mb-3">
+    <div class="mb-3" data-testid="schedule-conflict-room">
       <h3 class="text-sm font-medium mb-1">Conflitto aula</h3>
       <ul class="text-sm list-disc pl-5 text-ink-700">
         {#each details.room_busy as r}
@@ -85,12 +86,13 @@
   </div>
 
   <div class="flex justify-end gap-2 mt-4">
-    <button class="btn" on:click={onCancel}>Annulla</button>
-    <button class="btn-amber" on:click={() => onResolve('unbind')}>
+    <button class="btn" on:click={onCancel} data-testid="schedule-conflict-cancel">Annulla</button>
+    <button class="btn-amber" on:click={() => onResolve('unbind')} data-testid="schedule-conflict-unbind">
       Svincola evento confliggente
     </button>
-    <button class="btn-red" on:click={() => onResolve('delete')}>
+    <button class="btn-red" on:click={() => onResolve('delete')} data-testid="schedule-conflict-delete">
       Elimina evento confliggente
     </button>
+  </div>
   </div>
 </Modal>
