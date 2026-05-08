@@ -34,6 +34,36 @@ Three layers, one repo:
 3. **Legacy notebooks and prototypes** (`schedule/`) — original
    single-file scripts the solver evolved from. Kept for reference.
 
+## Recent changes (May 2026)
+
+The April-May 2026 cycle landed three big UI features and a
+typographic overhaul of the manual. See [`CHANGELOG.md`](CHANGELOG.md)
+for the full list; the highlights:
+
+- **`WeeklyCalendarView` everywhere**: the `/schedule` matrix is
+  gone, replaced by a true drag-and-drop weekly calendar with
+  soft-conflict preview, four per-lesson actions, and an
+  unscheduled-pool sidebar.
+- **Conflict modal on drop**: dropping on an occupied slot opens
+  `ScheduleConflictModal` (Sostituisci / Annulla); the same
+  modal serves logistic conflicts elsewhere in the UI.
+- **Tab Ore**: visual editor of the school week (days and slots)
+  with drag-create / resize / move / delete, three CSS cursors,
+  inline edit popover, and live propagation to every calendar
+  view via `workingHoursStore`.
+- **Bulk actions on `/assignments`**: multi-select + five batch
+  operations (delete, lock, unlock, change-teacher, set-flag) on
+  one transactional backend round-trip.
+- **Cypress E2E**: 34 specs covering every list page, every CRUD
+  workflow, every dropdown of `/optimize`, and the new
+  `/schedule` rebirth (drag-drop + 4 actions + pool + filter +
+  soft-conflict).
+- **Manual**: `docs/manual.pdf` (IT) and `docs/manual_en.pdf`
+  (EN) restyled in vintage editorial — EB Garamond with
+  old-style figures, Tschichold-style page geometry, Roman
+  chapter numerals framed by `decofour` rosettes, three-line
+  drop caps, italic running heads, fleurons in the foot.
+
 ## Italian-school constraints (C1+C2+C3)
 
 - **Co-teaching (Italian: *compresenza*)**: shared (chemistry lab
@@ -356,10 +386,26 @@ The nav bar lists every concept exposed:
   same 5-state availability matrix as teachers and classes.
 - **Compresenze** — co-teaching rules.
 - **Cattedre** — assignments (teacher x class x subject hours).
+  Multi-row select unlocks **bulk operations**: delete, lock /
+  unlock, change-teacher, set-flag — each a single transactional
+  `POST /api/assignments/bulk-*` round-trip.
 - **Workflow** — multi-step run launcher (assignment, phase B
   decomposition, LNS / SA / TS / ILS).
-- **Orario** — final timetable view, drag-and-drop with live
-  HARD-feasibility check + SOFT delta preview.
+- **Orario** — final timetable view, now powered by the
+  `WeeklyCalendarView` Svelte component in `mode=schedule`:
+  drag-and-drop with live HARD-feasibility check, SOFT delta
+  preview, four per-lesson actions (Edit / Move / Unbind /
+  Delete), and an unscheduled-pool sidebar for lessons without
+  a slot. Drop on an occupied slot opens the canonical
+  `ScheduleConflictModal` with a binary **Sostituisci /
+  Annulla** choice (replace or cancel).
+- **Tab Ore** — visual editor of working days and hour slots:
+  draw a slot by dragging top-down, resize from the bottom edge,
+  move by grabbing the body, delete with a click. Three CSS
+  cursors (`grab` / `grabbing` / `ns-resize`) signal drag state;
+  saves propagate live to every other calendar view via the
+  shared `workingHoursStore`. `POST /api/working-hours/reset`
+  restores the default Mon-Sat 8-14 60-minute layout.
 - **Assenze e supplenze** — week-grid view: click a column header
   to add absent teachers for that day, click a cell to assign
   substitutes via drag-drop. Cells turn red when uncovered and
