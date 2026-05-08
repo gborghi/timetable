@@ -619,6 +619,28 @@ def _seed_stress_fixtures(profile: str, rng: random.Random,
         counts["teacher_mandatory_free_day"] = (
             db.query(models.TeacherMandatoryFreeDay).count())
 
+        # ---- 2b. TeacherFreeDayPreference (3 priorities per teacher)
+        # Each teacher gets a deterministic shuffle of day_legacies;
+        # the first 3 days become priority 1, 2, 3 (weights 30, 20,
+        # 10 respectively, applied by the DSL translator). Skip days
+        # already occupied by a TeacherMandatoryFreeDay so the unique
+        # (teacher_id, day) constraint never collides.
+        if hasattr(models, "TeacherFreeDayPreference") and day_legacies:
+            mfd_days_by_teacher = {}
+            for r in db.query(models.TeacherMandatoryFreeDay).all():
+                mfd_days_by_teacher.setdefault(
+                    r.teacher_id, set()).add(int(r.day))
+            for t in teachers:
+                forbidden = mfd_days_by_teacher.get(t.id, set())
+                pool = [d for d in day_legacies if d not in forbidden]
+                rng.shuffle(pool)
+                for pri, d in enumerate(pool[:3], start=1):
+                    db.add(models.TeacherFreeDayPreference(
+                        teacher_id=t.id, day=d, priority=pri))
+            db.commit()
+            counts["teacher_free_day_preference"] = (
+                db.query(models.TeacherFreeDayPreference).count())
+
         # ---- 3. ClassUnavailability ----
         # Few classes blocked at the last slot of Monday. Dedup on
         # (class_id, day, hour) via a set so the unique index never

@@ -26,6 +26,7 @@
   "fixtures": {
     "teacher_unavailability": 54,
     "teacher_mandatory_free_day": 4,
+    "teacher_free_day_preference": 144,
     "class_unavailability": 2,
     "classroom_unavailability": 4,
     "coteach_group": 3,
