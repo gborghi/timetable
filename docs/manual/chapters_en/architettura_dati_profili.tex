@@ -1,0 +1,267 @@
+\chapter{Profile data architecture}
+\label{ch:architettura_dati_profili}
+
+The demo profiles (\texttt{small}, \texttt{medium}, \texttt{big},
+\texttt{huge}, \texttt{superhuge}, \texttt{mega}) are the everyday
+benchmark for the solver: the idea is to subject the engine to six
+progressive school sizes (10\,$\to$\,100 classes) already loaded
+with a realistic mix of constraints, so that whoever imports the
+profile from the dashboard finds in front of them a \emph{stress}
+scenario that exercises every constraint family the solver
+handles. For years the profile was a slim pair of pickles ---
+\texttt{school\_<profile>.pkl} with the rosters and
+\texttt{profs\_<profile>.pkl} with the teaching assignments ---
+and the import generated rooms, students and working hours on the
+fly via mock helpers. The model worked as long as constraints were
+few, but as constraint tables crossed the dozen mark it grew
+heavy: every import had to rebuild from scratch everything the
+pickle could not express, and on top of that it wiped any fixture
+the user had left behind in the constraint tables. From this
+chapter on, the profile source of truth is one SQLite per
+profile, built once by \texttt{engine/scripts/build\_profile\_db.py}
+with a deterministic seed and then imported \emph{verbatim} by the
+backend.
+
+\section{Anatomy of a profile SQLite}
+
+Each \texttt{engine/scripts/data/<profile>/<profile>.sqlite} file
+holds the same schema as \texttt{webui/data/timetable.db}, built
+through \texttt{Base.metadata.create\_all} on the same
+\texttt{models.py} the runtime uses. Importing the SQLite means
+copying tables row-by-row into the live DB, with the projection
+limited to the column intersection so the import survives partial
+schema drift in either direction. To get a feel for the file's
+content, open it with \texttt{sqlite3} and count rows by table
+family: rosters, constraints, sites, calendar, solution.
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[node distance=0.55cm and 0.7cm,
+  every node/.style={draw, rounded corners=4pt, very thick,
+                     minimum width=4.6cm, minimum height=0.95cm,
+                     align=center, font=\small}]
+  \node[fill=cBox!30] (an) {Rosters\\
+    \textit{subjects, teachers,}\\
+    \textit{school\_classes, assignments}};
+  \node[fill=cBox!30, right=of an] (rm) {Rooms + sites\\
+    \textit{classrooms, plessi,}\\
+    \textit{plesso\_*\_rules/policies}};
+  \node[fill=cBox!30, below=of an] (cs) {14 constraint tables\\
+    \textit{teacher/class/room\_unavail,}\\
+    \textit{coteach\_groups, gen.\,DSL}};
+  \node[fill=cBox!30, below=of rm] (oh) {Weekly calendar\\
+    \textit{working\_days,}\\
+    \textit{working\_hour\_slots}};
+  \node[fill=cBox!30, below=2cm of cs.south] (sl) {Solution (optional)\\
+    \textit{solutions, lessons}};
+  \draw[-{Stealth[length=2.5mm]}, thick] (an) -- (cs);
+  \draw[-{Stealth[length=2.5mm]}, thick] (rm) -- (oh);
+  \draw[-{Stealth[length=2.5mm]}, thick] (an) -- (rm);
+  \draw[-{Stealth[length=2.5mm]}, thick] (cs) -- (sl);
+  \draw[-{Stealth[length=2.5mm]}, thick] (oh) -- (sl);
+\end{tikzpicture}
+\caption{Anatomy of \texttt{<profile>.sqlite}: five thematic
+   blocks, all populated by \texttt{build\_profile\_db.py} with a
+   deterministic seed.}
+\label{fig:profilo_sqlite}
+\end{figure}
+
+The file is self-sufficient: every constraint that previous
+versions used to synthesise at runtime --- a
+\texttt{teacher\_unavailability} marking a HARD-blocked day, a
+\texttt{coteach\_groups} forcing three lab co-teaching hours, a
+\texttt{plesso\_commuting\_rules} preventing a teacher from doing
+the first 60 minutes at the satellite site and the next ones 800
+metres away --- now lives directly as a row in its own table,
+with HARD/SOFT state explicit and the same shape the SQLAlchemy
+model expects in production. The build script also drops a
+\texttt{manifest.json} next to the SQLite: it carries the seed,
+the schedule label, and per-table row counts so the ``Stress per
+profilo'' section of the Benchmarks chapter can regenerate from
+scratch with one
+\texttt{python -m engine.scripts.build\_profile\_db --all}.
+
+\section{The 14 constraint tables}
+
+The number ``fourteen'' is less daunting than the bare list
+suggests, because the tables fall naturally on three axes ---
+\emph{who}, \emph{when}, \emph{how} --- and the profile touches
+each of them with at least one row. On the \emph{who} axis, the
+first triad is teacher-centred: \texttt{teacher\_unavailability}
+(HARD/SOFT cell-level state), \texttt{teacher\_mandatory\_free\_days}
+(HARD: 0 hours that day, classic part-time pattern) and
+\texttt{teacher\_compatible\_classes} (HARD allow-list for tight
+assignments). To these add the two five-state preference tables,
+\texttt{teacher\_class\_preferences} and
+\texttt{teacher\_curriculum\_preferences}, which the Phase A
+solver reads as HARD on the extreme branches
+(\texttt{enforced} / \texttt{forbidden}) and SOFT on the
+intermediate ones.
+
+The \emph{when} axis is dominated by the three non-teacher
+availability tables: \texttt{class\_unavailability},
+\texttt{classroom\_unavailability} and
+\texttt{logical\_unavailabilities}, the latter with parametric
+DNF for expressions like ``professor X is free only on Tuesday
+and Thursday afternoons''. The fourth same-axis table,
+\texttt{curriculum\_logical\_constraints}, steps outside pure
+time-of-day to express cross-curriculum constraints --- ``Math
+and Italian not on the same day for first-years'' is the stress
+sample the small profile writes by construction.
+
+The \emph{how} axis groups co-teaching structures
+(\texttt{coteach\_groups}) and the two site-aware modules:
+\texttt{plesso\_commuting\_rules} (rules between site pairs,
+HARD or SOFT with weight) and \texttt{plesso\_entity\_policies}
+(per-teacher or per-class policies of the
+\texttt{single\_plesso\_per\_day} or \texttt{single\_plesso\_total}
+form). The fourteenth --- \texttt{general\_constraints} --- is
+technically not a ``classic'' constraint table but holds
+generic-DSL expressions (see Chapter
+\ref{ch:dsl_generico_per_i_vincoli}) the post-processor evaluates
+on the active solution. The small profile writes five of them,
+including \texttt{forall l in lessons where
+l.subject==Educazione Fisica: l.classroom.kind==palestra} which
+exercises the HARD ``EduF only in gym'' rule.
+
+\section{The capacity constraint}
+
+The most impactful change shipped alongside the SQLite profiles
+is the HARD capacity constraint: for every \texttt{Lesson},
+\texttt{lesson.classroom.capacity >= lesson.school\_class.n\_students}
+must hold. The rule is implemented natively in
+\texttt{engine/classroom\_assignment.py}, where the
+\texttt{\_can\_host} eligibility helper filters every too-small
+candidate before the CP-SAT model is even built. The same rule is
+also exposed as DSL pragma \texttt{classroom\_capacity\_ok()} in
+the \texttt{engine/dsl\_to\_cpsat.py} compiler for solvers that
+build a joint slot+room decision space (the MonolithicSolver with
+a known \texttt{classroom\_for\_slot}): in that context the
+pragma scans the slot space, looks up the room assigned to each
+\texttt{(class, day, hour)} and forces the BoolVar to zero when
+capacity falls short. The pragma is a no-op + diagnostic
+``classroom data empty'' in contexts that haven't yet assigned
+rooms, because then it's the Phase~C solver's job.
+
+The input data is populated for every profile by the build
+script: every class draws an \texttt{n\_students} from a truncated
+gaussian over $[18, 30]$ (centred on 24, $\sigma=3.5$), and one
+or two classes are deliberately forced to match exactly the
+capacity of the largest standard room of the profile. The result
+is a \emph{tight} constraint: the class can only land in that one
+room, with everything else under pressure to schedule around. The
+user sees the rule's bite at a glance in the \texttt{/classes}
+tab (inline-editable ``N. studenti'' column, range 5--50) and in
+\texttt{/classrooms} (inline-editable ``Capienza'' column, range
+5--100); the backend remains authoritative, but the lesson
+modals (\texttt{AddLessonModal}, \texttt{AddEventModal}) flag a
+red warning at selection time when the (class, room) pair would
+violate the rule.
+
+\section{Special rooms and kind pragma}
+
+Alongside capacity lives the kind constraint:
+\texttt{Subject.required\_kind} is the single-row way to say
+``EduF only in gym'' or ``Physics only in physics lab'', without
+having to enumerate all other rooms with \texttt{forbidden}
+preferences. The value is a string in the same vocabulary as
+\texttt{Classroom.kind} (\texttt{standard}, \texttt{palestra},
+\texttt{lab\_fisica}, \texttt{lab\_chimica},
+\texttt{lab\_informatica}, \texttt{lab\_linguistico},
+\texttt{biblioteca}, \texttt{aula\_speciale}); \texttt{NULL}
+means ``any''. The \texttt{\_can\_host} function reads the field
+from the \texttt{Lesson} (projected into the dict the backend
+produces in \texttt{lessons\_for\_classroom\_step}) and rejects
+every room with mismatching \texttt{kind}. The same rule is
+additionally expressed as a DSL pragma in the profiles'
+\texttt{general\_constraints}, so the user opening the
+\texttt{/general-constraints} tab can edit it directly in the UI
+without touching the model.
+
+\section{Per-profile schedule}
+
+A profile's stress isn't just row count: it's also the
+\emph{shape} the rows take in the weekly grid. Calendar
+generation, then, is not copy-paste: each profile gets its own
+\texttt{working\_days} + \texttt{working\_hour\_slots} layout,
+designed to put a different aspect of the solver under strain.
+
+\begin{table}[h]
+\centering
+\caption{Per-profile schedules (cf.
+   \texttt{engine/scripts/build\_profile\_db.py},
+   \texttt{working\_schedule}).}
+\label{tab:profili_orari}
+\small
+\begin{tabular}{lp{8.5cm}}
+\toprule
+\textbf{Profile} & \textbf{Weekly schedule} \\
+\midrule
+\texttt{small}     & 8:00--14:00 Mon--Sat, six 60\,min slots. \\
+\texttt{medium}    & 8:00--14:00 Mon--Fri, 8:00--12:00 Sat. \\
+\texttt{big}       & 8:00--14:00 Mon--Fri, 8:00--13:00 Sat. \\
+\texttt{huge}      & 7:55--13:55 Mon--Sat, 55\,min slots with
+                     a 5\,min break baked-in. \\
+\texttt{superhuge} & 8:00--13:00 Mon--Fri + 14:00--17:00 Tue/Thu
+                     (split-day schedule). \\
+\texttt{mega}      & 8:00--14:00 Mon--Fri + 8:00--13:00 Sat +
+                     14:00--17:00 Wed (one fixed afternoon). \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The key trick is that every schedule preserves the legacy 1--6
+day numbering and 8--13 hour numbering through the
+\texttt{legacy\_day\_number} and \texttt{legacy\_hour\_number}
+fields of the \texttt{working\_days} / \texttt{working\_hour\_slots}
+rows, so unavailability tables that reference those numbers
+survive a future schedule rebuild without per-row migrations.
+The \texttt{huge} profile is an interesting case: its 55-minute
+slots keep \texttt{legacy\_hour\_number} 8--13, and the 5-minute
+break between consecutive lessons isn't modelled as a separate
+slot but as the implicit margin between \texttt{end\_time} of
+slot $i$ and \texttt{start\_time} of slot $i+1$. Solvers keep
+reasoning in slot units; the calendar view shows the break
+naturally.
+
+\section[Try it now]{Try it now}
+
+To rebuild a single profile's SQLite, two shell lines suffice ---
+the first invokes the script with the profile name, the second
+opens the file with \texttt{sqlite3} for a sanity check:
+
+\begin{lstlisting}[style=shell]
+python -m engine.scripts.build_profile_db small
+sqlite3 engine/scripts/data/small/small.sqlite \
+    "select count(*) from general_constraints;"
+\end{lstlisting}
+
+\noindent The first command produces
+\texttt{engine/scripts/data/small/small.sqlite} alongside the
+\texttt{manifest.json} and \texttt{PICKLE\_DEPRECATED.md}; the
+second prints the row count of the \texttt{general\_constraints}
+table --- five, in every profile. To rebuild all six in series
+(in separate subprocesses because each profile lives in its own
+SQLite file and SQLAlchemy is not happy to rebind the engine
+mid-process) replace the first command with
+\texttt{python -m engine.scripts.build\_profile\_db --all};
+the script appends each profile's \texttt{manifest.json} into
+\texttt{engine/scripts/data/profiles\_manifest.json}, which the
+``Stress per profilo'' section of the Benchmarks chapter reads
+to populate the summary table.
+
+\section{Compatibility with the pickle pipeline}
+
+The \texttt{school\_<profile>.pkl} and \texttt{profs\_<profile>.pkl}
+files stay in the repository for historic uses --- audit, legacy
+import debugging, last-quarter run comparisons --- but they're no
+longer the default for \texttt{import\_engine\_profile}: the
+routine first looks for \texttt{<profile>.sqlite} in the same
+folder and only uses the pickle if the SQLite is missing. A
+\texttt{PICKLE\_DEPRECATED.md} note alongside each pickle
+enumerates the current tables and counts for that profile, so
+whoever opens the folder doesn't wonder why the import behaves
+differently from what \texttt{git log} suggests: the reason is
+that the SQLite is now authoritative, and it's the only file the
+backend expects to find. The door to the old way stays open, but
+the default path has changed.

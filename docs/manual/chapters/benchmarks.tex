@@ -609,6 +609,61 @@ nella matrice}.
 
 \input{manual/benchmarks/charts_generated}
 
+\subsection{Stress per profilo}
+\label{sec:stress_per_profilo}
+
+I sei profili demo non differiscono solo per la dimensione bruta
+ma per il profilo di \emph{stress} che ognuno propone al solver.
+Lo script \texttt{engine/scripts/build\_profile\_db.py} popola in
+modo deterministico (\texttt{seed=42}) le 14 tabelle di vincolo +
+il calendario settimanale + il file SQLite della soluzione, in
+modo che la baseline su cui i benchmark girano sia riproducibile
+e confrontabile fra release. La Tabella~\ref{tab:stress_profili}
+riassume gli ingredienti dello scenario per ogni profilo, letta
+direttamente dai \texttt{manifest.json} prodotti dallo script.
+
+\begin{table}[h]
+\centering
+\caption{Ingredienti dello scenario stress per profilo (build con
+   \texttt{seed=42}). La colonna ``aule speciali'' somma palestre,
+   laboratori e auditorium; \texttt{coteach} = \texttt{coteach\_groups};
+   \texttt{plesso} = \texttt{plesso\_commuting\_rules};
+   \texttt{gen.\,DSL} = \texttt{general\_constraints}.}
+\label{tab:stress_profili}
+\footnotesize
+\begin{tabular}{lrrrrrrrll}
+\toprule
+\textbf{Profilo} & \textbf{Classi} & \textbf{Aule} & \textbf{Plessi}
+& \textbf{A.\,spec.} & \textbf{Coteach} & \textbf{Plesso}
+& \textbf{Gen.\,DSL} & \textbf{N.\,studenti} & \textbf{Capienza} \\
+\midrule
+\texttt{small}     &   10 &   17 & 2 &  6 &  2 & 2 &  5 & 20--35 & 20--60 \\
+\texttt{medium}    &   25 &   37 & 2 & 11 &  3 & 2 &  5 & 18--35 & 20--60 \\
+\texttt{big}       &   35 &   55 & 3 & 20 &  4 & 2 &  5 & 18--35 & 20--80 \\
+\texttt{huge}      &   50 &   76 & 3 & 26 &  4 & 2 &  5 & 18--35 & 20--80 \\
+\texttt{superhuge} &   80 &  122 & 4 & 42 &  5 & 2 &  5 & 18--35 & 20--80 \\
+\texttt{mega}      &  100 &  152 & 4 & 52 &  5 & 2 &  5 & 18--35 & 20--80 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Lo schema orario settimanale --- 8--14 lun--sab nel \texttt{small},
+slot da 55\,min con pausa nel \texttt{huge}, mattina+pomeriggio
+bisettimanale nel \texttt{superhuge}, mix di orario serrato e
+pomeriggio fisso nel \texttt{mega} (cfr. Capitolo
+\ref{ch:architettura_dati_profili}, Tabella~\ref{tab:profili_orari})
+--- varia di proposito tra profili in modo che il benchmark non
+sia una semplice estensione lineare della stessa griglia ma
+metta sotto pressione differenti dimensioni del modello (numero
+di slot per giorno, presenza di pomeriggio, asimmetria fra giorni).
+Per ricostruire l'aggregato dei manifest in un unico file pronto
+per essere consumato da pgfplots o da un report ad-hoc:
+
+\begin{lstlisting}[style=shell]
+python -m engine.scripts.build_profile_db --all
+cat engine/scripts/data/profiles_manifest.json
+\end{lstlisting}
+
 \subsection{Lettura sintetica}
 
 \begin{ideabox}

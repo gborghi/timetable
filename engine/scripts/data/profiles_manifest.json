@@ -225,7 +225,7 @@
     "n_classrooms_auditorium": 6,
     "n_working_days": 6,
     "n_working_hour_slots": 38,
-    "n_lessons": 0,
+    "n_lessons": 2976,
     "n_students_range": {
       "min": 18,
       "max": 35

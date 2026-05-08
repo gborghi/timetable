@@ -492,12 +492,39 @@ Reference completo + galleria di 30+ esempi in
 [`docs/general_dsl.md`](docs/general_dsl.md) e nel capitolo
 "DSL generico per i vincoli" del [Manuale](docs/manual.pdf).
 
+## Demo profiles: SQLite is the source of truth
+
+Six demo profiles (`small`, `medium`, `big`, `huge`, `superhuge`,
+`mega`) ship as self-contained SQLite files under
+`engine/scripts/data/<profile>/<profile>.sqlite`. Each one carries
+the full anagrafica + the 14 constraint tables + WorkingDay/Slot
++ Lessons, generated deterministically by
+`engine/scripts/build_profile_db.py` with `seed=42`. Importing a
+profile from the dashboard now reads the SQLite directly (the
+legacy `school_*.pkl` / `profs_*.pkl` pair is kept as historic
+fallback only — see the `PICKLE_DEPRECATED.md` note in each
+profile folder).
+
+To rebuild a single profile or all six:
+
+```sh
+python -m engine.scripts.build_profile_db small
+python -m engine.scripts.build_profile_db --all
+```
+
+A `manifest.json` is written alongside each SQLite with row
+counts per table; the aggregated index lives at
+`engine/scripts/data/profiles_manifest.json`. The Manual chapter
+"Architettura dati dei profili" documents the schema and the
+per-profile stress table.
+
 ## Repository layout
 
 ```
 engine/      solver code (CP-SAT, decomposition, metaheuristics,
-               exporters); pickled snapshots per profile (small,
-               medium, big, huge, superhuge).
+               exporters); per-profile SQLite snapshots under
+               `engine/scripts/data/<profile>/<profile>.sqlite`
+               (small, medium, big, huge, superhuge, mega).
 webui/         FastAPI backend + SvelteKit frontend + docs.
 schedule/      legacy single-file prototypes (kept for reference).
 proposals/     design notes and benchmark results.

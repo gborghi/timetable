@@ -1,0 +1,279 @@
+\chapter{Architettura dati dei profili}
+\label{ch:architettura_dati_profili}
+
+I profili demo (\texttt{small}, \texttt{medium}, \texttt{big},
+\texttt{huge}, \texttt{superhuge}, \texttt{mega}) sono il banco di
+prova quotidiano del solver: l'idea \`e di sottoporre l'engine a
+sei taglie progressive di scuola (10\,$\to$\,100 classi) gi\`a corredate
+di un realistico ventaglio di vincoli, cos\`i che chi importa il
+profilo dalla dashboard si ritrovi davanti uno scenario \emph{stress}
+che esercita ogni famiglia di vincolo gestita dal solver. Per anni
+i profili erano due pickle slim --- \texttt{school\_<profilo>.pkl}
+con l'anagrafica e \texttt{profs\_<profilo>.pkl} con le cattedre ---
+e l'import generava al volo le aule, gli studenti e le ore di
+lavoro tramite gli helper di mock. \`E un modello che ha funzionato
+finch\'e i vincoli erano pochi, ma quando le tabelle di constraint
+hanno superato la dozzina si \`e fatto pesante: ogni import doveva
+ricostruire da zero tutto ci\`o che il pickle non sapeva esprimere,
+e in pi\`u cancellava eventuali fixture lasciate dall'utente nelle
+tabelle vincoli. Da questo capitolo in poi la fonte di verit\`a per
+i profili \`e un singolo SQLite per profilo, costruito una volta
+sola da \texttt{engine/scripts/build\_profile\_db.py} con seed
+deterministico e poi importato \emph{verbatim} dal backend.
+
+\section{Anatomia di un profilo SQLite}
+
+Ogni file \texttt{engine/scripts/data/<profilo>/<profilo>.sqlite}
+contiene esattamente lo stesso schema di
+\texttt{webui/data/timetable.db}, costruito tramite
+\texttt{Base.metadata.create\_all} sullo stesso \texttt{models.py}
+del runtime. Importare lo SQLite vuol dire copiare riga per riga
+le tabelle di interesse nella DB live, con la sola accortezza di
+proiettare la copia sull'intersezione delle colonne presenti in
+entrambi i database --- una salvaguardia che rende il pipeline
+resiliente quando la DB live ha gi\`a ricevuto una migration che lo
+SQLite del profilo non ha ancora visto, o viceversa. Per orientarsi
+nel contenuto del file basta aprirlo con \texttt{sqlite3} e
+contare le righe nelle famiglie di tabelle: anagrafica, vincoli,
+plessi, calendario, soluzione.
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[node distance=0.55cm and 0.7cm,
+  every node/.style={draw, rounded corners=4pt, very thick,
+                     minimum width=4.6cm, minimum height=0.95cm,
+                     align=center, font=\small}]
+  \node[fill=cBox!30] (an) {Anagrafica\\
+    \textit{subjects, teachers,}\\
+    \textit{school\_classes, assignments}};
+  \node[fill=cBox!30, right=of an] (rm) {Aule + plessi\\
+    \textit{classrooms, plessi,}\\
+    \textit{plesso\_*\_rules/policies}};
+  \node[fill=cBox!30, below=of an] (cs) {14 tabelle vincoli\\
+    \textit{teacher/class/room\_unavail,}\\
+    \textit{coteach\_groups, gen.\,DSL}};
+  \node[fill=cBox!30, below=of rm] (oh) {Calendario settimanale\\
+    \textit{working\_days,}\\
+    \textit{working\_hour\_slots}};
+  \node[fill=cBox!30, below=2cm of cs.south] (sl) {Soluzione (opzionale)\\
+    \textit{solutions, lessons}};
+  \draw[-{Stealth[length=2.5mm]}, thick] (an) -- (cs);
+  \draw[-{Stealth[length=2.5mm]}, thick] (rm) -- (oh);
+  \draw[-{Stealth[length=2.5mm]}, thick] (an) -- (rm);
+  \draw[-{Stealth[length=2.5mm]}, thick] (cs) -- (sl);
+  \draw[-{Stealth[length=2.5mm]}, thick] (oh) -- (sl);
+\end{tikzpicture}
+\caption{Anatomia di \texttt{<profilo>.sqlite}: cinque blocchi
+   tematici, tutti popolati da \texttt{build\_profile\_db.py} con
+   seed deterministico.}
+\label{fig:profilo_sqlite}
+\end{figure}
+
+Il file \`e autosufficiente nel senso che ogni \emph{constraint} che
+verrebbe altrimenti sintetizzato a runtime --- una \texttt{teacher\_unavailability}
+con il giorno bloccato HARD, una \texttt{coteach\_groups} che
+forza tre ore di compresenza in laboratorio, una \texttt{plesso\_commuting\_rules}
+che impedisce a un docente di fare i primi 60 minuti in succursale
+e i secondi a 800 metri di distanza --- vive direttamente come
+riga della tabella corrispondente, con stato HARD o SOFT esplicito
+e la stessa shape che il modello SQLAlchemy si aspetta in produzione.
+Lo script di build cura anche un \texttt{manifest.json} fianco a fianco
+col file SQLite: contiene il seed, l'etichetta dello schema orario
+del profilo, e i conteggi per ogni tabella, in modo che la sezione
+``Stress per profilo'' del capitolo Benchmark si rigeneri da zero
+con un \texttt{python -m engine.scripts.build\_profile\_db --all}.
+
+\section{Le 14 tabelle di vincolo}
+
+L'aggettivo ``quattordici'' \`e meno ostico di quanto suggerirebbe il
+solo elenco, perch\'e le tabelle si distribuiscono naturalmente su
+tre assi --- \emph{chi}, \emph{quando}, \emph{come} --- e il profilo
+le tocca tutte con almeno una riga. Sull'asse \emph{chi} la prima
+trinit\`a riguarda i docenti: \texttt{teacher\_unavailability}
+(stato HARD/SOFT per cella giorno-ora),
+\texttt{teacher\_mandatory\_free\_days} (HARD: 0 ore in quel
+giorno, tipico per part-time) e
+\texttt{teacher\_compatible\_classes} (allow-list HARD per cattedre
+ristrette). A queste si aggiungono le due tabelle di preferenza
+con tassonomia a cinque stati,
+\texttt{teacher\_class\_preferences} e
+\texttt{teacher\_curriculum\_preferences}, che il solver di Phase A
+legge come HARD nei rami estremi (\texttt{enforced} / \texttt{forbidden})
+e SOFT nei rami intermedi.
+
+L'asse \emph{quando} \`e dominato dalle tre tabelle di disponibilit\`a
+non centrate sul docente: \texttt{class\_unavailability},
+\texttt{classroom\_unavailability} e
+\texttt{logical\_unavailabilities}, quest'ultima con DNF
+parametrica per esprimere espressioni come ``il prof X \`e libero
+solo nel pomeriggio del marted\`i e gioved\`i''. La quarta tabella
+dello stesso asse, \texttt{curriculum\_logical\_constraints}, vive
+fuori dal rispetto temporale puro per occuparsi di vincoli
+trasversali al curriculum --- ``Matematica e Italiano non lo stesso
+giorno della prima'' \`e l'esempio di stress che il profilo small
+scrive a costruzione.
+
+L'asse \emph{come} raggruppa le strutture di compresenza,
+\texttt{coteach\_groups}, e i due moduli plesso-aware:
+\texttt{plesso\_commuting\_rules} (regole tra coppie di plessi,
+HARD o SOFT con peso) e \texttt{plesso\_entity\_policies}
+(politiche per docente o classe del tipo
+\texttt{single\_plesso\_per\_day} oppure \texttt{single\_plesso\_total}).
+Manca all'appello la quattordicesima --- \texttt{general\_constraints} ---
+che tecnicamente non \`e una tabella di vincolo ``classico'' ma
+contiene espressioni nel DSL generico (vedi Capitolo
+\ref{ch:dsl_generico_per_i_vincoli}) che il post-processor valuta
+sulla soluzione attiva. Il profilo small ne scrive cinque,
+inclusa \texttt{forall l in lessons where l.subject==Educazione Fisica:
+l.classroom.kind==palestra} che esercita la regola HARD
+``EduFisica solo in palestra''.
+
+\section{Il vincolo di capacit\`a}
+
+La novit\`a di pi\`u largo impatto introdotta insieme ai profili
+SQLite \`e il vincolo HARD di capacit\`a: per ogni \texttt{Lesson}
+deve valere \texttt{lesson.classroom.capacity >=
+lesson.school\_class.n\_students}. La regola \`e implementata
+nativamente in \texttt{engine/classroom\_assignment.py}, dove la
+funzione \texttt{\_can\_host} che decide l'eleggibilit\`a aula-lezione
+filtra ogni candidato troppo piccolo prima ancora di costruire il
+modello CP-SAT. La stessa regola \`e disponibile come pragma DSL
+\texttt{classroom\_capacity\_ok()} nel compilatore
+\texttt{engine/dsl\_to\_cpsat.py} per i solver che costruiscono
+uno spazio di decisione congiunto slot+room (la
+MonolithicSolver con un \texttt{classroom\_for\_slot} noto): in
+quel caso il pragma scorre lo spazio dei slot, recupera la
+capacit\`a dell'aula assegnata a ciascun \texttt{(class, day, hour)}
+e forza a zero la \texttt{BoolVar} corrispondente quando la
+capienza \`e insufficiente. Il pragma diventa un no-op con
+diagnostica ``classroom data empty'' nei contesti che non hanno
+ancora le aule assegnate, perch\'e in quel caso \`e il solver di
+Phase~C a rendere conto del vincolo.
+
+Il dato di ingresso \`e popolato per ogni profilo dallo script di
+build: tutte le classi prendono un \texttt{n\_students} con
+distribuzione gaussiana troncata su $[18, 30]$ (centrata su 24,
+$\sigma=3.5$), e una o due classi vengono volutamente forzate a
+combaciare esattamente con la capienza dell'aula standard pi\`u
+grande del profilo. Il risultato \`e un vincolo \emph{stringente}:
+la classe pu\`o essere ospitata solo in quella precisa aula, con
+tutte le altre messe sotto pressione ad accomodare gli orari
+intorno. L'utente vede a colpo d'occhio l'impatto del vincolo nel
+tab \texttt{/classes} (colonna ``N. studenti'' editabile inline,
+range 5--50) e in \texttt{/classrooms} (colonna ``Capienza''
+editabile inline, range 5--100); il backend \`e autoritativo,
+ma le finestre di creazione lezione (\texttt{AddLessonModal} e
+\texttt{AddEventModal}) mostrano un avviso rosso a tempo di
+selezione quando la coppia (classe, aula) viola la regola.
+
+\section{Aule speciali e pragma di tipologia}
+
+Accanto al vincolo di capacit\`a vive il vincolo di tipologia:
+\texttt{Subject.required\_kind} \`e il modo a singola riga di
+esprimere ``Educazione Fisica solo in palestra'' o ``Fisica solo
+in laboratorio fisica'', senza dover enumerare tutte le altre aule
+con preferenze \texttt{forbidden}. Il valore \`e una stringa
+nello stesso vocabolario di \texttt{Classroom.kind} (\texttt{standard},
+\texttt{palestra}, \texttt{lab\_fisica}, \texttt{lab\_chimica},
+\texttt{lab\_informatica}, \texttt{lab\_linguistico},
+\texttt{biblioteca}, \texttt{aula\_speciale}); \texttt{NULL}
+significa ``qualsiasi''. La funzione \texttt{\_can\_host} legge
+il campo dalla \texttt{Lesson} (proiettato nel dict che il
+backend produce in \texttt{lessons\_for\_classroom\_step}) e
+rifiuta ogni aula con \texttt{kind} diverso. Lo stesso vincolo
+viene in pi\`u espresso come pragma DSL nelle
+\texttt{general\_constraints} dei profili, perch\'e l'utente che
+apre il tab \texttt{/general-constraints} possa modificare la
+regola direttamente da UI senza toccare il modello.
+
+\section{Schemi orari differenziati per profilo}
+
+Lo stress di un profilo non \`e solo numero di righe: \`e anche
+varianza nello \emph{schema} con cui le righe si dispongono nello
+spazio settimanale. La generazione del calendario, perci\`o, non \`e
+un copia-incolla: ogni profilo riceve la sua versione di
+\texttt{working\_days} + \texttt{working\_hour\_slots} pensata per
+mettere in difficolt\`a un aspetto diverso del solver.
+
+\begin{table}[h]
+\centering
+\caption{Schemi orari per profilo (cfr. \texttt{engine/scripts/build\_profile\_db.py}, funzione \texttt{working\_schedule}).}
+\label{tab:profili_orari}
+\small
+\begin{tabular}{lp{8.5cm}}
+\toprule
+\textbf{Profilo} & \textbf{Schema settimanale} \\
+\midrule
+\texttt{small}     & 8:00--14:00 lun--sab, 6 slot orari da 60 min. \\
+\texttt{medium}    & 8:00--14:00 lun--ven, 8:00--12:00 sab. \\
+\texttt{big}       & 8:00--14:00 lun--ven, 8:00--13:00 sab. \\
+\texttt{huge}      & 7:55--13:55 lun--sab, slot da 55 min con
+                     5 min di pausa baked-in. \\
+\texttt{superhuge} & 8:00--13:00 lun--ven + 14:00--17:00 mar/gio
+                     (mattina + pomeriggio bisettimanale). \\
+\texttt{mega}      & 8:00--14:00 lun--ven + 8:00--13:00 sab +
+                     14:00--17:00 mer (un pomeriggio fisso). \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Il dato chiave \`e che ogni schema mantiene la corrispondenza con
+i numeri di giorno legacy 1--6 e di ora 8--13 attraverso i campi
+\texttt{legacy\_day\_number} e \texttt{legacy\_hour\_number} delle
+righe \texttt{working\_days} / \texttt{working\_hour\_slots}, in
+modo che le tabelle di \emph{unavailability} che fanno riferimento
+a quei numeri sopravvivano a un eventuale rebuild dell'orario senza
+dover migrare i dati uno per uno. Il profilo \texttt{huge} \`e
+un caso interessante: i suoi slot da 55 minuti restano con
+\texttt{legacy\_hour\_number} 8--13, e il blocco di 5 minuti tra
+una lezione e la successiva non \`e modellato come slot intermedio
+ma come margine implicito tra \texttt{end\_time} di slot $i$ e
+\texttt{start\_time} di slot $i+1$. Cos\`i il solver continua a
+ragionare in slot, ma l'utente che apre la calendar view vede
+gli orari con la pausa.
+
+\section[Provalo subito]{Provalo subito\protect\footnote{La sezione
+prende il nome dalla rubrica omonima del README -- riproducibilit\`a
+``a portata di copia-incolla''.}}
+
+Per rigenerare lo SQLite di un singolo profilo bastano due
+righe di shell --- la prima invoca lo script con il nome del
+profilo, la seconda apre il file con \texttt{sqlite3} per un
+controllo a campione delle tabelle:
+
+\begin{lstlisting}[style=shell]
+python -m engine.scripts.build_profile_db small
+sqlite3 engine/scripts/data/small/small.sqlite \
+    "select count(*) from general_constraints;"
+\end{lstlisting}
+
+\noindent Il primo comando produce
+\texttt{engine/scripts/data/small/small.sqlite} insieme al
+\texttt{manifest.json} e a \texttt{PICKLE\_DEPRECATED.md}; il
+secondo restituisce il numero di righe nella tabella delle
+\texttt{general\_constraints} --- cinque, in tutti i profili. Per
+ricostruire tutti e sei i profili in serie (in subprocess separati
+perch\'e ogni profilo va in un suo file SQLite e SQLAlchemy non
+accetta volentieri di rebindare l'engine a runtime) basta sostituire
+il primo comando con \texttt{python -m engine.scripts.build\_profile\_db --all};
+lo script aggrega in coda i singoli \texttt{manifest.json} dentro
+\texttt{engine/scripts/data/profiles\_manifest.json}, che la sezione
+``Stress per profilo'' del capitolo Benchmark legge per popolare
+la tabella riepilogativa.
+
+\section{Compatibilit\`a con la pipeline pickle}
+
+I file \texttt{school\_<profilo>.pkl} e
+\texttt{profs\_<profilo>.pkl} restano nel repository per finalit\`a
+storiche --- audit, debug di import legacy, comparativa con i run
+del trimestre scorso --- ma non sono pi\`u letti come default
+dall'\texttt{import\_engine\_profile}: la routine cerca prima
+\texttt{<profilo>.sqlite} nella stessa cartella e usa il pickle
+solo se lo SQLite manca. Una nota \texttt{PICKLE\_DEPRECATED.md}
+accanto a ogni pickle elenca le tabelle e i conteggi attuali per
+quel profilo, cos\`i che chi apre la cartella non si chieda perch\'e
+l'import si comporta diversamente da quanto memorizza il
+\texttt{git log}: la ragione \`e che lo SQLite \`e ora la fonte
+autoritativa, ed \`e l'unico file che il backend si aspetta di
+trovare. La porta verso il vecchio modo resta aperta, ma il
+percorso default cambia.
