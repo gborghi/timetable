@@ -281,7 +281,7 @@
   };
 </script>
 
-<div class="space-y-4">
+<div class="space-y-4" data-testid="classrooms-page">
   <div class="flex items-baseline gap-3 flex-wrap">
     <h1>Aule</h1>
     <button class="btn ml-auto" on:click={loadSuggested}>Genera aule...</button>
@@ -289,7 +289,8 @@
             title="Crea, rinomina o elimina i tag delle aule">
       Gestisci tag
     </button>
-    <button class="btn-primary" on:click={newRoom}>+ Nuova aula</button>
+    <button class="btn-primary" on:click={newRoom}
+            data-testid="add-classroom-btn">+ Nuova aula</button>
     <ImportButton entity="classrooms" onDone={() => listRef?.reload()}/>
     <button class="btn !text-xs" on:click={() => (showBulk = true)}
             disabled={selectedIds.length === 0}
@@ -368,8 +369,14 @@
       {/if}
     </td>
     <td class="whitespace-nowrap">
-      <button class="btn !text-xs !px-2 !py-1" on:click={() => edit(row)}>Modifica</button>
-      <button class="btn-danger !text-xs !px-2 !py-1" on:click={() => del(row)}>Elimina</button>
+      <button class="btn !text-xs !px-2 !py-1"
+              data-testid="classroom-edit-btn"
+              data-classroom-id={row.id}
+              on:click={() => edit(row)}>Modifica</button>
+      <button class="btn-danger !text-xs !px-2 !py-1"
+              data-testid="classroom-delete-btn"
+              data-classroom-id={row.id}
+              on:click={() => del(row)}>Elimina</button>
     </td>
   </SortableQueryableList>
 </div>
@@ -391,15 +398,15 @@
 
 <Modal open={!!editing} title={editing?._new ? 'Nuova aula' : 'Modifica aula'} onClose={() => (editing = null)}>
   {#if editing}
-    <div class="grid grid-cols-2 gap-3">
-      <div class="field"><label>Nome / codice</label><input bind:value={editing.name}/></div>
+    <div class="grid grid-cols-2 gap-3" data-testid="classroom-form">
+      <div class="field"><label>Nome / codice</label><input bind:value={editing.name} data-testid="classroom-name-input"/></div>
       <div class="field"><label>Tipo</label>
-        <select bind:value={editing.kind}>{#each ROOM_KINDS as k}<option value={k.value}>{k.label}</option>{/each}</select>
+        <select bind:value={editing.kind} data-testid="classroom-kind-select">{#each ROOM_KINDS as k}<option value={k.value}>{k.label}</option>{/each}</select>
       </div>
-      <div class="field"><label>Capienza</label><input type="number" bind:value={editing.capacity}/></div>
+      <div class="field"><label>Capienza</label><input type="number" bind:value={editing.capacity} data-testid="classroom-capacity-input"/></div>
       <div class="field"><label>Note</label><input bind:value={editing.notes}/></div>
       <div class="field"><label>Plesso</label>
-        <select bind:value={editing.plesso_id}>
+        <select bind:value={editing.plesso_id} data-testid="classroom-plesso-select">
           <option value={null}>(nessuno)</option>
           {#each (plessi || []) as p}
             <option value={p.id}>{p.code} - {p.name}</option>
@@ -485,8 +492,10 @@
     </div>
 
     <div class="mt-5 flex justify-end gap-2">
-      <button class="btn" on:click={() => (editing = null)}>Annulla</button>
-      <button class="btn-primary" on:click={save}>Salva</button>
+      <button class="btn" on:click={() => (editing = null)}
+              data-testid="classroom-cancel-btn">Annulla</button>
+      <button class="btn-primary" on:click={save}
+              data-testid="classroom-save-btn">Salva</button>
     </div>
   {/if}
 </Modal>
