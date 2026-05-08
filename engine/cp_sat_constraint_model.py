@@ -1533,6 +1533,29 @@ class MonolithicSolver(ConstraintModel):
         self.add_parallel_groups_intra_class()
         self.add_all_hard_constraints(via_dsl=via_dsl)
         self.add_class_no_overlap()
+        # Universal CCNL HARD rules. Emitted as DSL pragmas so the OO
+        # solver enforces them even when the caller doesn't preload
+        # the DSL constraint stream from a DB session (e.g. the
+        # benchmark harness in tests/benchmarks/run_full_sweep.py
+        # which calls MonolithicSolver(profs, ...) without a DB).
+        # Production callers that load per-teacher overrides via
+        # ``load_all_dsl_constraints`` simply add a stricter
+        # constraint on top -- CP-SAT honors the strictest of the two.
+        for t in sorted(self.profs):
+            qt = '"' + str(t).replace('\\', '\\\\').replace('"', '\\"') + '"'
+            # ``teacher_at_least_n_free_days``: every teacher has at
+            # least one weekday with zero lessons (CCNL minimum).
+            self.add_dsl_constraint(
+                f'teacher_at_least_n_free_days({qt}, 1)',
+                level="phase_b")
+            # ``teacher_max_per_day``: cap daily teacher load at 5
+            # hours so the legacy HC ("no 6-consecutive-hour bands")
+            # rule is enforced. Mirrors MAX_PROF_HOURS_PER_DAY=5 in
+            # cpsat_v2_timetable.
+            self.add_dsl_constraint(
+                f'teacher_max_per_day({qt}, '
+                f'{PHASE_A_MAX_PROF_HOURS_PER_DAY})',
+                level="phase_b")
         obj_terms, _ = self.compute_soft_cost_expr()
         # Append SOFT general_dsl penalties (filled by
         # ``add_dsl_constraint`` calls with ``is_hard=False``). Each

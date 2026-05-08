@@ -1859,37 +1859,41 @@ class DSLConstraintCompiler:
 
     def _compile_teacher_at_least_n_free_days(self, t: str, n: int):
         """HARD: teacher ``t`` must have at least ``n`` weekdays
-        with zero lessons. Encoded as ``sum_d busy_t_d <= D - n``
-        where ``D`` is the number of days in the teacher's scope
-        and ``busy_t_d`` is the per-(teacher, day) busy indicator.
+        with zero lessons. Encoded as ``sum_d busy_t_d <= |W| - n``
+        where ``|W|`` is the size of the FULL week (the canonical 6
+        Italian school days, lun..sab) and ``busy_t_d`` is the
+        per-(teacher, day) busy indicator. Days the model has no
+        decision variables for (e.g. a per-day-restricted scope)
+        contribute a constant 0 to the busy sum -- they are
+        automatically free.
 
         With ``n=1`` this is the universal CCNL-style "at least one
-        free day" rule. ``n <= 0`` is a no-op. ``n > D`` makes the
-        model infeasible (a diagnostic is emitted before forcing
-        unsat so the cause is greppable in the diagnostics log)."""
+        free day" rule. ``n <= 0`` is a no-op. ``n > |W|`` makes
+        the model infeasible (a diagnostic is emitted before
+        forcing unsat so the cause is greppable)."""
         if int(n) <= 0:
             return
-        days = self._teacher_days_in_scope(t)
-        if not days:
+        try:
+            from . import metaheuristics as _meta  # type: ignore
+        except ImportError:
+            import metaheuristics as _meta  # type: ignore
+        full_week = list(_meta.DAYS)
+        if int(n) > len(full_week):
             self.diagnostics.append(
                 f"teacher_at_least_n_free_days({t!r}, {n}): "
-                f"teacher absent from slot/day_count -- nothing to "
-                f"constrain")
-            return
-        cap = len(days) - int(n)
-        if cap < 0:
-            self.diagnostics.append(
-                f"teacher_at_least_n_free_days({t!r}, {n}): "
-                f"n exceeds weekdays in scope ({len(days)})")
+                f"n exceeds week length ({len(full_week)})")
             self.model.AddBoolAnd([self.model.NewConstant(0)])
             return
         busy_vars = []
-        for d in days:
+        for d in full_week:
             b = self._teacher_day_busy_var(t, d)
             if b is not None:
                 busy_vars.append(b)
         if not busy_vars:
+            # Teacher has no decision vars at all -- every day is
+            # already free, so the floor is vacuously satisfied.
             return
+        cap = len(full_week) - int(n)
         self.model.Add(sum(busy_vars) <= cap)
 
     def _compile_teacher_preferred_free_day_penalty(
