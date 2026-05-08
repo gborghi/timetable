@@ -202,10 +202,11 @@
   };
 </script>
 
-<div class="space-y-4">
+<div class="space-y-4" data-testid="curricula-page">
   <div class="flex items-baseline gap-3 flex-wrap">
     <h1>Indirizzi di studio</h1>
-    <button class="btn-primary ml-auto" on:click={newCurriculum}>+ Nuovo indirizzo</button>
+    <button class="btn-primary ml-auto" on:click={newCurriculum}
+            data-testid="add-curriculum-btn">+ Nuovo indirizzo</button>
     <ImportButton entity="curricula" onDone={() => listRef?.reload()}/>
   </div>
 
@@ -224,8 +225,14 @@
       <td class="text-center">{row.n_classes}</td>
       <td class="text-center">{(row.hours || []).length}</td>
       <td class="whitespace-nowrap">
-        <button class="btn !text-xs !px-2 !py-1" on:click={() => edit(row)}>Modifica</button>
-        <button class="btn-danger !text-xs !px-2 !py-1" on:click={() => del(row)}>Elimina</button>
+        <button class="btn !text-xs !px-2 !py-1"
+                data-testid="curriculum-edit-btn"
+                data-curriculum-id={row.id}
+                on:click={() => edit(row)}>Modifica</button>
+        <button class="btn-danger !text-xs !px-2 !py-1"
+                data-testid="curriculum-delete-btn"
+                data-curriculum-id={row.id}
+                on:click={() => del(row)}>Elimina</button>
       </td>
     </tr>
   </SortableQueryableList>
@@ -234,14 +241,14 @@
 <Modal open={!!editing} title={editing?._new ? 'Nuovo indirizzo' : 'Indirizzo: ' + (editing?.code || '')}
        onClose={() => (editing = null)}>
   {#if editing}
-    <div class="grid grid-cols-2 gap-3">
+    <div class="grid grid-cols-2 gap-3" data-testid="curriculum-form">
       <div class="field">
         <label>Code (machine name, unique)</label>
-        <input bind:value={editing.code}/>
+        <input bind:value={editing.code} data-testid="curriculum-code-input"/>
       </div>
       <div class="field">
         <label>Nome (display)</label>
-        <input bind:value={editing.name}/>
+        <input bind:value={editing.name} data-testid="curriculum-name-input"/>
       </div>
       <div class="field">
         <label>Score (engine)</label>
@@ -433,8 +440,10 @@
     {/if}
 
     <div class="mt-5 flex justify-end gap-2">
-      <button class="btn" on:click={() => (editing = null)}>Chiudi</button>
-      <button class="btn-primary" on:click={save}>Salva</button>
+      <button class="btn" on:click={() => (editing = null)}
+              data-testid="curriculum-cancel-btn">Chiudi</button>
+      <button class="btn-primary" on:click={save}
+              data-testid="curriculum-save-btn">Salva</button>
     </div>
   {/if}
 </Modal>
