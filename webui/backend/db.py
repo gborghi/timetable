@@ -312,6 +312,16 @@ def _apply_lightweight_migrations() -> None:
                 "max_hours_per_day INTEGER NOT NULL DEFAULT 5"
             ))
 
+        # subjects.required_kind: nullable string. HARD constraint
+        # input -- lessons of this subject must land in a Classroom
+        # with the matching ``kind``.
+        if insp.has_table("subjects") and not has_column(
+                "subjects", "required_kind"):
+            conn.execute(text(
+                "ALTER TABLE subjects ADD COLUMN "
+                "required_kind VARCHAR(32)"
+            ))
+
         # n_students on school_classes + capacity on classrooms.
         # The columns have always been on the model, but historic dev
         # DBs created before they were added need the ALTER. NOT NULL

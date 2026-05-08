@@ -143,3 +143,87 @@ def test_solve_two_classes_must_each_get_a_fitting_room():
     assert out is not None, f"unexpectedly infeasible: {status}"
     assert out[("3A", "Mat", 1, 1)] == "Aula Magna"
     assert out[("1B", "Sto", 1, 1)] == "Aula Piccola"
+
+
+# ---------- Required-kind HARD: subject must land in matching room ----
+
+
+def test_can_host_blocks_wrong_kind():
+    """required_kind='palestra' rejects every non-palestra room."""
+    lesson = {
+        "teacher": "T", "co_teachers": [],
+        "class": "3A", "subject": "Educazione Fisica",
+        "day": 1, "hour": 1, "n_students": 22,
+        "required_kind": "palestra",
+    }
+    standard = _make_room("Aula 12", capacity=30, kind="standard")
+    palestra = _make_room("Palestra A", capacity=60, kind="palestra")
+    assert ca._can_host(standard, lesson) is False
+    assert ca._can_host(palestra, lesson) is True
+
+
+def test_can_host_required_kind_empty_means_any():
+    lesson = {
+        "teacher": "T", "co_teachers": [],
+        "class": "3A", "subject": "Mat", "day": 1, "hour": 1,
+        "n_students": 22, "required_kind": "",
+    }
+    standard = _make_room("Aula 12", capacity=30, kind="standard")
+    palestra = _make_room("Palestra A", capacity=60, kind="palestra")
+    assert ca._can_host(standard, lesson) is True
+    assert ca._can_host(palestra, lesson) is True
+
+
+def test_solve_picks_palestra_for_eduf_subject():
+    """End-to-end: a single Educazione Fisica lesson must land in
+    the palestra even when other rooms have plenty of capacity."""
+    lessons = [{
+        "teacher": "T", "co_teachers": [], "class": "3A",
+        "subject": "Educazione Fisica", "day": 1, "hour": 1,
+        "n_students": 22, "required_kind": "palestra",
+    }]
+    rooms = [
+        _make_room("Aula 12",    capacity=30, kind="standard"),
+        _make_room("Aula Magna", capacity=80, kind="standard"),
+        _make_room("Palestra A", capacity=60, kind="palestra"),
+    ]
+    out, status = ca.solve_classroom_assignment(
+        lessons, rooms, time_limit_s=10, workers=1)
+    assert out is not None, f"unexpectedly infeasible: {status}"
+    assert out[("3A", "Educazione Fisica", 1, 1)] == "Palestra A"
+
+
+def test_solve_lab_fisica_hard():
+    """Physics lesson with required_kind='lab_fisica' rejects
+    every other lab kind."""
+    lessons = [{
+        "teacher": "T", "co_teachers": [], "class": "5A",
+        "subject": "Fisica", "day": 1, "hour": 1, "n_students": 22,
+        "required_kind": "lab_fisica",
+    }]
+    rooms = [
+        _make_room("Aula 12",       capacity=30, kind="standard"),
+        _make_room("Lab chimica",   capacity=24, kind="lab_chimica"),
+        _make_room("Lab fisica",    capacity=24, kind="lab_fisica"),
+    ]
+    out, status = ca.solve_classroom_assignment(
+        lessons, rooms, time_limit_s=10, workers=1)
+    assert out is not None, f"unexpectedly infeasible: {status}"
+    assert out[("5A", "Fisica", 1, 1)] == "Lab fisica"
+
+
+def test_solve_no_eligible_when_required_kind_missing():
+    """Asking for a palestra when none exists -> NO_ELIGIBLE."""
+    lessons = [{
+        "teacher": "T", "co_teachers": [], "class": "3A",
+        "subject": "Educazione Fisica", "day": 1, "hour": 1,
+        "n_students": 22, "required_kind": "palestra",
+    }]
+    rooms = [
+        _make_room("Aula 12",    capacity=30, kind="standard"),
+        _make_room("Aula Magna", capacity=80, kind="standard"),
+    ]
+    out, status = ca.solve_classroom_assignment(
+        lessons, rooms, time_limit_s=10, workers=1)
+    assert out is None
+    assert status.startswith("NO_ELIGIBLE")

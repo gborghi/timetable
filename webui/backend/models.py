@@ -75,6 +75,21 @@ class Subject(TenantMixin, TimestampMixin, Base):
     preferred_band_start: Mapped[int | None] = mapped_column(Integer, nullable=True)
     preferred_band_end: Mapped[int | None] = mapped_column(Integer, nullable=True)
     preferred_band_weight: Mapped[float] = mapped_column(Float, default=0.0)
+    # HARD: lessons of this subject must land in a Classroom whose
+    # `kind` matches. NULL means "any room" (the default). Values
+    # mirror the Classroom.kind vocabulary -- e.g. 'palestra',
+    # 'lab_fisica', 'lab_chimica', 'lab_informatica',
+    # 'lab_linguistico'. Enforced in
+    # ``engine.classroom_assignment._can_host`` (subject->kind
+    # filter). The legacy per-room ``ClassroomSubjectPreference``
+    # rows are still honored; ``required_kind`` is the cleaner
+    # single-row way to say "Educazione Fisica solo in palestra"
+    # without enumerating every non-palestra room.
+    required_kind: Mapped[str | None] = mapped_column(
+        String(32), nullable=True,
+        comment="HARD: lesson must be in a Classroom with this "
+                "kind (e.g. 'palestra' / 'lab_fisica'). NULL = any."
+    )
 
 
 # ---------- Teachers ----------

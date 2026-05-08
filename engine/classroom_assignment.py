@@ -49,6 +49,10 @@ NOTE
 - Lab-required: se l'aula ha `subject_required` non vuoto, accetta solo
   lezioni con subject in quell'insieme. Le altre lezioni NON possono
   essere assegnate a quell'aula.
+- Required-kind (HARD): se la lezione porta `required_kind` non vuoto
+  (es. 'palestra' per Educazione Fisica), la lezione e\` ammessa solo
+  nelle aule con `kind` corrispondente. La chiave viene popolata da
+  `Subject.required_kind` nel webui-side `lessons_for_classroom_step`.
 - Capacit\`a (HARD): se la lezione porta `n_students > 0` la lezione e\`
   ammessa solo nelle aule con `capacity >= n_students`. Lezioni senza
   `n_students` (chiave assente o 0) bypassano il vincolo - usato
@@ -92,8 +96,8 @@ def _normalize_classroom(cl: dict) -> dict:
 
 
 def _can_host(room: dict, lesson: dict) -> bool:
-    """HARD eligibility: subject compatibility + capacity + room not
-    unavailable on that slot."""
+    """HARD eligibility: subject compatibility + capacity + required-
+    kind + room not unavailable on that slot."""
     subj = lesson["subject"]
     day = lesson["day"]
     hour = lesson["hour"]
@@ -101,6 +105,12 @@ def _can_host(room: dict, lesson: dict) -> bool:
         return False
     # Lab-required rooms only accept their subjects
     if room["subject_required"] and subj not in room["subject_required"]:
+        return False
+    # HARD subject->kind: when the lesson carries a non-empty
+    # `required_kind`, the room must match. e.g. Educazione Fisica
+    # (required_kind='palestra') rejects every non-palestra room.
+    req_kind = lesson.get("required_kind") or ""
+    if req_kind and str(room.get("kind", "standard")) != req_kind:
         return False
     # HARD capacity: room.capacity >= class.n_students. Skipped silently
     # when the lesson doesn't carry n_students (legacy callers).

@@ -976,6 +976,10 @@ def lessons_for_classroom_step(db: Session, solution_id: int) -> list[dict]:
         c.name: int(c.n_students or 0)
         for c in db.query(models.SchoolClass).all()
     }
+    required_kind_by_subj = {
+        s.name: (s.required_kind or None)
+        for s in db.query(models.Subject).all()
+    }
     out = []
     for l in db.query(models.Lesson).filter(
         models.Lesson.solution_id == solution_id
@@ -991,6 +995,9 @@ def lessons_for_classroom_step(db: Session, solution_id: int) -> list[dict]:
             "day": l.day,
             "hour": l.hour,
             "n_students": n_students_by_class.get(l.class_name, 0),
+            # Pulled from Subject.required_kind. NULL/missing -> ''
+            # which classroom_assignment treats as "any room".
+            "required_kind": required_kind_by_subj.get(l.subject, "") or "",
         })
     return out
 
