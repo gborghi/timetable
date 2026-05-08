@@ -163,14 +163,15 @@
                           : problemRows;
 </script>
 
-<div class="space-y-4">
+<div class="space-y-4" data-testid="assignments-page">
   <div class="flex items-baseline gap-3 flex-wrap">
     <h1>Cattedre (assegnazione docenti -&gt; classi)</h1>
-    <span class="text-sm text-ink-500">{Object.keys(byClass).length} classi</span>
+    <span class="text-sm text-ink-500" data-testid="assignments-class-count">{Object.keys(byClass).length} classi</span>
     {#if loadInfo}
       <button class="btn ml-auto"
               on:click={() => (showLoadPanel = !showLoadPanel)}
-              title="Mostra docenti con problemi di copertura">
+              title="Mostra docenti con problemi di copertura"
+              data-testid="assignments-warnings-toggle">
         {#if loadInfo.n_over + loadInfo.n_under > 0}
           <span class="pill-amber !text-[10px] mr-1">
             {loadInfo.n_over + loadInfo.n_under}
@@ -182,7 +183,7 @@
   </div>
 
   {#if showLoadPanel && loadInfo}
-    <div class="card p-3 border-amber-300 bg-amber-50/40 space-y-2">
+    <div class="card p-3 border-amber-300 bg-amber-50/40 space-y-2" data-testid="assignments-load-panel">
       <div class="flex items-baseline gap-3 flex-wrap">
         <h3 class="!text-base">
           Cattedre / docenti incompleti
@@ -195,12 +196,14 @@
         <div class="ml-auto flex gap-1">
           <button class="btn !text-xs"
                   class:bg-ink-100={loadFilter === 'problemi'}
-                  on:click={() => (loadFilter = 'problemi')}>
+                  on:click={() => (loadFilter = 'problemi')}
+                  data-testid="assignments-load-filter-problems">
             solo problemi
           </button>
           <button class="btn !text-xs"
                   class:bg-ink-100={loadFilter === 'all'}
-                  on:click={() => (loadFilter = 'all')}>
+                  on:click={() => (loadFilter = 'all')}
+                  data-testid="assignments-load-filter-all">
             tutti
           </button>
         </div>
@@ -259,40 +262,42 @@
   {/if}
 
   <div class="card p-3">
-    <input class="w-full px-2 py-1.5 rounded-md border border-ink-200" placeholder="Filtra classe..." bind:value={filter}/>
+    <input class="w-full px-2 py-1.5 rounded-md border border-ink-200" placeholder="Filtra classe..." bind:value={filter} data-testid="assignments-filter-input"/>
   </div>
 
-  <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+  <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-4" data-testid="assignments-grid">
     {#each classNames as cn}
-      <div class="card p-4">
+      <div class="card p-4" data-testid="assignments-class-card" data-class={cn}>
         <h3 class="mb-2">{cn}</h3>
         <table class="tbl">
           <thead><tr><th>Materia</th><th>Docente</th><th>Ore</th><th></th></tr></thead>
           <tbody>
             {#each byClass[cn] as row}
-              <tr>
+              <tr data-testid="assignments-row" data-class={cn} data-subject={row.subject}>
                 <td>
                   {row.subject}
                   {#if row.coteach_group_id != null}
                     <span class="pill-blue !text-[10px]"
-                      title="Compresenza (lab/codocenza)">COTEACH</span>
+                      title="Compresenza (lab/codocenza)" data-testid="assignments-row-coteach-pill">COTEACH</span>
                   {/if}
                   {#if row.is_support}
                     <span class="pill-amber !text-[10px]"
                       title="Sostegno (DVA)">SOST</span>
                   {/if}
                 </td>
-                <td>{row.teacher}</td>
-                <td class="text-center">{row.hours}</td>
+                <td data-testid="assignments-row-teacher">{row.teacher}</td>
+                <td class="text-center" data-testid="assignments-row-hours">{row.hours}</td>
                 <td class="whitespace-nowrap">
-                  <button class="btn !text-xs !px-2 !py-1" on:click={() => startEdit(cn, row)}>cambia</button>
+                  <button class="btn !text-xs !px-2 !py-1" on:click={() => startEdit(cn, row)} data-testid="assignments-edit-btn">cambia</button>
                   <button class="btn !text-xs !px-2 !py-1 focus-ring"
                     title={row.locked ? 'Sblocca' : 'Blocca'}
                     aria-label={row.locked
                       ? 'Sblocca cattedra ' + row.subject + ' per ' + cn
                       : 'Blocca cattedra ' + row.subject + ' per ' + cn}
                     aria-pressed={row.locked}
-                    on:click={() => toggleLock(row.id, row.locked)}>
+                    on:click={() => toggleLock(row.id, row.locked)}
+                    data-testid="assignments-lock-btn"
+                    data-locked={row.locked ? 'true' : 'false'}>
                     <span aria-hidden="true">{row.locked ? '🔒' : '🔓'}</span>
                   </button>
                 </td>
@@ -366,25 +371,25 @@
 
 <Modal open={!!editing} title="Cambia docente" onClose={() => (editing = null)}>
   {#if editing}
-    <div class="grid grid-cols-2 gap-3">
+    <div class="grid grid-cols-2 gap-3" data-testid="assignment-edit-form">
       <div class="field col-span-2">
         <label>Target</label>
         <div class="flex gap-2 items-center">
           <label class="inline-flex items-center gap-1">
             <input type="radio" bind:group={editing.target_kind}
-                   value="class"/>
+                   value="class" data-testid="assignment-target-class-radio"/>
             classe
           </label>
           <label class="inline-flex items-center gap-1">
             <input type="radio" bind:group={editing.target_kind}
-                   value="group"/>
+                   value="group" data-testid="assignment-target-group-radio"/>
             gruppo (StudyGroup)
           </label>
         </div>
         {#if editing.target_kind === 'group'}
           <div class="mt-2">
             <label class="text-xs text-ink-500">Gruppo</label>
-            <select bind:value={editing.group_name}>
+            <select bind:value={editing.group_name} data-testid="assignment-group-select">
               <option value="">-- seleziona --</option>
               {#each allGroups as g}
                 <option value={g.name}>{g.name}</option>
@@ -393,18 +398,18 @@
             <label class="text-xs text-ink-500 mt-1">Ore (settimanali)</label>
             <input type="number" min="1" max="30"
                    bind:value={editing.hours}
-                   class="w-20"/>
+                   class="w-20" data-testid="assignment-hours-input"/>
           </div>
         {:else}
           <div class="mt-2">
             <label class="text-xs text-ink-500">Classe</label>
-            <input value={editing.class_name} disabled/>
+            <input value={editing.class_name} disabled data-testid="assignment-class-input"/>
           </div>
         {/if}
       </div>
       <div class="field col-span-2">
         <label>Materia</label>
-        <input value={editing.subject} disabled/>
+        <input value={editing.subject} disabled data-testid="assignment-subject-input"/>
       </div>
       <div class="field col-span-2">
         <label>
@@ -413,7 +418,7 @@
             ({teachersForSubject.length} candidati; ore della cattedra: {editingHours})
           </span>
         </label>
-        <select bind:value={editing.teacher_name}>
+        <select bind:value={editing.teacher_name} data-testid="assignment-teacher-select">
           {#each teachersForSubject as t}
             <option value={t.name}>
               {t.display} - {teacherBadge(t)}{predictedBadge(t)}
@@ -423,7 +428,8 @@
         <div class="text-xs text-ink-400 mt-1">
           (in alternativa puoi digitare manualmente in
           <input list="ll-t" bind:value={editing.teacher_name}
-                 class="px-2 py-0.5 border border-ink-200 rounded text-xs"/>
+                 class="px-2 py-0.5 border border-ink-200 rounded text-xs"
+                 data-testid="assignment-teacher-input"/>
           - <datalist id="ll-t">
               {#each teachersForSubject as t}
                 <option value={t.name}/>
@@ -432,7 +438,7 @@
         </div>
       </div>
       <label class="flex items-center gap-2 col-span-2 text-sm">
-        <input type="checkbox" bind:checked={editing.locked}/> Bloccare la modifica (l'ottimizzatore non potra cambiare)
+        <input type="checkbox" bind:checked={editing.locked} data-testid="assignment-locked-checkbox"/> Bloccare la modifica (l'ottimizzatore non potra cambiare)
       </label>
     </div>
     <div class="mt-4 text-xs text-ink-500">
@@ -442,8 +448,8 @@
       questa scelta sforerebbe il max-hours; il backend potrebbe rifiutare.
     </div>
     <div class="mt-5 flex justify-end gap-2">
-      <button class="btn" on:click={() => (editing = null)}>Annulla</button>
-      <button class="btn-primary" on:click={save}>Salva</button>
+      <button class="btn" on:click={() => (editing = null)} data-testid="assignment-cancel-btn">Annulla</button>
+      <button class="btn-primary" on:click={save} data-testid="assignment-save-btn">Salva</button>
     </div>
   {/if}
 </Modal>
