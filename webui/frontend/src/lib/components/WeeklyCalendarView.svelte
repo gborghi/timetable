@@ -69,7 +69,12 @@
    * resizes, moves and deletes to define the working-hours layout
    * itself (Tab Ore). The component manages its own slot list in
    * edit mode and emits ``onConfigEdit`` whenever the user commits
-   * a change. */
+   * a change.
+   * "schedule": each Lesson is rendered as a positioned event on its
+   * (day, hour) slot. Events are draggable + clickable; configured
+   * slots accept drops, non-configured slots reject them. An
+   * unscheduled-pool sidebar lets the user re-place pool entries via
+   * drag onto the calendar. */
   export let mode = 'view';
   /** Edit-mode callback. Called with a SHALLOW COPY of ``config``
    * whose ``days[*].slots`` reflect the user's edits. The parent is
@@ -77,6 +82,27 @@
    * Defaults to a no-op so the view-mode call sites don't have to
    * pass anything. */
   export let onConfigEdit = (_newConfig) => {};
+
+  // ---- mode='schedule' props -----------------------------------
+  /** Lesson rows for mode='schedule'. Shape:
+   *   { id, day, hour, class_name, teacher_name, subject,
+   *     classroom_name, ... } */
+  export let lessons = [];
+  /** Unscheduled-pool entries for the sidebar. Shape:
+   *   { id, class_name, teacher_name, subject, classroom_name,
+   *     original_day?, original_hour? } */
+  export let unscheduled_lessons = [];
+  /** Filter the displayed events. type: 'class'|'teacher'|'room'|null;
+   *  id: the name to match against the corresponding field, or null. */
+  export let filter_by = { type: null, id: null };
+  /** Click handler for a lesson event. Receives the lesson dict. */
+  export let on_lesson_click = (_l) => {};
+  /** Click handler for an empty CONFIGURED slot. Receives (day,hour). */
+  export let on_slot_click = (_d, _h) => {};
+  /** Drag-drop handler: moves a lesson_id to (new_day, new_hour). */
+  export let on_lesson_move = (_id, _d, _h) => {};
+  /** Drag-drop handler: places a pool entry at (day, hour). */
+  export let on_unscheduled_drop = (_unsched_id, _d, _h) => {};
 
   let _config = config;
   let loadingConfig = false;
@@ -469,6 +495,173 @@
     }
   }
 
+  // ---------------------------------------------------------------
+  // SCHEDULE MODE: lessons rendered as positioned events on the
+  // calendar; HTML5 drag-drop moves them across slots; an unscheduled
+  // pool sidebar lets the user re-place pool rows. Soft-conflict
+  // preview during drag highlights existing events that share the
+  // teacher / class / room of the dragged one.
+  // ---------------------------------------------------------------
+
+  // Filter lessons according to filter_by (when set).
+  $: filteredLessons = (() => {
+    if (mode !== 'schedule' || !Array.isArray(lessons)) return [];
+    const t = filter_by?.type, id = filter_by?.id;
+    if (!t || !id) return lessons;
+    return lessons.filter((l) => {
+      if (t === 'class')   return l.class_name === id;
+      if (t === 'teacher') return l.teacher_name === id;
+      if (t === 'room')    return l.classroom_name === id;
+      return true;
+    });
+  })();
+
+  // Group filtered lessons by "day-hour" key so we can stack
+  // co-teachings or class-merges in a single configured slot.
+  $: lessonsBySlot = (() => {
+    const out = new Map();
+    for (const l of filteredLessons) {
+      if (l.day == null || l.hour == null) continue;
+      const k = l.day + '-' + l.hour;
+      if (!out.has(k)) out.set(k, []);
+      out.get(k).push(l);
+    }
+    return out;
+  })();
+
+  // Configured-slot lookup: which (day, hour) pairs have a slot
+  // configured in Tab Ore? Used to gate drop targets.
+  $: configuredSlots = (() => {
+    const set = new Set();
+    for (const d of activeDays) {
+      for (const s of (d.slots || [])) {
+        set.add(d.legacy_day_number + '-' + s.legacy_hour_number);
+      }
+    }
+    return set;
+  })();
+
+  // Drag state.
+  let dragSource = null;     // {kind:'lesson',lesson} or {kind:'unscheduled',entry}
+  let dragHoverKey = null;   // "day-hour" being hovered while dragging
+
+  // Conflict set: which "day-hour" keys would HARD-conflict if the
+  // dragged lesson dropped there? Same teacher OR same class busy at
+  // that slot (excluding the dragged lesson itself). We use the FULL
+  // lessons array (not filteredLessons) because conflicts cross views.
+  $: conflictKeys = (() => {
+    if (mode !== 'schedule' || !dragSource) return new Set();
+    const drag = dragSource.kind === 'lesson'
+      ? dragSource.lesson
+      : dragSource.entry;
+    if (!drag) return new Set();
+    const out = new Set();
+    for (const l of (lessons || [])) {
+      if (l.day == null || l.hour == null) continue;
+      if (dragSource.kind === 'lesson' && l.id === drag.id) continue;
+      if ((drag.teacher_name && l.teacher_name === drag.teacher_name) ||
+          (drag.class_name && l.class_name === drag.class_name) ||
+          (drag.classroom_name && drag.classroom_name === l.classroom_name)) {
+        out.add(l.day + '-' + l.hour);
+      }
+    }
+    return out;
+  })();
+
+  // Deterministic palette: colour by (teacher_name | subject | class)
+  // so siblings of the same cattedra share a hue across views.
+  const _PALETTE = [
+    { bg: '#dbeafe', bd: '#2563eb', fg: '#1e3a8a' }, // blue
+    { bg: '#dcfce7', bd: '#16a34a', fg: '#14532d' }, // green
+    { bg: '#fee2e2', bd: '#dc2626', fg: '#7f1d1d' }, // red
+    { bg: '#fef3c7', bd: '#d97706', fg: '#78350f' }, // amber
+    { bg: '#f3e8ff', bd: '#9333ea', fg: '#581c87' }, // violet
+    { bg: '#ccfbf1', bd: '#0d9488', fg: '#134e4a' }, // teal
+    { bg: '#ffe4e6', bd: '#e11d48', fg: '#881337' }, // rose
+    { bg: '#e0e7ff', bd: '#4f46e5', fg: '#3730a3' }, // indigo
+    { bg: '#fef9c3', bd: '#ca8a04', fg: '#713f12' }, // yellow
+    { bg: '#cffafe', bd: '#0891b2', fg: '#155e75' }, // cyan
+  ];
+  function _hashStr(s) {
+    let h = 2166136261;
+    for (let i = 0; i < s.length; i += 1) {
+      h ^= s.charCodeAt(i);
+      h = Math.imul(h, 16777619) >>> 0;
+    }
+    return h;
+  }
+  function _colourFor(lesson) {
+    const t = filter_by?.type;
+    let key;
+    if (t === 'teacher') key = lesson.subject || lesson.class_name || '';
+    else if (t === 'class') key = lesson.subject || lesson.teacher_name || '';
+    else if (t === 'room')  key = lesson.class_name || lesson.subject || '';
+    else key = (lesson.teacher_name || '') + '|' + (lesson.subject || '');
+    return _PALETTE[_hashStr(key) % _PALETTE.length];
+  }
+
+  function _onLessonDragStart(ev, lesson) {
+    dragSource = { kind: 'lesson', lesson };
+    try {
+      ev.dataTransfer.effectAllowed = 'move';
+      ev.dataTransfer.setData('text/plain', 'lesson:' + lesson.id);
+    } catch { /* JSDOM */ }
+  }
+  function _onUnschedDragStart(ev, entry) {
+    dragSource = { kind: 'unscheduled', entry };
+    try {
+      ev.dataTransfer.effectAllowed = 'move';
+      ev.dataTransfer.setData('text/plain', 'unscheduled:' + entry.id);
+    } catch { /* JSDOM */ }
+  }
+  function _onDragEnd() {
+    dragSource = null;
+    dragHoverKey = null;
+  }
+  function _onSlotDragOver(ev, day, hour) {
+    if (!dragSource) return;
+    const k = day + '-' + hour;
+    if (configuredSlots.has(k)) {
+      ev.preventDefault();
+      ev.dataTransfer.dropEffect = 'move';
+    }
+    dragHoverKey = k;
+  }
+  function _onSlotDragLeave(ev, day, hour) {
+    if (dragHoverKey === day + '-' + hour) dragHoverKey = null;
+  }
+  function _onSlotDrop(ev, day, hour) {
+    ev.preventDefault();
+    const k = day + '-' + hour;
+    const ds = dragSource;
+    dragSource = null;
+    dragHoverKey = null;
+    if (!ds) return;
+    if (!configuredSlots.has(k)) return;
+    if (ds.kind === 'lesson') {
+      if (ds.lesson.day === day && ds.lesson.hour === hour) return;
+      on_lesson_move(ds.lesson.id, day, hour);
+    } else if (ds.kind === 'unscheduled') {
+      on_unscheduled_drop(ds.entry.id, day, hour);
+    }
+  }
+  function _onLessonClick(ev, lesson) {
+    ev.stopPropagation();
+    on_lesson_click(lesson);
+  }
+  function _onConfiguredSlotClick(ev, day, hour, hasLessons) {
+    if (hasLessons) return;          // events handle their own click
+    if (dragSource) return;          // ignore during drag
+    on_slot_click(day, hour);
+  }
+  function _lessonLabel(l) {
+    const t = filter_by?.type;
+    if (t === 'class')   return (l.subject || '') + ' - ' + (l.teacher_name || '');
+    if (t === 'teacher') return (l.class_name || '') + ' - ' + (l.subject || '');
+    if (t === 'room')    return (l.class_name || '') + ' / ' + (l.subject || '');
+    return (l.class_name || '') + ' - ' + (l.subject || '');
+  }
+
   function onCellClick(ev, d, h) {
     if (readonly) return;
     if (dragMoved) {
@@ -506,10 +699,13 @@
 <svelte:window on:mouseup={onMouseUp}/>
 
 <div class="select-none weekly-calendar"
+     class:weekly-calendar--schedule={mode === 'schedule'}
+     data-testid={mode === 'schedule' ? 'weekly-schedule' : undefined}
      on:mouseenter={() => (hovering = true)}
      on:mouseleave={() => (hovering = false)}>
   <div class="flex items-baseline justify-between mb-2 flex-wrap gap-2">
     <h3 class="!text-base">{title}</h3>
+    {#if mode !== 'schedule'}
     <div class="flex gap-3 text-xs flex-wrap">
       <span class="flex items-center gap-1">
         <span class="w-3 h-3 rounded-sm border border-emerald-400
@@ -532,7 +728,9 @@
                      bg-emerald-700"></span> ENFORCED
       </span>
     </div>
+    {/if}
   </div>
+  {#if mode !== 'schedule'}
   <p class="text-xs text-ink-500 mb-2">
     Click ciclico: libero -&gt; giallo -&gt; rosso -&gt; blu -&gt;
     verde scuro -&gt; libero. Trascina per applicare in blocco.
@@ -546,6 +744,7 @@
       + click per impostare direttamente.
     </span>
   </p>
+  {/if}
 
   {#if loadingConfig}
     <div class="text-sm text-ink-500">Caricamento configurazione...</div>
@@ -555,10 +754,13 @@
       <a href="/ore" class="link">Ore</a> per definirli.
     </div>
   {:else}
-    <div class="overflow-x-auto" tabindex="0"
+    <div class="cal-layout"
+         class:cal-layout--with-pool={mode === 'schedule'}>
+    <div class="overflow-x-auto cal-layout__calendar" tabindex="0"
          on:keydown={onEditKeyDown}>
       <div class="cal-grid"
            class:cal-grid--edit={mode === 'edit'}
+           class:cal-grid--schedule={mode === 'schedule'}
            style="--n-days: {displayActiveDays.length};
                   --hour-px: {PX_PER_HOUR}px;
                   --grid-h: {displayGridHeightPx}px;">
@@ -596,6 +798,7 @@
               {#each displayBgHours as h}
                 <div class="cal-hour-bg"
                      class:cal-hour-bg--editable={mode === 'edit'}
+                     class:cal-hour-bg--schedule-reject={mode === 'schedule' && dragSource && !configuredSlots.has(dnum + '-' + h)}
                      style="top: {(h - displayBgRange.lo) * PX_PER_HOUR}px"
                      aria-disabled={mode !== 'edit'}
                      title={mode === 'edit'
@@ -646,6 +849,71 @@
                     </div>
                   </div>
                 {/if}
+              {:else if mode === 'schedule'}
+                <!-- SCHEDULE MODE: configured slots are drop targets;
+                     each lesson on (day, hour) is rendered as a
+                     positioned, draggable, clickable event. -->
+                {#each (d.slots || []) as slot}
+                  {@const hnum = slot.legacy_hour_number}
+                  {@const slotKey = dnum + '-' + hnum}
+                  {@const lst = lessonsBySlot.get(slotKey) || []}
+                  {@const isHover = dragHoverKey === slotKey}
+                  {@const isConflict = conflictKeys.has(slotKey)}
+                  <div class="cal-slot cal-slot--schedule"
+                       class:cal-slot--drop-ok={isHover && dragSource}
+                       class:cal-slot--drop-conflict={isConflict && dragSource}
+                       style="top: {_pxFromTime(slot.start_time, displayBgRange)}px;
+                              height: {_pxDuration(slot)}px"
+                       data-day={dnum}
+                       data-hour={hnum}
+                       data-testid={'sched-slot-' + dnum + '-' + hnum}
+                       on:dragover={(e) => _onSlotDragOver(e, dnum, hnum)}
+                       on:dragleave={(e) => _onSlotDragLeave(e, dnum, hnum)}
+                       on:drop={(e) => _onSlotDrop(e, dnum, hnum)}
+                       on:click={(e) => _onConfiguredSlotClick(e, dnum, hnum, lst.length > 0)}
+                       title={`${slot.start_time}-${slot.end_time}` +
+                         (lst.length === 0 ? ' -- vuoto, click per nuova lezione'
+                          : ` -- ${lst.length} lezion${lst.length === 1 ? 'e' : 'i'}`)}>
+                    {#if lst.length === 0}
+                      <div class="cal-slot-time">
+                        {slot.start_time}-{slot.end_time}
+                      </div>
+                    {:else}
+                      {#each lst as l, lIdx}
+                        {@const col = _colourFor(l)}
+                        <div class="cal-event cal-event--schedule"
+                             class:cal-event--conflict={isConflict && dragSource}
+                             style={`background:${col.bg};border-color:${col.bd};color:${col.fg};` +
+                                    (lst.length > 1 ? `width:${100 / lst.length}%;left:${(100 / lst.length) * lIdx}%;` : '')}
+                             draggable="true"
+                             data-lesson-id={l.id}
+                             data-testid={'sched-lesson-' + l.id}
+                             on:dragstart={(e) => _onLessonDragStart(e, l)}
+                             on:dragend={_onDragEnd}
+                             on:click={(e) => _onLessonClick(e, l)}
+                             title={_lessonLabel(l) +
+                               (l.classroom_name ? ' @ ' + l.classroom_name : '') +
+                               (isConflict && dragSource ? ' -- conflitto con la lezione che stai trascinando' : '')}>
+                          <div class="cal-event-time">
+                            {slot.start_time}-{slot.end_time}
+                          </div>
+                          <div class="cal-event-label">
+                            {_lessonLabel(l)}
+                          </div>
+                          {#if l.classroom_name}
+                            <div class="cal-event-room">
+                              {l.classroom_name}
+                            </div>
+                          {/if}
+                          {#if isConflict && dragSource}
+                            <span class="cal-event-conflict-badge"
+                                  data-testid="sched-conflict-badge">!</span>
+                          {/if}
+                        </div>
+                      {/each}
+                    {/if}
+                  </div>
+                {/each}
               {:else}
                 <!-- VIEW MODE: events drive the constraint-level
                      painter (free / soft / hard / preferred /
@@ -721,9 +989,46 @@
         </div>
       </div>
     </div>
+    {#if mode === 'schedule'}
+      <aside class="cal-pool" data-testid="schedule-pool">
+        <div class="cal-pool__header">
+          Pool ({(unscheduled_lessons || []).length})
+        </div>
+        {#if !(unscheduled_lessons && unscheduled_lessons.length)}
+          <div class="cal-pool__empty">Nessuna lezione svincolata.</div>
+        {:else}
+          <ul class="cal-pool__list">
+            {#each unscheduled_lessons as u}
+              {@const col = _colourFor(u)}
+              <li class="cal-pool__item"
+                  style={`background:${col.bg};border-color:${col.bd};color:${col.fg};`}
+                  draggable="true"
+                  data-unsched-id={u.id}
+                  data-testid={'sched-pool-item-' + u.id}
+                  on:dragstart={(e) => _onUnschedDragStart(e, u)}
+                  on:dragend={_onDragEnd}
+                  title={`${u.class_name || ''} - ${u.subject || ''} (${u.teacher_name || ''})` +
+                    (u.original_day != null
+                      ? ` -- prima era giorno ${u.original_day} ora ${u.original_hour}` : '')}>
+                <div class="cal-pool__item-title">
+                  {u.class_name || ''} - {u.subject || ''}
+                </div>
+                <div class="cal-pool__item-sub">
+                  {u.teacher_name || ''}
+                  {#if u.classroom_name}- {u.classroom_name}{/if}
+                </div>
+              </li>
+            {/each}
+          </ul>
+        {/if}
+      </aside>
+    {/if}
+    </div>
   {/if}
 
+  {#if mode !== 'schedule'}
   <KeyboardConstraintLegend visible={hovering} variant="matrix"/>
+  {/if}
 </div>
 
 <style>
@@ -905,4 +1210,164 @@
      keyboard Delete events (it must be focusable, but the visual
      focus ring is distracting on the calendar itself). */
   .weekly-calendar > .overflow-x-auto:focus { outline: none; }
+  .weekly-calendar :global(.overflow-x-auto):focus { outline: none; }
+
+  /* ----- SCHEDULE MODE additions ----- */
+  .cal-layout {
+    display: block;
+  }
+  .cal-layout--with-pool {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 220px;
+    gap: 12px;
+    align-items: start;
+  }
+  .cal-layout__calendar { min-width: 0; }
+
+  /* Configured slot wrapper in schedule mode: receives drops + click. */
+  .cal-slot--schedule {
+    position: absolute;
+    left: 2px;
+    right: 2px;
+    border: 1px dashed #d1d5db;
+    border-radius: 4px;
+    background: #ffffff;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    z-index: 1;
+  }
+  .cal-slot-time {
+    font-size: 9px;
+    color: #9ca3af;
+    padding: 2px 4px;
+    line-height: 1.1;
+    pointer-events: none;
+  }
+  .cal-slot--schedule:hover {
+    background: #f9fafb;
+    border-color: #9ca3af;
+  }
+  .cal-slot--drop-ok {
+    background: #d1fae5 !important;
+    border: 2px solid #10b981 !important;
+    border-style: solid !important;
+  }
+  .cal-slot--drop-conflict {
+    background: #fef3c7 !important;
+    border: 2px solid #f59e0b !important;
+    border-style: solid !important;
+  }
+  /* Background grid cells light up red while a drag is in progress
+     and the cursor is over an unconfigured hour. */
+  .cal-grid--schedule .cal-hour-bg.cal-hour-bg--schedule-reject,
+  .cal-hour-bg--schedule-reject {
+    background: #fee2e2 !important;
+    cursor: not-allowed;
+  }
+
+  /* Schedule events: positioned inside their slot via flex; coloured
+     by deterministic palette via inline style. */
+  .cal-event--schedule {
+    position: relative;
+    flex: 1 1 auto;
+    border-style: solid;
+    border-width: 1px;
+    border-radius: 3px;
+    padding: 2px 4px;
+    margin: 1px;
+    cursor: grab;
+    overflow: hidden;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .cal-event--schedule:active { cursor: grabbing; }
+  .cal-event--schedule.cal-event--conflict {
+    outline: 2px solid #f59e0b;
+    outline-offset: -2px;
+  }
+  .cal-event-room {
+    font-size: 9px;
+    line-height: 1.1;
+    opacity: 0.75;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .cal-event-conflict-badge {
+    position: absolute;
+    top: 1px;
+    right: 2px;
+    background: #f59e0b;
+    color: white;
+    border-radius: 50%;
+    font-size: 9px;
+    font-weight: 700;
+    width: 12px;
+    height: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+  }
+
+  /* Unscheduled-pool sidebar. */
+  .cal-pool {
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    background: #fafafa;
+    padding: 6px;
+    max-height: 70vh;
+    overflow-y: auto;
+    position: sticky;
+    top: 8px;
+  }
+  .cal-pool__header {
+    font-size: 12px;
+    font-weight: 600;
+    color: #374151;
+    padding: 2px 4px;
+    margin-bottom: 4px;
+    border-bottom: 1px solid #e5e7eb;
+  }
+  .cal-pool__empty {
+    font-size: 11px;
+    color: #9ca3af;
+    padding: 8px 4px;
+    text-align: center;
+  }
+  .cal-pool__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .cal-pool__item {
+    border-style: solid;
+    border-width: 1px;
+    border-radius: 4px;
+    padding: 4px 6px;
+    cursor: grab;
+    font-size: 11px;
+  }
+  .cal-pool__item:active { cursor: grabbing; }
+  .cal-pool__item-title {
+    font-weight: 600;
+    line-height: 1.2;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .cal-pool__item-sub {
+    font-size: 9px;
+    opacity: 0.8;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 </style>
