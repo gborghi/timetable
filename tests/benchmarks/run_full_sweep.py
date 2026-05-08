@@ -118,7 +118,16 @@ def load_profile_from_sqlite(profile: str):
     """Load profile from `<profile>.sqlite` produced by
     engine/scripts/build_profile_db.py. Returns the same shape as
     `load_profile()` but with a meaningful `inputs` tuple extracted
-    from the constraint tables."""
+    from the constraint tables.
+
+    The 5 channel helpers (coteach/support/pot/parallel/group) are
+    consumed by the runners directly. Slot-level constraints
+    (teacher_unavailability, DSL `general_constraints`,
+    `logical_unavailabilities`, `curriculum_logical_constraints`)
+    are NOT routed to the solver from this bench harness -- the
+    runners' signatures don't accept them. The mandatory-free-days
+    table is merged into `glibero` (the only slot/day-level signal
+    that fits the existing profs schema cleanly)."""
     sqlite_path = os.path.join(ENGINE_DIR, "scripts", "data",
                                 profile, f"{profile}.sqlite")
     if not os.path.exists(sqlite_path):
@@ -142,6 +151,19 @@ def load_profile_from_sqlite(profile: str):
         for cl in db.query(models.SchoolClass).all():
             if cl.curriculum:
                 c2curr[cl.name] = cl.curriculum
+        # Merge HARD mandatory free days into glibero. The pickle
+        # loader synthesises a 3-day glibero from teacher.free_day +
+        # 2 random fillers; here we override the random part with the
+        # explicit stress entries so the sweep actually feels them.
+        teacher_by_id = {t.id: t for t in db.query(models.Teacher).all()}
+        for mfd in db.query(models.TeacherMandatoryFreeDay).all():
+            t = teacher_by_id.get(mfd.teacher_id)
+            if t is None or t.name not in profs:
+                continue
+            glib = list(profs[t.name].get("glibero", []))
+            if mfd.day not in glib:
+                glib.append(int(mfd.day))
+            profs[t.name]["glibero"] = glib[:3] if len(glib) > 3 else glib
         # `school` is kept for API symmetry with the pickle loader,
         # but most fields are not consumed downstream.
         school = {"classes": [{"name": cl.name,
@@ -733,11 +755,14 @@ def main():
                      help="comma-separated subset of profiles to run")
     ap.add_argument("--techniques", type=str, default=None,
                      help="comma-separated subset (default = all)")
-    ap.add_argument("--source", type=str, default="sqlite",
+    ap.add_argument("--source", "--dataset", type=str, default="sqlite",
+                     dest="source",
                      choices=("pickle", "sqlite", "both"),
                      help="data source: legacy pickle (no constraints), "
                           "SQLite stress profile (full stratification), "
-                          "or both back-to-back for a delta comparison")
+                          "or both back-to-back for a delta comparison. "
+                          "`--dataset` is an alias kept for symmetry "
+                          "with the bench docs.")
     ap.add_argument("--skip-precheck", action="store_true",
                      help="skip MonolithicSolver feasibility precheck "
                           "before running the bench cells")
