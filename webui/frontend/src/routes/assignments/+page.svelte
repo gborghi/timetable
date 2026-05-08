@@ -6,6 +6,7 @@
 
   let byClass = {};
   let allSubjects = [];
+  let allTeachers = [];              // [{id, name, display, group}]
   let editing = null;
   let filter = '';
 
@@ -18,6 +19,15 @@
   let showLoadPanel = false;
   let loadFilter = 'problemi';   // 'problemi' | 'all'
 
+  // Bulk-selection state. `selectedIds` is a Set<number> kept reactive
+  // by reassigning it on every mutation. The bulk toolbar appears
+  // when at least one row is selected; the bulk-change-teacher modal
+  // is opened by `bulkChangeTeacherOpen`.
+  let selectedIds = new Set();
+  let bulkChangeTeacherOpen = false;
+  let bulkTeacherName = '';
+  let bulkBusy = false;
+
   onMount(async () => {
     await reload();
     allSubjects = (await api.get('/api/subjects')).map((s) => s.name);
@@ -26,6 +36,16 @@
     } catch (e) {
       allGroups = [];
     }
+    try {
+      allTeachers = (await api.get('/api/teachers')).map((t) => ({
+        id: t.id, name: t.name,
+        display: t.nickname
+                 || (t.last_name && t.first_name
+                       ? `${t.last_name} ${t.first_name}`
+                       : t.name),
+        group: t.group,
+      })).sort((a, b) => a.display.localeCompare(b.display, 'it'));
+    } catch { allTeachers = []; }
   });
 
   async function reload() {
@@ -161,6 +181,114 @@
   $: visibleLoadRows = loadFilter === 'all'
                           ? (loadInfo?.teachers ?? [])
                           : problemRows;
+
+  // ---------- Bulk operations ----------
+
+  function toggleSelected(id) {
+    if (selectedIds.has(id)) selectedIds.delete(id);
+    else selectedIds.add(id);
+    selectedIds = new Set(selectedIds);  // force reactivity
+  }
+
+  function toggleSelectAllInClass(cn) {
+    const ids = (byClass[cn] || []).map((r) => r.id);
+    const allIn = ids.every((id) => selectedIds.has(id));
+    if (allIn) ids.forEach((id) => selectedIds.delete(id));
+    else ids.forEach((id) => selectedIds.add(id));
+    selectedIds = new Set(selectedIds);
+  }
+
+  function classAllSelected(cn) {
+    const ids = (byClass[cn] || []).map((r) => r.id);
+    return ids.length > 0 && ids.every((id) => selectedIds.has(id));
+  }
+
+  function clearSelection() {
+    selectedIds = new Set();
+  }
+
+  async function bulkDelete() {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`Eliminare ${selectedIds.size} cattedre selezionate?`)) return;
+    bulkBusy = true;
+    try {
+      const r = await api.post('/api/assignments/bulk/delete', {
+        ids: [...selectedIds],
+      });
+      flash(`Eliminate ${r.n_applied} cattedre`
+            + (r.n_skipped ? ` (${r.n_skipped} saltate)` : ''),
+            r.errors?.length ? 'warning' : 'success');
+      clearSelection();
+      await reload();
+      await refreshDataset();
+    } catch (e) {
+      flash('Errore: ' + e.message, 'error');
+    } finally {
+      bulkBusy = false;
+    }
+  }
+
+  async function bulkLockToggle(locked) {
+    if (selectedIds.size === 0) return;
+    bulkBusy = true;
+    try {
+      const r = await api.post('/api/assignments/bulk/lock', {
+        ids: [...selectedIds], locked,
+      });
+      flash(`${locked ? 'Bloccate' : 'Sbloccate'} ${r.n_applied} cattedre`,
+            'success');
+      clearSelection();
+      await reload();
+    } catch (e) {
+      flash('Errore: ' + e.message, 'error');
+    } finally {
+      bulkBusy = false;
+    }
+  }
+
+  async function bulkPotenziamentoToggle(value) {
+    if (selectedIds.size === 0) return;
+    bulkBusy = true;
+    try {
+      const r = await api.post('/api/assignments/bulk/set-flag', {
+        ids: [...selectedIds],
+        flag: 'is_potenziamento', value,
+      });
+      flash(`Aggiornata is_potenziamento su ${r.n_applied} cattedre`,
+            'success');
+      clearSelection();
+      await reload();
+    } catch (e) {
+      flash('Errore: ' + e.message, 'error');
+    } finally {
+      bulkBusy = false;
+    }
+  }
+
+  async function bulkChangeTeacherSubmit() {
+    if (selectedIds.size === 0 || !bulkTeacherName) return;
+    bulkBusy = true;
+    try {
+      const r = await api.post('/api/assignments/bulk/change-teacher', {
+        ids: [...selectedIds], teacher_name: bulkTeacherName,
+      });
+      const tone = r.errors?.length ? 'warning' : 'success';
+      const note = r.errors?.length
+        ? ` (${r.n_skipped} saltate: docente non qualificato)`
+        : '';
+      flash(`Riassegnate ${r.n_applied} cattedre a ${bulkTeacherName}${note}`,
+            tone);
+      bulkChangeTeacherOpen = false;
+      bulkTeacherName = '';
+      clearSelection();
+      await reload();
+      await refreshDataset();
+    } catch (e) {
+      flash('Errore: ' + e.message, 'error');
+    } finally {
+      bulkBusy = false;
+    }
+  }
 </script>
 
 <div class="space-y-4" data-testid="assignments-page">
@@ -265,15 +393,85 @@
     <input class="w-full px-2 py-1.5 rounded-md border border-ink-200" placeholder="Filtra classe..." bind:value={filter} data-testid="assignments-filter-input"/>
   </div>
 
+  {#if selectedIds.size > 0}
+    <!-- Bulk-action toolbar: appears when at least one row is
+         selected. Hosts Elimina / Lock / Sblocca / Cambia docente /
+         Toggle potenziamento. -->
+    <div class="card p-3 bg-blue-50 border-2 border-blue-300 flex
+                items-center gap-2 flex-wrap"
+         data-testid="bulk-toolbar">
+      <strong class="text-sm" data-testid="bulk-selected-count">
+        {selectedIds.size} cattedre selezionate
+      </strong>
+      <button class="btn !text-xs"
+              on:click={clearSelection}
+              data-testid="bulk-clear-selection">
+        Deseleziona tutto
+      </button>
+      <span class="text-ink-300">|</span>
+      <button class="btn-red !text-xs"
+              on:click={bulkDelete} disabled={bulkBusy}
+              data-testid="bulk-delete-btn">
+        Elimina
+      </button>
+      <button class="btn !text-xs"
+              on:click={() => bulkLockToggle(true)}
+              disabled={bulkBusy}
+              data-testid="bulk-lock-btn">
+        Blocca
+      </button>
+      <button class="btn !text-xs"
+              on:click={() => bulkLockToggle(false)}
+              disabled={bulkBusy}
+              data-testid="bulk-unlock-btn">
+        Sblocca
+      </button>
+      <button class="btn !text-xs"
+              on:click={() => (bulkChangeTeacherOpen = true)}
+              disabled={bulkBusy}
+              data-testid="bulk-change-teacher-btn">
+        Cambia docente...
+      </button>
+      <button class="btn !text-xs"
+              on:click={() => bulkPotenziamentoToggle(true)}
+              disabled={bulkBusy}
+              data-testid="bulk-potenziamento-on-btn">
+        Imposta POT
+      </button>
+      <button class="btn !text-xs"
+              on:click={() => bulkPotenziamentoToggle(false)}
+              disabled={bulkBusy}
+              data-testid="bulk-potenziamento-off-btn">
+        Rimuovi POT
+      </button>
+    </div>
+  {/if}
+
   <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-4" data-testid="assignments-grid">
     {#each classNames as cn}
       <div class="card p-4" data-testid="assignments-class-card" data-class={cn}>
-        <h3 class="mb-2">{cn}</h3>
+        <h3 class="mb-2 flex items-center gap-2">
+          <input type="checkbox"
+                 checked={classAllSelected(cn)}
+                 on:change={() => toggleSelectAllInClass(cn)}
+                 title="Seleziona tutte le cattedre di {cn}"
+                 data-testid="assignments-class-select-all"
+                 data-class={cn}/>
+          <span>{cn}</span>
+        </h3>
         <table class="tbl">
-          <thead><tr><th>Materia</th><th>Docente</th><th>Ore</th><th></th></tr></thead>
+          <thead><tr><th></th><th>Materia</th><th>Docente</th><th>Ore</th><th></th></tr></thead>
           <tbody>
             {#each byClass[cn] as row}
-              <tr data-testid="assignments-row" data-class={cn} data-subject={row.subject}>
+              <tr data-testid="assignments-row" data-class={cn} data-subject={row.subject} data-id={row.id}
+                  class:bg-blue-50={selectedIds.has(row.id)}>
+                <td class="text-center">
+                  <input type="checkbox"
+                         checked={selectedIds.has(row.id)}
+                         on:change={() => toggleSelected(row.id)}
+                         data-testid="assignments-row-checkbox"
+                         data-id={row.id}/>
+                </td>
                 <td>
                   {row.subject}
                   {#if row.coteach_group_id != null}
@@ -452,4 +650,46 @@
       <button class="btn-primary" on:click={save} data-testid="assignment-save-btn">Salva</button>
     </div>
   {/if}
+</Modal>
+
+<!-- Bulk change-teacher modal: shown when the user clicks "Cambia
+     docente..." on the bulk toolbar. Asks for the destination
+     teacher name and submits to /api/assignments/bulk/change-teacher.
+     The backend skips rows where the chosen teacher isn't qualified
+     for the row's subject; we surface that as a partial-success
+     toast in `bulkChangeTeacherSubmit`. -->
+<Modal open={bulkChangeTeacherOpen}
+       title="Riassegna {selectedIds.size} cattedre a un docente"
+       onClose={() => (bulkChangeTeacherOpen = false)}>
+  <div class="space-y-3" data-testid="bulk-change-teacher-modal">
+    <p class="text-xs text-ink-500">
+      Tutte le cattedre selezionate verranno riassegnate al docente
+      scelto. Le cattedre la cui materia non e' coperta dal docente
+      vengono saltate (lista mostrata nel toast finale).
+    </p>
+    <div class="field">
+      <label>Docente destinatario *</label>
+      <select bind:value={bulkTeacherName}
+              data-testid="bulk-teacher-select">
+        <option value="">-- scegli --</option>
+        {#each allTeachers as t}
+          <option value={t.name}>
+            {t.display}{t.group ? ' (' + t.group + ')' : ''}
+          </option>
+        {/each}
+      </select>
+    </div>
+    <div class="flex justify-end gap-2 mt-3">
+      <button class="btn"
+              on:click={() => (bulkChangeTeacherOpen = false)}
+              disabled={bulkBusy}
+              data-testid="bulk-change-teacher-cancel">Annulla</button>
+      <button class="btn-primary"
+              on:click={bulkChangeTeacherSubmit}
+              disabled={bulkBusy || !bulkTeacherName}
+              data-testid="bulk-change-teacher-confirm">
+        {bulkBusy ? '...' : 'Riassegna'}
+      </button>
+    </div>
+  </div>
 </Modal>
