@@ -775,7 +775,10 @@ profilo.
 La tabella \emph{Delta costo pickle vs.\ sqlite} (auto-generata
 sopra) confronta, per ogni cella in cui entrambe le datasource
 hanno prodotto una soluzione OK, il costo soft delle due
-configurazioni. Il delta \`e la metrica chiave:
+configurazioni. La tabella nasce dalla \emph{intersezione} dei
+due CSV: \texttt{results.csv} (run pickle) e
+\texttt{results\_sqlite.csv} (run SQLite). Il delta \`e la
+metrica chiave:
 
 \begin{itemize}
 \item \textbf{$\Delta < 0$}: lo SQLite ha trovato un costo
@@ -812,6 +815,66 @@ python tests/benchmarks/run_full_sweep.py \\
   --source sqlite --techniques cpsat_week
 \end{lstlisting}
 \end{esempiobox}
+
+\subsection{Stress sweep su DB SQLite (vincoli reali)}
+\label{sec:bench-v2-sqlite-stress}
+\index{Benchmark!sqlite stress sweep}
+
+Il run dedicato al solo dataset \texttt{sqlite} viene eseguito
+con il comando seguente; il CSV resta separato dal
+\texttt{results.csv} (che ospita anche le run pickle e i
+profili \texttt{huge}/\texttt{superhuge}/\texttt{mega}) per non
+mescolare due regime di carico vincolare diversi:
+
+\begin{lstlisting}[style=shell]
+python tests/benchmarks/run_full_sweep.py \\
+  --profiles small,medium,big \\
+  --source sqlite \\
+  --out docs/manual/benchmarks/results_sqlite.csv \\
+  --copy-to tests/benchmarks/results/full_sweep_sqlite_smb.csv \\
+  --precheck-time 30
+\end{lstlisting}
+
+Le tabelle che seguono sono generate da
+\texttt{gen\_charts.py} con \texttt{--dataset sqlite} e
+\texttt{--profiles small,medium,big}, alimentato da entrambi i
+CSV (l'unione \`e necessaria per la tabella delta pickle vs.\
+sqlite, che richiede l'intersezione delle stesse celle in
+entrambi i regime). La sezione documenta il \emph{costo} che il
+solver paga quando il database arriva pre-caricato di
+compresenze, sostegni, plessi multipli, indisponibilit\`a HARD
+e regole DSL: questa \`e la condizione di esercizio realistica,
+non una caricatura semplificata.
+
+\input{manual/benchmarks/charts_sqlite_generated}
+
+\begin{ideabox}[title=Lettura della delta-table per profilo]
+Confronta la riga \texttt{cpsat\_day} per ciascun profilo:
+\begin{itemize}
+\item Se il delta-\% \`e \emph{piccolo} ($<5\%$) significa che
+  la pipeline ha assorbito i vincoli SQLite senza degradare
+  significativamente la qualit\`a della soluzione: la
+  formulazione Phase A + Phase B \`e robusta al carico
+  realistico.
+\item Se il delta-\% \`e \emph{grande} ($>30\%$) la pipeline
+  paga il costo della stratificazione: i vincoli aggiuntivi
+  hanno spostato la soluzione verso una zona con pi\`u
+  violazioni soft (es. pi\`u \texttt{n\_sixth\_hour},
+  pi\`u \texttt{glib} non rispettato).
+\item Se la riga \emph{manca} per un profilo, una delle due
+  run (pickle o sqlite) non ha prodotto una soluzione OK
+  (timeout, hard\_violation, infeasible). Quella cella \`e
+  un punto di rottura: o si rilassa il vincolo nel DB, o si
+  d\`a pi\`u tempo al solver.
+\end{itemize}
+Una distribuzione tipica su \texttt{small}--\texttt{big}: la
+maggior parte delle tecniche sta nel range $[0,30\%]$, con
+qualche outlier negativo (la stratificazione ha guidato il
+solver verso una soluzione complessivamente migliore) e
+qualche cpsat-only positiva oltre $+50\%$ quando la palestra
+HARD per Educazione Fisica spinge l'allocazione su slot
+sub-ottimali.
+\end{ideabox}
 
 \subsection{Caveat di interpretazione}
 
