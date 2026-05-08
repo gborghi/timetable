@@ -24,7 +24,7 @@
    */
   import { onMount } from 'svelte';
   import { api } from '$lib/api';
-  import { flash } from '$lib/stores';
+  import { flash, reloadWorkingHoursConfig } from '$lib/stores';
   import WeeklyCalendarView from '$lib/components/WeeklyCalendarView.svelte';
 
   let config = null;
@@ -46,7 +46,10 @@
     loading = true;
     error = '';
     try {
-      config = await api.get('/api/working-hours/config');
+      // Always go through the shared store so every other open
+      // WeeklyCalendarView (schedule / classes / teachers /
+      // classrooms) sees the same canonical config.
+      config = await reloadWorkingHoursConfig();
       drafts = {};
       dirty = {};
       for (const d of config.days) {

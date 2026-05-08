@@ -17,7 +17,7 @@
    * just surfaces the live state.
    */
   import { onMount } from 'svelte';
-  import * as api from '$lib/api';
+  import { api } from '$lib/api';
   import { flash } from '$lib/stores';
 
   let plessi = [];

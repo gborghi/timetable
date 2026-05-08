@@ -106,6 +106,39 @@ export const datasetEmpty = derived(datasetState, ($s) =>
   ($s.classes ?? 0) === 0 && ($s.teachers ?? 0) === 0,
 );
 
+// ----- Working-hours config (shared across every WeeklyCalendarView) -----
+// /ore is the canonical editor; /schedule, /classes, /teachers,
+// /classrooms each render a WeeklyCalendarView whose slot layout
+// must come from this store so a save in /ore reaches them
+// reactively (without each consumer remembering to refetch).
+//
+// Workflow:
+//   - WeeklyCalendarView subscribes; if the store is null it calls
+//     loadWorkingHoursConfig() which fetches once and broadcasts.
+//   - /ore calls reloadWorkingHoursConfig() after each successful
+//     PUT /api/working-hours/days/{id}/slots so every other open
+//     calendar updates in place, without a navigation reload.
+export const workingHoursConfig: Writable<unknown | null> = writable(null);
+let _workingHoursLoadPromise: Promise<unknown> | null = null;
+export async function loadWorkingHoursConfig(): Promise<unknown> {
+  if (_workingHoursLoadPromise) return _workingHoursLoadPromise;
+  _workingHoursLoadPromise = (async () => {
+    try {
+      const cfg = await api.get<unknown>("/api/working-hours/config");
+      workingHoursConfig.set(cfg);
+      return cfg;
+    } finally {
+      _workingHoursLoadPromise = null;
+    }
+  })();
+  return _workingHoursLoadPromise;
+}
+export async function reloadWorkingHoursConfig(): Promise<unknown> {
+  _workingHoursLoadPromise = null;
+  workingHoursConfig.set(null);
+  return loadWorkingHoursConfig();
+}
+
 // ----- Network status ---------------------------------------------------
 export const networkOnline: Writable<boolean> = writable(true);
 let pingTimer: ReturnType<typeof setInterval> | null = null;

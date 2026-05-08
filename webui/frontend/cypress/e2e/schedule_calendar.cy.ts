@@ -392,8 +392,12 @@ describe('/schedule calendar -- with active solution (Phase A+B)', () => {
       const poolId = r.body.unscheduled_id;
       cy.reload();
       cy.wait('@getPool');
+      // The pool sidebar is `position: sticky` -- when there's enough
+      // calendar above it the sticky element can sit below the
+      // viewport. Scroll into view before asserting visibility.
       cy.get(`[data-testid="sched-pool-item-${poolId}"]`,
-             { timeout: 5000 }).should('be.visible');
+             { timeout: 5000 }).scrollIntoView()
+        .should('be.visible');
       cy.intercept(
         'POST', `**/api/lessons/unscheduled/${poolId}/reschedule`,
       ).as('reschedule');

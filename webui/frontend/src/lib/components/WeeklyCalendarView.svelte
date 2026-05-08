@@ -38,7 +38,10 @@
    */
   import { onMount, onDestroy } from 'svelte';
   import { get } from 'svelte/store';
-  import * as api from '$lib/api';
+  import {
+    workingHoursConfig,
+    loadWorkingHoursConfig,
+  } from '$lib/stores';
   import {
     heldKey,
     startKeyboardConstraintMode,
@@ -110,45 +113,59 @@
 
   let kbCleanup;
   let hovering = false;
+  // Reactively pick up the shared working-hours config when the
+  // caller didn't pass an explicit `config` prop. Whenever /ore
+  // saves changes it calls reloadWorkingHoursConfig() on the same
+  // store, which propagates to every mounted WeeklyCalendarView
+  // without a navigation reload.
+  let _storeUnsub = null;
   onMount(async () => {
     kbCleanup = startKeyboardConstraintMode();
-    if (!_config) {
-      try {
-        loadingConfig = true;
-        _config = await api.get('/api/working-hours/config');
-      } catch {
-        // Fall back to a synthetic default config so the component
-        // still renders even if the API isn't reachable (e.g. unit
-        // tests). This matches the engine's legacy fallback.
-        _config = {
-          days: [
-            { id: 1, code: 'MON', label: 'Lun', position: 0,
-              legacy_day_number: 1, is_active: true,
-              slots: _defaultSlots() },
-            { id: 2, code: 'TUE', label: 'Mar', position: 1,
-              legacy_day_number: 2, is_active: true,
-              slots: _defaultSlots() },
-            { id: 3, code: 'WED', label: 'Mer', position: 2,
-              legacy_day_number: 3, is_active: true,
-              slots: _defaultSlots() },
-            { id: 4, code: 'THU', label: 'Gio', position: 3,
-              legacy_day_number: 4, is_active: true,
-              slots: _defaultSlots() },
-            { id: 5, code: 'FRI', label: 'Ven', position: 4,
-              legacy_day_number: 5, is_active: true,
-              slots: _defaultSlots() },
-            { id: 6, code: 'SAT', label: 'Sab', position: 5,
-              legacy_day_number: 6, is_active: true,
-              slots: _defaultSlots() },
-          ],
-          max_slots_per_day: 6, uniform_slot_count: true,
-        };
-      } finally {
-        loadingConfig = false;
+    if (!config) {
+      _storeUnsub = workingHoursConfig.subscribe((v) => {
+        if (v) _config = v;
+      });
+      if (!get(workingHoursConfig)) {
+        try {
+          loadingConfig = true;
+          await loadWorkingHoursConfig();
+        } catch {
+          // Synthetic fallback so the component still renders if the
+          // API is unreachable (offline / unit tests). Matches the
+          // engine's legacy hardcoded layout.
+          _config = {
+            days: [
+              { id: 1, code: 'MON', label: 'Lun', position: 0,
+                legacy_day_number: 1, is_active: true,
+                slots: _defaultSlots() },
+              { id: 2, code: 'TUE', label: 'Mar', position: 1,
+                legacy_day_number: 2, is_active: true,
+                slots: _defaultSlots() },
+              { id: 3, code: 'WED', label: 'Mer', position: 2,
+                legacy_day_number: 3, is_active: true,
+                slots: _defaultSlots() },
+              { id: 4, code: 'THU', label: 'Gio', position: 3,
+                legacy_day_number: 4, is_active: true,
+                slots: _defaultSlots() },
+              { id: 5, code: 'FRI', label: 'Ven', position: 4,
+                legacy_day_number: 5, is_active: true,
+                slots: _defaultSlots() },
+              { id: 6, code: 'SAT', label: 'Sab', position: 5,
+                legacy_day_number: 6, is_active: true,
+                slots: _defaultSlots() },
+            ],
+            max_slots_per_day: 6, uniform_slot_count: true,
+          };
+        } finally {
+          loadingConfig = false;
+        }
       }
     }
   });
-  onDestroy(() => kbCleanup?.());
+  onDestroy(() => {
+    kbCleanup?.();
+    _storeUnsub?.();
+  });
 
   function _defaultSlots() {
     return Array.from({ length: 6 }, (_, i) => ({
@@ -398,6 +415,47 @@
       const a = editDrag.anchorY;
       const top = Math.min(a, y);
       const height = Math.max(8, Math.abs(y - a));
+      editDragPreview = {
+        dayId: editDrag.dayId, top, height,
+        label: `${_pxToTime(top, displayBgRange, PX_PER_HOUR, SNAP_MIN)}` +
+               `-${_pxToTime(top + height, displayBgRange, PX_PER_HOUR, SNAP_MIN)}`,
+      };
+    } else if (editDrag.kind === 'move') {
+      const dy = editDrag.currentY - editDrag.anchorY;
+      const origTop = _pxFromTime(editDrag.original.start_time,
+                                  displayBgRange);
+      const origBot = _pxFromTime(editDrag.original.end_time,
+                                  displayBgRange);
+      const top = origTop + dy;
+      const height = Math.max(8, origBot - origTop);
+      editDragPreview = {
+        dayId: editDrag.dayId, top, height,
+        label: `${_pxToTime(top, displayBgRange, PX_PER_HOUR, SNAP_MIN)}` +
+               `-${_pxToTime(top + height, displayBgRange, PX_PER_HOUR, SNAP_MIN)}`,
+      };
+    } else if (editDrag.kind === 'resize-top') {
+      const dy = editDrag.currentY - editDrag.anchorY;
+      const origTop = _pxFromTime(editDrag.original.start_time,
+                                  displayBgRange);
+      const origBot = _pxFromTime(editDrag.original.end_time,
+                                  displayBgRange);
+      const newTop = Math.min(origBot - 8, origTop + dy);
+      const top = newTop;
+      const height = Math.max(8, origBot - newTop);
+      editDragPreview = {
+        dayId: editDrag.dayId, top, height,
+        label: `${_pxToTime(top, displayBgRange, PX_PER_HOUR, SNAP_MIN)}` +
+               `-${_pxToTime(top + height, displayBgRange, PX_PER_HOUR, SNAP_MIN)}`,
+      };
+    } else if (editDrag.kind === 'resize-bottom') {
+      const dy = editDrag.currentY - editDrag.anchorY;
+      const origTop = _pxFromTime(editDrag.original.start_time,
+                                  displayBgRange);
+      const origBot = _pxFromTime(editDrag.original.end_time,
+                                  displayBgRange);
+      const newBot = Math.max(origTop + 8, origBot + dy);
+      const top = origTop;
+      const height = newBot - origTop;
       editDragPreview = {
         dayId: editDrag.dayId, top, height,
         label: `${_pxToTime(top, displayBgRange, PX_PER_HOUR, SNAP_MIN)}` +
@@ -680,7 +738,7 @@
     const k = day + '-' + hour;
     if (configuredSlots.has(k)) {
       ev.preventDefault();
-      ev.dataTransfer.dropEffect = 'move';
+      try { ev.dataTransfer.dropEffect = 'move'; } catch { /* JSDOM */ }
     }
     dragHoverKey = k;
   }
@@ -873,9 +931,16 @@
                   {@const isEditing = editPopover
                       && editPopover.dayId === dayId
                       && editPopover.idx === sIdx}
+                  {@const isGhosting = editDrag
+                      && editDrag.dayId === dayId
+                      && editDrag.idx === sIdx
+                      && (editDrag.kind === 'move'
+                          || editDrag.kind === 'resize-top'
+                          || editDrag.kind === 'resize-bottom')}
                   <div class="cal-event cal-event--edit"
                        class:cal-event--selected={isSelected}
                        class:cal-event--editing={isEditing}
+                       class:cal-event--ghosting={isGhosting}
                        style="top: {_pxFromTime(slot.start_time, displayBgRange)}px;
                               height: {_pxDuration(slot)}px"
                        data-day={dnum}
@@ -1297,6 +1362,14 @@
     color: #1e3a8a;
     pointer-events: none;
     z-index: 3;
+  }
+  /* During an active move/resize drag the source slot dims to make
+     the live preview ("ghost") at the projected position read as
+     the authoritative target. Commits to full opacity on mouse-up. */
+  .cal-event--ghosting {
+    opacity: 0.35;
+    filter: grayscale(0.4);
+    transition: opacity 60ms ease;
   }
   .cal-event-label {
     font-size: 9px;
