@@ -92,6 +92,33 @@ def teacher_mandatory_free_day_to_dsl(teacher_name: str, day: int) -> str:
             f' and l.day == {int(day)} == 0')
 
 
+def teacher_at_least_n_free_days_to_dsl(teacher_name: str, n: int) -> str:
+    """Free-day floor: the teacher must have at least ``n`` days
+    in the week with zero lessons. Emitted as the canonical pragma
+    ``teacher_at_least_n_free_days("<name>", n)``.
+
+    With n=1 this is the universal CCNL-style "at least one free day"
+    rule. The compiler builds per-(teacher, day) busy indicators and
+    constrains their sum to be at most ``num_days - n``."""
+    return (f'teacher_at_least_n_free_days('
+            f'{_quote(teacher_name)}, {int(n)})')
+
+
+def teacher_preferred_free_day_penalty_to_dsl(teacher_name: str,
+                                                day: int,
+                                                weight: int) -> str:
+    """SOFT preference: pay ``weight`` if the teacher has any lesson on
+    ``day``. Emitted as the canonical pragma
+    ``teacher_preferred_free_day_penalty("<name>", day, weight)``.
+
+    Used to express the priority-ordered free-day preferences (the
+    UI's 1st/2nd/3rd choice with weights 30/20/10 by default). The
+    solver minimises the sum of these soft costs so the higher-weight
+    choice is honored first."""
+    return (f'teacher_preferred_free_day_penalty('
+            f'{_quote(teacher_name)}, {int(day)}, {int(weight)})')
+
+
 def teacher_max_consecutive_to_dsl(teacher_name: str, n: int) -> str:
     """Teacher cannot exceed n consecutive hours per day. Encoded as:
     for any window of (n+1) consecutive hours on any day, count of
@@ -474,13 +501,17 @@ def load_all_dsl_constraints(db,
 
     The returned ordering is stable: TeacherUnavailability rows
     first, then ClassUnavailability, then ClassroomUnavailability,
-    then TeacherMandatoryFreeDay, then CoteachGroup, then
-    LogicalUnavailability, then CurriculumLogicalConstraint, then
-    GeneralConstraint (the user-authored DSL rules saved via
-    /api/constraints/general for any scope -- global / teacher /
-    class / classroom / group / subject / curriculum). This
-    determinism keeps the CP-SAT model construction order stable
-    across runs.
+    then TeacherMandatoryFreeDay, then per-teacher
+    `teacher_at_least_n_free_days` HARD floor (sourced from
+    Teacher.required_free_days_count), then per-teacher
+    `teacher_preferred_free_day_penalty` priority preferences
+    (sourced from TeacherFreeDayPreference rows), then
+    CoteachGroup, then LogicalUnavailability, then
+    CurriculumLogicalConstraint, then GeneralConstraint (the
+    user-authored DSL rules saved via /api/constraints/general for
+    any scope -- global / teacher / class / classroom / group /
+    subject / curriculum). This determinism keeps the CP-SAT model
+    construction order stable across runs.
     """
     try:
         from webui.backend import models  # type: ignore
@@ -560,6 +591,64 @@ def load_all_dsl_constraints(db,
             "weight": 0,
             "label": f"Docente {n} giorno libero {r.day}",
         })
+
+    # 4b. Per-teacher HARD floor "at least N free days" sourced from
+    # Teacher.required_free_days_count (default 1 = CCNL "almeno un
+    # giorno libero"). Emitted as the canonical
+    # `teacher_at_least_n_free_days(name, n)` pragma so it works in
+    # both Phase A and Phase B contexts -- previously this rule was
+    # implicit in the Phase A `free_day_choice_3way` pragma, which
+    # got bypassed by the cpsat_week / cpsat_day_skip_phase_a /
+    # cpsat_day_soft_hint techniques. With the new pragma the floor
+    # is enforced uniformly regardless of solver scope.
+    for t in db.query(models.Teacher).all():
+        n_floor = int(getattr(t, "required_free_days_count", 1) or 0)
+        if n_floor <= 0:
+            continue
+        out.append({
+            "source": "teacher_at_least_n_free_days",
+            "scope_kind": "teacher", "scope_id": t.id,
+            "expression": teacher_at_least_n_free_days_to_dsl(
+                t.name, n_floor),
+            "is_hard": True,
+            "weight": 0,
+            "label": (f"Docente {t.name} almeno {n_floor} "
+                      f"giorn{'o' if n_floor == 1 else 'i'} liber"
+                      f"{'o' if n_floor == 1 else 'i'}/sett."),
+        })
+
+    # 4c. Per-teacher priority-ordered free-day preferences sourced
+    # from the dedicated `TeacherFreeDayPreference` table. Each row
+    # is (teacher_id, day, priority) where priority in {1, 2, 3}
+    # maps to weights {30, 20, 10} -- the 1st choice costs the most
+    # to ignore so the solver honors it first under minimisation.
+    if include_soft and hasattr(models, "TeacherFreeDayPreference"):
+        PRIORITY_WEIGHT = {1: 30, 2: 20, 3: 10}
+        for r in (db.query(models.TeacherFreeDayPreference)
+                    .order_by(
+                        models.TeacherFreeDayPreference.teacher_id,
+                        models.TeacherFreeDayPreference.priority)
+                    .all()):
+            n = teachers.get(r.teacher_id)
+            if not n:
+                continue
+            weight = PRIORITY_WEIGHT.get(int(r.priority))
+            if weight is None or weight == 0:
+                continue
+            day = int(r.day)
+            if day < 1 or day > 6:
+                continue
+            out.append({
+                "source": "teacher_free_day_preference",
+                "scope_kind": "teacher", "scope_id": r.teacher_id,
+                "expression": teacher_preferred_free_day_penalty_to_dsl(
+                    n, day, weight),
+                "is_hard": False,
+                "weight": weight,
+                "label": (f"Docente {n} preferenza giorno libero "
+                          f"{day} (SOFT pri.{int(r.priority)}, "
+                          f"w={weight})"),
+            })
 
     # 5. CoteachGroup (HARD when required=True)
     if hasattr(models, "CoteachGroup"):
