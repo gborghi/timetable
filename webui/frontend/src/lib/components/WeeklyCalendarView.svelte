@@ -2,10 +2,18 @@
   /**
    * Reusable calendar-grid view for slot-level constraints.
    *
-   * Layout: columns = active working days (in Tab Ore position order),
-   * rows = slot indices 0..max_slots_per_day-1. Each cell shows the
-   * slot's (start_time-end_time) label and is colored by the cell's
-   * level (free / soft / hard / preferred / enforced).
+   * Layout: a Google-Calendar-style weekly grid. The BACKGROUND is a
+   * full hour grid (auto-fitted around the configured slot range,
+   * default 07:00-19:00) drawn as faint dashed gridlines. Each cell
+   * of the background is non-interactive (cursor: not-allowed) so
+   * the user cannot accidentally set a constraint on an unconfigured
+   * hour. The Tab Ore slots are rendered ON TOP of the background as
+   * absolutely-positioned event blocks, with `top` and `height`
+   * computed from the slot's start_time / end_time so a 90-minute
+   * lab block is twice as tall as a 45-minute slot. Only the events
+   * are clickable + colorable (free / soft / hard / preferred /
+   * enforced). Days with fewer or shorter slots than others render
+   * fewer / smaller events; the background grid is shared.
    *
    * Data shape:
    *   value = Array<{ day, hour, state, soft_penalty?, reason? }>
@@ -37,6 +45,13 @@
     shortcutToMatrixState,
   } from '../keyboardConstraintMode';
   import KeyboardConstraintLegend from './KeyboardConstraintLegend.svelte';
+  import {
+    PX_PER_HOUR,
+    bgRangeFor,
+    pxFromTime as _pxFromTime,
+    pxDuration as _pxDuration,
+    gridHeight as _gridHeight,
+  } from '$lib/calendar_layout.mjs';
 
   export let value = [];
   export let onChange = (_v) => {};
@@ -106,6 +121,22 @@
 
   $: activeDays = (_config?.days || []).filter((d) => d.is_active);
   $: maxSlots = _config?.max_slots_per_day || 0;
+
+  // Calendar background range: a Google-Calendar-style grid that
+  // shows ALL hours of a typical school day (07:00-19:00) as faint,
+  // non-clickable gridlines. The configured Tab Ore slots are then
+  // rendered ON TOP of this background as positioned, clickable
+  // event blocks. Background auto-expands beyond 7-19 to cover any
+  // slot that starts earlier or ends later (e.g. evening adult-
+  // school slots). Pure layout helpers live in $lib/calendar_layout
+  // so they can be unit-tested.
+  $: bgRange = bgRangeFor(activeDays);
+  $: bgHours = (() => {
+    const out = [];
+    for (let h = bgRange.lo; h <= bgRange.hi; h += 1) out.push(h);
+    return out;
+  })();
+  $: gridHeightPx = _gridHeight(bgRange);
 
   function _key(d, h) { return d + '-' + h; }
 
@@ -285,130 +316,111 @@
     </div>
   {:else}
     <div class="overflow-x-auto">
-      <table class="tbl">
-        <thead>
-          <tr>
-            <th class="w-20"></th>
-            {#each activeDays as d}
-              <th class="text-center" title={d.label}>
-                {d.label.slice(0, 3)}
-              </th>
-            {/each}
-          </tr>
-        </thead>
-        <tbody>
-          {#each Array(maxSlots) as _, slotIdx}
-            <tr>
-              <td class="text-xs text-ink-500 align-middle px-1">
-                {#each activeDays.slice(0, 1) as d0}
-                  {@const s = d0.slots[slotIdx]}
-                  {#if s}
-                    {s.start_time}
-                  {:else}
-                    --
-                  {/if}
-                {/each}
-              </td>
-              {#each activeDays as d}
-                {@const slot = d.slots[slotIdx]}
-                {#if !slot}
-                  <td class="p-1 align-middle">
-                    <div class="h-9 rounded border border-dashed
-                                border-ink-200 bg-ink-50/50
-                                flex items-center justify-center
-                                text-[10px] text-ink-400">--</div>
-                  </td>
-                {:else}
-                  {@const dnum = d.legacy_day_number}
-                  {@const hnum = slot.legacy_hour_number}
-                  {@const cell = cells.find((c) =>
-                      c.day === dnum && c.hour === hnum) || null}
-                  {@const isFree = !cell}
-                  {@const isSoft = cell && cell.state === 'soft'}
-                  {@const isHard = cell && cell.state === 'hard'}
-                  {@const isPref = cell && cell.state === 'preferred'}
-                  {@const isEnf  = cell && cell.state === 'enforced'}
-                  <td class="p-1 align-middle">
-                    <div class="relative h-9 rounded border
-                                cursor-pointer transition-colors
-                                flex items-center justify-center"
-                      class:bg-emerald-50={isFree}
-                      class:border-emerald-300={isFree}
-                      class:hover:bg-emerald-100={isFree}
-                      class:bg-amber-200={isSoft}
-                      class:border-amber-400={isSoft}
-                      class:bg-red-300={isHard}
-                      class:border-red-500={isHard}
-                      class:bg-sky-200={isPref}
-                      class:border-sky-400={isPref}
-                      class:bg-emerald-700={isEnf}
-                      class:border-emerald-900={isEnf}
-                      data-day={dnum}
-                      data-hour={hnum}
-                      data-state={cell ? cell.state : 'free'}
-                      on:click={(e) => onCellClick(e, dnum, hnum)}
-                      on:mousedown={(e) => onMouseDown(e, dnum, hnum)}
-                      on:mouseenter={() => onMouseEnter(dnum, hnum)}
-                      title={`${slot.start_time}-${slot.end_time}` +
-                        (isSoft
-                          ? ` -- SOFT, penalita ${cell.soft_penalty}`
-                          : isPref
-                          ? ` -- PREFERRED, bonus ${cell.soft_penalty}`
-                          : isEnf
-                          ? ' -- ENFORCED'
-                          : isHard
-                          ? ' -- HARD non disponibile'
-                          : ' -- libero')}>
-                      {#if isFree}
-                        <span class="text-emerald-700 font-semibold
-                                     text-xs">-</span>
-                      {:else if isEnf}
-                        <span class="text-white font-semibold text-xs">!</span>
-                      {:else if isHard}
-                        <span class="text-red-900 font-semibold text-xs">X</span>
-                      {:else if isSoft}
-                        <input type="number" min="0" max="9999" step="10"
-                          class="block w-12 h-7 text-center text-xs
-                                 font-semibold text-amber-900
-                                 bg-amber-100 border border-amber-500
-                                 rounded [appearance:textfield]
-                                 [&::-webkit-outer-spin-button]:appearance-none
-                                 [&::-webkit-inner-spin-button]:appearance-none
-                                 focus:outline-none focus:ring-2
-                                 focus:ring-amber-600/40"
-                          value={drafts[_key(dnum, hnum)] ?? cell.soft_penalty}
-                          on:click|stopPropagation
-                          on:mousedown|stopPropagation
-                          on:dblclick|stopPropagation
-                          on:input={(e) => onPenaltyInput(e, dnum, hnum)}
-                          on:change={(e) => onPenaltyChange(e, dnum, hnum)}
-                          on:keydown={(e) => onPenaltyKeydown(e, dnum, hnum)}/>
-                      {:else if isPref}
-                        <input type="number" max="0" min="-9999" step="10"
-                          class="block w-12 h-7 text-center text-xs
-                                 font-semibold text-sky-900
-                                 bg-sky-100 border border-sky-500
-                                 rounded [appearance:textfield]
-                                 [&::-webkit-outer-spin-button]:appearance-none
-                                 [&::-webkit-inner-spin-button]:appearance-none
-                                 focus:outline-none focus:ring-2
-                                 focus:ring-sky-600/40"
-                          value={drafts[_key(dnum, hnum)] ?? cell.soft_penalty}
-                          on:click|stopPropagation
-                          on:mousedown|stopPropagation
-                          on:dblclick|stopPropagation
-                          on:input={(e) => onPenaltyInput(e, dnum, hnum)}
-                          on:change={(e) => onPenaltyChange(e, dnum, hnum)}
-                          on:keydown={(e) => onPenaltyKeydown(e, dnum, hnum)}/>
-                      {/if}
-                    </div>
-                  </td>
-                {/if}
-              {/each}
-            </tr>
+      <div class="cal-grid"
+           style="--n-days: {activeDays.length};
+                  --hour-px: {PX_PER_HOUR}px;
+                  --grid-h: {gridHeightPx}px;">
+        <!-- header row: time-col placeholder + day labels -->
+        <div class="cal-header">
+          <div class="cal-time-col"></div>
+          {#each activeDays as d}
+            <div class="cal-day-header" title={d.label}>
+              {d.label.slice(0, 3)}
+            </div>
           {/each}
-        </tbody>
-      </table>
+        </div>
+        <!-- body row: time-col on the left + day-cols with events -->
+        <div class="cal-body" style="height: {gridHeightPx}px">
+          <!-- time column with hour labels aligned with gridlines -->
+          <div class="cal-time-col">
+            {#each bgHours as h}
+              <div class="cal-hour-label"
+                   style="top: {(h - bgRange.lo) * PX_PER_HOUR}px">
+                {String(h).padStart(2, '0')}:00
+              </div>
+            {/each}
+          </div>
+          <!-- one column per active day -->
+          {#each activeDays as d}
+            {@const dnum = d.legacy_day_number}
+            <div class="cal-day-col" data-day={dnum}>
+              <!-- background hour gridlines (non-clickable) -->
+              {#each bgHours as h}
+                <div class="cal-hour-bg"
+                     style="top: {(h - bgRange.lo) * PX_PER_HOUR}px"
+                     aria-disabled="true"
+                     title="Ora {String(h).padStart(2, '0')}:00 -- nessuno slot configurato qui"></div>
+              {/each}
+              <!-- foreground events: configured Tab Ore slots,
+                   clickable + colorable -->
+              {#each (d.slots || []) as slot}
+                {@const hnum = slot.legacy_hour_number}
+                {@const cell = cells.find((c) =>
+                    c.day === dnum && c.hour === hnum) || null}
+                {@const isFree = !cell}
+                {@const isSoft = cell && cell.state === 'soft'}
+                {@const isHard = cell && cell.state === 'hard'}
+                {@const isPref = cell && cell.state === 'preferred'}
+                {@const isEnf  = cell && cell.state === 'enforced'}
+                <div class="cal-event"
+                     class:cal-event--free={isFree}
+                     class:cal-event--soft={isSoft}
+                     class:cal-event--hard={isHard}
+                     class:cal-event--preferred={isPref}
+                     class:cal-event--enforced={isEnf}
+                     class:cal-event--readonly={readonly}
+                     style="top: {_pxFromTime(slot.start_time, bgRange)}px;
+                            height: {_pxDuration(slot)}px"
+                     data-day={dnum}
+                     data-hour={hnum}
+                     data-state={cell ? cell.state : 'free'}
+                     on:click={(e) => onCellClick(e, dnum, hnum)}
+                     on:mousedown={(e) => onMouseDown(e, dnum, hnum)}
+                     on:mouseenter={() => onMouseEnter(dnum, hnum)}
+                     title={`${slot.start_time}-${slot.end_time}` +
+                       (isSoft
+                         ? ` -- SOFT, penalita ${cell.soft_penalty}`
+                         : isPref
+                         ? ` -- PREFERRED, bonus ${cell.soft_penalty}`
+                         : isEnf
+                         ? ' -- ENFORCED'
+                         : isHard
+                         ? ' -- HARD non disponibile'
+                         : ' -- libero')}>
+                  <div class="cal-event-time">
+                    {slot.start_time}-{slot.end_time}
+                  </div>
+                  {#if isEnf}
+                    <span class="cal-event-marker cal-event-marker--enf">!</span>
+                  {:else if isHard}
+                    <span class="cal-event-marker cal-event-marker--hard">X</span>
+                  {:else if isSoft}
+                    <input type="number" min="0" max="9999" step="10"
+                      class="cal-event-input cal-event-input--soft"
+                      value={drafts[_key(dnum, hnum)] ?? cell.soft_penalty}
+                      on:click|stopPropagation
+                      on:mousedown|stopPropagation
+                      on:dblclick|stopPropagation
+                      on:input={(e) => onPenaltyInput(e, dnum, hnum)}
+                      on:change={(e) => onPenaltyChange(e, dnum, hnum)}
+                      on:keydown={(e) => onPenaltyKeydown(e, dnum, hnum)}/>
+                  {:else if isPref}
+                    <input type="number" max="0" min="-9999" step="10"
+                      class="cal-event-input cal-event-input--pref"
+                      value={drafts[_key(dnum, hnum)] ?? cell.soft_penalty}
+                      on:click|stopPropagation
+                      on:mousedown|stopPropagation
+                      on:dblclick|stopPropagation
+                      on:input={(e) => onPenaltyInput(e, dnum, hnum)}
+                      on:change={(e) => onPenaltyChange(e, dnum, hnum)}
+                      on:keydown={(e) => onPenaltyKeydown(e, dnum, hnum)}/>
+                  {/if}
+                </div>
+              {/each}
+            </div>
+          {/each}
+        </div>
+      </div>
     </div>
   {/if}
 
@@ -416,5 +428,126 @@
 </div>
 
 <style>
-  .weekly-calendar :global(table.tbl) { border-collapse: separate; }
+  /* Calendar-grid layout: time column on the left + N day columns,
+     with configured Tab Ore slots rendered as absolutely-positioned
+     event blocks ON TOP of the always-visible hour gridlines. The
+     hour gridlines are non-interactive (cursor: not-allowed) so the
+     user cannot accidentally set a constraint at an unconfigured
+     hour. */
+  .cal-grid {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    overflow: hidden;
+    user-select: none;
+  }
+  .cal-header {
+    display: grid;
+    grid-template-columns: 60px repeat(var(--n-days, 6), 1fr);
+    background: #f9fafb;
+    border-bottom: 1px solid #e5e7eb;
+  }
+  .cal-day-header {
+    padding: 6px 4px;
+    text-align: center;
+    font-size: 12px;
+    font-weight: 600;
+    color: #374151;
+    border-left: 1px solid #e5e7eb;
+  }
+  .cal-body {
+    display: grid;
+    grid-template-columns: 60px repeat(var(--n-days, 6), 1fr);
+    position: relative;
+  }
+  .cal-time-col {
+    position: relative;
+    background: #f9fafb;
+    border-right: 1px solid #e5e7eb;
+  }
+  .cal-hour-label {
+    position: absolute;
+    left: 0;
+    right: 4px;
+    transform: translateY(-50%);
+    text-align: right;
+    font-size: 10px;
+    color: #6b7280;
+    pointer-events: none;
+  }
+  .cal-day-col {
+    position: relative;
+    border-left: 1px solid #f3f4f6;
+  }
+  .cal-day-col:first-of-type { border-left: none; }
+  /* Background hour gridlines: visible but inert. */
+  .cal-hour-bg {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: var(--hour-px, 40px);
+    border-top: 1px dashed #f3f4f6;
+    background: #fafafa;
+    cursor: not-allowed;
+    pointer-events: none;
+  }
+  /* Foreground events: clickable + colorable. */
+  .cal-event {
+    position: absolute;
+    left: 2px;
+    right: 2px;
+    border: 1px solid;
+    border-radius: 4px;
+    padding: 2px 4px;
+    font-size: 10px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: filter 0.15s, box-shadow 0.15s;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    z-index: 1;
+  }
+  .cal-event:hover { filter: brightness(0.96); box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+  .cal-event--readonly { cursor: default; }
+  .cal-event-time {
+    font-size: 9px;
+    font-weight: 600;
+    line-height: 1.1;
+    opacity: 0.8;
+  }
+  .cal-event--free      { background: #ecfdf5; border-color: #6ee7b7; color: #065f46; }
+  .cal-event--soft      { background: #fde68a; border-color: #f59e0b; color: #78350f; }
+  .cal-event--hard      { background: #fca5a5; border-color: #ef4444; color: #7f1d1d; }
+  .cal-event--preferred { background: #bae6fd; border-color: #38bdf8; color: #075985; }
+  .cal-event--enforced  { background: #047857; border-color: #064e3b; color: white; }
+  .cal-event-marker {
+    align-self: center;
+    font-weight: 700;
+    font-size: 12px;
+    line-height: 1;
+  }
+  .cal-event-marker--enf  { color: white; }
+  .cal-event-marker--hard { color: #7f1d1d; }
+  .cal-event-input {
+    align-self: stretch;
+    text-align: center;
+    border: 1px solid;
+    border-radius: 3px;
+    padding: 1px 2px;
+    font-size: 11px;
+    font-weight: 600;
+    appearance: textfield;
+    -moz-appearance: textfield;
+  }
+  .cal-event-input::-webkit-outer-spin-button,
+  .cal-event-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  .cal-event-input--soft { background: #fef3c7; border-color: #d97706; color: #78350f; }
+  .cal-event-input--pref { background: #e0f2fe; border-color: #0ea5e9; color: #075985; }
+  .cal-event-input:focus { outline: none; box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.3); }
+  .cal-event-input--pref:focus { box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.3); }
 </style>
