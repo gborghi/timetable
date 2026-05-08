@@ -855,10 +855,13 @@ def test_subject_day_count_pair_skips_other_teacher_subject():
 
 
 def test_build_phase_a_pragmas_emits_canonical_set():
-    """Helper emits the five canonical Phase A pragmas given a tiny
+    """Helper emits the canonical Phase A pragmas given a tiny
     school: cl_day_load + Hall (one per prof in real classes) +
-    free_day (only for profs with >= 3 glibero) + Mat/Ita pair (only
-    for subjects with >= 2 hours) + Motorie (only when present)."""
+    Mat/Ita pair (only for subjects with >= 2 hours) + Motorie
+    (only when present). Free-day pragmas are no longer emitted
+    here -- they are sourced from the DB (TeacherFreeDayPreference
+    + Teacher.required_free_days_count) by load_all_dsl_constraints
+    so they apply uniformly across Phase A and Phase B contexts."""
     import cpsat_v2_timetable as cv2
     profs = {
         "T1": {"classi": {"1A": {"Matematica": {"ore": 4}}},
@@ -894,12 +897,13 @@ def test_build_phase_a_pragmas_emits_canonical_set():
     for prof in ("T1", "T2", "T3"):
         assert any(f"hall_bound_prof_day('{prof}')" == p
                     for p in pragmas), pragmas
-    # free_day: T1, T2 (T3 has empty glibero, must be skipped).
-    assert any("free_day_choice_3way('T1', 3, 4, 5)" == p
-                for p in pragmas)
-    assert any("free_day_choice_3way('T2', 1, 2, 6)" == p
-                for p in pragmas)
-    assert not any("free_day_choice_3way('T3'" in p for p in pragmas)
+    # free_day_choice_3way is no longer emitted here -- the new
+    # `teacher_at_least_n_free_days` HARD floor + `teacher_preferred_
+    # free_day_penalty` SOFT priority pragmas live in the DB-driven
+    # path (load_all_dsl_constraints) so they apply uniformly across
+    # Phase A / Phase B / cpsat_week / cpsat_day_skip_phase_a /
+    # cpsat_day_soft_hint regardless of solver scope.
+    assert not any("free_day_choice_3way" in p for p in pragmas)
     # Mat/Ita: per-teacher per-subject pragma. T1 has Matematica=4
     # (>= 2) -> emit. T2 has Italiano=5 (>= 2) -> emit. Storia=1
     # is < 2 and is not Mat/Ita anyway -> skip. T3 has Motorie

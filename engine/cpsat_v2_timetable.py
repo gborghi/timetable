@@ -257,9 +257,6 @@ def build_phase_a_pragmas(
         triple in a real class -- profs whose only classes are virtual
         groups are skipped, mirroring the legacy ``only_group_classes``
         bypass.
-      * ``free_day_choice_3way(prof, d1, d2, d3)`` for every prof whose
-        ``glibero`` list has at least three candidates (default
-        weights 0/50/100 -- the legacy values).
       * ``subject_day_count_pair(t, cl, subj, 2)`` per (teacher, class,
         subject) cattedra where ``subj`` is "Matematica" or "Italiano"
         and the cattedra has at least 2 hours. Per-teacher per-subject:
@@ -311,17 +308,15 @@ def build_phase_a_pragmas(
                 classes_of_p & cl_day_load_classes):
             continue
         pragmas.append(f'hall_bound_prof_day({p!r})')
-    # 3. free_day_choice_3way -- one pragma per prof with >= 3
-    # glibero candidates. Default weights 0/50/100 (legacy).
-    for p in sorted(profs):
-        glibero = list(profs[p].get("glibero", []) or [])
-        if len(glibero) < 3:
-            continue
-        d1, d2, d3 = int(glibero[0]), int(glibero[1]), int(glibero[2])
-        pragmas.append(
-            f'free_day_choice_3way({p!r}, {d1}, {d2}, {d3})'
-        )
-    # 4. Mat/Ita "≥1 day with ≥2 hours" -- per-teacher per-subject.
+    # 3. Free-day pragmas (HARD floor + SOFT priority) are now
+    # emitted by ``dsl_translator.load_all_dsl_constraints`` from the
+    # DB rows (Teacher.required_free_days_count for the HARD floor,
+    # TeacherFreeDayPreference rows for the SOFT priority weights).
+    # The legacy ``free_day_choice_3way`` Phase-A-only pragma was
+    # bypassed by the cpsat_week / cpsat_day_skip_phase_a /
+    # cpsat_day_soft_hint techniques and is no longer emitted here;
+    # the new pragmas (level=both) are honored uniformly.
+    # 4. Mat/Ita ">=1 day with >=2 hours" -- per-teacher per-subject.
     # Emit one pragma per cattedra (t, cl, subj) where subj is
     # Matematica or Italiano and ore >= 2 (the per-cattedra
     # feasibility gate). Profs teaching the subject with < 2 hours
@@ -700,25 +695,13 @@ def solve_phase_a(profs, classes, triples, class_profs,
                 <= slots_for_day(d)
             )
 
-    # Giorno libero del prof: ``free_day_choice_3way`` DSL pragma
-    # (HARD pick + soft 0/50/100 weights) is compiled below; for
-    # profs with < 3 ``glibero`` candidates the helper skips emission
-    # and we fall back to a hardcoded 1- or 2-candidate version
-    # (the pragma requires exactly 3 candidates).
-    glib_choice_legacy: dict = {}              # only fallback profs
-    for p, info in profs.items():
-        glibero = list(info.get("glibero", []) or [])
-        if not glibero or len(glibero) >= 3:
-            continue                # >=3 handled by the DSL pragma
-        # Legacy fallback: 1 or 2 candidates, weights 0/50/(100).
-        choices = [model.NewBoolVar(f"glib_{p}_{k}") for k in range(3)]
-        model.Add(sum(choices) == 1)
-        glib_choice_legacy[p] = choices
-        for k, day in enumerate(glibero[:3]):
-            model.Add(
-                sum(day_count[(p, cl, s, day)]
-                    for cl, s in triples_by_prof[p]) == 0
-            ).OnlyEnforceIf(choices[k])
+    # Giorno libero del prof: HARD floor + SOFT priority preferences
+    # are now driven by the DSL translator (load_all_dsl_constraints
+    # emits teacher_at_least_n_free_days + teacher_preferred_free_day_penalty
+    # pragmas that work in both Phase A and Phase B). The legacy
+    # 1/2-candidate fallback that injected per-prof BoolVars directly
+    # is no longer needed -- the new pragmas handle any number of
+    # preferences uniformly.
 
     # Penalita\` "uniform_class" e "uniform_prof" come dev. assolute.
     # Per ogni triple (prof, cl, subj) con ore "ore", il valore atteso
@@ -894,16 +877,13 @@ def solve_phase_a(profs, classes, triples, class_profs,
     else:
         model.Add(uniform_prof_pen == 0)
 
-    # Penalita\` giorno libero non-primo: weights 0/50/100 contributed
-    # per-prof. The free_day_choice_3way DSL pragma populates
-    # ``_compiler.soft_cost_terms`` with ``(weight, pick)`` tuples
-    # (50 * pick[1] + 100 * pick[2]); profs with < 3 glibero
-    # candidates fall back to the legacy hardcoded path
-    # (``glib_choice_legacy``) and are added explicitly below.
+    # Penalita\` giorno libero non-primo: now contributed by the new
+    # ``teacher_preferred_free_day_penalty`` DSL pragma (weights
+    # 30/20/10 for the 1st/2nd/3rd priority). The compiler stores
+    # ``(weight, busy_indicator)`` tuples on ``soft_cost_terms``;
+    # we reuse the same accumulator. The legacy 1/2-candidate
+    # fallback was removed (see comment above).
     glib_pen_terms = [int(w) * v for (w, v) in _compiler.soft_cost_terms]
-    for p, choices in glib_choice_legacy.items():
-        glib_pen_terms.append(50 * choices[1])
-        glib_pen_terms.append(100 * choices[2])
     glib_pen = model.NewIntVar(0, 100000, "glibpen")
     if glib_pen_terms:
         model.Add(glib_pen == sum(glib_pen_terms))
