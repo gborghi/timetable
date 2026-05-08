@@ -1,19 +1,258 @@
-\chapter{DSL generico per i vincoli}
+\chapter{DSL generico per i vincoli: tutorial}
 \label{ch:dsl}
 \label{ch:dsl_generico_per_i_vincoli}
 \index{DSL!grammatica}\index{DSL!quattro famiglie}\index{DSL!pragma}
+\index{DSL!tutorial}
 
-Linguaggio compatto, dichiarativo, totalmente componibile per
-esprimere vincoli HARD/SOFT/PREFERRED/ENFORCED su qualunque
-combinazione logica di predicati sul modello dei dati.
-Implementato in \texttt{webui/backend/utils/general\_dsl.py}
-(parser ricorsivo discendente + AST + evaluator post-hoc, $\sim$250
-LOC, no dipendenze esterne). Esposto via
-\texttt{POST /api/constraints/general}, validato live da
-\texttt{POST /api/constraints/general/validate}, accessibile dal
-modal ``+ Nuovo vincolo DSL'' del tab Vincoli.
+\epigraph{``Tu non puoi conoscere veramente una lingua finch\'e
+non l'hai dovuta usare per litigare.''}{anonimo}
 
-\section{Filosofia}
+\lettrine[lines=3]{I}{l} DSL di $\pi$Tantum \`e il modo
+\emph{principale} di esprimere vincoli che non rientrano nelle
+categorie pre-confezionate (indisponibilit\`a docente,
+compresenze, plessi). Questo capitolo \`e un \emph{tutorial}
+pensato per chi parte da zero: comincia da un esempio motivante,
+costruisce la grammatica un mattoncino alla volta, mostra come
+si scrive un vincolo dalla UI, e finisce con i diagnostici e
+una mini-guida per estendere il parser. Il
+capitolo~\ref{ch:vincoli} (Vincoli) tratta i vincoli ``alti''
+del modello con linguaggio narrativo; questo capitolo \`e la
+\emph{cassetta degli attrezzi} per chi vuole aggiungerne dei
+propri.
+
+\section{Sezione 0 --- Cos'\`e il DSL e perch\'e ci serve}
+\label{sec:dsl-motivazione}
+
+\subsection*{Esempio motivante: ``Rossi non insegna luned\`i mattina''}
+
+Immaginiamo un caso reale: la prof.ssa Rossi ha un permesso
+mediche regolare al luned\`i mattina, e va da medico fino alle
+11. Questo \`e un vincolo \emph{hard}: la sua agenda non pu\`o
+contenere lezioni nel luned\`i alle 8, 9 o 10.
+
+\textbf{Soluzione 1: hardcoded.} Si modifica
+\texttt{cpsat\_v2\_timetable.solve\_phase\_a()} aggiungendo un
+ramo:
+
+\begin{lstlisting}[style=py,basicstyle=\ttfamily\small]
+# in cpsat_v2_timetable.py, dentro solve_phase_a:
+if "Rossi" in profs:
+    for h in (8, 9, 10):
+        for cl in profs["Rossi"]["classi"]:
+            for s in profs["Rossi"]["classi"][cl]:
+                model.Add(x[("Rossi", cl, s, 1, h)] == 0)
+\end{lstlisting}
+
+I problemi: il vincolo \`e nel codice, non nel database; richiede
+una build per cambiare; non pu\`o essere modificato dalla
+segreteria; va riscritto identico per ogni docente con vincoli
+analoghi (decine, su una scuola grande); non si vede nei test;
+non si pu\`o rilassare a soft con un parametro.
+
+\textbf{Soluzione 2: DSL.} Una sola riga, salvabile dalla UI,
+visibile a tutti, attivabile/disattivabile via API:
+
+\begin{lstlisting}[basicstyle=\ttfamily\small]
+forall l in lessons where l.teacher == Rossi
+                       and l.day == 1:
+    l.hour > 10
+\end{lstlisting}
+
+Tradotto: ``per ogni lezione di Rossi al luned\`i, l'ora deve
+essere superiore alla 10''.\,Il compilatore genera esattamente
+gli stessi vincoli CP-SAT della soluzione hardcoded; la
+differenza \`e che ora il vincolo vive nel database, ha un id,
+\`e taggato \texttt{level=hard}, e pu\`o diventare
+\texttt{level=soft} con peso $W$ se il preside vuole rilassarlo
+(``meglio se evitiamo, ma se proprio non c'\`e altro modo,
+mettiamoci una lezione'').
+
+\subsection*{La promessa del DSL}
+
+\begin{itemize}
+\item \textbf{Una sola grammatica}, quattro modalit\`a di
+  compilazione (LIST, LOGIC, OBJECTIVE, EVAL): si impara una
+  volta, vale per ogni contesto.
+\item \textbf{Zero codice}: nuovi vincoli si aggiungono dalla
+  UI, senza redeploy.
+\item \textbf{Quattro livelli} (\texttt{hard}, \texttt{soft},
+  \texttt{preferred}, \texttt{enforced}) per scalare la
+  rigidit\`a senza cambiare il testo del vincolo.
+\item \textbf{Validazione live}: il parser controlla la
+  sintassi prima di salvare e mostra errori in punto.
+\item \textbf{Compilazione efficiente}: 14 \emph{pragma}
+  canonici (sez.~\ref{sec:dsl-pragma-14}) sono riconosciuti dal
+  compilatore e tradotti in gruppi compatti di vincoli CP-SAT,
+  evitando l'esplosione combinatoria del \emph{forall} ingenuo.
+\end{itemize}
+
+\begin{esempiobox}[title=Provalo subito]
+\begin{lstlisting}[style=shell]
+curl -X POST http://localhost:8000/api/constraints/general \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"rossi_no_monday_morning",
+       "expression":"forall l in lessons where l.teacher == Rossi and l.day == 1: l.hour > 10",
+       "level":"hard"}'
+\end{lstlisting}
+Atteso: HTTP 200 con body
+\texttt{\{"id": ..., "parsed\_ast\_json": "...AST..."\}}.
+Se rilanci la pipeline su \texttt{small} con il vincolo attivo,
+le ore di Rossi al luned\`i scendono dalle prime tre slot e
+salgono alle ultime tre.
+\end{esempiobox}
+
+\section{Sezione 1 --- La grammatica via esempi crescenti}
+\label{sec:dsl-grammatica-esempi}
+
+Costruiamo la grammatica un mattone alla volta. Ogni esempio
+\`e \emph{eseguibile}: copia-incollalo nel modal ``+ Nuovo
+vincolo DSL'' o nella richiesta cURL e funziona.
+
+\subsection{Forall semplice}
+
+\begin{lstlisting}[basicstyle=\ttfamily\small]
+forall l in lessons: l.day != 6
+\end{lstlisting}
+
+Significa: \emph{nessuna lezione il sabato}. La struttura
+generale del \texttt{forall} \`e
+\texttt{forall x in S: P(x)} dove $S$ \`e una sorgente
+iterabile (lezioni, docenti, classi, slot, \dots) e $P(x)$ \`e
+un predicato. Il compilatore lo legge come ``per ogni $x$ in
+$S$, $P(x)$ deve valere''.
+
+\textbf{Cosa succede dentro al solver}: per ogni lezione $\ell$
+viene aggiunto il vincolo
+$x_{\ell} \cdot \mathbb{1}[\text{day}(\ell)=6] = 0$, cio\`e
+``se la lezione \`e attivata, non pu\`o stare al sabato''.
+$\sim$200 vincoli su \texttt{small}, $\sim$2000 su
+\texttt{mega}.
+
+\subsection{Forall con condizione: \texttt{where}}
+
+\begin{lstlisting}[basicstyle=\ttfamily\small]
+forall l in lessons where l.subject == Matematica:
+    l.day != 6
+\end{lstlisting}
+
+Il \texttt{where} restringe la sorgente: ``per ogni lezione
+\emph{di matematica}, non al sabato''. La differenza con il
+\texttt{forall} semplice \`e nel \emph{conteggio dei vincoli
+emessi}: il compilatore non aggiunge vincoli per le lezioni
+non-matematica.
+
+\subsection{Predicati composti: \texttt{and}, \texttt{or}, \texttt{not}}
+
+\begin{lstlisting}[basicstyle=\ttfamily\small]
+forall l in lessons
+       where l.teacher == Rossi
+         and (l.day == 1 or l.day == 6):
+    l.hour > 10 or l.hour < 9
+\end{lstlisting}
+
+``Rossi al luned\`i o al sabato deve insegnare prima delle 9 o
+dopo le 10.'' Le precedenze sono: \texttt{not} $>$ \texttt{and}
+$>$ \texttt{or} $>$ \texttt{=>} $>$ \texttt{<=>}.\,Le parentesi
+vincolano esplicitamente l'associativit\`a.
+
+\subsection{Quantificatori esistenziali: \texttt{exists}}
+
+\begin{lstlisting}[basicstyle=\ttfamily\small]
+forall c in classes:
+    exists l in lessons where l.class == c.name
+                          and l.subject == Italiano
+                          and l.day == 1: true
+\end{lstlisting}
+
+``Per ogni classe esiste almeno una lezione di italiano il
+luned\`i.'' L'\texttt{exists} \`e duale al \texttt{forall}: il
+compilatore lo traduce in un \emph{or-of-and} sulla sorgente
+ristretta.
+
+\subsection{Conteggi: \texttt{count}}
+
+\begin{lstlisting}[basicstyle=\ttfamily\small]
+forall t in teachers, d in days:
+    count l in lessons where l.teacher == t.name
+                         and l.day == d : <= 4
+\end{lstlisting}
+
+``Ogni docente ha al massimo 4 ore al giorno.'' Il
+\texttt{count}, dato un \texttt{where}, conta gli elementi
+filtrati e li confronta con \texttt{<=}, \texttt{<},
+\texttt{==}, \texttt{>=}, \texttt{>}, \texttt{!=}.\,Il
+compilatore emette una clausola di cardinalit\`a CP-SAT che
+\`e ottimizzata internamente come \emph{linear sum
+constraint}.
+
+\subsection{Iterare su pi\`u sorgenti}
+
+\begin{lstlisting}[basicstyle=\ttfamily\small]
+forall t in teachers, d in days, h in hours
+       where h == 6 and t.group == "A019":
+    count l in lessons where l.teacher == t.name
+                         and l.day == d
+                         and l.hour == h : == 0
+\end{lstlisting}
+
+``Nessun docente di matematica (gruppo A019) lavora alla
+6\textsuperscript{a} ora.'' Il \texttt{forall} multi-variabile
+\`e zucchero sintattico per \texttt{forall} annidati; il
+compilatore espande in un prodotto cartesiano filtrato.
+
+\subsection{Implicazioni: \texttt{=>}}
+
+\begin{lstlisting}[basicstyle=\ttfamily\small]
+forall l1 in lessons, l2 in lessons
+       where l1.class == l2.class
+         and l1.day == l2.day
+         and l1.subject == Matematica
+         and l2.subject == Italiano:
+    l1.hour != l2.hour
+\end{lstlisting}
+
+``Mate e italiano della stessa classe, stesso giorno, non sono
+nello stesso slot orario'' --- ovviamente \`e gi\`a un vincolo
+hard implicito (una classe non pu\`o avere due lezioni in uno
+slot), ma serve a illustrare il pattern \texttt{forall coppia
+di lezioni}.
+
+\subsection{Bi-implicazione: \texttt{<=>}}
+
+\begin{lstlisting}[basicstyle=\ttfamily\small]
+forall l in lessons where l.subject == Religione:
+    (l.hour == 1 or l.hour == 6) <=> true
+\end{lstlisting}
+
+``Religione \`e sempre alla prima o all'ultima ora.'' Il
+\texttt{<=>} esprime equivalenza logica, ed \`e raro nei
+vincoli reali ma utile per encoding di esclusioni mutue.
+
+\subsection{Funzioni come abbreviazione: pragma}
+
+\begin{lstlisting}[basicstyle=\ttfamily\small]
+no_holes_class("3B")
+\end{lstlisting}
+
+Un \emph{pragma} (sez.~\ref{sec:dsl-pragma-14}) \`e un nome di
+funzione che il compilatore riconosce e traduce in un blocco
+compatto di vincoli pre-ottimizzati. Equivale a un
+\texttt{forall} ben scritto ma \`e pi\`u veloce sia per
+l'utente sia per il solver. Esempio:
+\texttt{no\_holes\_class("3B")} vieta i buchi nell'orario della
+3B con $\sim 30$ vincoli CP-SAT, contro i $\sim 200$ che
+emergerebbero da una traduzione \emph{forall} ingenua.
+
+\fleuron
+
+A questo punto il lettore ha sufficiente vocabolario per
+leggere la grammatica BNF formale e la lista delle sorgenti
+iterabili nelle prossime sezioni. Il resto del capitolo \`e
+sostanzialmente una galleria estesa di esempi concreti,
+seguita dal vocabolario dei pragma e dalla discussione delle
+modalit\`a di compilazione.
+
+\section{Filosofia (cosa \`e cambiato dal vecchio sistema)}
 
 Prima del DSL generico il sistema aveva quattro sub-DSL
 specializzati (query, logical, objective, introspettivo). Stessa
@@ -1156,5 +1395,260 @@ sintesi narrativa, pensata per essere letta dall'inizio alla
 fine; il file Markdown \`e pensato come reference da consultare
 mentre si scrive un vincolo concreto. La grammatica BNF in
 sez.~\ref{sec:dsl-bnf} \`e identica nei due documenti.
+\end{biblioparvabox}
+
+\section{Sezione 4 --- Troubleshooting}
+\label{sec:dsl-troubleshooting}
+\index{DSL!troubleshooting}\index{Troubleshooting!DSL}
+
+I quattro tipi di errori che si incontrano scrivendo vincoli DSL
+sono, in ordine di frequenza decrescente:
+
+\subsection{Errori di parser}
+
+Il parser solleva \texttt{DSLParseError} con messaggio
+\texttt{``unexpected token X at position Y''}. Le cause
+ricorrenti:
+
+\begin{itemize}
+\item \textbf{Keyword in maiuscolo}. Sono case-sensitive:
+  \texttt{forall}, \texttt{exists}, \texttt{count},
+  \texttt{where}, \texttt{in}, \texttt{not\_in},
+  \texttt{and}, \texttt{or}, \texttt{not}. Errore tipico:
+  \texttt{Forall l in lessons: \dots} viene parsato come
+  ``identificatore Forall, errore'' invece di un quantificatore.
+\item \textbf{Virgolette intorno a identificatori}. Gli
+  identificatori (nomi di docente, nome materia, \dots) sono
+  letterali \emph{senza} virgolette. \texttt{l.teacher == "Rossi"}
+  \`e errato; corretto \`e \texttt{l.teacher == Rossi}.\,Le
+  virgolette si usano per stringhe in argomenti di pragma
+  (\texttt{no\_holes\_class("3B")}) per disambiguare ``3B'' dal
+  numero 3.
+\item \textbf{Path puntate non note}. \texttt{s.gruppi} (con
+  \texttt{i}) fallisce; \texttt{s.groups} no. Le path valide
+  sono nella tabella delle sorgenti (sez.~\ref{sec:dsl-bnf}).
+\item \textbf{\texttt{forall} senza body}. \texttt{forall l in
+  lessons where l.day == 6} senza \texttt{:} e predicato \`e
+  un parser error: il body \`e obbligatorio (eventualmente
+  \texttt{true} per filtri puri).
+\end{itemize}
+
+\begin{erroricomunibox}
+``unexpected token \texttt{!} at position 24''. Probabile
+\texttt{!=} mal posizionato. Ricontrolla che ci sia uno spazio
+prima e dopo \texttt{!=}: \texttt{l.day != 6} (corretto) vs.
+\texttt{l.day!=6} (alcuni parser fallback non gestiscono).
+Lo stesso vale per \texttt{<=}, \texttt{>=}, \texttt{==}.
+
+``unknown source X''. La sorgente non \`e tra quelle nella
+tabella della sez.~\ref{sec:dsl-bnf}. In particolare
+\texttt{lesson} (singolare) non esiste; \`e \texttt{lessons}.
+
+``ambiguous identifier Borghi''. Hai chiamato un docente come
+una sorgente o una keyword. \`E un caso raro ma possibile:
+rinomina il docente o usa il pragma di lookup.
+\end{erroricomunibox}
+
+\subsection{Infeasibility per vincolo troppo restrittivo}
+
+Sintomo: dopo aver salvato il vincolo, \texttt{POST
+/api/optimize/full-pipeline} restituisce HTTP 400 con corpo
+\texttt{\{"error": "infeasible", "details": "..."\}}.\,Il vincolo
+\`e una hard non soddisfacibile insieme alle altre.
+
+Diagnostica:
+\begin{enumerate}
+\item Esegui \texttt{POST /api/constraints/general/<id>/explain}
+  che restituisce un \emph{minimal unsatisfiable subset} (MUS)
+  fra i vincoli hard correnti, identificando il sottoinsieme
+  pi\`u piccolo che \`e gi\`a infattibile.
+\item Cambia \texttt{level=hard} in \texttt{level=soft} con
+  un peso $W$ moderato (es.\ 50). La pipeline accetter\`a la
+  soluzione che minimizza la violazione totale.
+\item In caso estremo, disattiva temporaneamente il vincolo
+  con \texttt{PATCH /api/constraints/general/<id>}
+  \texttt{\{"active": false\}}.
+\end{enumerate}
+
+\subsection{Vincolo accettato ma non applicato}
+
+Sintomo: il vincolo viene salvato senza errori ma le lezioni
+in soluzione non lo rispettano. Cause:
+
+\begin{itemize}
+\item \textbf{Stale cache}. La pipeline serve da cache una
+  soluzione precedente al salvataggio del vincolo. Soluzione:
+  rilancia \texttt{POST /api/optimize/full-pipeline}; la cache
+  si invalida.
+\item \textbf{Soft con peso troppo basso}. Un vincolo
+  \texttt{level=soft, weight=1} \`e quasi ignorato dal solver
+  perch\'e la sua violazione costa meno di tutti gli altri
+  termini. Aumenta a 50 o 200.
+\item \textbf{Predicate sempre falsa}. Esempio:
+  \texttt{l.subject == Matematica and l.subject == Italiano}
+  \`e \emph{sempre} falso (una lezione ha una sola materia),
+  quindi il \texttt{forall} \`e vuoto e il vincolo non emette
+  clausole.
+\item \textbf{Pragma con argomenti tipizzati male}. Per esempio
+  \texttt{class\_present\_at\_hour(3B, 11)} (senza virgolette
+  intorno a \texttt{3B}) potrebbe essere parsato come la
+  variabile \texttt{3B} non definita. Usa
+  \texttt{class\_present\_at\_hour("3B", 11)}.
+\end{itemize}
+
+\subsection{Conflitti hard/soft fra vincoli}
+
+Sintomo: la soluzione \`e fattibile ma viola un vincolo soft
+con peso alto e ne soddisfa un altro con peso basso, in modo
+contro-intuitivo. Causa: l'obiettivo del solver \`e la
+\emph{somma pesata} delle violazioni; se la somma di tante
+violazioni con peso 10 batte una sola violazione con peso 50,
+il solver le sceglie tutte.
+
+Strumenti di diagnosi:
+
+\begin{itemize}
+\item \texttt{GET /api/runs/<run\_id>/breakdown} mostra la
+  decomposizione del costo finale: termine per termine, quanto
+  contribuisce ciascuna categoria.
+\item Nella tab \emph{Diagnostica}, il pannello \emph{Cost
+  attribution} visualizza le top-5 violazioni soft con
+  riferimento al vincolo che le ha causate.
+\item Per debug rapido: imposta tutti i vincoli soft a
+  \texttt{level=hard} temporaneamente; se la pipeline diventa
+  infeasible, c'\`e un conflitto strutturale fra i vincoli.
+\end{itemize}
+
+\section{Sezione 5 --- Estendere la grammatica}
+\label{sec:dsl-estendere}
+\index{DSL!estensioni}\index{Predicate!nuovo}\index{Operatore!nuovo}
+
+Aggiungere un nuovo \emph{predicate}, una nuova \emph{sorgente
+iterabile}, un nuovo \emph{pragma} o un nuovo \emph{operatore}
+\`e un'operazione locale al modulo
+\texttt{webui/backend/utils/general\_dsl.py}. La struttura del
+parser \`e \emph{recursive descent}, l'AST \`e una piccola
+gerarchia di dataclass, l'evaluator \`e una visita ricorsiva.
+Le quattro estensioni hanno gradi di difficolt\`a crescenti.
+
+\subsection{Aggiungere un nuovo \emph{predicate} su una sorgente}
+
+\textbf{Esempio}: aggiungere \texttt{l.is\_lab} che \`e True se
+la lezione \`e di laboratorio.
+
+\textbf{Passi}:
+\begin{enumerate}
+\item In \texttt{general\_dsl.py}, locate la classe
+  \texttt{LessonAttributes} (o equivalente accessor che mappa
+  attributi di \texttt{lessons} a valori). Aggiungi un metodo
+  \texttt{is\_lab(self, lesson) -> bool} che ritorna True se
+  \texttt{lesson.subject} \`e nella tabella
+  \texttt{subject\_lab\_flag} con \texttt{is\_lab=True}.
+\item Aggiungi \texttt{"is\_lab"} alla lista bianca degli
+  attributi noti per \texttt{lessons}: il parser controlla
+  l'esistenza dell'attributo prima di accettare la path.
+\item In \texttt{compile\_to\_cpsat()}, se l'AST contiene un
+  riferimento a \texttt{l.is\_lab}, la traduzione \`e:
+  ``per ogni lezione $\ell$ con \texttt{is\_lab=True}, emetti
+  il vincolo del body''. Tutto il resto \`e gi\`a in vigore.
+\item Aggiungi un test in
+  \texttt{webui/backend/tests/test\_dsl\_extensions.py}: un
+  vincolo che usa \texttt{l.is\_lab}, verifica parsing,
+  compilazione e applicazione su un mock.
+\end{enumerate}
+
+\subsection{Aggiungere una nuova sorgente iterabile}
+
+\textbf{Esempio}: \texttt{lab\_sessions} per iterare le sole
+sessioni di laboratorio (sotto-insieme di \texttt{lessons}).
+
+\textbf{Passi}:
+\begin{enumerate}
+\item Aggiungi \texttt{"lab\_sessions"} al dizionario
+  \texttt{KNOWN\_SOURCES} con un loader che restituisce la
+  lista filtrata.
+\item In \texttt{compile\_to\_cpsat()}, gestisci la sorgente
+  esattamente come \texttt{lessons} ma con il filtro
+  pre-applicato.
+\item Documenta nella tabella della sez.~\ref{sec:dsl-bnf}.
+\end{enumerate}
+
+Questa estensione \`e identica al passo precedente, ma agisce
+sul livello \emph{sorgente} invece che attributo: \`e utile
+quando si vuole una scrittura pi\`u corta del filtro.
+
+\subsection{Aggiungere un nuovo pragma}
+
+\textbf{Esempio}: \texttt{teacher\_no\_first\_hour\_after\_break("Rossi")}
+che vieta a Rossi di lavorare alla prima ora del giorno
+successivo a un giorno di indisponibilit\`a totale.
+
+\textbf{Passi}:
+\begin{enumerate}
+\item In \texttt{general\_dsl.py}, locate il blocco
+  \texttt{\#\,Canonical pragma functions} (riga $\sim$1140).
+  Aggiungi una funzione
+  \texttt{def teacher\_no\_first\_hour\_after\_break(t, profs,
+  unavail) -> list[str]} che ritorna la lista di stringhe DSL
+  equivalenti.
+\item Aggiungi il nome della funzione al dizionario
+  \texttt{PRAGMA\_REGISTRY} che mappa nomi a callable.
+\item Il compilatore, quando incontra \texttt{call} il cui
+  identificatore \`e in \texttt{PRAGMA\_REGISTRY}, lo invoca
+  con gli argomenti parsati e usa le stringhe ritornate al
+  posto del corpo.
+\item Test: scrivere
+  \texttt{test\_pragma\_teacher\_no\_first\_hour\_after\_break.py}
+  che salva il vincolo, esegue una pipeline su un mock con
+  un'indisponibilit\`a luned\`i, e verifica che marted\`i
+  prima ora il docente non lavori.
+\end{enumerate}
+
+\subsection{Aggiungere un nuovo operatore}
+
+\textbf{Esempio}: \texttt{between} per intervalli numerici:
+\texttt{l.hour between 2 and 5}.
+
+\textbf{Passi}:
+\begin{enumerate}
+\item Nel parser, aggiungi un ramo nel
+  \texttt{parse\_comparison()}: dopo aver parsato il primo
+  valore e visto la keyword \texttt{between}, parsa due
+  ulteriori valori e ritorna un nodo
+  \texttt{BetweenOp(value=v, low=lo, high=hi)}.
+\item Nell'AST, aggiungi la dataclass \texttt{BetweenOp}.
+\item Nell'evaluator, gestisci \texttt{BetweenOp} ritornando
+  \texttt{lo <= v <= hi}.
+\item Nel compilatore CP-SAT, traduci come
+  \texttt{model.AddLinearConstraint(v, lo, hi)}.
+\item Aggiorna la grammatica BNF in sez.~\ref{sec:dsl-bnf}
+  e aggiungi un esempio nella galleria.
+\end{enumerate}
+
+Operatori nuovi sono l'estensione pi\`u intrusiva: cambia il
+parser, l'AST, l'evaluator e il compilatore. Considera prima
+se non si possa esprimere con due predicati congiunti
+(\texttt{v >= lo and v <= hi}) prima di aggiungere zucchero
+sintattico.
+
+\fleuron
+
+\begin{biblioparvabox}[title={Per chi vuole davvero capire il parser}]
+\sffamily
+Il file \texttt{general\_dsl.py} \`e $\sim$1200 righe e
+auto-contenuto. Le tre sezioni chiave: \emph{Lexer}
+(\texttt{tokenize()}, $\sim$80 righe), \emph{Parser ricorsivo
+discendente} ($\sim$300 righe, una funzione per livello di
+precedenza), \emph{Compiler} ($\sim$500 righe, visita
+\texttt{compile\_to\_cpsat()} con dispatch sui tipi di nodo
+AST). I test in
+\texttt{webui/backend/tests/test\_general\_dsl*.py}
+($\sim$1500 righe complessive) coprono il 96\% delle
+diramazioni.
+
+Bibliografia di riferimento per chi vuole costruire altri
+DSL: \cite{aho2006} (parsing classico), \cite{fowler2010}
+(domain-specific languages, l'unico libro divulgativo sul
+tema), \cite{marriott1998} (constraint logic programming).
 \end{biblioparvabox}
 
