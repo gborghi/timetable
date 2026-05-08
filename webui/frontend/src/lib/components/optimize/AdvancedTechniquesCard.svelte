@@ -126,7 +126,7 @@
   }
 </script>
 
-<div class="card p-5 space-y-4">
+<div class="card p-5 space-y-4" data-testid="advanced-techniques-card">
   <div class="flex items-baseline gap-3 flex-wrap">
     <h2>Tecniche avanzate</h2>
     <span class="text-xs text-ink-500 max-w-2xl">
@@ -152,9 +152,11 @@
         <label class="!text-[11px]">N campioni</label>
         <input type="number" min="16" max="1024"
                bind:value={hallSamples}
+               data-testid="adv-hall-samples"
                class="w-24"/>
       </div>
       <button class="btn-primary !text-xs" on:click={runHall}
+              data-testid="adv-hall-run"
               disabled={busyHall}>
         {busyHall ? '...' : 'Pre-check fattibilita strutturale'}
       </button>
@@ -193,18 +195,21 @@
     <div class="flex gap-2 items-end flex-wrap">
       <div class="field !mb-0">
         <label class="!text-[11px]">Budget (s)</label>
-        <input type="number" bind:value={alnsBudget} class="w-24"/>
+        <input type="number" bind:value={alnsBudget}
+               data-testid="adv-alns-budget" class="w-24"/>
       </div>
       <div class="field !mb-0">
         <label class="!text-[11px]">T0</label>
-        <input type="number" step="0.1" bind:value={alnsT0} class="w-20"/>
+        <input type="number" step="0.1" bind:value={alnsT0}
+               data-testid="adv-alns-t0" class="w-20"/>
       </div>
       <div class="field !mb-0">
         <label class="!text-[11px]">alpha</label>
         <input type="number" step="0.001" bind:value={alnsAlpha}
-               class="w-24"/>
+               data-testid="adv-alns-alpha" class="w-24"/>
       </div>
       <button class="btn-primary !text-xs" on:click={runAlns}
+              data-testid="adv-alns-run"
               disabled={busyAlns}>
         {busyAlns ? '...' : 'Avvia ALNS'}
       </button>
@@ -225,9 +230,11 @@
     <div class="flex gap-2 items-end flex-wrap">
       <div class="field !mb-0">
         <label class="!text-[11px]">Budget (s)</label>
-        <input type="number" bind:value={vnsBudget} class="w-24"/>
+        <input type="number" bind:value={vnsBudget}
+               data-testid="adv-vns-budget" class="w-24"/>
       </div>
       <button class="btn-primary !text-xs" on:click={runVns}
+              data-testid="adv-vns-run"
               disabled={busyVns}>
         {busyVns ? '...' : 'Avvia VNS'}
       </button>
@@ -250,23 +257,28 @@
     <div class="flex gap-2 items-end flex-wrap">
       <div class="field !mb-0">
         <label class="!text-[11px]">Budget (s)</label>
-        <input type="number" bind:value={lagBudget} class="w-24"/>
+        <input type="number" bind:value={lagBudget}
+               data-testid="adv-lag-budget" class="w-24"/>
       </div>
       <div class="field !mb-0">
         <label class="!text-[11px]">Max iter</label>
-        <input type="number" bind:value={lagMaxIter} class="w-16"/>
+        <input type="number" bind:value={lagMaxIter}
+               data-testid="adv-lag-max-iter" class="w-16"/>
       </div>
       <div class="field !mb-0">
         <label class="!text-[11px]">Tolleranza</label>
         <input type="number" step="0.001"
-               bind:value={lagTolerance} class="w-24"/>
+               bind:value={lagTolerance}
+               data-testid="adv-lag-tolerance" class="w-24"/>
       </div>
       <div class="field !mb-0">
         <label class="!text-[11px]">alpha0</label>
         <input type="number" step="0.1"
-               bind:value={lagAlpha0} class="w-20"/>
+               bind:value={lagAlpha0}
+               data-testid="adv-lag-alpha0" class="w-20"/>
       </div>
       <button class="btn-primary !text-xs" on:click={runLagrangian}
+              data-testid="adv-lag-run"
               disabled={busyLag}>
         {busyLag ? '...' : 'Avvia Lagrangian'}
       </button>
@@ -292,7 +304,7 @@
     <div class="grid grid-cols-2 gap-2 mb-2">
       <div class="field !mb-0">
         <label class="!text-[11px]">Modalita'</label>
-        <select bind:value={cgMode} class="w-full">
+        <select bind:value={cgMode} data-testid="adv-cg-mode" class="w-full">
           <option value="iterative-diversified">Iterative-diversified (default)</option>
           <option value="branch-and-price">Branch-and-Price (sub-CP-SAT pricing)</option>
           <option value="auto">Auto (per taglia scuola)</option>
@@ -300,7 +312,8 @@
       </div>
       <div class="field !mb-0">
         <label class="!text-[11px]">Granularita' sub-problema</label>
-        <select bind:value={cgGranularity} class="w-full"
+        <select bind:value={cgGranularity}
+                data-testid="adv-cg-granularity" class="w-full"
                 title="Selettore granularita' di pricing per BP. Le granularita' teacher-based generano pattern per docente; class-based per classe; 'day' e 'curriculum' sono globali. 'auto' sceglie in base alla taglia.">
           <optgroup label="Auto">
             <option value="auto">Auto (suggerita dalla taglia)</option>
@@ -324,7 +337,8 @@
       </div>
       <div class="field !mb-0">
         <label class="!text-[11px]">Branching strategy</label>
-        <select bind:value={cgBranching} class="w-full">
+        <select bind:value={cgBranching}
+                data-testid="adv-cg-branching" class="w-full">
           <option value="ryan_foster">Ryan-Foster</option>
           <option value="variable">Variable branching</option>
         </select>
@@ -358,14 +372,16 @@
     <div class="flex gap-2 items-end flex-wrap">
       <div class="field !mb-0">
         <label class="!text-[11px]">Budget (s)</label>
-        <input type="number" bind:value={cgBudget} class="w-24"/>
+        <input type="number" bind:value={cgBudget}
+               data-testid="adv-cg-budget" class="w-24"/>
       </div>
       <div class="field !mb-0">
         <label class="!text-[11px]">Pattern/docente (seed)</label>
         <input type="number" bind:value={cgPatternsPerTeacher}
-               class="w-20"/>
+               data-testid="adv-cg-patterns" class="w-20"/>
       </div>
       <button class="btn-primary !text-xs" on:click={runCg}
+              data-testid="adv-cg-run"
               disabled={busyCg}>
         {busyCg ? '...' : 'Avvia Column Generation'}
       </button>
