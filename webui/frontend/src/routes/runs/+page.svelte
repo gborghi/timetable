@@ -282,11 +282,12 @@
   }
 </script>
 
-<div class="space-y-4">
+<div class="space-y-4" data-testid="runs-page">
   <div class="flex items-baseline gap-3 flex-wrap">
     <h1>Runs</h1>
     <span class="text-sm text-ink-500">{runs.length} run nel dataset</span>
-    <button class="btn !text-xs ml-auto" on:click={refresh} disabled={busy}>
+    <button class="btn !text-xs ml-auto" on:click={refresh} disabled={busy}
+            data-testid="runs-refresh-btn">
       {busy ? '...' : 'refresh'}
     </button>
     <select class="text-sm px-2 py-1 border border-ink-200 rounded"
