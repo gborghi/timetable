@@ -2,16 +2,25 @@
   /**
    * Tab Ore -- working days + per-day timetable slots.
    *
-   * The user picks which days of the week are "working" (active),
-   * sets the order via a position field, and edits the list of
-   * timetable slots for each day. Slots are ordered top-to-bottom
-   * by their start_time and indexed 0..N-1 internally; the engine
-   * uses those indices as `hour_idx`.
+   * Two views, switchable via a top-bar toggle:
    *
-   * Default config (matches the legacy hardcoded DAYS=[1..6] /
-   * HOURS=[8..13]): lun-sab, 6 slots/day, 8:00-14:00.
+   *   - "Calendario" (default): the working-hours layout is edited
+   *     directly on the same WeeklyCalendarView calendar grid that
+   *     drives the unavailability matrices. The user drags on the
+   *     background to create slots, drags edges to resize, drags
+   *     bodies to move, clicks + Delete to remove. Changes are
+   *     buffered in ``draftConfig`` and persisted with one POST per
+   *     dirty day on "Salva tutto".
    *
-   * The "Reset" button re-creates the default config in one shot.
+   *   - "Lista" (legacy form): the old start/end input table per
+   *     day. Kept as a fallback for keyboard-only editing and for
+   *     fields the calendar editor does not surface (label,
+   *     legacy_hour_number).
+   *
+   * Default config (matches the engine's legacy hardcoded
+   * DAYS=[1..6] / HOURS=[8..13]): lun-sab, 6 slots/day, 8:00-14:00.
+   * The "Reset default" button restores it via POST
+   * /api/working-hours/reset.
    */
   import { onMount } from 'svelte';
   import * as api from '$lib/api';
@@ -22,10 +31,16 @@
   let loading = false;
   let error = '';
 
-  // Per-day editing state. Keys are the day id; values are arrays
-  // of {slot_index, start_time, end_time, label, legacy_hour_number}.
+  // Per-day editing state used by the legacy "Lista" view. Keys are
+  // the day id; values are arrays of slots.
   let drafts = {};
   let dirty = {};
+
+  // Calendar-mode editing state: one buffered config, with a
+  // per-day dirty flag derived from the diff against ``config``.
+  let draftConfig = null;
+  let calDirtyDayIds = new Set();
+  let view = 'calendar';   // 'calendar' | 'list'
 
   async function refresh() {
     loading = true;
@@ -38,6 +53,8 @@
         drafts[d.id] = d.slots.map((s) => ({ ...s }));
         dirty[d.id] = false;
       }
+      draftConfig = JSON.parse(JSON.stringify(config));
+      calDirtyDayIds = new Set();
     } catch (e) {
       error = e?.message || String(e);
     } finally {
@@ -60,6 +77,53 @@
     } catch (e) {
       flash(`Errore: ${e?.message || e}`, 'error');
     }
+  }
+
+  // Calendar-mode handlers ------------------------------------------------
+
+  function _slotsEqual(a, b) {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i += 1) {
+      if (a[i].start_time !== b[i].start_time
+          || a[i].end_time !== b[i].end_time) return false;
+    }
+    return true;
+  }
+
+  function onCalendarEdit(newConfig) {
+    draftConfig = newConfig;
+    // Diff against the persisted config to mark dirty days.
+    const dirtySet = new Set();
+    const original = new Map(
+      (config?.days || []).map((d) => [d.id, d.slots]));
+    for (const d of newConfig.days) {
+      const orig = original.get(d.id) || [];
+      if (!_slotsEqual(orig, d.slots)) dirtySet.add(d.id);
+    }
+    calDirtyDayIds = dirtySet;
+  }
+
+  async function saveCalendarChanges() {
+    const ids = [...calDirtyDayIds];
+    if (ids.length === 0) return;
+    try {
+      for (const dayId of ids) {
+        const day = draftConfig.days.find((d) => d.id === dayId);
+        if (!day) continue;
+        const slots = day.slots.map((s, i) => ({ ...s, slot_index: i }));
+        await api.put(`/api/working-hours/days/${dayId}/slots`,
+                      { slots });
+      }
+      flash(`Slot aggiornati per ${ids.length} giorno/i`, 'success');
+      await refresh();
+    } catch (e) {
+      flash(`Errore: ${e?.message || e}`, 'error');
+    }
+  }
+
+  function discardCalendarChanges() {
+    draftConfig = JSON.parse(JSON.stringify(config));
+    calDirtyDayIds = new Set();
   }
 
   function addSlot(dayId) {
@@ -137,6 +201,7 @@
   }
 
   $: anyDirty = Object.values(dirty).some(Boolean);
+  $: anyCalDirty = calDirtyDayIds.size > 0;
 </script>
 
 <svelte:head><title>Ore -- piTantum</title></svelte:head>
@@ -154,6 +219,26 @@
       </p>
     </div>
     <div class="flex items-center gap-3">
+      <div class="inline-flex border border-ink-300 rounded
+                  overflow-hidden text-sm" role="tablist"
+           aria-label="Vista">
+        <button type="button" role="tab"
+                aria-selected={view === 'calendar'}
+                class="px-3 py-1.5"
+                class:bg-sky-100={view === 'calendar'}
+                class:text-sky-900={view === 'calendar'}
+                on:click={() => (view = 'calendar')}>
+          Calendario
+        </button>
+        <button type="button" role="tab"
+                aria-selected={view === 'list'}
+                class="px-3 py-1.5 border-l border-ink-300"
+                class:bg-sky-100={view === 'list'}
+                class:text-sky-900={view === 'list'}
+                on:click={() => (view = 'list')}>
+          Lista
+        </button>
+      </div>
       <button class="btn btn-ghost" on:click={refresh}
               disabled={loading}>Ricarica</button>
       <button class="btn btn-danger" on:click={resetAll}>
@@ -184,13 +269,46 @@
         lasciano gli indici eccedenti inutilizzati.
       </div>
 
-      <div class="bg-white border border-ink-200 rounded p-4">
-        <h2 class="text-lg font-medium mb-3">Anteprima settimanale</h2>
-        <WeeklyCalendarView {config} slots={[]}/>
+      <div class="bg-white border border-ink-200 rounded p-4"
+           class:hidden={view !== 'calendar'}>
+        <header class="flex items-baseline justify-between mb-3 gap-3">
+          <div>
+            <h2 class="text-lg font-medium">Editor calendario</h2>
+            <p class="text-xs text-ink-600">
+              Trascina su un'area vuota per creare uno slot.
+              Trascina i bordi (alto/basso) per ridimensionare,
+              il corpo per spostare. Click + <kbd
+                class="px-1 border border-ink-300 rounded text-[10px]"
+                >Canc</kbd> per eliminare lo slot selezionato.
+              Snap a 15 min.
+            </p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button class="btn btn-ghost" type="button"
+                    disabled={!anyCalDirty}
+                    on:click={discardCalendarChanges}>
+              Annulla modifiche
+            </button>
+            <button class="btn btn-primary" type="button"
+                    disabled={!anyCalDirty}
+                    data-testid="save-calendar"
+                    on:click={saveCalendarChanges}>
+              Salva
+              {#if anyCalDirty}
+                ({calDirtyDayIds.size} giorno{calDirtyDayIds.size === 1 ? '' : 'i'})
+              {/if}
+            </button>
+          </div>
+        </header>
+        {#if draftConfig}
+          <WeeklyCalendarView config={draftConfig} mode="edit"
+                              onConfigEdit={onCalendarEdit}
+                              title="Configurazione ore lavorative"/>
+        {/if}
       </div>
     </section>
 
-    <section class="space-y-4">
+    <section class="space-y-4" class:hidden={view !== 'list'}>
       <h2 class="text-lg font-medium">Giorni e slot</h2>
       {#each config.days as day (day.id)}
         <div class="bg-white border border-ink-200 rounded p-4
@@ -282,12 +400,19 @@
       {/each}
     </section>
 
-    {#if anyDirty}
+    {#if (view === 'list' && anyDirty)
+         || (view === 'calendar' && anyCalDirty)}
       <div class="fixed bottom-4 left-1/2 -translate-x-1/2 bg-amber-100
                   border border-amber-300 px-4 py-2 rounded shadow
                   text-sm">
-        Modifiche non salvate. Premi <strong>Salva slot</strong> sui
-        giorni interessati per applicarle.
+        {#if view === 'list'}
+          Modifiche non salvate. Premi <strong>Salva slot</strong> sui
+          giorni interessati per applicarle.
+        {:else}
+          {calDirtyDayIds.size} giorno{calDirtyDayIds.size === 1 ? '' : 'i'} con
+          modifiche non salvate. Premi <strong>Salva</strong>
+          in alto a destra per applicarle.
+        {/if}
       </div>
     {/if}
   {/if}
