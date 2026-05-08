@@ -311,7 +311,11 @@ class SchoolClass(TenantMixin, TimestampMixin, Base):
         comment="Optional FK to normalized indirizzi (curricula). The string "
                 "`curriculum` column is kept as fallback for legacy rows."
     )
-    n_students: Mapped[int] = mapped_column(Integer, default=20)
+    n_students: Mapped[int] = mapped_column(
+        Integer, default=25, server_default="25", nullable=False,
+        comment="HARD capacity input: room.capacity must be >= class.n_students "
+                "for every lesson (enforced in classroom_assignment)."
+    )
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     # HARD constraints (toggles)
     hard_entry_at_8: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -843,7 +847,11 @@ class Classroom(TenantMixin, TimestampMixin, Base):
         comment="standard / lab_chimica / lab_fisica / lab_informatica / "
                 "lab_linguistico / palestra / biblioteca / aula_speciale"
     )
-    capacity: Mapped[int] = mapped_column(Integer, default=30)
+    capacity: Mapped[int] = mapped_column(
+        Integer, default=30, server_default="30", nullable=False,
+        comment="HARD: room.capacity must be >= class.n_students for every "
+                "lesson placed here (enforced in classroom_assignment)."
+    )
     multi_class: Mapped[bool] = mapped_column(
         Boolean, default=False,
         comment="true if multiple classes can share this room in the same slot"

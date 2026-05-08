@@ -312,6 +312,24 @@ def _apply_lightweight_migrations() -> None:
                 "max_hours_per_day INTEGER NOT NULL DEFAULT 5"
             ))
 
+        # n_students on school_classes + capacity on classrooms.
+        # The columns have always been on the model, but historic dev
+        # DBs created before they were added need the ALTER. NOT NULL
+        # with a constant default so SQLite accepts it on existing
+        # rows.
+        if insp.has_table("school_classes") and not has_column(
+                "school_classes", "n_students"):
+            conn.execute(text(
+                "ALTER TABLE school_classes ADD COLUMN "
+                "n_students INTEGER NOT NULL DEFAULT 25"
+            ))
+        if insp.has_table("classrooms") and not has_column(
+                "classrooms", "capacity"):
+            conn.execute(text(
+                "ALTER TABLE classrooms ADD COLUMN "
+                "capacity INTEGER NOT NULL DEFAULT 30"
+            ))
+
         # Classroom tags (many-to-many). Tables are created via
         # Base.metadata.create_all on the same init_db() call, so
         # nothing to do here -- the create_all path is sufficient

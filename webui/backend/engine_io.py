@@ -538,7 +538,7 @@ def import_school_into_db(db: Session, school: dict[str, Any],
             year=cl.get("year", 1),
             section=cl.get("section"),
             curriculum=cl.get("curriculum"),
-            n_students=cl.get("n_students", 22),
+            n_students=cl.get("n_students", 25),
         )
         db.add(sc)
         db.flush()
