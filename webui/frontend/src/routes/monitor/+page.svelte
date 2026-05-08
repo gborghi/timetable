@@ -446,7 +446,7 @@
   }
 </script>
 
-<div class="space-y-4">
+<div class="space-y-4" data-testid="monitor-page">
   <div class="flex items-baseline gap-3 flex-wrap">
     <h1>Eventi</h1>
     {#if summary}
@@ -475,7 +475,8 @@
 
   <div class="flex items-center gap-2 flex-wrap">
     <button class="btn-primary !text-xs"
-            on:click={() => (addEventOpen = true)}>
+            on:click={() => (addEventOpen = true)}
+            data-testid="monitor-add-event-btn">
       + Nuovo evento
     </button>
   </div>
@@ -483,11 +484,13 @@
   <!-- Segmented control: Tutti / Incompleti / Lockati. Each tab
        composes a different auxQuery into the table; Reset query
        still works (it clears only the user-typed query). -->
-  <div class="card p-2 flex items-center gap-1 flex-wrap">
+  <div class="card p-2 flex items-center gap-1 flex-wrap"
+       data-testid="monitor-tabs">
     <button class="btn !text-xs"
             class:!bg-accent-500={activeTab === 'all'}
             class:!text-white={activeTab === 'all'}
-            on:click={() => (activeTab = 'all')}>
+            on:click={() => (activeTab = 'all')}
+            data-testid="monitor-tab-all">
       Tutti
       {#if summary?.n_rows != null}
         <span class="ml-1 pill !text-[10px]">{summary.n_rows}</span>
@@ -497,7 +500,8 @@
             class:!bg-amber-500={activeTab === 'incomplete'}
             class:!text-white={activeTab === 'incomplete'}
             on:click={() => (activeTab = 'incomplete')}
-            title="Eventi con almeno una mancanza (ore, aula, gruppo)">
+            title="Eventi con almeno una mancanza (ore, aula, gruppo)"
+            data-testid="monitor-tab-incomplete">
       Incompleti
       {#if summary?.n_incomplete != null}
         <span class="ml-1 pill pill-amber !text-[10px]">{summary.n_incomplete}</span>
@@ -507,7 +511,8 @@
             class:!bg-red-500={activeTab === 'unscheduled'}
             class:!text-white={activeTab === 'unscheduled'}
             on:click={() => (activeTab = 'unscheduled')}
-            title="Solo eventi senza assegnazione temporale (placeholder)">
+            title="Solo eventi senza assegnazione temporale (placeholder)"
+            data-testid="monitor-tab-unscheduled">
       Senza orario
       {#if summary?.n_rows_unscheduled != null}
         <span class="ml-1 pill pill-red !text-[10px]">{summary.n_rows_unscheduled}</span>
@@ -517,7 +522,8 @@
             class:!bg-amber-600={activeTab === 'locked'}
             class:!text-white={activeTab === 'locked'}
             on:click={() => (activeTab = 'locked')}
-            title="Eventi marcati is_locked = 1: non si muovono durante l'ottimizzazione">
+            title="Eventi marcati is_locked = 1: non si muovono durante l'ottimizzazione"
+            data-testid="monitor-tab-locked">
       🔒 Lockati
       {#if summary?.n_rows_locked != null}
         <span class="ml-1 pill pill-amber !text-[10px]">{summary.n_rows_locked}</span>
