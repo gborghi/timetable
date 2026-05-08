@@ -253,7 +253,7 @@
   };
 </script>
 
-<div class="space-y-6">
+<div class="space-y-6" data-testid="optimize-page">
   <h1>Workflow di ottimizzazione</h1>
 
   <p class="text-sm text-ink-500 max-w-3xl">
@@ -275,7 +275,7 @@
       <div class="grid grid-cols-2 gap-3">
         <div class="field">
           <label>Profilo (mock)</label>
-          <select bind:value={step1.profile}>
+          <select bind:value={step1.profile} data-testid="optimize-mock-profile">
             <option value="small">small</option>
             <option value="medium">medium</option>
             <option value="big">big</option>
@@ -285,7 +285,7 @@
         </div>
         <div class="field">
           <label>Mode</label>
-          <select bind:value={step1.mode}>
+          <select bind:value={step1.mode} data-testid="optimize-mock-mode">
             <option value="aggregated">aggregated</option>
             <option value="tight">tight</option>
             <option value="legacy">legacy</option>
@@ -315,7 +315,8 @@
             {/if}
           </label>
           <select bind:value={step1import.profile}
-                  disabled={availableProfiles.length === 0}>
+                  disabled={availableProfiles.length === 0}
+                  data-testid="optimize-import-profile">
             {#if availableProfiles.length === 0}
               <option value="">--</option>
             {:else}
@@ -376,7 +377,8 @@
         <div class="field">
           <label>Scope del solver CP-SAT</label>
           <select bind:value={step3.cp_sat_scope}
-                  on:change={coercePhaseAModeForScope}>
+                  on:change={coercePhaseAModeForScope}
+                  data-testid="optimize-cp-sat-scope">
             <option value="day">Per giorno (default, veloce)</option>
             <option value="week">Settimana intera (più robusto, più lento)</option>
           </select>
@@ -392,7 +394,8 @@
           <label>Modalità Phase A
             <span class="text-[10px] text-ink-400">(distribuzione settimanale ore)</span>
           </label>
-          <select bind:value={step3.phase_a_mode}>
+          <select bind:value={step3.phase_a_mode}
+                  data-testid="optimize-phase-a-mode">
             <option value="always"
                     disabled={step3.cp_sat_scope === 'week'}>
               Sempre (richiesta per scope = Per giorno)
