@@ -176,11 +176,13 @@ def import_engine_profile(profile: str, use_optimized: bool,
                                import_curricula: bool = True,
                                import_classrooms: bool = True,
                                import_students: bool = True,
-                               students_seed: int = 42) -> int:
+                               students_seed: int = 42,
+                               replace_working_hours: bool = True) -> int:
     params = dict(profile=profile, use_optimized=use_optimized,
                   import_curricula=import_curricula,
                   import_classrooms=import_classrooms,
-                  import_students=import_students)
+                  import_students=import_students,
+                  replace_working_hours=replace_working_hours)
     run_id = create_run("import", f"Import {profile}", profile, params)
     here = os.path.dirname(os.path.abspath(__file__))
     engine_scripts_dir = os.path.normpath(
@@ -202,6 +204,34 @@ def import_engine_profile(profile: str, use_optimized: bool,
         return None
 
     def target(rid: int):
+        # New default path: load the per-profile SQLite snapshot
+        # built by ``engine/scripts/build_profile_db.py``. The
+        # snapshot carries anagrafica + the 14 constraint tables +
+        # WorkingDay/Slot + Lessons in one file, replacing the slim
+        # pickles + the post-import classroom / student / curricula
+        # auto-generation.
+        sqlite_path = os.path.join(
+            engine_scripts_dir, "data", profile, f"{profile}.sqlite")
+        if os.path.exists(sqlite_path):
+            print(f"[import] using SQLite snapshot {sqlite_path}")
+            with SessionLocal() as db:
+                counts = engine_io.import_profile_sqlite_into_db(
+                    db, sqlite_path, replace=True,
+                    replace_working_hours=replace_working_hours,
+                )
+                _set_app_state(db, "last_profile", profile)
+            print(f"[import] sqlite import counts: {counts}")
+            update_run(rid, progress=1.0, metrics={
+                "source": "sqlite", "counts": counts,
+            })
+            return
+
+        # Fallback (deprecated): legacy pickle path. Kept for users
+        # who haven't run ``python -m engine.scripts.build_profile_db
+        # <profile>`` yet, or for one-off pickle dumps not yet
+        # converted. Logged at INFO so the deprecation is visible.
+        print(f"[import] {profile}.sqlite not found; "
+              f"falling back to legacy pickle import (deprecated)")
         school_pkl = _resolve_pkl(f"school_{profile}.pkl")
         profs_pkl = _resolve_pkl(f"profs_{profile}.pkl")
         sol_optimized = _resolve_pkl(

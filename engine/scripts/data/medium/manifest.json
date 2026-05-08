@@ -1,0 +1,42 @@
+{
+  "profile": "medium",
+  "seed": 42,
+  "schema_version": 1,
+  "schedule_label": "8-14 lun-ven + 8-12 sab",
+  "n_classes": 25,
+  "n_teachers": 48,
+  "n_subjects": 21,
+  "n_assignments": 283,
+  "n_plessi": 2,
+  "n_classrooms": 37,
+  "n_classrooms_palestra": 1,
+  "n_classrooms_lab": 9,
+  "n_classrooms_auditorium": 1,
+  "n_working_days": 6,
+  "n_working_hour_slots": 34,
+  "n_lessons": 745,
+  "n_students_range": {
+    "min": 18,
+    "max": 35
+  },
+  "capacity_range": {
+    "min": 20,
+    "max": 60
+  },
+  "fixtures": {
+    "teacher_unavailability": 54,
+    "teacher_mandatory_free_day": 4,
+    "class_unavailability": 2,
+    "classroom_unavailability": 4,
+    "coteach_group": 3,
+    "plesso_commuting_rule": 2,
+    "plesso_entity_policy": 6,
+    "teacher_compatible_class": 16,
+    "teacher_class_preference": 10,
+    "logical_unavailability": 1,
+    "curriculum_logical_constraint": 1,
+    "general_constraint": 5,
+    "pragma_classroom_capacity_ok": 1,
+    "subject_required_kind": 2
+  }
+}

@@ -1,6 +1,13 @@
 """Conversion between the DB model (rich constraints) and the engine
 pickles (slim structures consumed by engine/*.py).
 
+Note: a newer single-file SQLite snapshot
+(``engine/scripts/data/<profile>/<profile>.sqlite``, built by
+``engine.scripts.build_profile_db``) is now the canonical source of
+truth for the demo profiles. ``import_profile_sqlite_into_db`` below
+wires it into ``import_engine_profile`` so the legacy pickle path
+becomes a fallback.
+
 The engine works on three pickle shapes:
 
     school = {
@@ -1016,3 +1023,137 @@ def apply_room_mapping(db: Session, solution_id: int,
             n += 1
     db.commit()
     return n
+
+
+# ---------- SQLite profile snapshot import ----------
+
+
+# Tables copied verbatim from the profile SQLite into the live DB.
+# Order matters: parent rows before children. Lessons + Solution come
+# last because they reference school_classes (by name) implicitly.
+_PROFILE_TABLES = [
+    "subjects",
+    "subject_group_weights",
+    "teachers",
+    "school_classes",
+    "class_subjects",
+    "teacher_subjects",
+    "teacher_unavailability",
+    "teacher_mandatory_free_days",
+    "teacher_compatible_classes",
+    "teacher_class_preferences",
+    "teacher_curriculum_preferences",
+    "curricula",
+    "curriculum_subject_hours",
+    "curriculum_logical_constraints",
+    "plessi",
+    "plesso_commuting_rules",
+    "plesso_entity_policies",
+    "classrooms",
+    "classroom_subject_preferences",
+    "classroom_class_preferences",
+    "classroom_unavailability",
+    "classroom_tags",
+    "classroom_tag_assignments",
+    "class_unavailability",
+    "logical_unavailabilities",
+    "coteach_groups",
+    "assignments",
+    "general_constraints",
+    "working_days",
+    "working_hour_slots",
+    "solutions",
+    "lessons",
+]
+
+
+# Tables wiped in REVERSE order before the import to avoid FK issues.
+_PROFILE_TABLES_WIPE = list(reversed(_PROFILE_TABLES)) + [
+    # Solutions / Run / DayCount aren't part of the profile snapshot
+    # but they're meaningful at import time -- the live DB shouldn't
+    # carry stale runs after a fresh profile import. Lessons get
+    # wiped above; we add Run + DayCount + UnscheduledLesson.
+    "day_counts",
+    "unscheduled_lessons",
+]
+
+
+def import_profile_sqlite_into_db(
+    db: Session, sqlite_path: str, *, replace: bool = True,
+    replace_working_hours: bool = True,
+) -> dict[str, int]:
+    """Copy every relevant table from a profile SQLite snapshot into
+    the live DB.
+
+    Reads the source SQLite via ``sqlite3``; writes through the live
+    Session's raw DBAPI connection (``exec_driver_sql`` accepts ``?``
+    placeholders so positional tuple binds work with SQLAlchemy 2.x).
+
+    The schemas were created from the same ``models.py`` (the build
+    script uses ``Base.metadata.create_all``), so a column-by-column
+    copy is safe; we project to the intersection of columns present
+    in both DBs to stay resilient to migrations that ran on the live
+    DB but not on the snapshot (or vice versa).
+
+    Returns ``{table: rows_inserted}`` for the run log.
+    """
+    import sqlite3
+    if not os.path.exists(sqlite_path):
+        raise FileNotFoundError(sqlite_path)
+
+    src = sqlite3.connect(sqlite_path)
+    src.row_factory = sqlite3.Row
+    counts: dict[str, int] = {}
+    try:
+        from sqlalchemy import text as _text
+        from sqlalchemy import inspect as sa_inspect
+        live_insp = sa_inspect(db.get_bind())
+        live_tables = set(live_insp.get_table_names())
+
+        if replace:
+            for t in _PROFILE_TABLES_WIPE:
+                if not replace_working_hours and t in (
+                        "working_hour_slots", "working_days"):
+                    continue
+                if t in live_tables:
+                    db.execute(_text(f"DELETE FROM {t}"))
+            db.commit()
+
+        # Use the underlying DBAPI connection for ``?``-style binds.
+        raw = db.connection().connection
+        for t in _PROFILE_TABLES:
+            if not replace_working_hours and t in (
+                    "working_hour_slots", "working_days"):
+                continue
+            if t not in live_tables:
+                continue
+            live_cols = {c["name"] for c in live_insp.get_columns(t)}
+            src_cols = [r[1] for r in src.execute(
+                f"PRAGMA table_info({t})").fetchall()]
+            if not src_cols:
+                continue
+            shared = [c for c in src_cols if c in live_cols]
+            if not shared:
+                continue
+            # Quote identifiers -- some columns (e.g. teachers.group)
+            # collide with SQL reserved words.
+            quoted = [f'"{c}"' for c in shared]
+            rows = src.execute(
+                f"SELECT {','.join(quoted)} FROM {t}").fetchall()
+            if not rows:
+                continue
+            placeholders = ",".join(["?"] * len(shared))
+            cols_q = ",".join(quoted)
+            stmt = f"INSERT INTO {t} ({cols_q}) VALUES ({placeholders})"
+            cur = raw.cursor()
+            try:
+                cur.executemany(
+                    stmt, [tuple(row[c] for c in shared)
+                           for row in rows])
+                counts[t] = len(rows)
+            finally:
+                cur.close()
+        db.commit()
+    finally:
+        src.close()
+    return counts
