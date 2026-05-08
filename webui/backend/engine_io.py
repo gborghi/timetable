@@ -964,7 +964,18 @@ def classrooms_dicts_from_db(db: Session) -> list[dict]:
 
 def lessons_for_classroom_step(db: Session, solution_id: int) -> list[dict]:
     """Convert lessons in the active solution to the shape expected by
-    classroom_assignment."""
+    classroom_assignment.
+
+    `n_students` per lesson is looked up from SchoolClass and used by
+    classroom_assignment to enforce the HARD capacity constraint
+    (room.capacity >= class.n_students). Classes missing from the DB
+    (defensive: should not happen on a clean import) get a 0 so the
+    constraint is trivially satisfied.
+    """
+    n_students_by_class = {
+        c.name: int(c.n_students or 0)
+        for c in db.query(models.SchoolClass).all()
+    }
     out = []
     for l in db.query(models.Lesson).filter(
         models.Lesson.solution_id == solution_id
@@ -979,6 +990,7 @@ def lessons_for_classroom_step(db: Session, solution_id: int) -> list[dict]:
             "subject": l.subject,
             "day": l.day,
             "hour": l.hour,
+            "n_students": n_students_by_class.get(l.class_name, 0),
         })
     return out
 

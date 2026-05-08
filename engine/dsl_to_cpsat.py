@@ -461,6 +461,7 @@ PRAGMA_LEVEL: dict[str, str] = {
     "subject_pair_must": "phase_b",
     "subject_pair_exists": "phase_b",
     "class_day_load_in": "phase_b",
+    "classroom_capacity_ok": "phase_b",
     # Phase A (day_count IntVar) pragmas
     "class_day_load_in_day_count": "phase_a",
     "hall_bound_prof_day": "phase_a",
@@ -534,6 +535,8 @@ class DSLConstraintCompiler:
                  is_hard: bool = True,
                  soft_weight: int = 0,
                  classroom_for_slot: dict | None = None,
+                 classroom_capacity: dict | None = None,
+                 class_n_students: dict | None = None,
                  plessi_data: Any = None,
                  owner_model: Any = None,
                  day_count: dict | None = None,
@@ -564,6 +567,18 @@ class DSLConstraintCompiler:
         # The DTOs are forwarded verbatim to ``_eval_static`` /
         # ``_resolve_lesson_path`` and never mutated.
         self.classroom_for_slot = classroom_for_slot
+        # Static lookups used by the ``classroom_capacity_ok`` pragma:
+        #   classroom_capacity: room_name -> int (capacity)
+        #   class_n_students:   class_name -> int (n_students)
+        # Both are optional. When at least one is missing or empty, the
+        # pragma records a diagnostic and skips (no slot is forced to
+        # 0). The native ``classroom_assignment._can_host`` enforces
+        # the same rule on the dedicated room solver, so the pragma is
+        # really only useful for solvers that build a joint slot+room
+        # decision space (e.g. MonolithicSolver with a known
+        # classroom_for_slot mapping).
+        self.classroom_capacity = dict(classroom_capacity or {})
+        self.class_n_students = dict(class_n_students or {})
         self.plessi_data = plessi_data
         # Optional ``ConstraintModel`` whose busy-key registries
         # (``_coteach_busy_keys`` / ``_support_triples`` /
@@ -935,6 +950,11 @@ class DSLConstraintCompiler:
     #   subject_pair_must(class, subject)    -- when 2 hr/day, consecutive
     #   subject_pair_exists(class, subject)  -- when >=2 hr/day, exists pair
     #   class_day_load_in(class, [v, ...])   -- daily class hours in set
+    #   classroom_capacity_ok()              -- HARD: room.capacity >=
+    #                                            class.n_students (uses
+    #                                            classroom_for_slot +
+    #                                            classroom_capacity +
+    #                                            class_n_students)
     #
     # Unknown call names fall back to generic static evaluation
     # (boolean leaf): if the name is a known DSL built-in such as
@@ -1053,6 +1073,13 @@ class DSLConstraintCompiler:
             cl = str(arg_values[0])
             allowed = [int(v) for v in arg_values[1:]]
             self._compile_class_day_load_in(cl, allowed)
+            return True
+        if name == "classroom_capacity_ok":
+            if arg_values:
+                self.diagnostics.append(
+                    "classroom_capacity_ok takes no args")
+                return True
+            self._compile_classroom_capacity_ok()
             return True
         # ---- Phase A (day_count IntVar) pragmas ----
         if name == "class_day_load_in_day_count":
@@ -1375,6 +1402,62 @@ class DSLConstraintCompiler:
             self.model.Add(count == sum(present_per_h))
             self.model.AddAllowedAssignments(
                 [count], [(v,) for v in allowed_clamped])
+
+    def _compile_classroom_capacity_ok(self):
+        """HARD: for every (class, day, hour) whose room is already
+        known via ``classroom_for_slot``, force the slot Bool to 0
+        whenever ``room.capacity < class.n_students``.
+
+        Native enforcement of the capacity rule. The classroom-side
+        solver already filters infeasible (room, lesson) pairs in
+        ``classroom_assignment._can_host``; this pragma is the
+        equivalent for solvers that build a joint slot+room decision
+        space (MonolithicSolver with a known classroom_for_slot
+        mapping). When ``classroom_for_slot``, ``classroom_capacity``
+        or ``class_n_students`` is empty, the pragma records a
+        diagnostic and is a no-op -- the user-facing behaviour is
+        identical because the dedicated room solver still enforces
+        the same rule on the post-Phase-B classroom step.
+        """
+        if not self.classroom_for_slot:
+            self.diagnostics.append(
+                "classroom_capacity_ok: skipped, "
+                "classroom_for_slot lookup is empty")
+            return
+        if not self.classroom_capacity:
+            self.diagnostics.append(
+                "classroom_capacity_ok: skipped, "
+                "classroom_capacity dict is empty")
+            return
+        if not self.class_n_students:
+            self.diagnostics.append(
+                "classroom_capacity_ok: skipped, "
+                "class_n_students dict is empty")
+            return
+        n_forced = 0
+        for key, slot_var in self.slot.items():
+            t, cl, s, d, h = key
+            room = self.classroom_for_slot.get((cl, int(d), int(h)))
+            if room is None:
+                continue
+            cap = int(self.classroom_capacity.get(room, 0) or 0)
+            n_stud = int(self.class_n_students.get(cl, 0) or 0)
+            if n_stud > 0 and cap > 0 and cap < n_stud:
+                if self.is_hard:
+                    self.model.Add(slot_var == 0)
+                else:
+                    # SOFT: reify per-violation indicator and append
+                    # (weight, var) so the owning model picks it up.
+                    viol = self.model.NewBoolVar(
+                        f"_dsl_cap_v_{t}_{cl}_{s}_{d}_{h}")
+                    self.model.Add(slot_var == 0).OnlyEnforceIf(viol.Not())
+                    self.model.Add(slot_var == 1).OnlyEnforceIf(viol)
+                    self.soft_cost_terms.append(
+                        (self.soft_weight, viol))
+                n_forced += 1
+        self.diagnostics.append(
+            f"classroom_capacity_ok: forced {n_forced} slot(s) to 0 "
+            f"({'HARD' if self.is_hard else 'SOFT'})")
 
     # ============================================================
     # Phase A pragmas (operate on day_count IntVars)
