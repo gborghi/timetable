@@ -57,13 +57,15 @@ for p in (REPO_ROOT, WEBUI_DIR, BACKEND_DIR, ENGINE_DIR, SCHEDULE_DIR):
 PROFILES = ["small", "medium", "big", "huge", "superhuge", "mega"]
 
 # (cap_total_s, time_phase_a, time_phase_b_per_day, time_post_pass)
+# Caps relaxed (2026-05): proportional to profile size.
+# small=2min, medium=3min, big=6min, huge=10min, superhuge=20min, mega=30min.
 TIME_CAPS = {
-    "small":     (120.0, 20.0,  6.0,  20.0),
-    "medium":    (120.0, 30.0,  8.0,  30.0),
-    "big":       (300.0, 60.0, 15.0,  60.0),
-    "huge":      (300.0, 90.0, 18.0,  90.0),
-    "superhuge": (600.0, 120.0, 25.0, 120.0),
-    "mega":      (600.0, 150.0, 30.0, 150.0),
+    "small":     (120.0,  20.0,  6.0,  20.0),
+    "medium":    (180.0,  30.0,  8.0,  30.0),
+    "big":       (360.0,  60.0, 15.0,  60.0),
+    "huge":      (600.0,  90.0, 18.0,  90.0),
+    "superhuge": (1200.0, 180.0, 30.0, 180.0),
+    "mega":      (1800.0, 240.0, 40.0, 240.0),
 }
 
 
