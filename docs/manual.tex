@@ -187,40 +187,84 @@ Documento prodotto a maggio MMXXVI.
 
 \mainmatter
 
-% =========== Capitoli (numerati progressivamente, niente Parti) ===========
+% =====================================================================
+% Capitoli organizzati in sette Parti tematiche, in flusso didattico
+% crescente: dal "primo schedule" all'estensione del sistema.
+% =====================================================================
+
+% ---------------------------------------------------------------------
+\part{Per iniziare}
+\label{part:per_iniziare}
+% ---------------------------------------------------------------------
 \input{manual/chapters/prologo}
-\input{manual/chapters/problema_timetabling}
 \input{manual/chapters/panoramica_pitantum}
+\input{manual/chapters/problema_timetabling}
 \input{manual/chapters/orario_oggetto_strutturale}
 \input{manual/chapters/installazione}
 \input{manual/chapters/getting_started}
 \input{manual/chapters/terminologia_didattica}
-\input{manual/chapters/vincoli}
-\input{manual/chapters/workflow_di_ottimizzazione}
-\input{manual/chapters/guida_ui}
-\input{manual/chapters/calendario_e_ore}
-\input{manual/chapters/launcher}
-\input{manual/chapters/metodo_cpsat}
-\input{manual/chapters/metodo_spettrale}
-\input{manual/chapters/metodo_metaeuristiche}
-\input{manual/chapters/metodo_hall}
-\input{manual/chapters/metodo_lagrangian}
-\input{manual/chapters/metodo_montecarlo}
-\input{manual/chapters/metodo_grafo}
-\input{manual/chapters/metodo_statistica}
-\input{manual/chapters/metodo_dsl}
-\input{manual/chapters/architettura}
+
+% ---------------------------------------------------------------------
+\part{Modello dati}
+\label{part:modello_dati}
+% ---------------------------------------------------------------------
 \input{manual/chapters/modello_dati}
 \input{manual/chapters/architettura_dati_profili}
+\input{manual/chapters/calendario_e_ore}
+
+% ---------------------------------------------------------------------
+\part{Vincoli}
+\label{part:vincoli}
+% ---------------------------------------------------------------------
+\input{manual/chapters/vincoli}
+
+% ---------------------------------------------------------------------
+\part{Il DSL}
+\label{part:dsl}
+% ---------------------------------------------------------------------
+\input{manual/chapters/metodo_dsl}
 \input{manual/chapters/dsl_generico_per_i_vincoli}
+
+% ---------------------------------------------------------------------
+\part{Solver}
+\label{part:solver}
+% ---------------------------------------------------------------------
+\input{manual/chapters/workflow_di_ottimizzazione}
+\input{manual/chapters/metodo_cpsat}
+\input{manual/chapters/metodo_hall}
+\input{manual/chapters/metodo_spettrale}
+\input{manual/chapters/metodo_grafo}
+\input{manual/chapters/metodo_metaeuristiche}
+\input{manual/chapters/metodo_montecarlo}
+\input{manual/chapters/metodo_lagrangian}
+\input{manual/chapters/metodo_statistica}
 \input{manual/chapters/tecniche_di_ottimizzazione_avanzate}
+
+% ---------------------------------------------------------------------
+\part{Interfaccia e workflow}
+\label{part:ui}
+% ---------------------------------------------------------------------
+\input{manual/chapters/guida_ui}
+\input{manual/chapters/launcher}
 \input{manual/chapters/diagnostica_statistica}
+\input{manual/chapters/qualita_ui}
+
+% ---------------------------------------------------------------------
+\part{Benchmark e qualit\`a}
+\label{part:benchmark}
+% ---------------------------------------------------------------------
+\input{manual/chapters/benchmarks}
+\input{manual/chapters/qualita_e2e}
+
+% ---------------------------------------------------------------------
+\appendix
+\part{Appendici}
+\label{part:appendici}
+% ---------------------------------------------------------------------
+\input{manual/chapters/architettura}
 \input{manual/chapters/api_rest}
 \input{manual/chapters/estendere_il_sistema}
 \input{manual/chapters/repository_github}
-\input{manual/chapters/benchmarks}
-\input{manual/chapters/qualita_ui}
-\input{manual/chapters/qualita_e2e}
 \input{manual/chapters/lessons_learned}
 \input{manual/chapters/glossario_discorsivo}
 \input{manual/chapters/reference}

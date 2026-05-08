@@ -176,37 +176,82 @@ Document produced in May MMXXVI.
 
 \mainmatter
 
-% =========== Chapters (in the same order as the Italian edition) ===
+% =====================================================================
+% Chapters organised in seven thematic Parts, parallel to the Italian
+% edition, in increasing didactic order: from the first schedule to
+% extending the system.
+% =====================================================================
+
+% ---------------------------------------------------------------------
+\part{Getting started}
+\label{part:per_iniziare_en}
+% ---------------------------------------------------------------------
 \input{manual/chapters_en/prologo}
-\input{manual/chapters_en/problema_timetabling}
 \input{manual/chapters_en/panoramica_pitantum}
+\input{manual/chapters_en/problema_timetabling}
 \input{manual/chapters_en/orario_oggetto_strutturale}
 \input{manual/chapters_en/installazione}
-\input{manual/chapters_en/vincoli}
-\input{manual/chapters_en/workflow_di_ottimizzazione}
-\input{manual/chapters_en/guida_ui}
-\input{manual/chapters_en/calendario_e_ore}
-\input{manual/chapters_en/launcher}
-\input{manual/chapters_en/metodo_cpsat}
-\input{manual/chapters_en/metodo_spettrale}
-\input{manual/chapters_en/metodo_metaeuristiche}
-\input{manual/chapters_en/metodo_hall}
-\input{manual/chapters_en/metodo_lagrangian}
-\input{manual/chapters_en/metodo_montecarlo}
-\input{manual/chapters_en/metodo_grafo}
-\input{manual/chapters_en/metodo_statistica}
-\input{manual/chapters_en/metodo_dsl}
-\input{manual/chapters_en/architettura}
+
+% ---------------------------------------------------------------------
+\part{Data model}
+\label{part:modello_dati_en}
+% ---------------------------------------------------------------------
 \input{manual/chapters_en/modello_dati}
 \input{manual/chapters_en/architettura_dati_profili}
+\input{manual/chapters_en/calendario_e_ore}
+
+% ---------------------------------------------------------------------
+\part{Constraints}
+\label{part:vincoli_en}
+% ---------------------------------------------------------------------
+\input{manual/chapters_en/vincoli}
+
+% ---------------------------------------------------------------------
+\part{The DSL}
+\label{part:dsl_en}
+% ---------------------------------------------------------------------
+\input{manual/chapters_en/metodo_dsl}
 \input{manual/chapters_en/dsl_generico_per_i_vincoli}
+
+% ---------------------------------------------------------------------
+\part{Solvers}
+\label{part:solver_en}
+% ---------------------------------------------------------------------
+\input{manual/chapters_en/workflow_di_ottimizzazione}
+\input{manual/chapters_en/metodo_cpsat}
+\input{manual/chapters_en/metodo_hall}
+\input{manual/chapters_en/metodo_spettrale}
+\input{manual/chapters_en/metodo_grafo}
+\input{manual/chapters_en/metodo_metaeuristiche}
+\input{manual/chapters_en/metodo_montecarlo}
+\input{manual/chapters_en/metodo_lagrangian}
+\input{manual/chapters_en/metodo_statistica}
 \input{manual/chapters_en/tecniche_di_ottimizzazione_avanzate}
+
+% ---------------------------------------------------------------------
+\part{Interface and workflow}
+\label{part:ui_en}
+% ---------------------------------------------------------------------
+\input{manual/chapters_en/guida_ui}
+\input{manual/chapters_en/launcher}
 \input{manual/chapters_en/diagnostica_statistica}
+
+% ---------------------------------------------------------------------
+\part{Benchmarks and quality}
+\label{part:benchmark_en}
+% ---------------------------------------------------------------------
+\input{manual/chapters_en/benchmarks}
+\input{manual/chapters_en/qualita_e2e}
+
+% ---------------------------------------------------------------------
+\appendix
+\part{Appendices}
+\label{part:appendici_en}
+% ---------------------------------------------------------------------
+\input{manual/chapters_en/architettura}
 \input{manual/chapters_en/api_rest}
 \input{manual/chapters_en/estendere_il_sistema}
 \input{manual/chapters_en/repository_github}
-\input{manual/chapters_en/benchmarks}
-\input{manual/chapters_en/qualita_e2e}
 \input{manual/chapters_en/lessons_learned}
 \input{manual/chapters_en/glossario_discorsivo}
 \input{manual/chapters_en/reference}
