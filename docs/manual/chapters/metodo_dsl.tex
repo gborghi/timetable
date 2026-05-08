@@ -36,50 +36,32 @@ per il drag-and-drop in tempo reale dell'editor Orario.
 compilatori'' del Dragon Book~\parencite{aho2006}.
 \end{ideabox}
 
-\section{Grammatica (sintesi)}
+\section{Grammatica e parser (rinvio)}
 
-La grammatica del DSL \`e costruita con discesa ricorsiva.
-La forma BNF semplificata:
-
-\begin{lstlisting}
-program     := constraint+
-constraint  := quantifier source ('where' filter)? ':' body
-quantifier  := 'forall' | 'exists' | 'count'
-source      := IDENT 'in' (IDENT | path)
-path        := IDENT ('.' IDENT)+
-filter      := expr
-body        := expr
-expr        := orexpr
-orexpr      := andexpr ('or' andexpr)*
-andexpr     := notexpr ('and' notexpr)*
-notexpr     := 'not'? cmp
-cmp         := value relop value | builtin
-relop       := '==' | '!=' | '<' | '<=' | '>' | '>='
-              | 'in' | 'not in' | 'contains'
-value       := literal | path | builtin
-builtin     := 'consecutive' '(' value ',' value ')'
-              | 'same_day' '(' value ',' value ')'
-              | 'lesson' '(' value ',' value ')'
-              | 'has_tag' '(' STRING ')'
-\end{lstlisting}
-
-Le sorgenti supportate sono: \texttt{teachers}, \texttt{classes},
+La grammatica BNF completa --- con le otto sorgenti
+iterabili (\texttt{teachers}, \texttt{classes},
 \texttt{subjects}, \texttt{classrooms}, \texttt{groups},
-\texttt{students}, \texttt{lessons}, \texttt{slots}; pi\`u
-qualsiasi \emph{path} che restituisca una collezione (es.
-\texttt{s.groups}, \texttt{l.classroom.tags}).
+\texttt{students}, \texttt{lessons}, \texttt{slots}) e i path
+arbitrari del tipo \texttt{l.classroom.tags} --- vive nel
+capitolo tutorial alla
+sezione~\ref{sec:dsl-bnf}. Qui basti dire che il
+parser \`e \emph{recursive descent} a discesa ricorsiva, scritto
+in Python puro senza generatori (no PLY/Lark) e che le
+precedenze vanno da \texttt{<=>} (la pi\`u bassa) fino al
+\texttt{.} di accesso a membro (la pi\`u alta), passando per
+\texttt{=>}, \texttt{or}, \texttt{and}, \texttt{not} e gli
+operatori di confronto.
 
-\section{Parser e AST}
+\section{AST}
 
 \begin{defbox}
-Il \emph{parser} \`e un \emph{recursive descent}
-hand-rolled (Python puro, no PLY/Lark). Riconosce token con
-una funzione \texttt{tokenize()} basata su regex, e
-costruisce un AST (\emph{Abstract Syntax
-Tree})\index{AST} dove ogni nodo \`e una piccola dataclass:
+L'AST (\emph{Abstract Syntax Tree})\index{AST} prodotto dal
+parser ha nodi che sono piccole dataclass:
 \texttt{Quant}, \texttt{Count}, \texttt{BinOp},
 \texttt{Cmp}, \texttt{Ref}, \texttt{Lit},
-\texttt{Builtin}.
+\texttt{Builtin}. Riconosce token tramite
+\texttt{tokenize()} con regex, e poi assembla i nodi per
+discesa ricorsiva.
 \end{defbox}
 
 Esempio: l'espressione
@@ -151,16 +133,16 @@ lezione.
 
 \section{Estensione: aggiungere un built-in}
 
-Per aggiungere un nuovo built-in (es. \texttt{distinct\_days}):
-\begin{enumerate}
-\item Estendere la lista dei token nel \texttt{tokenize()}.
-\item Aggiungere il caso nel parser (\texttt{\_parse\_builtin}).
-\item Implementare la valutazione nell'evaluator.
-\item Implementare la compilazione CP-SAT (di solito 5--10
-  righe).
-\item Aggiungere alla galleria del cap.~\ref{ch:dsl_generico_per_i_vincoli}.
-\item Aggiungere un test in \texttt{test\_general\_dsl.py}.
-\end{enumerate}
+Aggiungere un nuovo built-in (es.\ \texttt{distinct\_days}) \`e
+un'operazione locale al modulo
+\texttt{webui/backend/utils/general\_dsl.py} e tocca quattro punti:
+\texttt{tokenize()}, parser, evaluator e compilatore CP-SAT
+(quest'ultimo di norma 5--10 righe). La
+sezione~\ref{sec:dsl-estendere} del capitolo tutorial sviluppa
+la procedura passo-passo --- con i casi simmetrici
+\emph{nuova sorgente iterabile}, \emph{nuovo pragma} e
+\emph{nuovo operatore} --- e mostra il test di accettazione in
+\texttt{test\_general\_dsl.py}.
 
 \section{Performance}
 

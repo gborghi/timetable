@@ -312,43 +312,18 @@ del codice in cui il concetto vive.
 
 \index{Granularit\`a!pricing}
 
-Le 9 granularit\`a di pricing in $\pi$Tantum, dalla pi\`u
-grossolana alla pi\`u fine, sono:
-
-\begin{description}
-\item[teacher.] Una colonna per docente. Massimo riuso, minor
-  overhead di pricing, ma ogni colonna deve coprire
-  \emph{tutta} la settimana del docente. \`E il default.
-\item[teacher-day.] Una colonna per (docente, giorno). Ogni
-  giornata si pricing\=a separatamente; reagisce meglio a
-  vincoli locali (sostituzioni una-tantum).
-\item[teacher-class.] Una colonna per (docente, classe).
-  Risolve la frammentazione quando un docente lavora in
-  classi molto diverse.
-\item[teacher-class-subject.] Una colonna per cattedra
-  (docente, classe, materia). Massima granularit\`a sui
-  pattern di cattedra; ottima per vincoli che riguardano
-  ``lezioni di matematica della 1A''.
-\item[teacher-subject.] Una colonna per (docente, materia).
-  Compromesso fra teacher e teacher-class-subject.
-\item[class.] Una colonna per classe. Cambia il punto di
-  vista: ogni classe \`e un'entit\`a, non il docente.
-\item[class-day.] Una colonna per (classe, giorno). Utile
-  per pattern di carico orario per la classe.
-\item[day.] Una colonna per giorno: tutti i docenti, tutte
-  le classi, una giornata. Pi\`u onerosa ma cattura
-  globalmente i vincoli intergiornalieri.
-\item[curriculum.] Una colonna per indirizzo. Le decisioni
-  vivono al livello di \emph{tutte le classi dello stesso
-  indirizzo}, comoda per istituti omogenei.
-\end{description}
-
-\sidenote{In codice queste etichette sono il parametro
-\texttt{granularity=} di
-\texttt{run\_column\_generation()} nel file
-\texttt{engine/column\_generation.py}, e per ogni
-granularit\`a esiste una funzione di enumerazione
-\texttt{\_enumerate\_pricing\_keys()}.}
+Il parametro \texttt{granularity=} di
+\texttt{run\_column\_generation()}
+(\texttt{engine/column\_generation.py}) ammette nove valori
+--- da \texttt{teacher} (la pi\`u grossolana, una colonna per
+docente, default) fino a \texttt{day} e \texttt{curriculum}
+(le pi\`u fini, una colonna per giorno o per indirizzo) ---
+ciascuno con la propria funzione di enumerazione
+\texttt{\_enumerate\_pricing\_keys()}. La tassonomia completa,
+con la codifica colonnare e l'indicazione di quando preferire
+una granularit\`a all'altra, \`e nella
+Tabella~\ref{tab:bp-granularity} del
+capitolo~\ref{ch:tecniche_avanzate}.
 
 \fleuron
 

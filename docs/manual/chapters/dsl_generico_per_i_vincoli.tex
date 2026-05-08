@@ -784,7 +784,46 @@ forall l in lessons where l.teacher == "Rossi"
         true
 \end{lstlisting}
 
-\subsection{Tutti i casi precedenti come SOFT}
+\subsection{Caso seconda lingua: francese nelle prime tre ore (SOFT)}
+
+Liceo linguistico, indirizzo francese-tedesco, anno 1: la
+seconda lingua (francese) andrebbe collocata preferibilmente
+nelle prime tre ore della mattina, perch\'e \`e l'orario in cui
+gli alunni hanno l'energia per la fonetica. Vincolo SOFT con
+peso 20:
+
+\begin{lstlisting}
+% level=soft, weight=20
+forall l in lessons
+    where l.subject == "Francese"
+      and l.class.curriculum == "Linguistico-FRA-TED"
+      and l.class.year == 1:
+    l.hour <= 10
+\end{lstlisting}
+
+\noindent
+Ogni lezione di francese delle prime FRA-TED che cade alla 4a
+ora o oltre paga 20 di costo aggiuntivo. Quando esiste una
+configurazione \emph{senza} pagare, il solver la sceglie; quando
+serve pagare per soddisfare i vincoli HARD lo fa minimizzando il
+numero di lezioni costate.
+
+\subsection{Caso carico equilibrato di Rossi (SOFT, peso 30)}
+
+Variante del caso~(a) sopra: oltre a chiedere giorni non
+consecutivi, il dirigente vorrebbe distribuzione bilanciata
+4+4+4 sui tre giorni occupati. Vincolo SOFT, peso 30 per ogni
+ora oltre il quarto in un singolo giorno:
+
+\begin{lstlisting}
+% level=soft, weight=30
+forall t in teachers where t.name == "Rossi":
+    forall d in days:
+        count l in lessons
+            where l.teacher == t and l.day == d.index: l <= 4
+\end{lstlisting}
+
+\subsection{Tutti i casi HARD precedenti come SOFT}
 
 Cambia \texttt{level=hard} in \texttt{level=soft} nel modal e
 imposta \texttt{weight=$W$}. Il solver riceve la regola come
@@ -1241,128 +1280,6 @@ passaggi tracciabili nei log:
   frontend renderizza nella card ``Vincoli DSL'' del tab
   Statistiche.
 \end{enumerate}
-
-\section{Tre casi narrati}
-\label{sec:dsl-tre-casi}
-
-\subsection{Caso Rossi: distribuzione su tre giorni non consecutivi}
-
-Il dirigente di un istituto comprensivo riceve una richiesta
-formale dal docente Rossi: ``vorrei le mie 12 ore settimanali
-distribuite su tre giorni non consecutivi della settimana''. Il
-vincolo abbraccia tre obblighi: (a) la cattedra Rossi insiste su
-esattamente 3 giorni; (b) i 3 giorni non sono consecutivi; (c)
-nei 3 giorni la distribuzione \`e 4+4+4 (vincolo aggiuntivo
-``carico equilibrato'').
-
-\begin{lstlisting}
-% (a) Rossi insiste su 3 giorni
-forall t in teachers where t.name == "Rossi":
-    count d in days
-        where exists l in lessons:
-            l.teacher == t and l.day == d.index: d == 3
-
-% (b) i giorni di Rossi non sono consecutivi
-forall l1 in lessons where l1.teacher == "Rossi":
-    forall l2 in lessons where l2.teacher == "Rossi":
-        (l1.day == l2.day)
-        or not consecutive_days(l1.day, l2.day)
-
-% (c) carico equilibrato (SOFT, peso 30)
-% level=soft, weight=30
-forall t in teachers where t.name == "Rossi":
-    forall d in days:
-        count l in lessons
-            where l.teacher == t and l.day == d.index: l <= 4
-\end{lstlisting}
-
-\noindent
-Salvato come tre vincoli separati nel tab Docente, due HARD e
-uno SOFT. Il solver respinge tutte le configurazioni con quattro
-o pi\`u giorni occupati, tutte le configurazioni in giorni
-adiacenti, e paga 30 di costo aggiuntivo per ogni ora oltre il
-quarto in un singolo giorno.
-
-\subsection{Caso plesso commuting: l'istituto su due edifici}
-
-L'IIS Marconi-Pascoli ha due plessi a 600\,m di distanza
-(\texttt{plessi.id = 1} ``Marconi'', \texttt{plessi.id = 2}
-``Pascoli''). Le delibere RSU vietano transiti durante la
-giornata: nessun docente pu\`o avere lezione in plesso 2 nell'ora
-immediatamente successiva a una lezione in plesso 1, e
-viceversa. Le classi sono affiliate a un unico plesso, quindi il
-vincolo \`e di fatto sui docenti.
-
-\begin{lstlisting}
-forall l1 in lessons where l1.classroom.plesso == 1:
-    forall l2 in lessons where l2.classroom.plesso == 2
-                            and l2.teacher == l1.teacher
-                            and consecutive(l1.slot, l2.slot):
-        false
-\end{lstlisting}
-
-\noindent
-Salvato globalmente (scope=global). La regola viene
-\emph{compilata} dal \texttt{MonolithicSolver} e dal
-\texttt{PhaseBDaySolver} via il pragma canonico
-\texttt{plesso\_commuting\_rule}: il path \texttt{l.classroom.plesso}
-risolve all'identificatore intero del plesso, e per ogni coppia
-di slot adiacenti (stesso giorno, ore $h$ e $h+1$) emette il
-vincolo CP-SAT
-$\mathtt{slot}[t,c_1,s_1,d,h] \implies
-\lnot \mathtt{slot}[t,c_2,s_2,d,h+1]$
-quando $c_1$ e $c_2$ vivono in plessi diversi.
-
-\subsection{Caso compresenza: matematica e sostegno nello stesso giorno}
-
-In una scuola elementare la docente di sostegno deve essere in
-classe \emph{nello stesso giorno} della docente di matematica
-per la classe 2B (compresenza didattica). Il vincolo \`e che
-ogni lezione di sostegno della docente Verdi in 2B cada in un
-giorno in cui la docente Bianchi di matematica \`e in 2B.
-
-\begin{lstlisting}
-forall l in lessons where l.teacher == "Verdi"
-                       and l.class == "2B"
-                       and l.subject == "Sostegno":
-    exists m in lessons where m.teacher == "Bianchi"
-                          and m.class == "2B"
-                          and m.subject == "Matematica"
-                          and same_day(l.slot, m.slot):
-        true
-\end{lstlisting}
-
-\noindent
-Il \texttt{forall \dots: exists \dots: true} \`e l'idioma per
-``$\forall l\,\exists m: P(l,m)$''. Il compilatore lo riconosce
-come reificazione di una BoolVar e lo lega come vincolo
-fattibilit\`a. Sono semantica equivalenti a un \texttt{forall} +
-\texttt{count}, ma il pattern $\exists\,$ \`e pi\`u trasparente
-per la lettura umana.
-
-\subsection{Caso seconda lingua: francese nelle prime tre ore (SOFT)}
-
-Liceo linguistico, indirizzo francese-tedesco, anno 1: la
-seconda lingua (francese) andrebbe collocata preferibilmente
-nelle prime tre ore della mattina, perch\'e \`e l'orario in cui
-gli alunni hanno l'energia per la fonetica. Vincolo SOFT con
-peso 20:
-
-\begin{lstlisting}
-% level=soft, weight=20
-forall l in lessons
-    where l.subject == "Francese"
-      and l.class.curriculum == "Linguistico-FRA-TED"
-      and l.class.year == 1:
-    l.hour <= 10
-\end{lstlisting}
-
-\noindent
-Ogni lezione di francese delle prime FRA-TED che cade alla 4a
-ora o oltre paga 20 di costo aggiuntivo. Quando esiste una
-configurazione \emph{senza} pagare, il solver la sceglie; quando
-serve pagare per soddisfare i vincoli HARD lo fa minimizzando il
-numero di lezioni costate.
 
 \section{Diagramma dell'architettura DSL}
 \label{sec:dsl-archi}
