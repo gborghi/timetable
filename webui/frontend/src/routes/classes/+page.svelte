@@ -208,10 +208,11 @@
   };
 </script>
 
-<div class="space-y-4">
+<div class="space-y-4" data-testid="classes-page">
   <div class="flex items-baseline gap-3 flex-wrap">
     <h1>Classi</h1>
-    <button class="btn-primary ml-auto" on:click={newClass}>+ Nuova classe</button>
+    <button class="btn-primary ml-auto" on:click={newClass}
+            data-testid="add-class-btn">+ Nuova classe</button>
     <ImportButton entity="classes" onDone={() => listRef?.reload()}/>
     <button class="btn !text-xs" on:click={() => (showBulk = true)}
             disabled={selectedIds.length === 0}
@@ -245,8 +246,14 @@
       {(row.subjects || []).reduce((s, x) => s + Number(x.hours_per_week || 0), 0)}
     </td>
     <td class="whitespace-nowrap">
-      <button class="btn !text-xs !px-2 !py-1" on:click={() => edit(row)}>Modifica</button>
-      <button class="btn-danger !text-xs !px-2 !py-1" on:click={() => del(row)}>Elimina</button>
+      <button class="btn !text-xs !px-2 !py-1"
+              data-testid="class-edit-btn"
+              data-class-id={row.id}
+              on:click={() => edit(row)}>Modifica</button>
+      <button class="btn-danger !text-xs !px-2 !py-1"
+              data-testid="class-delete-btn"
+              data-class-id={row.id}
+              on:click={() => del(row)}>Elimina</button>
     </td>
   </SortableQueryableList>
 </div>
@@ -257,16 +264,16 @@
 
 <Modal open={!!editing} title={editing?._new ? 'Nuova classe' : 'Modifica classe'} onClose={() => (editing = null)}>
   {#if editing}
-    <div class="grid grid-cols-2 gap-3">
-      <div class="field"><label>Nome</label><input bind:value={editing.name}/></div>
+    <div class="grid grid-cols-2 gap-3" data-testid="class-form">
+      <div class="field"><label>Nome</label><input bind:value={editing.name} data-testid="class-name-input"/></div>
       <div class="field">
         <label>Nickname (mostrato nell'orario)
           <span class="text-xs text-ink-400">- default: nome</span>
         </label>
         <input bind:value={editing.nickname} placeholder={editing.name ?? ''}/>
       </div>
-      <div class="field"><label>Anno</label><input type="number" min="1" max="5" bind:value={editing.year}/></div>
-      <div class="field"><label>Sezione</label><input bind:value={editing.section}/></div>
+      <div class="field"><label>Anno</label><input type="number" min="1" max="5" bind:value={editing.year} data-testid="class-year-input"/></div>
+      <div class="field"><label>Sezione</label><input bind:value={editing.section} data-testid="class-section-input"/></div>
       <div class="field">
         <label>Indirizzo</label>
         <div class="flex gap-2">
@@ -469,8 +476,10 @@
     </div>
 
     <div class="mt-5 flex justify-end gap-2">
-      <button class="btn" on:click={() => (editing = null)}>Annulla</button>
-      <button class="btn-primary focus-ring" on:click={save} disabled={saving}>
+      <button class="btn" on:click={() => (editing = null)}
+              data-testid="class-cancel-btn">Annulla</button>
+      <button class="btn-primary focus-ring" on:click={save} disabled={saving}
+              data-testid="class-save-btn">
         {saving ? 'Salvataggio...' : 'Salva'}
       </button>
     </div>
