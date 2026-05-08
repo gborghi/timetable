@@ -23,7 +23,7 @@
    * /api/working-hours/reset.
    */
   import { onMount } from 'svelte';
-  import * as api from '$lib/api';
+  import { api } from '$lib/api';
   import { flash } from '$lib/stores';
   import WeeklyCalendarView from '$lib/components/WeeklyCalendarView.svelte';
 
