@@ -146,10 +146,11 @@
   };
 </script>
 
-<div class="space-y-4">
+<div class="space-y-4" data-testid="groups-page">
   <div class="flex items-baseline gap-3 flex-wrap">
     <h1>Gruppi articolati</h1>
-    <button class="btn-primary ml-auto" on:click={newGroup}>+ Nuovo gruppo</button>
+    <button class="btn-primary ml-auto" on:click={newGroup}
+            data-testid="add-group-btn">+ Nuovo gruppo</button>
     <ImportButton entity="groups" onDone={() => listRef?.reload()}/>
   </div>
 
@@ -174,8 +175,14 @@
       <td class="text-center">{row.n_classes_touched}</td>
       <td class="text-center">{(row.subject_hours || []).length}</td>
       <td class="whitespace-nowrap">
-        <button class="btn !text-xs !px-2 !py-1" on:click={() => edit(row)}>Modifica</button>
-        <button class="btn-danger !text-xs !px-2 !py-1" on:click={() => del(row)}>Elimina</button>
+        <button class="btn !text-xs !px-2 !py-1"
+                data-testid="group-edit-btn"
+                data-group-id={row.id}
+                on:click={() => edit(row)}>Modifica</button>
+        <button class="btn-danger !text-xs !px-2 !py-1"
+                data-testid="group-delete-btn"
+                data-group-id={row.id}
+                on:click={() => del(row)}>Elimina</button>
       </td>
     </tr>
   </SortableQueryableList>
@@ -184,8 +191,8 @@
 <Modal open={!!editing} title={editing?._new ? 'Nuovo gruppo' : 'Gruppo: ' + (editing?.name || '')}
        onClose={() => (editing = null)}>
   {#if editing}
-    <div class="grid grid-cols-2 gap-3">
-      <div class="field"><label>Nome</label><input bind:value={editing.name}/></div>
+    <div class="grid grid-cols-2 gap-3" data-testid="group-form">
+      <div class="field"><label>Nome</label><input bind:value={editing.name} data-testid="group-name-input"/></div>
       <div class="field">
         <label>Nickname
           <span class="text-xs text-ink-400">- default: nome</span>
@@ -193,7 +200,7 @@
         <input bind:value={editing.nickname} placeholder={editing.name ?? ''}/>
       </div>
       <div class="field"><label>Tipo</label>
-        <select bind:value={editing.kind}>
+        <select bind:value={editing.kind} data-testid="group-kind-select">
           <option value="splitting">splitting (frazionamento classe)</option>
           <option value="language">language (seconda lingua)</option>
           <option value="religion">religion (IRC / alternativa)</option>
@@ -305,8 +312,10 @@
     </div>
 
     <div class="mt-5 flex justify-end gap-2">
-      <button class="btn" on:click={() => (editing = null)}>Annulla</button>
-      <button class="btn-primary focus-ring" on:click={save} disabled={saving}>
+      <button class="btn" on:click={() => (editing = null)}
+              data-testid="group-cancel-btn">Annulla</button>
+      <button class="btn-primary focus-ring" on:click={save} disabled={saving}
+              data-testid="group-save-btn">
         {saving ? 'Salvataggio...' : 'Salva'}
       </button>
     </div>
