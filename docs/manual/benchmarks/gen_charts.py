@@ -197,7 +197,7 @@ def emit_full_results_table(rows, fh):
         tt = _fmt(_f(r["t_total"]))
         cost = _fmt(_f(r["cost"]), 0)
         hard = r.get("hard_feasible", "")
-        status = r["status"]
+        status = r["status"].replace("_", "\\_")
         note = (r.get("note", "") or r.get("error_msg", ""))[:40]
         note = note.replace("_", "\\_").replace("&", "\\&")
         fh.write(f"\\texttt{{{prof}}} & \\texttt{{{ds}}} & "
