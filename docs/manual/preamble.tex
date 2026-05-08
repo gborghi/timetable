@@ -1,51 +1,74 @@
 % =====================================================================
-% piTantum -- Manuale tecnico (monografia editoriale)
-% Documenta la teoria, l'implementazione e l'esperienza pratica del
-% sistema di generazione e gestione dell'orario scolastico piTantum.
+% piTantum -- Manuale tecnico (monografia editoriale, vintage style)
 %
-% Editorial framework:
-%   classe       : KOMA-Script scrbook (libro europeo, flessibile)
-%   compilatore  : lualatex (per fontspec / OpenType)
-%   tipografia   : EB Garamond (serif) + Lato (sans) + Inconsolata (mono)
-%   bibliografia : biblatex backend biber, stile authoryear-comp
-%   indice       : imakeidx (indice analitico unico)
-%   layout       : margini ampi con marginnote per glosse a margine
+% Stile editoriale "libro antico":
+%   - classe       : KOMA-Script scrbook (twoside, open=right)
+%   - compilatore  : lualatex (per fontspec / OpenType)
+%   - corpo        : EB Garamond (oldstyle figures, smallcaps native)
+%   - sans         : Lato (per cifre tecniche, etichette, titoli di
+%                    schemi tikz; usato con parsimonia)
+%   - mono         : Inconsolata (codice)
+%   - ornamenti    : fourier-orns + pifont (fleurons, aldine, decofour)
+%   - testatine    : automark in italico, capitolo verso, sezione recto
+%   - capitoli     : numero romano, fleuron, titolo in maiuscoletto,
+%                    filetti orizzontali sopra e sotto
+%   - capilettera  : lettrine (3 righe), prima parola in maiuscoletto
+%   - bibliografia : biblatex backend biber, stile authoryear-comp
+%   - indice       : imakeidx (indice analitico unico)
 %
-% ASCII puro nel sorgente; accenti via macro (\`e, \'e, \`a),
+% ASCII puro nel sorgente; accenti via macro (\`e, \'e, \`a, \"u),
 % virgolette ``...''.
 % =====================================================================
 \documentclass[
   paper=A4,
   fontsize=11pt,
   headings=optiontoheadandtoc,
-  twoside=false,
+  twoside=true,
+  open=right,
   parskip=half-,
   numbers=noenddot,
+  chapterprefix=true,
+  appendixprefix=true,
   bibliography=totoc,
   toc=index,
   toc=listof,
 ]{scrbook}
 
-% ---------- Lingua e font ----------
+% ---------- Lingua ----------
 \usepackage[T1]{fontenc}
 \usepackage[utf8]{inputenc}
 \usepackage[italian]{babel}
-\usepackage{lmodern}            % scalable Latin Modern fallback
-                                 % (needed so math glyphs like $\pi$
-                                 %  on the cover work at any size)
-\usepackage{ebgaramond}
-\usepackage[scaled=0.92]{lato}
+
+% ---------- Tipografia vintage ----------
+% Latin Modern per i glifi matematici (es. $\pi$ in copertina).
+\usepackage{lmodern}
+% EB Garamond con cifre old-style (osf): l'opzione `oldstyle' rende
+% le cifre del testo in stile umanistico, allineate sulla x-height,
+% come nei caratteri da libro del Cinquecento e del Seicento.
+\usepackage[oldstyle]{ebgaramond}
+\usepackage[scaled=0.88]{lato}
 \usepackage[scaled=0.95]{inconsolata}
+\usepackage{textcomp}
 \usepackage{microtype}
 
-% ---------- Geometria di pagina ----------
+% ---------- Ornamenti tipografici ----------
+% fourier-orns offre i fleurons aldini (\aldineleft, \aldineright),
+% le rosette (\decofourleft, \decofourright), gli ornamenti a foglia.
+% pifont aggiunge la dingbat ZapfDingbats per i punti elenco.
+\usepackage{fourier-orns}
+\usepackage{pifont}
+
+% ---------- Geometria di pagina (libro a fronte, margini classici) ----------
+% Proporzioni alla Tschichold/Bringhurst: margine esterno generoso
+% per la marginalia, margine interno piu' stretto (ma sufficiente per
+% la rilegatura), testatina aerea, piede ampio.
 \usepackage[a4paper,
-  inner=2.4cm, outer=4.4cm, top=2.6cm, bottom=2.8cm,
-  marginparwidth=3.0cm, marginparsep=0.5cm,
-  headheight=15pt, headsep=18pt,
+  inner=2.8cm, outer=4.2cm, top=2.8cm, bottom=3.2cm,
+  marginparwidth=2.8cm, marginparsep=0.55cm,
+  headheight=15pt, headsep=20pt, footskip=24pt,
 ]{geometry}
 
-% ---------- Pacchetti editoriali ----------
+% ---------- Pacchetti editoriali (preservati dalla versione 2026-04) ----------
 \usepackage{xcolor}
 \usepackage{graphicx}
 \usepackage{amsmath}
@@ -70,28 +93,52 @@
 \usepackage{epigraph}
 \usepackage{caption}
 \usepackage{subcaption}
-\captionsetup{font={small,sf}, labelfont={bf,color=cIndaco}, labelsep=endash}
-\captionsetup[sub]{font={footnotesize,sf}, labelfont={bf,color=cIndaco}}
 \usepackage{siunitx}
 \sisetup{output-decimal-marker={,}, group-separator={\,}, per-mode=symbol}
 \usepackage{amsthm}
-% Theorem-style environments (Garamond italic body, indaco header)
-\newtheoremstyle{pita}{0.6em}{0.6em}{}{0pt}{\sffamily\bfseries\color{cIndaco}}{.}{.5em}{}
+
+% ---------- Palette (brand piTantum, sobria e tipografica) ----------
+\definecolor{cIndaco}{RGB}{30,58,95}
+\definecolor{cOro}{RGB}{201,162,58}
+\definecolor{cSiena}{RGB}{156,74,28}
+\definecolor{cAvorio}{RGB}{247,241,222}
+\definecolor{cBox}{RGB}{229,231,235}
+\definecolor{cCode}{RGB}{30,41,59}
+\definecolor{cInk}{RGB}{37,42,55}
+\definecolor{cHard}{RGB}{220,38,38}
+\definecolor{cSoft}{RGB}{217,119,6}
+\definecolor{cPref}{RGB}{37,99,235}
+\definecolor{cEnf}{RGB}{6,95,70}
+\definecolor{cAllow}{RGB}{16,185,129}
+
+% ---------- Captions con etichetta in maiuscoletto e en-dash ----------
+\captionsetup{font={small,rm,it}, labelfont={small,rm,sc,color=cIndaco},
+              labelsep=endash}
+\captionsetup[sub]{font={footnotesize,rm,it},
+              labelfont={footnotesize,rm,sc,color=cIndaco}}
+
+% ---------- Theorem styles ----------
+\newtheoremstyle{pita}{0.6em}{0.6em}{}{0pt}%
+  {\rmfamily\scshape\color{cIndaco}}{.}{.5em}{}
 \theoremstyle{pita}
 \newtheorem{teorema}{Teorema}[chapter]
 \newtheorem{proposizione}[teorema]{Proposizione}
 \newtheorem{lemma}[teorema]{Lemma}
 \newtheorem{corollario}[teorema]{Corollario}
 \newtheorem*{osservazione*}{Osservazione}
-\newtheoremstyle{pitadef}{0.6em}{0.6em}{}{0pt}{\sffamily\bfseries\color{cEnf}}{.}{.5em}{}
+
+\newtheoremstyle{pitadef}{0.6em}{0.6em}{}{0pt}%
+  {\rmfamily\scshape\color{cEnf}}{.}{.5em}{}
 \theoremstyle{pitadef}
 \newtheorem{definizione}{Definizione}[chapter]
 \newtheorem{esempiothm}[definizione]{Esempio}
-% End-of-proof tombstone
 \renewcommand{\qedsymbol}{\color{cIndaco}\rule{0.7em}{0.7em}}
-\setlength{\epigraphwidth}{0.65\textwidth}
-\renewcommand{\epigraphsize}{\small}
+
+\setlength{\epigraphwidth}{0.62\textwidth}
+\renewcommand{\epigraphsize}{\small\itshape}
 \renewcommand{\epigraphflush}{flushright}
+\renewcommand{\epigraphrule}{0.4pt}
+
 \usepackage[hidelinks,bookmarksopen=true,bookmarksdepth=2,
             colorlinks=false]{hyperref}
 \usepackage[style=authoryear-comp,backend=biber,sorting=nyt,
@@ -102,41 +149,114 @@
 \makeindex[intoc, columns=2, title={Indice analitico}]
 \usepackage[autostyle=true,italian=guillemets]{csquotes}
 
-% ---------- Palette colori (brand piTantum) ----------
-\definecolor{cIndaco}{RGB}{30,58,95}    % indaco profondo
-\definecolor{cOro}{RGB}{201,162,58}     % oro caldo
-\definecolor{cSiena}{RGB}{156,74,28}    % terra di Siena
-\definecolor{cAvorio}{RGB}{247,241,222} % avorio
-\definecolor{cBox}{RGB}{229,231,235}
-\definecolor{cCode}{RGB}{30,41,59}
-\definecolor{cInk}{RGB}{37,42,55}
-% colori "stato vincoli"
-\definecolor{cHard}{RGB}{220,38,38}
-\definecolor{cSoft}{RGB}{217,119,6}
-\definecolor{cPref}{RGB}{37,99,235}
-\definecolor{cEnf}{RGB}{6,95,70}
-\definecolor{cAllow}{RGB}{16,185,129}
+% =====================================================================
+% Vintage editorial: titolo capitolo, sezioni, testatine
+% =====================================================================
 
-% ---------- Heading e capitoli (KOMA + colori) ----------
+% ---------- Capitoli (KOMA chapterlinesformat custom) ----------
+% Vogliamo: filetto, parola CAPITOLO in smallcaps, numero romano
+% del capitolo, fleuron centrato, titolo del capitolo in maiuscoletto
+% maiuscolo, secondo filetto. Tutto centrato, niente sans.
+%
+% KOMA hook: \chapterlineswithprefixformat{TYPE}{PREFIX}{TITLE}
+% dove PREFIX e' il blocco "Capitolo N", TITLE e' il titolo testuale.
+% Lo riformuliamo del tutto.
 \addtokomafont{disposition}{\rmfamily}
-\addtokomafont{chapter}{\color{cIndaco}\sffamily\bfseries}
-\addtokomafont{section}{\color{cIndaco}\sffamily}
-\addtokomafont{subsection}{\color{cIndaco}\sffamily}
-\addtokomafont{subsubsection}{\color{cIndaco}\sffamily}
-\addtokomafont{pageheadfoot}{\sffamily\small\color{cInk}}
-\addtokomafont{pagenumber}{\sffamily\bfseries}
+\setkomafont{chapter}{\Huge\rmfamily\scshape\color{cIndaco}}
+\setkomafont{chapterprefix}{\large\rmfamily\scshape\color{cInk}}
+\setkomafont{section}{\large\rmfamily\scshape\color{cIndaco}}
+\setkomafont{subsection}{\rmfamily\itshape\color{cIndaco}}
+\setkomafont{subsubsection}{\rmfamily\itshape\color{cInk}}
+\setkomafont{paragraph}{\rmfamily\scshape\color{cInk}}
+\setkomafont{descriptionlabel}{\rmfamily\bfseries}
 
-% Header / footer KOMA
-\usepackage[automark,headsepline]{scrlayer-scrpage}
+\renewcommand*{\raggedchapter}{\centering}
+
+% Format del prefisso "Capitolo N" con N in numero romano.
+% \thechapter resta arabo (per riferimenti), ma il prefisso usa Roman.
+\renewcommand*{\chapterformat}{%
+  \textsc{Capitolo}\enskip\Roman{chapter}%
+}
+
+% Layout completo del capitolo: filetto sopra, prefisso, fleuron,
+% titolo in smallcaps, filetto sotto.
+\renewcommand*{\chapterlineswithprefixformat}[3]{%
+  \begin{flushleft}
+  \noindent\rule{\textwidth}{0.6pt}\par
+  \vspace{0.4em}
+  \noindent\rule{\textwidth}{0.2pt}
+  \end{flushleft}
+  \vspace{1.2em}
+  \begin{center}
+    {\usekomafont{chapterprefix}#2}\par
+    \vspace{0.7em}
+    {\Large\color{cIndaco}\decofourleft\quad\decofourright}\par
+    \vspace{0.9em}
+    {#3}\par
+  \end{center}
+  \vspace{1em}
+  \begin{flushleft}
+  \noindent\rule{\textwidth}{0.2pt}\par
+  \vspace{0.4em}
+  \noindent\rule{\textwidth}{0.6pt}
+  \end{flushleft}
+}
+% Capitoli senza prefisso (es. starred): conservano filetti+ornamento.
+\renewcommand*{\chapterlinesformat}[3]{%
+  \begin{flushleft}
+  \noindent\rule{\textwidth}{0.6pt}\par
+  \vspace{0.4em}
+  \noindent\rule{\textwidth}{0.2pt}
+  \end{flushleft}
+  \vspace{1.2em}
+  \begin{center}
+    {\Large\color{cIndaco}\decofourleft\quad\decofourright}\par
+    \vspace{0.9em}
+    {#3}\par
+  \end{center}
+  \vspace{1em}
+  \begin{flushleft}
+  \noindent\rule{\textwidth}{0.2pt}\par
+  \vspace{0.4em}
+  \noindent\rule{\textwidth}{0.6pt}
+  \end{flushleft}
+}
+
+% Sezione: numero in osf, separatore en-dash, titolo in smallcaps.
+\renewcommand*{\sectionformat}{\thesection\enskip\textendash\enskip}
+\renewcommand*{\subsectionformat}{\thesubsection\enskip\textbullet\enskip}
+
+% ---------- Testatine in stile Tschichold ----------
+% Verso (pari): titolo capitolo in italico, allineato all'esterno.
+% Recto (dispari): titolo sezione in italico, allineato all'esterno.
+% Numero pagina: centrato al piede, in cifre old-style.
+\usepackage[automark,headsepline=0.4pt]{scrlayer-scrpage}
+\renewcommand*{\chaptermarkformat}{}
+\renewcommand*{\sectionmarkformat}{}
+\automark[section]{chapter}
+\setkomafont{pageheadfoot}{\rmfamily\small\itshape\color{cInk}}
+\setkomafont{pagenumber}{\rmfamily\small}
 \clearpairofpagestyles
-\ihead{\textit{$\pi$Tantum --- monografia tecnica}}
-\ohead{\headmark}
-\ofoot*{\pagemark}
+\lehead{\headmark}
+\rohead{\headmark}
+\cofoot*{\decofourleft\enskip\thepage\enskip\decofourright}
 
-% Drop-cap setup (lettrine)
+% Plain page style (chapter openings): solo numero pagina decorato.
+\renewcommand*{\chapterpagestyle}{plain.scrheadings}
+\renewcommand*{\titlepagestyle}{empty}
+\renewcommand*{\partpagestyle}{empty}
+
+% ---------- Capolettera (drop cap) ----------
+% Tre righe, lettera in maiuscolo bold colore indaco; le prime tre
+% parole successive sono rese in maiuscoletto, alla maniera dei
+% manuali aldini.
 \setcounter{DefaultLines}{3}
-\renewcommand{\LettrineFontHook}{\color{cIndaco}\bfseries}
+\renewcommand{\LettrineFontHook}{\rmfamily\bfseries\color{cIndaco}}
 \renewcommand{\DefaultLraise}{0.05}
+\renewcommand{\DefaultLoversize}{0.08}
+\renewcommand{\LettrineTextFont}{\scshape}
+\setlength{\DefaultFindent}{2pt}
+\setlength{\DefaultNindent}{0pt}
 
 % ---------- Listings ----------
 \lstset{
@@ -160,76 +280,78 @@
 \lstdefinestyle{shell}{language=bash,
   morekeywords={apt,brew,dnf,pacman,pip,npm,git,curl}}
 
-% ---------- Box editoriali (tcolorbox) ----------
-% Idea / intuizione (azzurro)
+% ---------- Liste con bullet vintage (\textbullet) ----------
+\setlist[itemize,1]{label=\raisebox{0.05em}{\textbullet}, leftmargin=*}
+\setlist[itemize,2]{label=\raisebox{0.05em}{\textendash}}
+\setlist[itemize,3]{label=\raisebox{0.05em}{$\diamond$}}
+
+% ---------- Box editoriali (tcolorbox, conservati) ----------
 \newtcolorbox{ideabox}[1][]{enhanced, breakable,
   colback=cPref!8, colframe=cPref!70, boxrule=0.6pt,
   arc=2pt, left=8pt, right=8pt, top=4pt, bottom=4pt,
-  fonttitle=\sffamily\bfseries, title=Intuizione, #1}
+  fonttitle=\rmfamily\scshape, title=Intuizione, #1}
 
 \newtcolorbox{defbox}[1][]{enhanced, breakable,
   colback=cEnf!6, colframe=cEnf!60, boxrule=0.6pt,
   arc=2pt, left=8pt, right=8pt, top=4pt, bottom=4pt,
-  fonttitle=\sffamily\bfseries, title=Definizione, #1}
+  fonttitle=\rmfamily\scshape, title=Definizione, #1}
 
 \newtcolorbox{esempiobox}[1][]{enhanced, breakable,
   colback=cOro!12, colframe=cOro!75, boxrule=0.6pt,
   arc=2pt, left=8pt, right=8pt, top=4pt, bottom=4pt,
-  fonttitle=\sffamily\bfseries, title=Esempio, #1}
+  fonttitle=\rmfamily\scshape, title=Esempio, #1}
 
 \newtcolorbox{avvertenzabox}[1][]{enhanced, breakable,
   colback=cHard!8, colframe=cHard!70, boxrule=0.6pt,
   arc=2pt, left=8pt, right=8pt, top=4pt, bottom=4pt,
-  fonttitle=\sffamily\bfseries, title=Attenzione, #1}
+  fonttitle=\rmfamily\scshape, title=Attenzione, #1}
 
 \newtcolorbox{storiabox}[1][]{enhanced, breakable,
   colback=cSiena!8, colframe=cSiena!70, boxrule=0.6pt,
   arc=2pt, left=8pt, right=8pt, top=4pt, bottom=4pt,
-  fonttitle=\sffamily\bfseries, title=Nota storica, #1}
+  fonttitle=\rmfamily\scshape, title=Nota storica, #1}
 
 \newtcolorbox{connessionebox}[1][]{enhanced, breakable,
   colback=cBox!50, colframe=cCode!60, boxrule=0.6pt,
   arc=2pt, left=8pt, right=8pt, top=4pt, bottom=4pt,
-  fonttitle=\sffamily\bfseries, title=Connessioni, #1}
+  fonttitle=\rmfamily\scshape, title=Connessioni, #1}
 
 \newtcolorbox{biblioparvabox}[1][]{enhanced, breakable,
   colback=cIndaco!6, colframe=cIndaco!60, boxrule=0.6pt,
   arc=2pt, left=8pt, right=8pt, top=4pt, bottom=4pt,
-  fonttitle=\sffamily\bfseries, title=Per approfondire, #1}
+  fonttitle=\rmfamily\scshape, title=Per approfondire, #1}
 
 \newtcolorbox{approfondimentobox}[1][]{enhanced, breakable,
   colback=cIndaco!4, colframe=cIndaco!50, boxrule=0.6pt,
   arc=2pt, left=8pt, right=8pt, top=4pt, bottom=4pt,
-  fonttitle=\sffamily\bfseries, title=Approfondimento, #1}
+  fonttitle=\rmfamily\scshape, title=Approfondimento, #1}
 
 \newtcolorbox{casostudiobox}[1][]{enhanced, breakable,
   colback=cOro!8, colframe=cSiena!50, boxrule=0.8pt,
   arc=3pt, left=10pt, right=10pt, top=6pt, bottom=6pt,
-  fonttitle=\sffamily\bfseries, title=Caso di studio, #1}
+  fonttitle=\rmfamily\scshape, title=Caso di studio, #1}
 
 \newtcolorbox{curiositabox}[1][]{enhanced, breakable,
   colback=cAvorio!90, colframe=cOro!60, boxrule=0.6pt,
   arc=2pt, left=8pt, right=8pt, top=4pt, bottom=4pt,
-  fonttitle=\sffamily\bfseries, title=Curiosit\`a, #1}
+  fonttitle=\rmfamily\scshape, title=Curiosit\`a, #1}
 
 \newtcolorbox{erroricomunibox}[1][]{enhanced, breakable,
   colback=cHard!5, colframe=cHard!50, boxrule=0.6pt,
   arc=2pt, left=8pt, right=8pt, top=4pt, bottom=4pt,
-  fonttitle=\sffamily\bfseries, title=Errori comuni, #1}
+  fonttitle=\rmfamily\scshape, title=Errori comuni, #1}
 
-% Stat-sheet box for numbers/figures synthesis
 \newtcolorbox{statsbox}[1][]{enhanced, breakable,
   colback=cAvorio!60, colframe=cIndaco!60, boxrule=0.6pt,
   arc=2pt, left=8pt, right=8pt, top=4pt, bottom=4pt,
-  fonttitle=\sffamily\bfseries, title=Numeri in sintesi, #1}
+  fonttitle=\rmfamily\scshape, title=Numeri in sintesi, #1}
 
-% Schema/diagram caption box (used to wrap TikZ schematics)
 \newtcolorbox{schemabox}[1][]{enhanced, breakable,
   colback=white, colframe=cIndaco!40, boxrule=0.4pt,
   arc=2pt, left=4pt, right=4pt, top=4pt, bottom=4pt,
-  fonttitle=\sffamily\bfseries\color{cIndaco}, title=Schema, #1}
+  fonttitle=\rmfamily\scshape\color{cIndaco}, title=Schema, #1}
 
-% ---------- Pull-quote (citazione evidenziata) ----------
+% ---------- Pull-quote ----------
 \newcommand{\pullquote}[2]{%
   \par\medskip
   \noindent\hfill
@@ -241,15 +363,24 @@
   \end{minipage}\par\medskip
 }
 
-% ---------- Glossa a margine (marginpar in stile Tufte-light) ----------
+% ---------- Glossa a margine (Tufte-light) ----------
 \newcommand{\sidenote}[1]{%
-  \marginnote{\footnotesize\sffamily\color{cInk}#1}}
+  \marginnote{\footnotesize\rmfamily\itshape\color{cInk}#1}}
 
-% ---------- TOC layout ----------
+% ---------- Separatore di paragrafo ornamentale ----------
+% Da usare con \fleuron tra blocchi narrativi distinti.
+\newcommand{\fleuron}{%
+  \par\nointerlineskip\medskip
+  \begin{center}
+    {\Large\color{cIndaco}\aldineleft\enskip\decofourleft\enskip\decofourright\enskip\aldineright}
+  \end{center}
+  \medskip\noindent\ignorespaces}
+
+% ---------- TOC: linee guida con punti, numeri in osf ----------
 \setcounter{tocdepth}{1}
 \setcounter{secnumdepth}{2}
+\renewcommand*{\contentsname}{Indice}
 
 \title{}
 \author{}
 \date{}
-

@@ -1,110 +1,153 @@
 % =====================================================================
-% piTantum -- Manual (English edition)
+% piTantum -- Manual (vintage editorial, English edition)
 % Parallel English edition of docs/manual.tex.
 %
 % Compile with lualatex + biber + makeindex + lualatex (x2).
-% Helper: docs/build_manual.sh emits BOTH the Italian PDF (manual.pdf)
-% and the English PDF (manual_en.pdf) when invoked.
+% Helper: docs/build_manual.sh emits BOTH manual.pdf (IT) and
+% manual_en.pdf (EN) when invoked without flags.
 % =====================================================================
 \input{manual/preamble_en}
 
 \begin{document}
+\frontmatter
 
-% =========== Cover ===========
+% =====================================================================
+% Cover (Aldine / Bringhurst vintage)
+% =====================================================================
 \begin{titlepage}
 \thispagestyle{empty}
 \centering
-\vspace*{1.6cm}
+\vspace*{1.2cm}
 
-{\fontsize{56}{60}\selectfont\bfseries\color{cIndaco}$\pi$\,Tantum\par}
-\vspace{0.4cm}
-{\Large\itshape\color{cInk} a.k.a.\ \emph{Tempus Tantum}\par}
-\vspace{0.6cm}
-{\Large\sffamily\color{cInk}school timetable generation system\par}
-
-\vspace{1.2cm}
-\rule{0.5\textwidth}{1pt}
+\rule{0.78\textwidth}{1.2pt}\par
+\vspace{2pt}
+\rule{0.78\textwidth}{0.4pt}
 
 \vspace{0.9cm}
+
+{\fontsize{56}{60}\selectfont\rmfamily\bfseries\color{cIndaco}$\pi$\,Tantum\par}
+\vspace{0.4cm}
+{\Large\rmfamily\itshape\color{cInk} a.k.a.\ \textsc{Tempus Tantum}\par}
+
+\vspace{0.7cm}
+{\Large\color{cIndaco}\decofourleft\enskip\aldineleft\enskip\aldineright\enskip\decofourright\par}
+
+\vspace{0.8cm}
+
 \begin{minipage}{0.85\textwidth}
+\centering\rmfamily\itshape\Large
+A system for the generation and management\\
+of weekly timetables in Italian schools:\\[0.3em]
+\upshape\large\rmfamily
+formal constraints, integer-spectral\\
+optimization, metaheuristics\\
+and statistical diagnostics.
+\end{minipage}\par
+
+\vspace{1.0cm}
+
+\begin{minipage}{0.78\textwidth}
 \centering
-\itshape\color{cSiena}
-``Omnia, Lucili, aliena sunt, tempus tantum nostrum est.''\\
-\upshape\small\color{cInk} Lucius Annaeus Seneca,
-\emph{Epistulae morales ad Lucilium}, I, 1
+\rmfamily\itshape\color{cSiena}
+``Omnia, Lucili, aliena sunt;\\ tempus tantum nostrum est.''\\[0.4em]
+\upshape\small\color{cInk}\textsc{L. A. Seneca},
+\emph{Epistulae morales ad Lucilium}, I,\,1.\\[0.2em]
+\itshape\footnotesize ``All, Lucilius, comes to us from others;\\
+only time is our own.''
 \end{minipage}
 
 \vspace{1.0cm}
-\rule{0.5\textwidth}{1pt}
 
-\vspace{1.6cm}
-{\LARGE\sffamily\color{cIndaco}\bfseries Manual\par}
-\vspace{0.4cm}
-{\Large\itshape A method for Italian-school timetabling\par}
-\vspace{0.2cm}
-{\large\itshape (English edition)\par}
+{\Large\color{cIndaco}\aldineleft\enskip\decofourleft\enskip\decofourright\enskip\aldineright}\par
 
-\vspace{0.6cm}
-{\small\sffamily\color{cInk}
-From an idea by Fernando Gargiulo, Giovanni Borghi,\\
-Matteo Mariani, Stefano Bertozzi
-\par}
+\vspace{0.8cm}
 
-\vspace{2cm}
+{\large\rmfamily\scshape Technical Manual}\par
+\vspace{0.3em}
+{\rmfamily\itshape English edition,} {\rmfamily\itshape\today}\par
 
-\begin{tikzpicture}[scale=0.9]
-  \node[draw=cIndaco, very thick, rounded corners=4pt, minimum width=3cm,
-        minimum height=1cm, fill=cIndaco!15] (a) at (0,0)
-        {\textbf{\sffamily CP-SAT}};
-  \node[draw=cIndaco, very thick, rounded corners=4pt, minimum width=3cm,
-        minimum height=1cm, fill=cIndaco!15, right=0.6cm of a] (b)
-        {\textbf{\sffamily spectral}};
-  \node[draw=cIndaco, very thick, rounded corners=4pt, minimum width=3cm,
-        minimum height=1cm, fill=cIndaco!15, right=0.6cm of b] (c)
-        {\textbf{\sffamily LNS+SA+TS+ILS}};
-  \draw[-{Stealth[length=3mm]}, thick, cSiena] (a) -- (b);
-  \draw[-{Stealth[length=3mm]}, thick, cSiena] (b) -- (c);
+\vspace{0.7cm}
+
+\begin{tikzpicture}[scale=0.85]
+  \node[draw=cIndaco, thick, rounded corners=2pt, minimum width=2.7cm,
+        minimum height=0.9cm, fill=cAvorio] (a) at (0,0)
+        {\rmfamily\scshape CP-SAT};
+  \node[draw=cIndaco, thick, rounded corners=2pt, minimum width=2.7cm,
+        minimum height=0.9cm, fill=cAvorio, right=0.5cm of a] (b)
+        {\rmfamily\scshape spectral};
+  \node[draw=cIndaco, thick, rounded corners=2pt, minimum width=2.7cm,
+        minimum height=0.9cm, fill=cAvorio, right=0.5cm of b] (c)
+        {\rmfamily\scshape lns-sa-ts-ils};
+  \draw[-{Stealth[length=2.5mm]}, thick, cSiena] (a) -- (b);
+  \draw[-{Stealth[length=2.5mm]}, thick, cSiena] (b) -- (c);
 \end{tikzpicture}
 
 \vfill
 
-{\large\sffamily Giovanni Borghi\par}
-\vspace{0.2cm}
-{\large\sffamily \today\par}
+{\small\rmfamily\itshape From an idea by\par}
+{\rmfamily\textsc{Fernando Gargiulo}\quad\textendash\quad\textsc{Giovanni Borghi}\par}
+{\rmfamily\textsc{Matteo Mariani}\quad\textendash\quad\textsc{Stefano Bertozzi}\par}
 
 \vspace{0.6cm}
-{\small\sffamily\color{cInk}
-Repository: \url{https://github.com/gborghi/timetable}\\
-Documentation source: \texttt{docs/}
-\par}
+
+\rule{0.55\textwidth}{0.4pt}\par
+\vspace{0.4em}
+{\rmfamily\Large\scshape Anno Domini\quad MMXXVI}\par
+\vspace{0.4em}
+\rule{0.55\textwidth}{0.4pt}
+
+\vspace{0.6cm}
+
+\rule{0.78\textwidth}{0.4pt}\par
+\vspace{2pt}
+\rule{0.78\textwidth}{1.2pt}
+
 \end{titlepage}
 
-% =========== Colophon ===========
+% =====================================================================
+% Colophon
+% =====================================================================
 \thispagestyle{empty}
 \null\vfill
-\noindent\small
-\textbf{\sffamily Colophon}\\[0.3em]
-This English edition is set in EB Garamond for body text and Lato
-for headings, with Inconsolata for code blocks. Compilation is
-done with \texttt{lualatex} (TeX Live), \texttt{biber} for
-bibliography and \texttt{makeindex} for the analytical index.
-The \LaTeX{} source lives in \texttt{docs/manual\_en.tex} with
-chapters in \texttt{docs/manual/chapters\_en/}; the bibliography is
-shared with the Italian edition in \texttt{docs/manual/bibliography.bib}.
-The build pipeline is in \texttt{docs/build\_manual.sh} which emits
-\textbf{both} \texttt{manual.pdf} (Italian) and
-\texttt{manual\_en.pdf} (English) in a single invocation.
+\begin{center}
+{\Large\color{cIndaco}\decofourleft\enskip\decofourright}\par
+\vspace{0.4em}
+{\rmfamily\scshape\large Colophon}\par
+\vspace{0.2em}
+\rule{0.3\textwidth}{0.4pt}
+\end{center}
+\vspace{0.6em}
+
+\noindent\small\rmfamily
+\textsc{This English edition} is set in EB Garamond for the body
+text --- with old-style figures and authentic small caps ---,
+in Lato for the few labels of schematic figures, and in
+Inconsolata for code blocks. The page proportions follow the
+classical canon of Bringhurst and Tschichold: ample outer margin
+for marginalia, narrower inner margin, airy head, ornamented foot.
+Each chapter opens with a three-line drop cap; the chapter number
+is set in Roman numerals, the title in small caps framed by
+horizontal rules and by a four-leaf rosette
+(\textsc{decofour}, from the \texttt{fourier-orns} package).
 
 \bigskip
-\noindent\textbf{\sffamily Note on translation}: the Italian edition
-remains the primary reference. This English edition fully translates
-the introduction, the BP-related chapters and the benchmark chapter;
-all other chapters carry an English summary that points the reader to
-the corresponding Italian chapter for the full narrative. Where
-Italian-school context is necessary (for instance the legal frame of
-the \emph{contratto collettivo nazionale}, the role of the
-\emph{insegnante di sostegno}, or the meaning of \emph{indirizzo di
-studio}), explanatory notes are added in the English text.
+\noindent\textsc{Compilation}: \texttt{lualatex} (\TeX{} Live 2024),
+\texttt{biber} for the bibliography, \texttt{makeindex} for the
+analytical index. The build pipeline lives in
+\texttt{docs/build\_manual.sh} which emits \textbf{both}
+\texttt{manual.pdf} (Italian) and \texttt{manual\_en.pdf} (English)
+in a single invocation.
+
+\smallskip
+\noindent\textsc{Note on translation}: the Italian edition remains
+the primary reference. This English edition fully translates the
+introduction, the BP-related chapters and the benchmark chapter;
+the other chapters carry an English summary that points to the
+corresponding Italian chapter for the full narrative. Where
+Italian-school context is necessary (for instance the legal frame
+of the \emph{contratto collettivo nazionale}, the role of the
+\emph{insegnante di sostegno}, or the meaning of \emph{indirizzo
+di studio}), explanatory notes are added in the English text.
 
 \bigskip
 \noindent
@@ -116,7 +159,12 @@ repository at \url{https://github.com/gborghi/timetable}.
 \bigskip
 \noindent
 All project rights belong to Giovanni Borghi.
-Document produced in May 2026.
+Document produced in May MMXXVI.
+
+\vspace{0.6em}
+\begin{center}
+{\Large\color{cIndaco}\aldineleft\enskip\aldineright}
+\end{center}
 \vfill
 
 \cleardoublepage
@@ -125,6 +173,8 @@ Document produced in May 2026.
 \tableofcontents
 \listoffigures
 \listoftables
+
+\mainmatter
 
 % =========== Chapters (in the same order as the Italian edition) ===
 \input{manual/chapters_en/prologo}
@@ -135,6 +185,7 @@ Document produced in May 2026.
 \input{manual/chapters_en/vincoli}
 \input{manual/chapters_en/workflow_di_ottimizzazione}
 \input{manual/chapters_en/guida_ui}
+\input{manual/chapters_en/calendario_e_ore}
 \input{manual/chapters_en/launcher}
 \input{manual/chapters_en/metodo_cpsat}
 \input{manual/chapters_en/metodo_spettrale}
@@ -154,9 +205,12 @@ Document produced in May 2026.
 \input{manual/chapters_en/estendere_il_sistema}
 \input{manual/chapters_en/repository_github}
 \input{manual/chapters_en/benchmarks}
+\input{manual/chapters_en/qualita_e2e}
 \input{manual/chapters_en/lessons_learned}
 \input{manual/chapters_en/glossario_discorsivo}
 \input{manual/chapters_en/reference}
+
+\backmatter
 
 % =========== Bibliography ===========
 \printbibliography[heading=bibintoc, title={Bibliography}]

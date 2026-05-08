@@ -1,0 +1,349 @@
+\chapter{Calendario settimanale, Tab Ore e operazioni in massa}
+\label{ch:calendario-ore}
+
+\lettrine[lines=3]{N}{el corso} di aprile e maggio MMXXVI l'interfaccia
+operativa di piTantum ha conosciuto la riscrittura pi\`u sostanziale
+dalla nascita del progetto. Tre direttrici di lavoro si sono saldate
+in un'unica esperienza editoriale: il \emph{calendario settimanale}
+con drag-drop, la \emph{tab Ore} per la configurazione visuale degli
+slot di lezione, e le \emph{operazioni in massa} sulla pagina Cattedre.
+Il capitolo le racconta nell'ordine in cui le incontra l'utente che
+parte dal modello dati e arriva alla griglia oraria.
+
+\section{Il componente \texttt{WeeklyCalendarView}}
+\label{sec:weekly-calendar}
+
+\subsection{Origine e portata}
+
+Fino al commit \texttt{c8075c0} la pagina \texttt{/schedule}
+mostrava una matrice tabulare statica: righe = ore, colonne =
+giorni, celle popolate da una stringa breve ``\textsc{materia}
+$\cdot$ docente''. La modifica era possibile solo aprendo modali
+o cambiando schede: nessun gesto diretto sulla cella, nessun
+trascinamento. La nuova interfaccia ribalta il paradigma: un
+\emph{unico} componente Svelte, \texttt{WeeklyCalendarView}, fa da
+griglia condivisa per tutte le viste calendario del prodotto, in
+modalit\`a \texttt{view}, \texttt{edit} e \texttt{schedule}.
+
+\begin{defbox}[title={Il file \texttt{WeeklyCalendarView.svelte}}]
+Una sola sorgente di verit\`a per la griglia settimanale.
+Ricava i giorni e gli slot da \texttt{workingHoursStore}
+(propagazione live, vedi \S\ref{sec:store-condiviso}), si
+sintonizza al \emph{prop} \texttt{mode} e cambia comportamento
+di conseguenza. Mille seicento righe di Svelte, ma una sola
+gerarchia: \emph{slot} ${\rightarrow}$ \emph{evento} ${\rightarrow}$
+\emph{azione}.
+\end{defbox}
+
+\subsection{Le tre modalit\`a}
+
+\begin{description}
+  \item[\textsc{view}] (sola lettura). Calendario di consultazione
+    per docente, classe o aula: nessun drag, nessuna azione.
+    \`E la modalit\`a usata, ad esempio, nelle pagine di
+    diagnostica.
+  \item[\textsc{edit}] (Tab Ore). La griglia non rappresenta
+    lezioni ma \emph{slot disponibili}. L'utente disegna lo
+    slot trascinando il mouse dall'alto in basso (cursore
+    \texttt{grab}/\texttt{grabbing}), lo ridimensiona afferrando
+    il bordo inferiore (cursore \texttt{ns-resize}), lo sposta
+    afferrandone il corpo, lo cancella con un click.
+  \item[\textsc{schedule}] (\texttt{/schedule}). La griglia
+    contiene le lezioni effettive del problema risolto. Sono
+    ammessi quattro gesti --- \emph{Modifica}, \emph{Sposta},
+    \emph{Svincola}, \emph{Elimina} --- e il drag-drop
+    consente sia il riposizionamento di una lezione gi\`a
+    schedulata sia il piazzamento di una lezione \emph{non
+    schedulata}, prelevata dal pool laterale.
+\end{description}
+
+\subsection{Rendering e interazioni}
+
+\subsubsection{Anatomia dello slot}
+
+Ogni cella della griglia \`e un \texttt{<div>} con classe
+\texttt{cal-slot} e attributo \texttt{data-testid="sched-slot-\{D\}-\{H\}"},
+dove \texttt{D} \`e l'indice di giorno (0$=$lun, $\dots$, 5$=$sab)
+e \texttt{H} l'indice di ora. Sopra lo slot vivono le ``carte''
+delle lezioni (classe \texttt{cal-event}, attributo
+\texttt{data-testid="sched-lesson-\{id\}"}); ognuna porta tre micro
+azioni in alto a destra: matita (modifica), freccia (svincola),
+cestino (elimina). Tre cursori distinti accompagnano i tre stati
+del drag (\texttt{grab} a riposo, \texttt{grabbing} mentre si
+trascina, \texttt{ns-resize} sul bordo inferiore in modalit\`a
+edit), come dettato dal commit \texttt{d4bc873}.
+
+\subsubsection{La preview di conflitto}
+
+Quando l'utente afferra una lezione e ne sorvola la griglia
+(\texttt{dragover}), \texttt{WeeklyCalendarView} calcola in tempo
+reale, su tutta la matrice settimanale, l'insieme delle celle
+che genererebbero \emph{conflitto hard} con la lezione trascinata
+(stesso docente in due posti, stessa classe in due posti, stessa
+aula occupata). Le celle a rischio si tingono di rosso tenue
+(classe CSS \texttt{cal-slot--drop-conflict}); l'evento sorgente
+mostra un piccolo distintivo \emph{!}\ rosso
+(\texttt{cal-event-conflict-badge}). \`E il \emph{soft-conflict
+preview} introdotto dal commit \texttt{876755b}: l'utente
+vede ci\`o che sta per fare \emph{prima} di farlo.
+
+\subsection{Il pool delle lezioni non schedulate}
+\label{sec:pool-unscheduled}
+
+A destra della griglia, in modalit\`a schedule, una sidebar
+\emph{pool} (id-test
+\texttt{schedule-pool}, riga 1162 del file Svelte) elenca le
+lezioni che esistono nel database ma non hanno
+\texttt{day\_idx}/\texttt{hour\_idx}: tipicamente, lezioni
+generate dall'ottimizzatore in stato sospeso o lezioni
+\emph{svincolate} dall'utente con l'azione omonima (vedi
+\S\ref{sec:azioni-quattro}). Ogni elemento del pool \`e
+trascinabile e pu\`o essere droppato su qualsiasi slot per
+schedularlo immediatamente.
+
+\subsection{Le quattro azioni della modalit\`a schedule}
+\label{sec:azioni-quattro}
+
+\begin{description}
+  \item[\textsc{Modifica}] (icona matita). Apre la modale di
+    edit della singola \texttt{Lesson}: docente, materia, aula,
+    classe, eventuale corteacher. Persiste tramite
+    \texttt{PATCH /api/lessons/\{id\}}.
+  \item[\textsc{Sposta}] (drag sulla cella di destinazione).
+    Posta in \texttt{POST /api/lessons/\{id\}/move} con corpo
+    \texttt{\{day\_idx, hour\_idx, on\_conflict\}}; il backend
+    ritorna \texttt{200} se nessun conflitto, \texttt{409}
+    altrimenti.
+  \item[\textsc{Svincola}] (icona freccia). Toglie la lezione
+    dalla griglia ma non la elimina dal database: la lezione
+    finisce nel pool. Posta in \texttt{POST
+    /api/lessons/\{id\}/unschedule}.
+  \item[\textsc{Elimina}] (icona cestino, conferma richiesta).
+    Cancella la \texttt{Lesson} dal database. Endpoint
+    \texttt{DELETE /api/lessons/\{id\}}.
+\end{description}
+
+\section{La modale di conflitto: \emph{Sostituisci o Annulla}}
+\label{sec:conflict-modal}
+
+\subsection{Quando si attiva}
+
+L'utente trascina una lezione (o un elemento del pool) su uno
+slot \emph{gi\`a occupato} dal punto di vista del backend:
+docente impegnato, classe impegnata, aula impegnata. Il
+frontend prova prima un \emph{dry-run} (\texttt{POST
+/api/lessons/\{id\}/move?on\_conflict=dry\_run}); il backend
+risponde \texttt{409} con un payload del tipo
+\begin{lstlisting}[basicstyle=\ttfamily\footnotesize]
+{
+  "detail": {
+    "conflicts": {
+      "teacher_busy":  [ {class_name, subject, teacher_name, ...}, ... ],
+      "class_busy":    [ ... ],
+      "room_busy":     [ ... ]
+    }
+  }
+}
+\end{lstlisting}
+A questo punto si apre la modale \texttt{ScheduleConflictModal}
+(commit \texttt{59ba4a8}).
+
+\subsection{Le tre risposte e perch\'e nel drop sono solo due}
+
+La modale \`e canonica: ovunque l'applicazione rilevi un
+conflitto duro mostra lo stesso componente. Le risposte
+possibili sono tre:
+\begin{itemize}
+  \item \textsc{Annulla}: chiude la modale senza azione, la
+    lezione torna alla posizione di partenza.
+  \item \textsc{Svincola}: rimuove dal calendario \emph{solo}
+    le risorse confliggenti --- per i conflitti d'aula,
+    azzera \texttt{classroom\_name}; per docente o classe,
+    cancella la lezione confliggente. La lezione che si stava
+    droppando si sistema dove voleva.
+  \item \textsc{Elimina} / \textsc{Sostituisci}: cancella
+    integralmente le righe \texttt{Lesson} confliggenti e
+    piazza la nuova lezione al loro posto.
+\end{itemize}
+Nel flusso \emph{drop su slot occupato} di \texttt{/schedule}
+l'opzione \textsc{Svincola} viene nascosta: piazzare una nuova
+lezione \emph{senza} svincolare le altre porta inevitabilmente a
+una sostituzione integrale, e la dicotomia \emph{Sostituisci /
+Annulla} \`e quella che meglio descrive l'azione (prop
+\texttt{showUnbind=false}, \texttt{deleteLabel="Sostituisci"}).
+
+\begin{esempiobox}[title={Drop con conflitto, raccontato passo passo}]
+\begin{enumerate}
+  \item Trascino la lezione \texttt{2A\,$\cdot$\,Storia\,$\cdot$\,Rossi}
+    da Luned\`{\i} 3 a Marted\`{\i} 4.
+  \item Marted\`{\i} 4 \`e gi\`a occupato dalla lezione
+    \texttt{2A\,$\cdot$\,Matematica\,$\cdot$\,Bianchi} in
+    \texttt{Aula 12}.
+  \item Drop: il frontend chiama
+    \texttt{POST /api/lessons/17/move} con
+    \texttt{on\_conflict=dry\_run}.
+  \item Risposta 409: \texttt{class\_busy=[...]}.
+  \item Si apre la modale: ``\textsc{conflitto rilevato},
+    Marted\`{\i} 4 occupato da Bianchi.\hfill
+    [\textsc{annulla}] [\textsc{sostituisci}]''.
+  \item L'utente sceglie \textsc{sostituisci}.
+  \item Il frontend ripete la chiamata con
+    \texttt{on\_conflict=delete}: la lezione di Bianchi sparisce,
+    la lezione di Rossi prende posto. La griglia ridisegna.
+\end{enumerate}
+\end{esempiobox}
+
+\section{La Tab Ore (\texttt{/ore})}
+\label{sec:tab-ore}
+
+\subsection{Perch\'e una tab dedicata}
+
+I codici scolastici italiani non hanno una griglia oraria
+universale: alcune scuole sono su settimana corta (luned\`{\i}-
+venerd\`{\i}), altre sul sabato; alcune fanno ore da \SI{60}{\minute},
+altre da \SI{55} o \SI{50}{\minute}; alcune ammettono pause di
+durata variabile. Hard-codare \texttt{DAYS = ['Lun', \dots, 'Sab']}
+e \texttt{HOURS = 6}, come faceva l'engine fino a marzo MMXXVI,
+significa pretendere che il mondo si conformi all'esempio.
+
+Tre commit di refactoring hanno cambiato le carte in tavola:
+\texttt{b24fdbd} (modello dati: tabelle \texttt{WorkingDay} e
+\texttt{WorkingHourSlot}), \texttt{a3c12fb} (router REST), e
+\texttt{bf6cfa2} (engine: lettura del config dalle nuove tabelle,
+abbandono di \texttt{DAYS} e \texttt{HOURS} costanti). Sopra a
+questo, il commit \texttt{b3236ab} ha introdotto la \emph{Tab
+Ore} come pagina di prima classe in navbar.
+
+\subsection{Modello dati e API}
+
+\begin{itemize}
+  \item \texttt{WorkingDay(id, dow, name, active)}: i giorni
+    della settimana attivi nella scuola, con un \emph{name}
+    leggibile (`luned\`{\i}', `mercoled\`{\i}', \dots).
+  \item \texttt{WorkingHourSlot(id, day\_id, idx, label,
+    start\_min, end\_min, kind)}: lo slot all'interno del giorno,
+    con etichetta (1\textsuperscript{a} ora, 2\textsuperscript{a}
+    ora, ricreazione, \dots), inizio e fine in minuti dalla
+    mezzanotte, e \emph{kind} fra \textsc{lezione},
+    \textsc{ricreazione}, \textsc{pausa}.
+\end{itemize}
+
+Il router REST \texttt{/api/working-hours/*} espone:
+\begin{lstlisting}[basicstyle=\ttfamily\footnotesize]
+GET    /api/working-hours/config             # bundle completo
+GET    /api/working-hours/days
+POST   /api/working-hours/days                # nuovo giorno
+PUT    /api/working-hours/days/{day_id}
+DELETE /api/working-hours/days/{day_id}       # cascade slot
+PUT    /api/working-hours/days/{day_id}/slots # replace
+POST   /api/working-hours/reset               # default lun-sab 8-14, 60'
+\end{lstlisting}
+
+L'endpoint \texttt{/reset} ripristina la configurazione di
+default: \emph{luned\`{\i}-sabato, sei ore consecutive da
+\SI{60}{\minute}, dalle 08:00 alle 14:00}.
+
+\subsection{La UI vintage-style della Tab Ore}
+\label{sec:ore-vintage}
+
+I commit \texttt{d11e396} e \texttt{d4bc873} hanno trasformato
+l'editor degli slot in una scheda di lavoro tipograficamente
+gradevole, ispirata --- con qualche libert\`a --- ai registri
+manoscritti di scuola del primo Novecento: caratteri serif sobri,
+nessun pulsante baroccamente colorato, un solo accento di colore
+(indaco) per le azioni, e tre cursori CSS distinti per
+trasmettere il comportamento del drag senza spiegarlo a parole.
+
+\begin{itemize}
+  \item Su ogni cella di slot esistente compaiono due bottoncini
+    sobri: \emph{Modifica} (apre un popover inline che si apre
+    \emph{sopra} la cella, mai sotto, per non sporcare il flusso
+    di lettura) e \emph{Cancella} (con doppio click di
+    conferma).
+  \item Le \emph{drop key hints} guidano l'utente: trascinando
+    sul bordo inferiore della cella si \emph{ridimensiona} lo
+    slot; trascinando dal corpo lo si \emph{sposta}. Le hint
+    appaiono solo durante il drag.
+  \item Il \emph{fantasmino traslucido}: quando si crea un nuovo
+    slot trascinando il mouse, una preview semitrasparente segue
+    il cursore. Questo \`e ci\`o che il commit \texttt{d4bc873}
+    chiama \emph{ghost element}.
+\end{itemize}
+
+\subsection{Il fix che ha sbloccato la suite Cypress}
+
+Una nota a margine, ma istruttiva. Il commit \texttt{5c1ba34}
+porta il messaggio ``\emph{namespace-import was masking api.get}''.
+Tradotto: il file \texttt{ore/+page.svelte} importava
+\texttt{api} come namespace (\texttt{import * as api}), ma una
+variabile locale \texttt{api} dichiarata pi\`u in basso oscurava
+il namespace, rompendo \texttt{api.get(...)} a runtime. La
+correzione (\texttt{import \{ api \} from \dots}) ha portato la
+suite Cypress della Tab Ore da \texttt{0/15} a \texttt{15/15}
+verde. La lezione: il namespace import \`e fragile in presenza
+di variabili omonime; meglio l'import nominale.
+
+\section{Lo store condiviso \texttt{workingHoursStore}}
+\label{sec:store-condiviso}
+
+\subsection{Il problema}
+
+Cambiando uno slot in \texttt{/ore}, fino al commit
+\texttt{e0b76bc} le altre viste calendario non si accorgevano
+del cambiamento finch\'e non si ricaricava la pagina. Esempio
+tipico: aggiungo la 7\textsuperscript{a} ora nella Tab Ore, salgo
+in \texttt{/schedule} e la griglia mostra ancora sei colonne.
+
+\subsection{La soluzione}
+
+\texttt{workingHoursStore} \`e uno store Svelte (Writable) che
+conserva il bundle di \texttt{WorkingDay} e \texttt{WorkingHourSlot}
+e si auto-aggiorna ogni volta che la Tab Ore conferma un save.
+Tutti i \texttt{WeeklyCalendarView} sottoscritti allo store
+ricevono il nuovo array di slot e ridisegnano. Niente reload,
+niente prop-drilling: la propagazione \`e \emph{live}.
+
+\section{Operazioni in massa su \texttt{/assignments}}
+\label{sec:bulk-assignments}
+
+I commit \texttt{e6314eb} (backend) e \texttt{16f882a} (frontend)
+hanno completato la pagina \emph{Cattedre} con il pannello
+\emph{operazioni in massa}. La selezione multipla \`e gi\`a presente
+in altre pagine ma qui apre il ventaglio di cinque azioni:
+
+\begin{itemize}
+  \item \textsc{Elimina}: cancella le righe selezionate
+    (\texttt{POST /api/assignments/bulk-delete}).
+  \item \textsc{Lock}/\textsc{Unlock}: alza o abbassa il flag
+    \texttt{locked} (\texttt{POST /api/assignments/bulk-set-flag}
+    con \texttt{flag=locked}).
+  \item \textsc{Cambia docente}: assegna un nuovo docente in
+    blocco (\texttt{POST /api/assignments/bulk-change-teacher}).
+  \item \textsc{Imposta flag}: una versione generica di
+    \emph{lock} per i flag arbitrari supportati dallo schema.
+\end{itemize}
+
+L'utente seleziona le righe (Ctrl-click, Shift-click, oppure il
+checkbox di intestazione per ``seleziona tutto''), apre il
+pannello e conferma; il frontend manda \emph{una sola} richiesta
+al backend, che apre una transazione e applica l'operazione in
+blocco. Per cattedre numerose --- una scuola di duecento
+cattedre non \`e rara --- la differenza rispetto a duecento
+chiamate seriali \`e di un ordine di grandezza.
+
+\section{Il quadro d'insieme}
+
+Le quattro innovazioni descritte in questo capitolo non sono
+indipendenti: si saldano in un'unica esperienza editoriale.
+
+\fleuron
+
+La Tab Ore configura la griglia. Lo store condiviso la propaga.
+\texttt{WeeklyCalendarView} la rende. La modale di conflitto
+risolve l'ultima ambiguit\`a quando l'utente compone, smonta e
+ricompone la sua settimana scolastica con un dito.
+Nelle \emph{piccole cose} dell'interazione --- un cursore
+\texttt{ns-resize} sul bordo, una preview rossa quando il drop
+sarebbe scorretto, un fleuron al posto di un bullet quadrato ---
+si misura la differenza fra una pagina web e un manuale di
+scuola.

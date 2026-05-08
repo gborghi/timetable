@@ -1,0 +1,130 @@
+\chapter{Qualit\`a e copertura end-to-end}
+\label{ch:qualita-e2e}
+
+\lettrine[lines=3]{L}{a copertura} di test di un progetto come
+piTantum non \`e una statistica da cruscotto: \`e un manuale
+parallelo che racconta, dal punto di vista del browser, ci\`o che
+l'utente pu\`o davvero fare. La suite Cypress del frontend, oggi
+forte di trentaquattro spec, \`e cresciuta per stratificazione fra
+marzo e maggio MMXXVI fino a coprire ogni pagina di lista, ogni
+flusso CRUD, ogni dropdown della pagina \texttt{/optimize} e
+l'intera rinascita di \texttt{/schedule}.
+
+\section{La filosofia: smoke + workflow}
+
+Per ogni pagina di prima classe la suite distingue due livelli:
+
+\begin{description}
+  \item[\textsc{smoke}] (\texttt{*\_smoke.cy.ts}). Carica la
+    pagina, controlla che il titolo appaia, che la lista non sia
+    vuota o sia un \emph{empty state} legittimo, che i bottoni
+    principali siano cliccabili. Esegue in pochi secondi e
+    funge da sentinella di regressione.
+  \item[\textsc{workflow}] (\texttt{*\_workflow.cy.ts}). Esegue
+    un percorso CRUD completo: crea un'entit\`a, la modifica,
+    la duplica, la elimina, verifica che lista e dettaglio siano
+    coerenti dopo ogni passo. \`E pi\`u lento (decine di
+    secondi) e pi\`u sensibile, ma \`e l\`{\i} che si scoprono
+    le rotture serie.
+\end{description}
+
+\section{Le aree coperte}
+
+\begin{statsbox}[title={La mappa della suite Cypress (maggio MMXXVI)}]
+\begin{tabular}{ll}
+  \textsc{anagrafiche} &
+    \texttt{teachers}, \texttt{subjects}, \texttt{classes},
+    \texttt{classrooms}, \texttt{plessi}, \texttt{curricula},
+    \texttt{students}, \texttt{groups} \\
+  \textsc{cattedre} &
+    \texttt{assignments\_crud\_workflow},
+    \texttt{assignments\_bulk}, \texttt{assignments\_lock} \\
+  \textsc{compresenza} & \texttt{coteaching\_crud\_workflow} \\
+  \textsc{vincoli} &
+    \texttt{constraints\_smoke}, \texttt{constraints\_workflow}
+    (DSL editor + 4-step wizard + bulk delete) \\
+  \textsc{ottimizzazione} &
+    \texttt{optimize\_dropdowns},
+    \texttt{optimize\_phase\_b\_dropdowns},
+    \texttt{optimize\_advanced},
+    \texttt{optimize\_launch\_solver} \\
+  \textsc{calendario} &
+    \texttt{schedule\_calendar},
+    \texttt{schedule\_workflow}
+    (drag-drop, 4 azioni, pool, filtro, soft-conflict) \\
+  \textsc{logistica} &
+    \texttt{logistics\_conflict\_pill} \\
+  \textsc{tab ore} &
+    spec interna alla \texttt{tab ore}, 15/15 verde dopo il fix
+    \texttt{5c1ba34} \\
+  \textsc{monitor} & \texttt{monitor\_smoke},
+    \texttt{monitor\_workflow} \\
+  \textsc{minori} &
+    \texttt{minor\_tabs\_smoke}, \texttt{absences\_smoke},
+    \texttt{calendar\_view\_smoke}, \texttt{dashboard\_smoke},
+    \texttt{navbar\_completeness} \\
+  \textsc{trasversali} &
+    \texttt{navigation}, \texttt{critical\_workflows},
+    \texttt{smoke} \\
+\end{tabular}
+\end{statsbox}
+
+\section{Convenzioni di scrittura}
+
+\begin{itemize}
+  \item Ogni elemento interagibile espone \texttt{data-testid}
+    stabile, formato di solito come
+    \texttt{<area>-<entit\`a>-<azione>}: ad esempio
+    \texttt{sched-lesson-\{id\}},
+    \texttt{schedule-pool},
+    \texttt{schedule-conflict-modal}. La regola: il test non
+    deve dipendere dal testo visibile.
+  \item Ogni spec si apre con un \texttt{beforeEach} che
+    visita la pagina d'origine e attende un selettore
+    \emph{landmark} (l'intestazione di pagina). Niente
+    \texttt{cy.wait(ms)} arbitrari: si attendono elementi.
+  \item I dati di test usano \texttt{cy.intercept} dove serve,
+    ma il setup canonico \`e una \texttt{db.sqlite3} pre-seedata
+    via \texttt{POST /api/import/profile} prima della suite.
+\end{itemize}
+
+\section{Lezioni dal campo}
+
+\begin{erroricomunibox}
+\begin{itemize}
+  \item Il commit \texttt{5c1ba34} ricorda che un
+    \emph{namespace import} (\texttt{import * as api}) pu\`o
+    essere \emph{mascherato} da una variabile locale omonima:
+    \texttt{api.get(\dots)} fallisce a runtime ma il TypeScript
+    non vede l'errore. La regola di pollice: importi nominali
+    (\texttt{import \{ get, post \} from \dots}) per le API
+    client.
+  \item I selettori basati su testo localizzato sono fragili:
+    una traduzione it/en spezza venti spec. Tutti i nuovi
+    componenti aggiunti nel ciclo aprile-maggio MMXXVI
+    espongono \texttt{data-testid} fin dal primo commit.
+  \item Un drag-drop testato in Cypress non \`e equivalente a
+    un drag-drop reale: i browser moderni emettono eventi
+    \texttt{dragstart}/\texttt{drop} con un payload speciale
+    di \texttt{DataTransfer} che Cypress non riproduce
+    fedelmente. La spec \texttt{schedule\_workflow} usa
+    helper custom (\texttt{trigger('dragstart')},
+    \texttt{trigger('drop')} con payload manuale) per simulare
+    l'interazione: lo si tenga presente quando si aggiungono
+    nuove gesture.
+\end{itemize}
+\end{erroricomunibox}
+
+\section{Eseguire la suite}
+
+\begin{lstlisting}[basicstyle=\ttfamily\footnotesize]
+cd webui/frontend
+npm run cy:open      # GUI interattiva (debug spec singola)
+npm run cy:run       # headless completa (CI / pre-merge)
+npm run cy:run -- --spec "cypress/e2e/schedule_*.cy.ts"
+\end{lstlisting}
+
+Il file \texttt{webui/frontend/E2E\_README.md} descrive la
+pipeline di orchestrazione completa, comprensiva del riavvio
+del backend FastAPI fra le suite per garantire isolamento dello
+stato.

@@ -1,9 +1,7 @@
 % =====================================================================
-% piTantum -- Manuale unico
+% piTantum -- Manuale unico (vintage editorial)
 % Una monografia in unico volume, capitoli numerati progressivamente,
-% senza divisione in Parti. Stile narrativo discorsivo dall'inizio
-% alla fine, accessibile a chi non e' tecnico ma rigoroso quando il
-% contenuto lo richiede.
+% senza divisione in Parti.
 %
 % Compilare con lualatex + biber + makeindex + lualatex (x2).
 % Helper: docs/build_manual.sh oppure docs/build_manual.bat
@@ -11,106 +9,160 @@
 \input{manual/preamble}
 
 \begin{document}
+\frontmatter
 
-% =========== Frontespizio ===========
+% =====================================================================
+% Frontespizio in stile vintage (Aldine / Bringhurst)
+% =====================================================================
 \begin{titlepage}
 \thispagestyle{empty}
 \centering
-\vspace*{1.6cm}
+\vspace*{1.2cm}
 
-{\fontsize{56}{60}\selectfont\bfseries\color{cIndaco}$\pi$\,Tantum\par}
-\vspace{0.4cm}
-{\Large\itshape\color{cInk} alias \emph{Tempus Tantum}\par}
-\vspace{0.6cm}
-{\Large\sffamily\color{cInk}sistema di generazione orario scolastico\par}
-
-\vspace{1.2cm}
-\rule{0.5\textwidth}{1pt}
+% Cornice ornamentale superiore: doppio filetto + fleurons
+\rule{0.78\textwidth}{1.2pt}\par
+\vspace{2pt}
+\rule{0.78\textwidth}{0.4pt}
 
 \vspace{0.9cm}
+
+% Titolo principale: $\pi$Tantum in scrittura cancelleresca
+{\fontsize{56}{60}\selectfont\rmfamily\bfseries\color{cIndaco}$\pi$\,Tantum\par}
+\vspace{0.4cm}
+{\Large\rmfamily\itshape\color{cInk} alias \textsc{Tempus Tantum}\par}
+
+\vspace{0.7cm}
+{\Large\color{cIndaco}\decofourleft\enskip\aldineleft\enskip\aldineright\enskip\decofourright\par}
+
+\vspace{0.8cm}
+
+% Sottotitolo lungo, in italico vintage
 \begin{minipage}{0.85\textwidth}
+\centering\rmfamily\itshape\Large
+Sistema per la generazione e la gestione\\
+dell'orario settimanale delle scuole italiane:\\[0.3em]
+\upshape\large\rmfamily
+vincoli formali, ottimizzazione mista\\
+intero-spettrale, metaeuristiche\\
+e diagnostica statistica.
+\end{minipage}\par
+
+\vspace{1.0cm}
+
+% Epigrafe senecana centrata
+\begin{minipage}{0.78\textwidth}
 \centering
-\itshape\color{cSiena}
-``Omnia, Lucili, aliena sunt, tempus tantum nostrum est.''\\
-\upshape\small\color{cInk} Lucio Anneo Seneca,
-\emph{Epistulae morales ad Lucilium}, I, 1
+\rmfamily\itshape\color{cSiena}
+``Omnia, Lucili, aliena sunt;\\ tempus tantum nostrum est.''\\[0.4em]
+\upshape\small\color{cInk}\textsc{L. A. Seneca},
+\emph{Epistulae morales ad Lucilium}, I,\,1.
 \end{minipage}
 
 \vspace{1.0cm}
-\rule{0.5\textwidth}{1pt}
 
-\vspace{1.6cm}
-{\LARGE\sffamily\color{cIndaco}\bfseries Manuale\par}
-\vspace{0.4cm}
-{\Large\itshape Un metodo per l'orario delle scuole italiane\par}
+% Filetto ornamentale centrale
+{\Large\color{cIndaco}\aldineleft\enskip\decofourleft\enskip\decofourright\enskip\aldineright}\par
 
-\vspace{0.6cm}
-{\small\sffamily\color{cInk}
-Da un'idea di Fernando Gargiulo, Giovanni Borghi,\\
-Matteo Mariani, Stefano Bertozzi
-\par}
+\vspace{0.8cm}
 
-\vspace{2cm}
+{\large\rmfamily\scshape Manuale tecnico\par}
+\vspace{0.3em}
+{\rmfamily\itshape edizione del} {\rmfamily\itshape\today}\par
 
-\begin{tikzpicture}[scale=0.9]
-  \node[draw=cIndaco, very thick, rounded corners=4pt, minimum width=3cm,
-        minimum height=1cm, fill=cIndaco!15] (a) at (0,0)
-        {\textbf{\sffamily CP-SAT}};
-  \node[draw=cIndaco, very thick, rounded corners=4pt, minimum width=3cm,
-        minimum height=1cm, fill=cIndaco!15, right=0.6cm of a] (b)
-        {\textbf{\sffamily spectral}};
-  \node[draw=cIndaco, very thick, rounded corners=4pt, minimum width=3cm,
-        minimum height=1cm, fill=cIndaco!15, right=0.6cm of b] (c)
-        {\textbf{\sffamily LNS+SA+TS+ILS}};
-  \draw[-{Stealth[length=3mm]}, thick, cSiena] (a) -- (b);
-  \draw[-{Stealth[length=3mm]}, thick, cSiena] (b) -- (c);
+\vspace{0.7cm}
+
+% Stemma a tre cassetti dei moduli principali (vintage colofone)
+\begin{tikzpicture}[scale=0.85]
+  \node[draw=cIndaco, thick, rounded corners=2pt, minimum width=2.7cm,
+        minimum height=0.9cm, fill=cAvorio] (a) at (0,0)
+        {\rmfamily\scshape CP-SAT};
+  \node[draw=cIndaco, thick, rounded corners=2pt, minimum width=2.7cm,
+        minimum height=0.9cm, fill=cAvorio, right=0.5cm of a] (b)
+        {\rmfamily\scshape spectral};
+  \node[draw=cIndaco, thick, rounded corners=2pt, minimum width=2.7cm,
+        minimum height=0.9cm, fill=cAvorio, right=0.5cm of b] (c)
+        {\rmfamily\scshape lns-sa-ts-ils};
+  \draw[-{Stealth[length=2.5mm]}, thick, cSiena] (a) -- (b);
+  \draw[-{Stealth[length=2.5mm]}, thick, cSiena] (b) -- (c);
 \end{tikzpicture}
 
 \vfill
 
-{\large\sffamily Giovanni Borghi\par}
-\vspace{0.2cm}
-{\large\sffamily \today\par}
+% Autori, anno in cifre romane
+{\small\rmfamily\itshape Da un'idea di\par}
+{\rmfamily\textsc{Fernando Gargiulo}\quad\textendash\quad\textsc{Giovanni Borghi}\par}
+{\rmfamily\textsc{Matteo Mariani}\quad\textendash\quad\textsc{Stefano Bertozzi}\par}
 
 \vspace{0.6cm}
-{\small\sffamily\color{cInk}
-Repository: \url{https://github.com/gborghi/timetable}\\
-Documentazione sorgente: \texttt{docs/}
-\par}
+
+\rule{0.55\textwidth}{0.4pt}\par
+\vspace{0.4em}
+{\rmfamily\Large\scshape Anno Domini\quad MMXXVI}\par
+\vspace{0.4em}
+\rule{0.55\textwidth}{0.4pt}
+
+\vspace{0.6cm}
+
+\rule{0.78\textwidth}{0.4pt}\par
+\vspace{2pt}
+\rule{0.78\textwidth}{1.2pt}
+
 \end{titlepage}
 
-% =========== Colophon ===========
+% =====================================================================
+% Colophon vintage
+% =====================================================================
 \thispagestyle{empty}
 \null\vfill
-\noindent\small
-\textbf{\sffamily Colophon}\\[0.3em]
-Questo volume \`e composto in EB Garamond per il corpo del testo
-e in Lato per i titoli, con Inconsolata per i blocchi di codice.
-La compilazione \`e stata eseguita con \texttt{lualatex} (TeX
-Live), \texttt{biber} per la bibliografia e \texttt{makeindex}
-per l'indice analitico. Il sorgente \LaTeX{} risiede in
-\texttt{docs/manual.tex} con i capitoli in
-\texttt{docs/manual/chapters/}; il bibliografico \`e in
-\texttt{docs/manual/bibliography.bib}. La pipeline di build \`e
-in \texttt{docs/build\_manual.sh} (Linux/macOS/Git Bash) e
-\texttt{docs/build\_manual.bat} (Windows).
+\begin{center}
+{\Large\color{cIndaco}\decofourleft\enskip\decofourright}\par
+\vspace{0.4em}
+{\rmfamily\scshape\large Colophon}\par
+\vspace{0.2em}
+\rule{0.3\textwidth}{0.4pt}
+\end{center}
+\vspace{0.6em}
+
+\noindent\small\rmfamily
+\textsc{Il presente volume} \`e composto in EB Garamond per il corpo
+del testo --- con cifre old-style e maiuscoletto autentico ---,
+in Lato per le poche etichette di schemi grafici, e in Inconsolata
+per i blocchi di codice. La gabbia tipografica segue le proporzioni
+classiche dei manuali di Bringhurst e Tschichold: margine esterno
+ampio per la marginalia, margine interno pi\`u stretto, testatina
+aerea, piede ornato. I capitoli sono aperti da un capolettera
+ornamentale di tre righe; il numero di capitolo \`e in cifre romane,
+il titolo in maiuscoletto incorniciato da filetti orizzontali e
+da una rosetta a quattro foglie (\textsc{decofour}, dal pacchetto
+\texttt{fourier-orns}).
 
 \bigskip
-\noindent\textbf{\sffamily Tipografia}: pacchetti
-\texttt{ebgaramond}, \texttt{lato}, \texttt{inconsolata},
-\texttt{microtype}.\\
-\textbf{\sffamily Layout}: \texttt{KOMA-Script scrbook},
-\texttt{geometry}, \texttt{scrlayer-scrpage}.\\
-\textbf{\sffamily Editoriale}: \texttt{tcolorbox},
-\texttt{lettrine}, \texttt{marginnote}, \texttt{epigraph},
-\texttt{tikz}, \texttt{pgfplots}.\\
-\textbf{\sffamily Bibliografia e indici}:
-\texttt{biblatex} backend \texttt{biber}, \texttt{imakeidx}.
+\noindent\textsc{Compilazione}: \texttt{lualatex} (\TeX{} Live 2024),
+\texttt{biber} per la bibliografia, \texttt{makeindex} per l'indice
+analitico. La pipeline \`e in \texttt{docs/build\_manual.sh}
+(Linux/macOS/Git Bash) e \texttt{docs/build\_manual.bat} (Windows).
+
+\smallskip
+\noindent\textsc{Pacchetti tipografici}: \texttt{ebgaramond}
+[oldstyle], \texttt{lato}, \texttt{inconsolata}, \texttt{microtype},
+\texttt{fourier-orns}, \texttt{pifont}, \texttt{lettrine}.
+
+\smallskip
+\noindent\textsc{Layout}: KOMA-Script \texttt{scrbook},
+\texttt{geometry}, \texttt{scrlayer-scrpage}.
+
+\smallskip
+\noindent\textsc{Editoriale}: \texttt{tcolorbox}, \texttt{epigraph},
+\texttt{marginnote}, \texttt{tikz}, \texttt{pgfplots}.
+
+\smallskip
+\noindent\textsc{Bibliografia e indici}: \texttt{biblatex} backend
+\texttt{biber}, \texttt{imakeidx}.
 
 \bigskip
 \noindent
-Versione del repository corrispondente al commit visibile nel
-log \texttt{git log --oneline -- docs/}. Eventuali errori e
+La versione del repository corrisponde all'ultimo commit visibile
+nel log \texttt{git log --oneline -- docs/}. Eventuali errori e
 suggerimenti possono essere segnalati come \emph{issue} sul
 repository GitHub all'indirizzo
 \url{https://github.com/gborghi/timetable}.
@@ -118,7 +170,12 @@ repository GitHub all'indirizzo
 \bigskip
 \noindent
 Tutti i diritti del progetto sono di Giovanni Borghi.
-Documento prodotto a maggio 2026.
+Documento prodotto a maggio MMXXVI.
+
+\vspace{0.6em}
+\begin{center}
+{\Large\color{cIndaco}\aldineleft\enskip\aldineright}
+\end{center}
 \vfill
 
 \cleardoublepage
@@ -127,6 +184,8 @@ Documento prodotto a maggio 2026.
 \tableofcontents
 \listoffigures
 \listoftables
+
+\mainmatter
 
 % =========== Capitoli (numerati progressivamente, niente Parti) ===========
 \input{manual/chapters/prologo}
@@ -137,6 +196,7 @@ Documento prodotto a maggio 2026.
 \input{manual/chapters/vincoli}
 \input{manual/chapters/workflow_di_ottimizzazione}
 \input{manual/chapters/guida_ui}
+\input{manual/chapters/calendario_e_ore}
 \input{manual/chapters/launcher}
 \input{manual/chapters/metodo_cpsat}
 \input{manual/chapters/metodo_spettrale}
@@ -156,9 +216,12 @@ Documento prodotto a maggio 2026.
 \input{manual/chapters/estendere_il_sistema}
 \input{manual/chapters/repository_github}
 \input{manual/chapters/benchmarks}
+\input{manual/chapters/qualita_e2e}
 \input{manual/chapters/lessons_learned}
 \input{manual/chapters/glossario_discorsivo}
 \input{manual/chapters/reference}
+
+\backmatter
 
 % =========== Bibliografia ===========
 \printbibliography[heading=bibintoc, title={Bibliografia}]

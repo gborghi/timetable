@@ -1,0 +1,127 @@
+\chapter{Quality and end-to-end coverage}
+\label{ch:qualita-e2e-en}
+
+\lettrine[lines=3]{T}{est coverage} for a project like piTantum
+is not a dashboard statistic: it is a parallel manual that
+narrates, from the browser's perspective, what the user can
+actually do. The frontend Cypress suite, today thirty-four specs
+strong, grew by accretion between March and May MMXXVI, until it
+covered every list page, every CRUD flow, every dropdown of the
+\texttt{/optimize} page and the entire rebirth of
+\texttt{/schedule}.
+
+\section{Smoke + workflow}
+
+For each first-class page the suite distinguishes two levels:
+
+\begin{description}
+  \item[\textsc{smoke}] (\texttt{*\_smoke.cy.ts}). Loads the
+    page, checks that the title appears, that the list is not
+    empty (or is a legitimate empty state), that the main
+    buttons are clickable. Runs in seconds and acts as a
+    regression sentinel.
+  \item[\textsc{workflow}] (\texttt{*\_workflow.cy.ts}). Walks
+    through a full CRUD path: creates an entity, edits it,
+    duplicates it, deletes it, verifies that list and detail
+    are coherent at each step. Slower (tens of seconds), more
+    brittle, but where serious breakages surface.
+\end{description}
+
+\section{Coverage map}
+
+\begin{statsbox}[title={Cypress suite map (May MMXXVI)}]
+\begin{tabular}{ll}
+  \textsc{master data} &
+    \texttt{teachers}, \texttt{subjects}, \texttt{classes},
+    \texttt{classrooms}, \texttt{plessi}, \texttt{curricula},
+    \texttt{students}, \texttt{groups} \\
+  \textsc{assignments} &
+    \texttt{assignments\_crud\_workflow},
+    \texttt{assignments\_bulk}, \texttt{assignments\_lock} \\
+  \textsc{co-teaching} & \texttt{coteaching\_crud\_workflow} \\
+  \textsc{constraints} &
+    \texttt{constraints\_smoke}, \texttt{constraints\_workflow}
+    (DSL editor + 4-step wizard + bulk delete) \\
+  \textsc{optimize} &
+    \texttt{optimize\_dropdowns},
+    \texttt{optimize\_phase\_b\_dropdowns},
+    \texttt{optimize\_advanced},
+    \texttt{optimize\_launch\_solver} \\
+  \textsc{schedule} &
+    \texttt{schedule\_calendar},
+    \texttt{schedule\_workflow}
+    (drag-drop, 4 actions, pool, filter, soft-conflict) \\
+  \textsc{logistics} &
+    \texttt{logistics\_conflict\_pill} \\
+  \textsc{working-hours} &
+    internal spec to the working-hours tab, 15/15 green after
+    fix \texttt{5c1ba34} \\
+  \textsc{monitor} & \texttt{monitor\_smoke},
+    \texttt{monitor\_workflow} \\
+  \textsc{minor} &
+    \texttt{minor\_tabs\_smoke}, \texttt{absences\_smoke},
+    \texttt{calendar\_view\_smoke}, \texttt{dashboard\_smoke},
+    \texttt{navbar\_completeness} \\
+  \textsc{cross-cutting} &
+    \texttt{navigation}, \texttt{critical\_workflows},
+    \texttt{smoke} \\
+\end{tabular}
+\end{statsbox}
+
+\section{Writing conventions}
+
+\begin{itemize}
+  \item Every interactive element exposes a stable
+    \texttt{data-testid}, usually formatted as
+    \texttt{<area>-<entity>-<action>}: e.g.
+    \texttt{sched-lesson-\{id\}}, \texttt{schedule-pool},
+    \texttt{schedule-conflict-modal}. The rule: tests must not
+    depend on visible text.
+  \item Each spec opens with a \texttt{beforeEach} that visits
+    the origin page and waits for a landmark selector (the page
+    heading). No arbitrary \texttt{cy.wait(ms)}: wait on
+    elements.
+  \item Test data uses \texttt{cy.intercept} where it must, but
+    the canonical setup is a \texttt{db.sqlite3} pre-seeded via
+    \texttt{POST /api/import/profile} before the suite.
+\end{itemize}
+
+\section{Lessons from the field}
+
+\begin{erroricomunibox}
+\begin{itemize}
+  \item Commit \texttt{5c1ba34} reminds us that a
+    \emph{namespace import} (\texttt{import * as api}) can be
+    \emph{shadowed} by a homonymous local variable:
+    \texttt{api.get(\dots)} fails at runtime but TypeScript
+    sees no error. Rule of thumb: prefer named imports
+    (\texttt{import \{ get, post \} from \dots}) for API
+    clients.
+  \item Selectors based on localized text are fragile: a
+    Italian/English translation breaks twenty specs. Every new
+    component added in the April-May MMXXVI cycle exposes
+    \texttt{data-testid} from its first commit.
+  \item A drag-drop tested in Cypress is not equivalent to a
+    real drag-drop: modern browsers emit
+    \texttt{dragstart}/\texttt{drop} events with a special
+    \texttt{DataTransfer} payload that Cypress does not
+    faithfully reproduce. The \texttt{schedule\_workflow} spec
+    uses custom helpers (\texttt{trigger('dragstart')},
+    \texttt{trigger('drop')} with manual payloads) to simulate
+    the interaction: keep this in mind when adding new
+    gestures.
+\end{itemize}
+\end{erroricomunibox}
+
+\section{Running the suite}
+
+\begin{lstlisting}[basicstyle=\ttfamily\footnotesize]
+cd webui/frontend
+npm run cy:open      # interactive GUI (debug single spec)
+npm run cy:run       # full headless (CI / pre-merge)
+npm run cy:run -- --spec "cypress/e2e/schedule_*.cy.ts"
+\end{lstlisting}
+
+The file \texttt{webui/frontend/E2E\_README.md} describes the
+full orchestration pipeline, including the FastAPI backend
+restart between suites to guarantee state isolation.
