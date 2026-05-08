@@ -182,6 +182,50 @@ def test_class_day_iterates():
             or info["feasible_after_completion"]), info
 
 
+# ---------- teacher-class-subject ----------
+
+def test_teacher_class_subject_pricer_smoke():
+    """Direct call to the teacher-class-subject pricer with a strong
+    dual on (T1, 1A, Mat, 1) must produce a column that places ALL
+    4 hours of (T1, 1A, Mat) on day 1, leaves the OTHER class slice
+    (1B Mat) intact via the greedy base, and earns rc < 0."""
+    import column_generation as cg
+    profs = _two_class_profs()
+    dc_value = _two_class_dc()
+    lambda_duals = {("T1", "1A", "Mat", 1): 100.0}
+    pat, rc = cg._pricing_subproblem_teacher_class_subject(
+        "T1", "1A", "Mat", profs, dc_value,
+        lambda_duals, mu_t=0.0,
+        time_limit=2.0, workers=1,
+    )
+    assert pat is not None, f"pricer returned None, rc={rc}"
+    assert rc < 0.0, f"expected rc<0, got {rc}"
+    placed_in_scope = sum(
+        1 for (p, c, s, d, _h), v in pat.items()
+        if v and p == "T1" and c == "1A" and s == "Mat" and d == 1
+    )
+    assert placed_in_scope == 4, (
+        f"teacher-class-subject must place all 4h of (T1, 1A, Mat) "
+        f"on day 1, got {placed_in_scope}")
+    placed_other_class = sum(
+        1 for (p, c, s, _d, _h), v in pat.items()
+        if v and p == "T1" and c == "1B" and s == "Mat"
+    )
+    assert placed_other_class == 4, (
+        f"greedy base for (T1, 1B, Mat) must be preserved, got "
+        f"{placed_other_class}")
+
+
+def test_teacher_class_subject_iterates():
+    """End-to-end BP with granularity=teacher-class-subject must
+    enter the BP loop, not fall back to iterative-diversified, and
+    converge to a HARD-feasible (or completion-feasible) plan."""
+    sol, info = _run_bp("teacher-class-subject")
+    _assert_bp_iterated(info, "teacher-class-subject")
+    assert (info["feasible_after_assembly"]
+            or info["feasible_after_completion"]), info
+
+
 # ---------- parity check across all 9 granularities (regression
 # guard for sibling sessions wiring class-day / teacher-class-subject)
 
