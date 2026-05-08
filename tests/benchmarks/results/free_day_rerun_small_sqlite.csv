@@ -1,0 +1,4 @@
+profile,dataset,technique,family,seed,status,t_phase_a,t_phase_b,t_post,t_total,cost,hard_feasible,n_lessons,n_columns,n_iterations,n_classes,n_teachers,note,error_msg
+small,sqlite,cpsat_week,cpsat,42,hard_violation,0.0,123.38,0.0,123.38,720.0,False,305,,,10,19,"week+skip, 4068 slot vars, status=FEASIBLE",
+small,sqlite,cpsat_day_skip_phase_a,cpsat,42,hard_violation,0.0,39.06,0.0,39.06,1160.0,False,305,,,10,19,"week+skip, mono_budget=t_b*6=36.0s, status=FEASIBLE",
+small,sqlite,cpsat_day_soft_hint,cpsat,42,hard_violation,20.19,39.18,0.0,59.37,1100.0,False,305,,,10,19,"week+soft_hint, 305 hints, status=FEASIBLE",
