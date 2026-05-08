@@ -35,25 +35,28 @@ webui/data/*.db
 webui/data/*.db-shm
 webui/data/*.db-wal
 webui/data/runs/
-output/
-engine/scripts/output/
+/output/
 proofs/
 
-# Exception: MEGA benchmark xlsx outputs are tracked so reviewers
-# can inspect the final orario without re-running the pipeline.
-!engine/scripts/output/mega/
-!engine/scripts/output/mega/*.xlsx
+# engine/scripts/output/ holds pipeline artifacts. We track the
+# canonical demo-profile outputs so reviewers can inspect them
+# without re-running the engine; everything else under output/
+# (intermediate Phase A dumps, run logs, throwaway pickles,
+# benchmark scratch) is gitignored.
+engine/scripts/output/**/*
+!engine/scripts/output/*/
+!engine/scripts/output/*/orario_*.xlsx
+!engine/scripts/output/*/solution_timetable_*_optimized.pkl
 
 # Pickled snapshots / engine scratch artifacts
 engine/*.pkl
 engine/scripts/*.pkl
 schedule/*.pkl
 
-# Locally-rebuilt mock-school profile pickles. Each developer regenerates
-# them with scripts/rebuild_profiles.ps1 (see scripts/README.md). The mega
-# pickle pair IS tracked because the dashboard import flow ships with it.
-engine/scripts/data/**/*.pkl
-!engine/scripts/data/mega/*.pkl
+# Demo-profile pickles under engine/scripts/data/<profile>/ ARE tracked
+# (small / medium / big / huge / superhuge / mega school + profs). They
+# back the dashboard's "Importa profilo" dropdown -- without them the
+# dropdown shows only mega. Generation script: scripts/rebuild_profiles.{sh,ps1}.
 
 # Claude Code worktrees (transient development branches)
 .claude/worktrees/
