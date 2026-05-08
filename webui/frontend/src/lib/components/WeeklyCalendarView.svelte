@@ -51,6 +51,10 @@
     pxFromTime as _pxFromTime,
     pxDuration as _pxDuration,
     gridHeight as _gridHeight,
+    pxToTime as _pxToTime,
+    makeSlot as _makeSlot,
+    reindexSlots as _reindexSlots,
+    clampToOpenWindow as _clampOpen,
   } from '$lib/calendar_layout.mjs';
 
   export let value = [];
@@ -58,6 +62,21 @@
   export let title = 'Disponibilita oraria';
   export let readonly = false;
   export let config = null;
+  /** "view" (default): slots are clickable for setting a constraint
+   * level on each (day, hour) cell -- the existing teachers / classes /
+   * classrooms availability matrices.
+   * "edit": slots are draggable rectangles the user creates,
+   * resizes, moves and deletes to define the working-hours layout
+   * itself (Tab Ore). The component manages its own slot list in
+   * edit mode and emits ``onConfigEdit`` whenever the user commits
+   * a change. */
+  export let mode = 'view';
+  /** Edit-mode callback. Called with a SHALLOW COPY of ``config``
+   * whose ``days[*].slots`` reflect the user's edits. The parent is
+   * expected to persist the new slots via the working-hours API.
+   * Defaults to a no-op so the view-mode call sites don't have to
+   * pass anything. */
+  export let onConfigEdit = (_newConfig) => {};
 
   let _config = config;
   let loadingConfig = false;
@@ -227,6 +246,227 @@
   function onMouseUp() {
     dragOriginKey = null;
     dragMode = null;
+    // Edit-mode commit happens here too (handled below).
+    _editMouseUp();
+  }
+
+  // ---------------------------------------------------------------
+  // EDIT MODE: the user creates / resizes / moves / deletes slots
+  // directly on the calendar. The component manages its own
+  // ``editingDays`` state in edit mode (a deep copy of
+  // ``_config.days``) and emits ``onConfigEdit(newConfig)`` whenever
+  // a change commits. The parent is expected to persist via the
+  // working-hours API.
+  // ---------------------------------------------------------------
+  const EDGE_PX = 6;          // resize handle thickness
+  const SNAP_MIN = 15;        // snap drag positions to 15-min steps
+  const MIN_DURATION_MIN = 15;
+
+  let editingDays = null;     // null in view mode, [{ ...day }] in edit
+  let selectedSel = null;     // { dayId, idx } currently selected slot
+  let editDrag = null;        // active drag operation
+  let editDragPreview = null; // {dayId, top, height, label} for hover
+
+  $: if (mode === 'edit' && _config?.days && editingDays === null) {
+    editingDays = _config.days.map(
+      (d) => ({ ...d, slots: (d.slots || []).map((s) => ({ ...s })) }));
+  }
+  $: if (mode === 'view' && editingDays !== null) {
+    editingDays = null;
+    selectedSel = null;
+    editDrag = null;
+    editDragPreview = null;
+  }
+  $: editActiveDays = (editingDays || []).filter((d) => d.is_active);
+  $: editBgRange = bgRangeFor(
+    mode === 'edit' ? editActiveDays : activeDays);
+  $: displayActiveDays = mode === 'edit' ? editActiveDays : activeDays;
+  $: displayBgRange = mode === 'edit' ? editBgRange : bgRange;
+  $: displayBgHours = (() => {
+    const out = [];
+    for (let h = displayBgRange.lo; h <= displayBgRange.hi; h += 1)
+      out.push(h);
+    return out;
+  })();
+  $: displayGridHeightPx = _gridHeight(displayBgRange);
+
+  function _commitEditingDays(nextDays) {
+    editingDays = nextDays;
+    const newConfig = {
+      ..._config,
+      days: nextDays,
+      max_slots_per_day: nextDays.reduce(
+        (m, d) => d.is_active ? Math.max(m, d.slots.length) : m, 0),
+      uniform_slot_count: (() => {
+        const counts = nextDays.filter((d) => d.is_active)
+                                .map((d) => d.slots.length);
+        return counts.every((c) => c === counts[0]);
+      })(),
+    };
+    onConfigEdit(newConfig);
+  }
+
+  function _yFromEvent(ev, dayColEl) {
+    const rect = dayColEl.getBoundingClientRect();
+    return Math.max(0, Math.min(displayGridHeightPx,
+                                ev.clientY - rect.top));
+  }
+
+  function onEditDayMouseDown(ev, dayId, dayColEl) {
+    if (mode !== 'edit' || readonly || ev.button !== 0) return;
+    // Did we click on an existing slot? The slot's own mousedown
+    // handler runs first (z-index higher) and sets editDrag, so
+    // here we only handle clicks on the BACKGROUND.
+    if (editDrag) return;
+    const y = _yFromEvent(ev, dayColEl);
+    const t = _pxToTime(y, displayBgRange, PX_PER_HOUR, SNAP_MIN);
+    editDrag = {
+      kind: 'create', dayId, dayColEl,
+      anchorY: y, currentY: y, startTime: t,
+    };
+    selectedSel = null;
+    ev.preventDefault();
+  }
+
+  function onEditSlotMouseDown(ev, dayId, idx, dayColEl, edge) {
+    if (mode !== 'edit' || readonly || ev.button !== 0) return;
+    ev.stopPropagation();
+    selectedSel = { dayId, idx };
+    const day = editingDays.find((d) => d.id === dayId);
+    const slot = day?.slots[idx];
+    if (!slot) return;
+    const y = _yFromEvent(ev, dayColEl);
+    editDrag = {
+      kind: edge || 'move',
+      dayId, idx, dayColEl,
+      anchorY: y, currentY: y,
+      original: { ...slot },
+    };
+  }
+
+  function onEditMouseMove(ev) {
+    if (!editDrag) return;
+    const y = _yFromEvent(ev, editDrag.dayColEl);
+    editDrag = { ...editDrag, currentY: y };
+    if (editDrag.kind === 'create') {
+      const a = editDrag.anchorY;
+      const top = Math.min(a, y);
+      const height = Math.max(8, Math.abs(y - a));
+      editDragPreview = {
+        dayId: editDrag.dayId, top, height,
+        label: `${_pxToTime(top, displayBgRange, PX_PER_HOUR, SNAP_MIN)}` +
+               `-${_pxToTime(top + height, displayBgRange, PX_PER_HOUR, SNAP_MIN)}`,
+      };
+    }
+  }
+
+  function _editMouseUp() {
+    if (!editDrag) return;
+    const drag = editDrag;
+    editDrag = null;
+    editDragPreview = null;
+    if (mode !== 'edit') return;
+    if (drag.kind === 'create') {
+      const a = drag.anchorY;
+      const b = drag.currentY;
+      if (Math.abs(b - a) < 6) return;        // accidental click
+      const top = Math.min(a, b);
+      const bottom = Math.max(a, b);
+      const start = _pxToTime(top, displayBgRange, PX_PER_HOUR, SNAP_MIN);
+      const end = _pxToTime(bottom, displayBgRange, PX_PER_HOUR, SNAP_MIN);
+      _editApplyCreate(drag.dayId, start, end);
+    } else if (drag.kind === 'move') {
+      const dy = drag.currentY - drag.anchorY;
+      const origTop = _pxFromTime(drag.original.start_time,
+                                    displayBgRange);
+      const origBot = _pxFromTime(drag.original.end_time,
+                                    displayBgRange);
+      const newTop = origTop + dy;
+      const newBot = origBot + dy;
+      const start = _pxToTime(newTop, displayBgRange, PX_PER_HOUR,
+                              SNAP_MIN);
+      const end = _pxToTime(newBot, displayBgRange, PX_PER_HOUR,
+                            SNAP_MIN);
+      _editApplyResize(drag.dayId, drag.idx, start, end);
+    } else if (drag.kind === 'resize-top') {
+      const newTop = _pxFromTime(drag.original.start_time,
+                                   displayBgRange) +
+                     (drag.currentY - drag.anchorY);
+      const start = _pxToTime(newTop, displayBgRange, PX_PER_HOUR,
+                              SNAP_MIN);
+      _editApplyResize(drag.dayId, drag.idx, start,
+                       drag.original.end_time);
+    } else if (drag.kind === 'resize-bottom') {
+      const newBot = _pxFromTime(drag.original.end_time,
+                                   displayBgRange) +
+                     (drag.currentY - drag.anchorY);
+      const end = _pxToTime(newBot, displayBgRange, PX_PER_HOUR,
+                            SNAP_MIN);
+      _editApplyResize(drag.dayId, drag.idx, drag.original.start_time,
+                       end);
+    }
+  }
+
+  function _editApplyCreate(dayId, start, end) {
+    const days = editingDays.map((d) => ({
+      ...d, slots: d.slots.map((s) => ({ ...s })),
+    }));
+    const day = days.find((dd) => dd.id === dayId);
+    if (!day) return;
+    const clamped = _clampOpen(start, end, day.slots);
+    if (!clamped) return;
+    day.slots.push(_makeSlot(clamped.start_time, clamped.end_time,
+                              day.slots.length));
+    day.slots = _reindexSlots(day.slots);
+    _commitEditingDays(days);
+  }
+
+  function _editApplyResize(dayId, idx, start, end) {
+    const days = editingDays.map((d) => ({
+      ...d, slots: d.slots.map((s) => ({ ...s })),
+    }));
+    const day = days.find((dd) => dd.id === dayId);
+    if (!day) return;
+    const others = day.slots.filter((_, i) => i !== idx);
+    const clamped = _clampOpen(start, end, others);
+    if (!clamped) {
+      // Drop the slot if its new dimensions collapsed to zero.
+      day.slots = _reindexSlots(others);
+    } else {
+      day.slots[idx] = {
+        ..._makeSlot(clamped.start_time, clamped.end_time, idx),
+        // preserve user-edited label if present
+        label: day.slots[idx].label,
+      };
+      day.slots = _reindexSlots(day.slots);
+    }
+    _commitEditingDays(days);
+    // Re-derive selection: the slot may have a different idx after
+    // re-indexing.
+    const newIdx = day.slots.findIndex(
+      (s) => s.start_time === (clamped?.start_time));
+    selectedSel = newIdx >= 0 ? { dayId, idx: newIdx } : null;
+  }
+
+  function _editApplyDelete(dayId, idx) {
+    const days = editingDays.map((d) => ({
+      ...d, slots: d.slots.map((s) => ({ ...s })),
+    }));
+    const day = days.find((dd) => dd.id === dayId);
+    if (!day) return;
+    day.slots = _reindexSlots(day.slots.filter((_, i) => i !== idx));
+    _commitEditingDays(days);
+    selectedSel = null;
+  }
+
+  function onEditKeyDown(ev) {
+    if (mode !== 'edit' || !selectedSel) return;
+    if (ev.key === 'Delete' || ev.key === 'Backspace') {
+      ev.preventDefault();
+      _editApplyDelete(selectedSel.dayId, selectedSel.idx);
+    } else if (ev.key === 'Escape') {
+      selectedSel = null;
+    }
   }
 
   function onCellClick(ev, d, h) {
@@ -309,114 +549,173 @@
 
   {#if loadingConfig}
     <div class="text-sm text-ink-500">Caricamento configurazione...</div>
-  {:else if activeDays.length === 0}
+  {:else if displayActiveDays.length === 0}
     <div class="text-sm text-ink-500">
       Nessun giorno lavorativo configurato. Vai al tab
       <a href="/ore" class="link">Ore</a> per definirli.
     </div>
   {:else}
-    <div class="overflow-x-auto">
+    <div class="overflow-x-auto" tabindex="0"
+         on:keydown={onEditKeyDown}>
       <div class="cal-grid"
-           style="--n-days: {activeDays.length};
+           class:cal-grid--edit={mode === 'edit'}
+           style="--n-days: {displayActiveDays.length};
                   --hour-px: {PX_PER_HOUR}px;
-                  --grid-h: {gridHeightPx}px;">
+                  --grid-h: {displayGridHeightPx}px;">
         <!-- header row: time-col placeholder + day labels -->
         <div class="cal-header">
           <div class="cal-time-col"></div>
-          {#each activeDays as d}
+          {#each displayActiveDays as d}
             <div class="cal-day-header" title={d.label}>
               {d.label.slice(0, 3)}
             </div>
           {/each}
         </div>
         <!-- body row: time-col on the left + day-cols with events -->
-        <div class="cal-body" style="height: {gridHeightPx}px">
+        <div class="cal-body"
+             style="height: {displayGridHeightPx}px"
+             on:mousemove={onEditMouseMove}>
           <!-- time column with hour labels aligned with gridlines -->
           <div class="cal-time-col">
-            {#each bgHours as h}
+            {#each displayBgHours as h}
               <div class="cal-hour-label"
-                   style="top: {(h - bgRange.lo) * PX_PER_HOUR}px">
+                   style="top: {(h - displayBgRange.lo) * PX_PER_HOUR}px">
                 {String(h).padStart(2, '0')}:00
               </div>
             {/each}
           </div>
           <!-- one column per active day -->
-          {#each activeDays as d}
+          {#each displayActiveDays as d}
             {@const dnum = d.legacy_day_number}
-            <div class="cal-day-col" data-day={dnum}>
-              <!-- background hour gridlines (non-clickable) -->
-              {#each bgHours as h}
+            {@const dayId = d.id}
+            <div class="cal-day-col" data-day={dnum}
+                 bind:this={d._colEl}
+                 on:mousedown={(e) => onEditDayMouseDown(e, dayId, d._colEl)}>
+              <!-- background hour gridlines (non-clickable in view
+                   mode; serves as drag-to-create surface in edit) -->
+              {#each displayBgHours as h}
                 <div class="cal-hour-bg"
-                     style="top: {(h - bgRange.lo) * PX_PER_HOUR}px"
-                     aria-disabled="true"
-                     title="Ora {String(h).padStart(2, '0')}:00 -- nessuno slot configurato qui"></div>
+                     class:cal-hour-bg--editable={mode === 'edit'}
+                     style="top: {(h - displayBgRange.lo) * PX_PER_HOUR}px"
+                     aria-disabled={mode !== 'edit'}
+                     title={mode === 'edit'
+                       ? `Trascina per creare uno slot a partire da ${String(h).padStart(2, '0')}:00`
+                       : `Ora ${String(h).padStart(2, '0')}:00 -- nessuno slot configurato qui`}></div>
               {/each}
-              <!-- foreground events: configured Tab Ore slots,
-                   clickable + colorable -->
-              {#each (d.slots || []) as slot}
-                {@const hnum = slot.legacy_hour_number}
-                {@const cell = cells.find((c) =>
-                    c.day === dnum && c.hour === hnum) || null}
-                {@const isFree = !cell}
-                {@const isSoft = cell && cell.state === 'soft'}
-                {@const isHard = cell && cell.state === 'hard'}
-                {@const isPref = cell && cell.state === 'preferred'}
-                {@const isEnf  = cell && cell.state === 'enforced'}
-                <div class="cal-event"
-                     class:cal-event--free={isFree}
-                     class:cal-event--soft={isSoft}
-                     class:cal-event--hard={isHard}
-                     class:cal-event--preferred={isPref}
-                     class:cal-event--enforced={isEnf}
-                     class:cal-event--readonly={readonly}
-                     style="top: {_pxFromTime(slot.start_time, bgRange)}px;
-                            height: {_pxDuration(slot)}px"
-                     data-day={dnum}
-                     data-hour={hnum}
-                     data-state={cell ? cell.state : 'free'}
-                     on:click={(e) => onCellClick(e, dnum, hnum)}
-                     on:mousedown={(e) => onMouseDown(e, dnum, hnum)}
-                     on:mouseenter={() => onMouseEnter(dnum, hnum)}
-                     title={`${slot.start_time}-${slot.end_time}` +
-                       (isSoft
-                         ? ` -- SOFT, penalita ${cell.soft_penalty}`
-                         : isPref
-                         ? ` -- PREFERRED, bonus ${cell.soft_penalty}`
-                         : isEnf
-                         ? ' -- ENFORCED'
-                         : isHard
-                         ? ' -- HARD non disponibile'
-                         : ' -- libero')}>
-                  <div class="cal-event-time">
-                    {slot.start_time}-{slot.end_time}
+              {#if mode === 'edit'}
+                <!-- EDIT MODE: events are draggable rectangles the
+                     user manipulates to define the working-hours
+                     layout itself. -->
+                {#each (d.slots || []) as slot, sIdx}
+                  {@const isSelected = selectedSel
+                      && selectedSel.dayId === dayId
+                      && selectedSel.idx === sIdx}
+                  <div class="cal-event cal-event--edit"
+                       class:cal-event--selected={isSelected}
+                       style="top: {_pxFromTime(slot.start_time, displayBgRange)}px;
+                              height: {_pxDuration(slot)}px"
+                       data-day={dnum}
+                       data-slot-idx={sIdx}
+                       on:mousedown={(e) =>
+                         onEditSlotMouseDown(e, dayId, sIdx,
+                                              d._colEl, 'move')}
+                       title={`${slot.start_time}-${slot.end_time} -- trascina i bordi per ridimensionare, il corpo per spostare, Canc per eliminare`}>
+                    <div class="cal-edit-handle cal-edit-handle--top"
+                         on:mousedown|stopPropagation={(e) =>
+                           onEditSlotMouseDown(e, dayId, sIdx,
+                                                d._colEl, 'resize-top')}>
+                    </div>
+                    <div class="cal-event-time">
+                      {slot.start_time}-{slot.end_time}
+                    </div>
+                    <div class="cal-event-label">{slot.label || ''}</div>
+                    <div class="cal-edit-handle cal-edit-handle--bot"
+                         on:mousedown|stopPropagation={(e) =>
+                           onEditSlotMouseDown(e, dayId, sIdx,
+                                                d._colEl, 'resize-bottom')}>
+                    </div>
                   </div>
-                  {#if isEnf}
-                    <span class="cal-event-marker cal-event-marker--enf">!</span>
-                  {:else if isHard}
-                    <span class="cal-event-marker cal-event-marker--hard">X</span>
-                  {:else if isSoft}
-                    <input type="number" min="0" max="9999" step="10"
-                      class="cal-event-input cal-event-input--soft"
-                      value={drafts[_key(dnum, hnum)] ?? cell.soft_penalty}
-                      on:click|stopPropagation
-                      on:mousedown|stopPropagation
-                      on:dblclick|stopPropagation
-                      on:input={(e) => onPenaltyInput(e, dnum, hnum)}
-                      on:change={(e) => onPenaltyChange(e, dnum, hnum)}
-                      on:keydown={(e) => onPenaltyKeydown(e, dnum, hnum)}/>
-                  {:else if isPref}
-                    <input type="number" max="0" min="-9999" step="10"
-                      class="cal-event-input cal-event-input--pref"
-                      value={drafts[_key(dnum, hnum)] ?? cell.soft_penalty}
-                      on:click|stopPropagation
-                      on:mousedown|stopPropagation
-                      on:dblclick|stopPropagation
-                      on:input={(e) => onPenaltyInput(e, dnum, hnum)}
-                      on:change={(e) => onPenaltyChange(e, dnum, hnum)}
-                      on:keydown={(e) => onPenaltyKeydown(e, dnum, hnum)}/>
-                  {/if}
-                </div>
-              {/each}
+                {/each}
+                <!-- drag-to-create live preview -->
+                {#if editDragPreview && editDragPreview.dayId === dayId}
+                  <div class="cal-event cal-event--preview"
+                       style="top: {editDragPreview.top}px;
+                              height: {editDragPreview.height}px;">
+                    <div class="cal-event-time">
+                      {editDragPreview.label}
+                    </div>
+                  </div>
+                {/if}
+              {:else}
+                <!-- VIEW MODE: events drive the constraint-level
+                     painter (free / soft / hard / preferred /
+                     enforced) for teachers / classes / classrooms
+                     unavailability tabs. -->
+                {#each (d.slots || []) as slot}
+                  {@const hnum = slot.legacy_hour_number}
+                  {@const cell = cells.find((c) =>
+                      c.day === dnum && c.hour === hnum) || null}
+                  {@const isFree = !cell}
+                  {@const isSoft = cell && cell.state === 'soft'}
+                  {@const isHard = cell && cell.state === 'hard'}
+                  {@const isPref = cell && cell.state === 'preferred'}
+                  {@const isEnf  = cell && cell.state === 'enforced'}
+                  <div class="cal-event"
+                       class:cal-event--free={isFree}
+                       class:cal-event--soft={isSoft}
+                       class:cal-event--hard={isHard}
+                       class:cal-event--preferred={isPref}
+                       class:cal-event--enforced={isEnf}
+                       class:cal-event--readonly={readonly}
+                       style="top: {_pxFromTime(slot.start_time, displayBgRange)}px;
+                              height: {_pxDuration(slot)}px"
+                       data-day={dnum}
+                       data-hour={hnum}
+                       data-state={cell ? cell.state : 'free'}
+                       on:click={(e) => onCellClick(e, dnum, hnum)}
+                       on:mousedown={(e) => onMouseDown(e, dnum, hnum)}
+                       on:mouseenter={() => onMouseEnter(dnum, hnum)}
+                       title={`${slot.start_time}-${slot.end_time}` +
+                         (isSoft
+                           ? ` -- SOFT, penalita ${cell.soft_penalty}`
+                           : isPref
+                           ? ` -- PREFERRED, bonus ${cell.soft_penalty}`
+                           : isEnf
+                           ? ' -- ENFORCED'
+                           : isHard
+                           ? ' -- HARD non disponibile'
+                           : ' -- libero')}>
+                    <div class="cal-event-time">
+                      {slot.start_time}-{slot.end_time}
+                    </div>
+                    {#if isEnf}
+                      <span class="cal-event-marker cal-event-marker--enf">!</span>
+                    {:else if isHard}
+                      <span class="cal-event-marker cal-event-marker--hard">X</span>
+                    {:else if isSoft}
+                      <input type="number" min="0" max="9999" step="10"
+                        class="cal-event-input cal-event-input--soft"
+                        value={drafts[_key(dnum, hnum)] ?? cell.soft_penalty}
+                        on:click|stopPropagation
+                        on:mousedown|stopPropagation
+                        on:dblclick|stopPropagation
+                        on:input={(e) => onPenaltyInput(e, dnum, hnum)}
+                        on:change={(e) => onPenaltyChange(e, dnum, hnum)}
+                        on:keydown={(e) => onPenaltyKeydown(e, dnum, hnum)}/>
+                    {:else if isPref}
+                      <input type="number" max="0" min="-9999" step="10"
+                        class="cal-event-input cal-event-input--pref"
+                        value={drafts[_key(dnum, hnum)] ?? cell.soft_penalty}
+                        on:click|stopPropagation
+                        on:mousedown|stopPropagation
+                        on:dblclick|stopPropagation
+                        on:input={(e) => onPenaltyInput(e, dnum, hnum)}
+                        on:change={(e) => onPenaltyChange(e, dnum, hnum)}
+                        on:keydown={(e) => onPenaltyKeydown(e, dnum, hnum)}/>
+                    {/if}
+                  </div>
+                {/each}
+              {/if}
             </div>
           {/each}
         </div>
@@ -550,4 +849,60 @@
   .cal-event-input--pref { background: #e0f2fe; border-color: #0ea5e9; color: #075985; }
   .cal-event-input:focus { outline: none; box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.3); }
   .cal-event-input--pref:focus { box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.3); }
+
+  /* ----- EDIT MODE additions (Tab Ore slot editor) ----- */
+  /* Edit-mode background gridlines accept drag-to-create. */
+  .cal-grid--edit .cal-hour-bg.cal-hour-bg--editable {
+    cursor: crosshair;
+    pointer-events: auto;
+    background: #ffffff;
+  }
+  .cal-grid--edit .cal-day-col {
+    cursor: crosshair;
+  }
+  /* Edit-mode events: dashed border so users see they are mutable. */
+  .cal-event--edit {
+    background: #dbeafe;
+    border: 1px dashed #2563eb;
+    color: #1e3a8a;
+    cursor: move;
+    z-index: 2;
+  }
+  .cal-event--edit:hover { filter: brightness(0.94); }
+  .cal-event--selected {
+    outline: 2px solid #1d4ed8;
+    outline-offset: 1px;
+    background: #bfdbfe;
+  }
+  .cal-event--preview {
+    background: rgba(37, 99, 235, 0.18);
+    border: 1px dashed #1d4ed8;
+    color: #1e3a8a;
+    pointer-events: none;
+    z-index: 3;
+  }
+  .cal-event-label {
+    font-size: 9px;
+    line-height: 1.1;
+    opacity: 0.7;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  /* Top / bottom resize handles (6px grab strips at the slot edges). */
+  .cal-edit-handle {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 6px;
+    cursor: ns-resize;
+    background: rgba(29, 78, 216, 0.2);
+  }
+  .cal-edit-handle--top { top: 0; }
+  .cal-edit-handle--bot { bottom: 0; }
+  .cal-edit-handle:hover { background: rgba(29, 78, 216, 0.45); }
+  /* Hide click outline on the wrapping scroll container that catches
+     keyboard Delete events (it must be focusable, but the visual
+     focus ring is distracting on the calendar itself). */
+  .weekly-calendar > .overflow-x-auto:focus { outline: none; }
 </style>

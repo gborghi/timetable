@@ -14,6 +14,11 @@ import {
   pxFromTime,
   pxDuration,
   gridHeight,
+  pxToTime,
+  compareTimes,
+  makeSlot,
+  reindexSlots,
+  clampToOpenWindow,
 } from "./calendar_layout.mjs";
 
 test("timeToHours: parses HH:MM into fractional hours", () => {
@@ -96,6 +101,84 @@ test("pxDuration: very short slots have a 24px floor", () => {
 test("gridHeight: matches (hi - lo) * PX_PER_HOUR", () => {
   assert.equal(gridHeight({ lo: 7, hi: 19 }), 12 * PX_PER_HOUR);
   assert.equal(gridHeight({ lo: 6, hi: 22 }), 16 * PX_PER_HOUR);
+});
+
+test("pxToTime: round-trips with pxFromTime under 15-min snap", () => {
+  const range = { lo: 7, hi: 19 };
+  // 09:00 -> 80px -> snaps back to 09:00
+  assert.equal(pxToTime(80, range), "09:00");
+  // 09:07 (just past 9) snaps to 09:00 (closest 15-min boundary)
+  assert.equal(pxToTime((2 + 7 / 60) * PX_PER_HOUR, range), "09:00");
+  // 09:08 snaps UP to 09:15
+  assert.equal(pxToTime((2 + 8 / 60) * PX_PER_HOUR, range), "09:15");
+});
+
+test("pxToTime: clamps to the bg window (no negative or 24+ hours)", () => {
+  const range = { lo: 7, hi: 19 };
+  // -200px clamps to range.lo
+  assert.equal(pxToTime(-200, range), "07:00");
+  // 9999px clamps to range.hi
+  assert.equal(pxToTime(9999, range), "19:00");
+});
+
+test("compareTimes: orders HH:MM strings numerically", () => {
+  assert.ok(compareTimes("08:00", "09:00") < 0);
+  assert.ok(compareTimes("09:00", "08:00") > 0);
+  assert.equal(compareTimes("10:30", "10:30"), 0);
+  // sorts past 09:00 vs 10:00 (string vs numeric difference)
+  assert.ok(compareTimes("09:30", "10:00") < 0);
+});
+
+test("makeSlot: produces a self-consistent record", () => {
+  const s = makeSlot("08:30", "09:30", 0);
+  assert.equal(s.slot_index, 0);
+  assert.equal(s.start_time, "08:30");
+  assert.equal(s.end_time, "09:30");
+  assert.equal(s.label, "1ª ora");
+  // legacy_hour_number = floor(start) so the engine's hour codes
+  // align with the slot start.
+  assert.equal(s.legacy_hour_number, 8);
+});
+
+test("reindexSlots: sorts by start_time and renumbers slot_index", () => {
+  const slots = [
+    { slot_index: 99, start_time: "10:00", end_time: "11:00" },
+    { slot_index: 99, start_time: "08:00", end_time: "09:00" },
+    { slot_index: 99, start_time: "09:00", end_time: "10:00" },
+  ];
+  const out = reindexSlots(slots);
+  assert.deepEqual(out.map((s) => s.start_time),
+                    ["08:00", "09:00", "10:00"]);
+  assert.deepEqual(out.map((s) => s.slot_index), [0, 1, 2]);
+  // does not mutate the input
+  assert.equal(slots[0].slot_index, 99);
+});
+
+test("clampToOpenWindow: no conflict -> returns unchanged window", () => {
+  const out = clampToOpenWindow("10:00", "11:00", [
+    { start_time: "08:00", end_time: "09:00" },
+    { start_time: "12:00", end_time: "13:00" },
+  ]);
+  assert.deepEqual(out, { start_time: "10:00", end_time: "11:00" });
+});
+
+test("clampToOpenWindow: conflict -> shrinks to nearest free side", () => {
+  // Existing slot 09:30-10:30. Candidate 09:00-11:00 overlaps both
+  // sides; left room (09:30 - 09:00 = 30 min) >= right room
+  // (11:00 - 10:30 = 30 min, ties go to left), so shrink the END
+  // to 09:30.
+  const out = clampToOpenWindow("09:00", "11:00", [
+    { start_time: "09:30", end_time: "10:30" },
+  ]);
+  assert.equal(out.start_time, "09:00");
+  assert.equal(out.end_time, "09:30");
+});
+
+test("clampToOpenWindow: full overlap -> returns null (caller drops)", () => {
+  const out = clampToOpenWindow("09:30", "10:00", [
+    { start_time: "09:00", end_time: "10:30" },
+  ]);
+  assert.equal(out, null);
 });
 
 test("variable slots per day: SAT short morning vs MON full day", () => {
