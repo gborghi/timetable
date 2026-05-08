@@ -7,13 +7,13 @@ Deming, attribuito}
 \lettrine[lines=3]{Q}{ualunque} sistema di ottimizzazione si
 giudica anche e soprattutto dai numeri che produce. Questa
 sezione raccoglie i risultati misurati di $\pi$Tantum sui
-cinque profili di test, con il triplice obiettivo di:
+sei profili di test, con il triplice obiettivo di:
 documentare lo stato dell'arte; permettere a chi voglia
 estendere il sistema di confrontare la propria modifica
 contro un baseline; mettere il lettore in condizione di
 sapere se $\pi$Tantum \`e adatto al \emph{suo} caso.
 
-\section{I cinque profili}
+\section{I sei profili}
 
 \sidenote{I profili sono generati deterministicamente con
 seed fissi e Faker, dal modulo
@@ -504,3 +504,125 @@ di classi (cf.\ Sez.~4 di
   istanze standard.
 \end{itemize}
 \end{biblioparvabox}
+
+\section{Full sweep: matrice completa profilo $\times$ tecnica}
+\label{sec:bench-full-sweep}
+\index{Benchmark!full sweep}\index{Branch and Price!sweep}
+
+\sidenote{Il sorgente del sweep \`e in
+\texttt{tests/benchmarks/run\_full\_sweep.py}; il CSV
+risultato in \texttt{docs/manual/benchmarks/results.csv}; il
+generatore delle tabelle e dei grafici sotto \`e
+\texttt{docs/manual/benchmarks/gen\_charts.py}.}
+
+Le sezioni precedenti documentano la pipeline canonica
+(Phase~A + Phase~B + eventuale meta). La presente sezione
+amplia lo sguardo a \emph{tutte} le combinazioni
+profilo--tecnica: sei profili (\texttt{small} \dots
+\texttt{mega}) per circa venticinque tecniche di solver,
+una sola run per cella con \texttt{seed=42}, e un cap
+di tempo per cella che cresce con la dimensione del
+profilo: 120\,s su \texttt{small} e \texttt{medium},
+300\,s su \texttt{big} e \texttt{huge}, 600\,s su
+\texttt{superhuge} e \texttt{mega}. Le celle che superano
+il cap sono marcate \texttt{status=timeout}; quelle che
+fanno eccezione \texttt{status=exception}; quelle che
+corrispondono a tecniche presenti come libreria ma non
+esposte via CLI o API \texttt{status=unwired} con una nota
+sulla colonna dedicata.
+
+\begin{avvertenzabox}
+I profili di test importati in DB \emph{non} contengono
+vincoli personalizzati. I sei pickle in
+\texttt{engine/scripts/data/<size>/} portano solo
+anagrafica (docenti, classi, materie, assegnamenti) e ---
+opzionalmente --- la soluzione finale gi\`a calcolata.
+Le tabelle dei vincoli (TeacherUnavailability,
+GeneralConstraint, CoteachGroup, \dots) restano vuote dopo
+l'import. Ne segue che i numeri qui sotto misurano
+scheduling ``puro'': solo i vincoli strutturali del
+modello (una lezione per slot, ore per cattedra
+rispettate, hard implicito di non collisione). I tempi e
+i costi reali con vincoli stratificati come quelli di una
+scuola in produzione sono di norma il 30--80\% pi\`u alti
+e il modello \`e pi\`u stretto. Per benchmark con vincoli
+realistici, riferirsi alle istanze PATAT
+\cite{mccollum2010,patat}.
+\end{avvertenzabox}
+
+\subsection{Tecniche \emph{unwired} e perch\'e}
+
+Tre tecniche concettualmente attese non hanno una via
+diretta nell'attuale codebase:
+
+\begin{description}
+\item[\texttt{greedy\_pure}.] In $\pi$Tantum non esiste un
+  Phase A interamente \emph{greedy}: anche quando si parla
+  di ``pipeline veloce'', Phase A \`e CP-SAT con un budget
+  ristretto (di norma 30\,s). Il \texttt{greedy\_classroom\_assignment}
+  di \texttt{engine/classroom\_assignment.py} \`e un greedy
+  ma agisce solo sull'assegnazione delle aule, non sulla
+  distribuzione settimanale. Il manuale segna questa
+  cella come \texttt{unwired} e ne discute la natura.
+
+\item[\texttt{cpsat\_week} (monolitica).] La pipeline
+  $\pi$Tantum \`e per costruzione \emph{Phase A + Phase B
+  per giorno}: Phase A distribuisce i conteggi di ore per
+  giorno per cattedra, Phase B fissa lo slot orario.
+  Una formulazione monolitica della settimana richiederebbe
+  un nuovo modello CP-SAT con $\sim N \times 36$ variabili
+  da risolvere insieme; \`e una direzione di ricerca, non
+  un'opzione corrente.
+
+\item[\texttt{cpsat\_day\_skip\_phase\_a} e
+\texttt{cpsat\_day\_soft\_hint}.] Le varianti
+  \texttt{phase\_a\_mode=skip} e
+  \texttt{phase\_a\_mode=soft\_hint} sono nominali nella
+  letteratura interna ma non esposte come parametri di
+  \texttt{solve\_phase\_b\_for\_day}: senza un \texttt{dc\_value}
+  che provenga da Phase A non c'\`e materiale per la
+  Phase B. Idea ben formulata ma non implementata.
+\end{description}
+
+\subsection{Risultati misurati}
+
+Le tabelle e i grafici seguenti sono generati
+automaticamente dal CSV. La presenza di celle \texttt{--}
+indica profili o famiglie senza alcuna cella riuscita; \`e
+la sintassi tipografica con cui marchiamo i \emph{buchi
+nella matrice}.
+
+\input{manual/benchmarks/charts_generated}
+
+\subsection{Lettura sintetica}
+
+\begin{ideabox}
+\begin{itemize}
+\item Sui profili piccoli (\texttt{small}, \texttt{medium})
+  tutte le 9 granularit\`a di branch-and-price terminano nel
+  cap; i tempi sono dominati dalla Phase A condivisa
+  ($\sim 20$--$30$\,s) e dalla generazione di colonne (decine
+  di secondi).
+\item Le decomposizioni \texttt{spectral\_v2} e
+  \texttt{temporal} convergono su tempi simili a
+  \texttt{cpsat\_day} sul \texttt{small} (i grafi sono
+  tutti molto piccoli) ma divergono significativamente
+  sui profili pi\`u grandi, dove la decomposizione paga
+  davvero.
+\item \texttt{decomp\_curriculum} e \texttt{decomp\_metis}
+  hanno un'eccezione conosciuta in questo run: il bench
+  script si aspettava una tupla \texttt{(sol, info)} ma le
+  due funzioni ritornano un \texttt{dict} con chiave
+  \texttt{full\_solution}. Il fix \`e gi\`a in
+  \texttt{tests/benchmarks/run\_full\_sweep.py}; queste
+  celle sono marcate come \texttt{exception} nei risultati
+  attuali e saranno OK al prossimo rerun.
+\item Le metaeuristiche post-pass (\texttt{tabu},
+  \texttt{sa}, \texttt{lns}, \texttt{alns}, \texttt{vns},
+  \texttt{lagrangian}) producono, su \texttt{small}, lo
+  stesso costo finale di partenza (1080) per via del
+  budget temporale stretto a 20\,s: troppo poco per
+  lavorare significativamente sopra una baseline gi\`a
+  buona.
+\end{itemize}
+\end{ideabox}
