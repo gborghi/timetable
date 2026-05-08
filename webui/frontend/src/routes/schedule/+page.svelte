@@ -36,6 +36,7 @@
   import RoomClearedNoticeModal from '$lib/components/schedule/RoomClearedNoticeModal.svelte';
   import SolutionsTable from '$lib/components/schedule/SolutionsTable.svelte';
   import AddLessonModal from '$lib/components/schedule/AddLessonModal.svelte';
+  import ScheduleConflictModal from '$lib/components/schedule/ScheduleConflictModal.svelte';
 
   // Layout: read ?legacy=true once at mount to opt into the old 6x6
   // matrix UI. Anything else -> calendar view.
@@ -66,6 +67,13 @@
   let pendingMoveLessonId = null;
   // Room-cleared notice modal.
   let roomClearedNotice = null;
+  // Drop-on-occupied conflict modal state. When the backend rejects a
+  // move/reschedule because the destination slot already holds rows
+  // sharing teacher / class / room, we capture them here so the user
+  // can pick "Sostituisci" (delete conflicts + retry) or "Annulla".
+  let dropConflict = null;
+  // { kind: 'move' | 'reschedule', sourceId, day, hour,
+  //   subject, details: { teacher_busy, class_busy, room_busy } }
 
   // --- Legacy state (kept for ?legacy=true fallback) ---------------
   let classData = null;
@@ -223,6 +231,20 @@
     try {
       const r = await api.post('/api/lessons/' + lessonId + '/move',
                                 { day, hour });
+      if (r && r.accepted === false && r.conflicts) {
+        const src = lessons.find((l) => l.id === lessonId);
+        const head = src
+          ? `${src.class_name} / ${src.teacher_name}`
+          : `lezione #${lessonId}`;
+        dropConflict = {
+          kind: 'move',
+          sourceId: lessonId,
+          day, hour,
+          subject: `${head} -> ${DAY_NAMES_IT[day]} ${hour}:00`,
+          details: r.conflicts,
+        };
+        return;
+      }
       if (r && r.accepted === false) {
         flash('Mossa rifiutata: ' + (r.reason || 'vincolo violato'), 'error');
       } else {
@@ -241,13 +263,59 @@
   }
   async function onUnscheduledDrop(unschedId, day, hour) {
     try {
-      await api.post('/api/lessons/unscheduled/' + unschedId + '/reschedule',
-                      { day, hour });
+      const r = await api.post(
+        '/api/lessons/unscheduled/' + unschedId + '/reschedule',
+        { day, hour });
+      if (r && r.accepted === false && r.conflicts) {
+        const src = unscheduled.find((u) => u.id === unschedId);
+        dropConflict = {
+          kind: 'reschedule',
+          sourceId: unschedId,
+          day, hour,
+          subject: src
+            ? `${src.class_name} / ${src.teacher_name} -> `
+              + `${DAY_NAMES_IT[day]} ${hour}:00`
+            : `${DAY_NAMES_IT[day]} ${hour}:00`,
+          details: r.conflicts,
+        };
+        return;
+      }
       flash('Lezione ripiazzata', 'success');
       await loadCalendar();
       await refreshDataset();
     } catch (e) { flash('Errore: ' + e.message, 'error'); }
   }
+  // "Sostituisci": DELETE every conflicting lesson, then retry the
+  // original move/reschedule POST. The backend's _resolve_conflicts
+  // is only wired to /api/schedule/lesson; for our drop flow the
+  // frontend orchestrates the deletion+retry to keep both endpoints
+  // free of resolution-strategy plumbing.
+  async function resolveDropConflict() {
+    if (!dropConflict) return;
+    const dc = dropConflict;
+    dropConflict = null;
+    const ids = new Set();
+    for (const bucket of ['teacher_busy', 'class_busy', 'room_busy']) {
+      for (const r of (dc.details?.[bucket] || [])) {
+        if (r.lesson_id != null) ids.add(r.lesson_id);
+      }
+    }
+    try {
+      for (const id of ids) {
+        await api.del('/api/lessons/' + id);
+      }
+      if (dc.kind === 'move') {
+        await onLessonMove(dc.sourceId, dc.day, dc.hour);
+      } else {
+        await onUnscheduledDrop(dc.sourceId, dc.day, dc.hour);
+      }
+    } catch (e) {
+      flash('Errore risoluzione conflitto: ' + e.message, 'error');
+      await loadCalendar();
+      await refreshDataset();
+    }
+  }
+  function cancelDropConflict() { dropConflict = null; }
   function onSlotClick(day, hour) {
     if (pendingMoveLessonId) {
       const id = pendingMoveLessonId;
@@ -537,6 +605,18 @@
   <SolutionsTable {solutions}
                   onActivate={activateSolution}
                   onDelete={delSolution}/>
+
+  <ScheduleConflictModal open={dropConflict !== null}
+                         title="Slot di destinazione occupato"
+                         subject={dropConflict?.subject || ''}
+                         details={dropConflict?.details
+                                  || { teacher_busy: [],
+                                       class_busy: [],
+                                       room_busy: [] }}
+                         showUnbind={false}
+                         deleteLabel="Sostituisci"
+                         onCancel={cancelDropConflict}
+                         onResolve={resolveDropConflict}/>
 </div>
 
 <style>

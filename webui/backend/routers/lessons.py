@@ -30,6 +30,7 @@ from sqlalchemy.orm import Session
 
 from .. import models, optimization
 from ..db import get_db
+from .schedule import _conflicts_at_slot, _summarise_conflicts
 
 router = APIRouter(prefix="/api/lessons", tags=["lessons"])
 
@@ -124,7 +125,14 @@ def move_lesson_by_id(lesson_id: int,
     """Move the Lesson identified by `lesson_id` to (payload.day,
     payload.hour). Reuses the same validation as the legacy
     /api/schedule/move-lesson tuple endpoint so HARD/SOFT semantics
-    are identical."""
+    are identical.
+
+    If the destination slot is occupied by other Lesson rows that
+    share teacher / class / classroom with the moving lesson, the
+    move is rejected and the response includes a `conflicts` payload
+    (same shape as /api/schedule/lesson on_conflict=dry_run) so the
+    UI can prompt the user to resolve the collision before retrying.
+    """
     l = db.get(models.Lesson, lesson_id)
     if l is None:
         raise HTTPException(404, "lesson not found")
@@ -135,6 +143,37 @@ def move_lesson_by_id(lesson_id: int,
         return {"accepted": False,
                 "reason": "Slot di destinazione identico all'origine.",
                 "lesson_id": lesson_id}
+
+    # Detect teacher/class/room conflicts at the destination BEFORE
+    # running the full HARD/SOFT validator so the UI can offer a
+    # "Sostituisci o annulla" modal instead of just a flash error.
+    from .. import engine_io
+    active = engine_io.get_active_solution(db)
+    if active is not None:
+        cinfo = _conflicts_at_slot(
+            db, active.id,
+            teacher_name=l.teacher_name,
+            class_name=l.class_name,
+            classroom_name=l.classroom_name,
+            day=int(payload.day),
+            hour=int(payload.hour),
+            exclude_lesson_id=lesson_id,
+        )
+        if (cinfo["teacher_busy"] or cinfo["class_busy"]
+                or cinfo["room_busy"]):
+            return {
+                "accepted": False,
+                "reason": "Slot di destinazione occupato.",
+                "lesson_id": lesson_id,
+                "conflicts": {
+                    "teacher_busy": _summarise_conflicts(
+                        cinfo["teacher_busy"]),
+                    "class_busy": _summarise_conflicts(
+                        cinfo["class_busy"]),
+                    "room_busy": _summarise_conflicts(cinfo["room_busy"]),
+                },
+            }
+
     out = optimization.validate_and_apply_move(db, src, dst)
     out["lesson_id"] = lesson_id
     return out
@@ -192,10 +231,41 @@ def reschedule_lesson(unscheduled_id: int,
     creates a Lesson in its solution. The destination slot HARD
     feasibility is enforced by reusing `validate_and_apply_move` on
     a temp src tuple after the row is created -- if the move is
-    rejected, the new Lesson is rolled back."""
+    rejected, the new Lesson is rolled back.
+
+    If the destination slot is occupied by other Lesson rows that
+    share teacher / class / classroom with the pool entry, the
+    reschedule is rejected and the response includes a `conflicts`
+    payload (same shape as /api/lessons/{id}/move) so the UI can
+    prompt the user to resolve the collision before retrying.
+    """
     u = db.get(models.UnscheduledLesson, unscheduled_id)
     if u is None:
         raise HTTPException(404, "unscheduled lesson not found")
+
+    cinfo = _conflicts_at_slot(
+        db, u.solution_id,
+        teacher_name=u.teacher_name,
+        class_name=u.class_name,
+        classroom_name=u.classroom_name,
+        day=int(payload.day),
+        hour=int(payload.hour),
+        exclude_lesson_id=None,
+    )
+    if (cinfo["teacher_busy"] or cinfo["class_busy"]
+            or cinfo["room_busy"]):
+        return {
+            "accepted": False,
+            "reason": "Slot di destinazione occupato.",
+            "unscheduled_id": unscheduled_id,
+            "conflicts": {
+                "teacher_busy": _summarise_conflicts(
+                    cinfo["teacher_busy"]),
+                "class_busy": _summarise_conflicts(cinfo["class_busy"]),
+                "room_busy": _summarise_conflicts(cinfo["room_busy"]),
+            },
+        }
+
     new_lesson = models.Lesson(
         solution_id=u.solution_id,
         teacher_name=u.teacher_name,
@@ -212,6 +282,7 @@ def reschedule_lesson(unscheduled_id: int,
     db.commit()
     db.refresh(new_lesson)
     return {
+        "accepted": True,
         "ok": True,
         "lesson_id": new_lesson.id,
         "lesson": _serialise(new_lesson),

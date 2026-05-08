@@ -28,6 +28,12 @@
   export let details = { teacher_busy: [], class_busy: [], room_busy: [] };
   export let onCancel = () => { open = false; };
   export let onResolve = (_strategy) => {};
+  // When false, hide the "Svincola" button. Used by the drop-on-occupied
+  // flow (/schedule), where the user is replacing the slot occupants
+  // wholesale -- partial unbind doesn't make sense there.
+  export let showUnbind = true;
+  // Override the label of the destructive primary action.
+  export let deleteLabel = 'Elimina evento confliggente';
 
   $: hasTeacher = (details.teacher_busy || []).length > 0;
   $: hasClass   = (details.class_busy   || []).length > 0;
@@ -87,11 +93,13 @@
 
   <div class="flex justify-end gap-2 mt-4">
     <button class="btn" on:click={onCancel} data-testid="schedule-conflict-cancel">Annulla</button>
-    <button class="btn-amber" on:click={() => onResolve('unbind')} data-testid="schedule-conflict-unbind">
-      Svincola evento confliggente
-    </button>
+    {#if showUnbind}
+      <button class="btn-amber" on:click={() => onResolve('unbind')} data-testid="schedule-conflict-unbind">
+        Svincola evento confliggente
+      </button>
+    {/if}
     <button class="btn-red" on:click={() => onResolve('delete')} data-testid="schedule-conflict-delete">
-      Elimina evento confliggente
+      {deleteLabel}
     </button>
   </div>
   </div>

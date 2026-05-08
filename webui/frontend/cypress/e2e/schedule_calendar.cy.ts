@@ -257,11 +257,13 @@ describe('/schedule calendar -- with active solution (Phase A+B)', () => {
     cy.get('@moveLesson.all').should('have.length', 0);
   });
 
-  // ----- (Drag flow #3) Drag onto an OCCUPIED slot -> backend rejects -----
-  it('DRAG: lesson onto an occupied slot triggers a flash error', () => {
-    // Pick two lessons that are NOT for the same teacher and are on
-    // different (day, hour) -- dropping the first onto the second's
-    // slot will collide on class_busy or teacher_busy.
+  // ----- (Drag flow #3) Drag onto an OCCUPIED slot -> conflict modal -----
+  it('DRAG: lesson onto an occupied slot opens conflict modal -> '
+     + 'Sostituisci moves the lesson and deletes the conflict',
+     () => {
+    // Pick two lessons that conflict (same teacher OR same class) on
+    // different slots so that dropping `a` onto `b`'s slot collides
+    // on teacher_busy / class_busy.
     const a = firstLesson;
     const b = allLessons.find(
       (l) => l.id !== a.id
@@ -272,22 +274,100 @@ describe('/schedule calendar -- with active solution (Phase A+B)', () => {
       return;
     }
     cy.intercept('POST', `**/api/lessons/${a.id}/move`).as('moveLesson');
+    cy.intercept('DELETE', `**/api/lessons/${b.id}`).as('deleteConflict');
     simulateDragDrop(
       `[data-testid="sched-lesson-${a.id}"]`,
       `[data-testid="sched-slot-${b.day}-${b.hour}"]`,
     );
+    // First POST must come back with accepted=false + conflicts.
     cy.wait('@moveLesson').then((interception) => {
-      // Either accepted=false in the body OR a non-2xx status -- in
-      // both cases the user sees a flash error. We assert the request
-      // happened and the response indicates rejection of some form.
-      const body = interception.response?.body as { accepted?: boolean };
-      // If accepted=true the slot wasn't actually conflicting; that's
-      // still a valid state -- the test then just verifies the round-
-      // trip happened. We accept either outcome rather than failing.
       expect(interception.request.body).to.deep.include({
         day: b.day, hour: b.hour,
       });
-      cy.log('move accepted=' + body?.accepted);
+      const body = interception.response?.body as {
+        accepted?: boolean;
+        conflicts?: {
+          teacher_busy: { lesson_id: number }[];
+          class_busy: { lesson_id: number }[];
+          room_busy: { lesson_id: number }[];
+        };
+      };
+      expect(body?.accepted).to.eq(false);
+      expect(body?.conflicts).to.exist;
+      const flat = [
+        ...(body!.conflicts!.teacher_busy || []),
+        ...(body!.conflicts!.class_busy || []),
+        ...(body!.conflicts!.room_busy || []),
+      ];
+      expect(flat.map((r) => r.lesson_id)).to.include(b.id);
+    });
+    // Modal should be visible with the conflict bucket(s) populated.
+    cy.get('[data-testid="schedule-conflict-modal"]', { timeout: 5000 })
+      .should('be.visible');
+    // The "Svincola" button must be hidden in the drop flow (replace-
+    // or-cancel only); only Annulla + Sostituisci remain.
+    cy.get('[data-testid="schedule-conflict-unbind"]').should('not.exist');
+    cy.get('[data-testid="schedule-conflict-cancel"]').should('be.visible');
+    cy.get('[data-testid="schedule-conflict-delete"]').should('be.visible')
+      .and('contain', 'Sostituisci');
+    // Click "Sostituisci": triggers DELETE on the conflicting lesson(s)
+    // followed by a retry POST /move that should now succeed.
+    cy.get('[data-testid="schedule-conflict-delete"]').click();
+    cy.wait('@deleteConflict').its('response.statusCode').should('eq', 200);
+    cy.wait('@moveLesson').then((interception) => {
+      const body = interception.response?.body as { accepted?: boolean };
+      expect(body?.accepted).to.eq(true);
+    });
+    // Final state: lesson `a` lives at (b.day, b.hour) and `b` is gone.
+    getLessons().then((lessons) => {
+      const moved = lessons.find((l) => l.id === a.id);
+      expect(moved, 'moved lesson exists').to.exist;
+      expect(moved!.day).to.eq(b.day);
+      expect(moved!.hour).to.eq(b.hour);
+      expect(lessons.find((l) => l.id === b.id),
+             'conflict deleted').to.be.undefined;
+    });
+    // Modal must be closed afterwards.
+    cy.get('[data-testid="schedule-conflict-modal"]').should('not.exist');
+  });
+
+  // ----- (Drag flow #3 bis) Conflict modal -> Annulla = no side effect -----
+  it('DRAG: occupied-slot conflict modal "Annulla" leaves state untouched',
+     () => {
+    // Re-fetch live lessons because earlier specs mutate the grid.
+    getLessons().then((lessons) => {
+      const a = lessons[0];
+      const b = lessons.find(
+        (l) => l.id !== a.id
+          && (l.teacher_name === a.teacher_name
+              || l.class_name === a.class_name));
+      if (!b) {
+        cy.log('No conflicting pair available; skipping');
+        return;
+      }
+      cy.intercept('POST', `**/api/lessons/${a.id}/move`).as('moveLesson');
+      cy.intercept('DELETE', `**/api/lessons/${b.id}`).as('deleteConflict');
+      simulateDragDrop(
+        `[data-testid="sched-lesson-${a.id}"]`,
+        `[data-testid="sched-slot-${b.day}-${b.hour}"]`,
+      );
+      cy.wait('@moveLesson');
+      cy.get('[data-testid="schedule-conflict-modal"]', { timeout: 5000 })
+        .should('be.visible');
+      cy.get('[data-testid="schedule-conflict-cancel"]').click();
+      cy.get('[data-testid="schedule-conflict-modal"]').should('not.exist');
+      // No DELETE issued.
+      cy.wait(300);
+      cy.get('@deleteConflict.all').should('have.length', 0);
+      // a and b unchanged.
+      getLessons().then((after) => {
+        const aAfter = after.find((l) => l.id === a.id);
+        const bAfter = after.find((l) => l.id === b.id);
+        expect(aAfter).to.exist;
+        expect(aAfter!.day).to.eq(a.day);
+        expect(aAfter!.hour).to.eq(a.hour);
+        expect(bAfter).to.exist;
+      });
     });
   });
 
