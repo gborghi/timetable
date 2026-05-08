@@ -227,8 +227,15 @@ def main():
                         help="salta lo stage metaeuristico (per test)")
     args = parser.parse_args()
 
-    profs_path = os.path.join(HERE, f"profs_{args.profile}.pkl")
-    school_path = os.path.join(HERE, f"school_{args.profile}.pkl")
+    # Prefer the post-rename layout engine/scripts/data/<profile>/ if
+    # present, fall back to the flat legacy layout for older checkouts.
+    data_dir = os.path.join(HERE, "data", args.profile)
+    if os.path.exists(os.path.join(data_dir, f"school_{args.profile}.pkl")):
+        profs_path = os.path.join(data_dir, f"profs_{args.profile}.pkl")
+        school_path = os.path.join(data_dir, f"school_{args.profile}.pkl")
+    else:
+        profs_path = os.path.join(HERE, f"profs_{args.profile}.pkl")
+        school_path = os.path.join(HERE, f"school_{args.profile}.pkl")
     with open(profs_path, "rb") as f:
         profs = pickle.load(f)
     print(f"[pipe] profilo={args.profile}: {len(profs)} docenti, "
@@ -281,10 +288,18 @@ def main():
     else:
         print("[pipe] OK soluzione finale rispetta tutti gli HARD")
 
-    # Salva soluzione
-    out_pkl = os.path.join(
-        HERE, f"solution_timetable_{args.profile}_optimized.pkl"
-    )
+    # Salva soluzione: preferiamo engine/scripts/output/<profile>/ se la
+    # directory esiste (post-rename layout), altrimenti legacy flat.
+    out_dir_solution = os.path.join(HERE, "output", args.profile)
+    if os.path.isdir(out_dir_solution):
+        out_pkl = os.path.join(
+            out_dir_solution,
+            f"solution_timetable_{args.profile}_optimized.pkl",
+        )
+    else:
+        out_pkl = os.path.join(
+            HERE, f"solution_timetable_{args.profile}_optimized.pkl"
+        )
     with open(out_pkl, "wb") as f:
         pickle.dump(sol, f)
     print(f"[pipe] salvato {out_pkl}")

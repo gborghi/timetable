@@ -18,9 +18,21 @@ import alns
 
 def main():
     here = os.path.dirname(os.path.abspath(__file__))
-    profs_path = os.path.join(here, "profs_mega.pkl")
-    out_path = os.path.join(here, "solution_mega_temporal_alns.pkl")
-    dc_path = os.path.join(here, "dc_mega.pkl")
+    # Prefer engine/scripts/data/mega/ for inputs and
+    # engine/scripts/output/mega/ for outputs (post-rename layout);
+    # fall back to legacy flat engine/scripts/.
+    data_dir = os.path.join(here, "data", "mega")
+    out_dir = os.path.join(here, "output", "mega")
+    if os.path.exists(os.path.join(data_dir, "profs_mega.pkl")):
+        profs_path = os.path.join(data_dir, "profs_mega.pkl")
+    else:
+        profs_path = os.path.join(here, "profs_mega.pkl")
+    if os.path.isdir(out_dir):
+        out_path = os.path.join(out_dir, "solution_mega_temporal_alns.pkl")
+        dc_path = os.path.join(out_dir, "dc_mega.pkl")
+    else:
+        out_path = os.path.join(here, "solution_mega_temporal_alns.pkl")
+        dc_path = os.path.join(here, "dc_mega.pkl")
 
     print("=== MEGA temporal pipeline ===")
     t0 = time.time()
