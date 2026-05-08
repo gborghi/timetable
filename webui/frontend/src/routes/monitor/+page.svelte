@@ -13,6 +13,11 @@
 
   let summary = null;
   let allRooms = [];
+  // Full room objects (with capacity) -- forwarded to AddEventModal
+  // for the classroom-too-small pre-flight warning.
+  let allRoomsFull = [];
+  // Map class_name -> {n_students:int} for the same warning.
+  let classesMeta = {};
   let allTeachers = [];
   let allClasses = [];
 
@@ -289,8 +294,12 @@
 
   onMount(async () => {
     try { summary = await api.get('/api/monitor/summary'); } catch { /* */ }
-    try { allRooms = (await api.get('/api/classrooms')).map((r) => r.name).sort(); }
-    catch { allRooms = []; }
+    try {
+      const rs = await api.get('/api/classrooms');
+      allRoomsFull = (rs || []).slice().sort(
+        (a, b) => String(a.name).localeCompare(String(b.name)));
+      allRooms = allRoomsFull.map((r) => r.name);
+    } catch { allRooms = []; allRoomsFull = []; }
     try {
       const t = await api.get('/api/teachers');
       allTeachers = (t || []).map((x) => ({
@@ -301,7 +310,9 @@
     try {
       const c = await api.get('/api/classes');
       allClasses = (c || []).map((x) => x.name).sort();
-    } catch { allClasses = []; }
+      classesMeta = Object.fromEntries(
+        (c || []).map((x) => [x.name, { n_students: x.n_students }]));
+    } catch { allClasses = []; classesMeta = {}; }
   });
 
   async function refreshSummary() {
@@ -652,7 +663,8 @@
 <AddEventModal bind:open={addEventOpen}
                teachers={allTeachers}
                classes={allClasses}
-               rooms={allRooms}
+               rooms={allRoomsFull.length ? allRoomsFull : allRooms}
+               {classesMeta}
                onClose={() => (addEventOpen = false)}
                onCreated={refreshAll}/>
 
@@ -662,7 +674,8 @@
                 preset={addLessonPreset}
                 teachers={allTeachers}
                 classes={allClasses}
-                rooms={allRooms}
+                rooms={allRoomsFull.length ? allRoomsFull : allRooms}
+                {classesMeta}
                 onClose={() => (addLessonOpen = false)}
                 onCreated={refreshAll}/>
 

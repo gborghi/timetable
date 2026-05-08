@@ -40,7 +40,15 @@
   export let preset = {};      // { class_name?, teacher_name?, classroom_name? }
   export let teachers = [];    // [{name, subjects:[]}] OR [string] (legacy)
   export let classes = [];     // string[]
-  export let rooms = [];       // string[]
+  // `rooms` polymorphic: string[] OR [{name, capacity, kind}, ...].
+  // The capacity field powers the inline pre-flight that warns when
+  // the picked room is too small for the picked class. Legacy
+  // string-only callers disable the warning -- backend still HARD-
+  // enforces the rule on submit.
+  export let rooms = [];
+  // `classesMeta`: optional map class_name -> {n_students:int}. Empty
+  // / missing class disables the warning for that class only.
+  export let classesMeta = {};
   export let onClose = () => { open = false; };
   export let onCreated = () => {};
 
@@ -66,6 +74,35 @@
   // input via the "(altra...)" option.
   $: currentTeacher = teacherList.find((t) => t.name === teacherName);
   $: teacherSubjects = currentTeacher?.subjects ?? [];
+
+  // Polymorphic rooms -> name list + meta lookup.
+  $: roomList = (rooms || []).map((r) =>
+    typeof r === 'string' ? { name: r } : r,
+  );
+  $: roomNames = roomList.map((r) => r.name);
+  $: roomMeta = Object.fromEntries(
+    roomList.filter((r) => r && r.name).map((r) => [r.name, r]),
+  );
+
+  // Capacity warning (UX hint; backend HARD-enforces).
+  $: pickedRoomCap = (() => {
+    if (!classroomName) return null;
+    const m = roomMeta[classroomName];
+    if (!m || m.capacity == null) return null;
+    return Number(m.capacity);
+  })();
+  $: pickedClassStud = (() => {
+    if (!className) return null;
+    const m = classesMeta && classesMeta[className];
+    if (!m || m.n_students == null) return null;
+    return Number(m.n_students);
+  })();
+  $: capacityWarning = (
+    pickedRoomCap != null && pickedClassStud != null
+    && pickedRoomCap < pickedClassStud
+  ) ? `Aula troppo piccola: capienza ${pickedRoomCap} < `
+      + `${pickedClassStud} studenti.`
+    : '';
 
   $: if (open) {
     // Re-initialise the form whenever we open from a fresh empty cell.
@@ -222,8 +259,16 @@
                   class={fieldClass(classroomName, false)}
                   data-testid="add-lesson-room-select">
             <option value="">(nessuna)</option>
-            {#each rooms as r}<option value={r}>{r}</option>{/each}
+            {#each roomNames as r}<option value={r}>{r}</option>{/each}
           </select>
+        {/if}
+        {#if capacityWarning}
+          <div class="mt-1 px-2 py-1 rounded border border-red-300
+                      bg-red-50 text-xs text-red-700"
+               data-testid="add-lesson-capacity-warning">
+            {capacityWarning} Il backend rifiutera' questa lezione
+            (HARD); cambia aula o riduci gli studenti.
+          </div>
         {/if}
       </div>
     </div>

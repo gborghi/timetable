@@ -53,6 +53,13 @@
   let summary = null;        // { obj_value, metrics }
   let solutions = [];
   let allRooms = [];
+  // Full room objects (with capacity) for the AddLessonModal capacity
+  // pre-flight. Indexed by name; populated from /api/classrooms.
+  let allRoomsFull = [];
+  // Map class_name -> {n_students:int}, used by AddLessonModal to warn
+  // when the picked room is too small. Backend HARD-enforces; this is
+  // a pure UX hint.
+  let classesMeta = {};
   let teachersWithSubjects = [];
   // Lesson-actions modal state.
   let actionLesson = null;
@@ -123,8 +130,16 @@
       solutions = await api.get('/api/schedule/solutions');
     } catch { solutions = []; }
     try {
-      allRooms = (await api.get('/api/classrooms')).map((r) => r.name).sort();
-    } catch { allRooms = []; }
+      const rs = await api.get('/api/classrooms');
+      allRoomsFull = (rs || []).slice().sort(
+        (a, b) => String(a.name).localeCompare(String(b.name)));
+      allRooms = allRoomsFull.map((r) => r.name);
+    } catch { allRoomsFull = []; allRooms = []; }
+    try {
+      const cs = await api.get('/api/classes');
+      classesMeta = Object.fromEntries(
+        (cs || []).map((c) => [c.name, { n_students: c.n_students }]));
+    } catch { classesMeta = {}; }
     try {
       const t = await api.get('/api/teachers');
       teachersWithSubjects = (t || []).map((x) => ({
@@ -597,7 +612,8 @@
                   preset={addLessonPreset}
                   teachers={teachersWithSubjects}
                   classes={classNames}
-                  rooms={allRooms}
+                  rooms={allRoomsFull.length ? allRoomsFull : allRooms}
+                  {classesMeta}
                   onClose={() => (addLessonOpen = false)}
                   onCreated={async () => { await loadCalendar();
                     await refreshDataset(); }}/>

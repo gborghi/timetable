@@ -44,8 +44,21 @@ export const teachers = {
 export const classes = {
   list: () => api.get<SchoolClass[]>("/api/classes"),
   create: (b: Partial<SchoolClass>) => api.post<SchoolClass>("/api/classes", b),
-  update: (id: number, b: Partial<SchoolClass>) =>
-    api.put<SchoolClass>("/api/classes/" + id, b),
+  update: (id: number, b: Partial<SchoolClass>) => {
+    // Heuristic: a small partial body (single inline-edit field) goes
+    // via PATCH; a full SchoolClass replaces via PUT. The PATCH route
+    // whitelists the inline-editable columns server-side, so this
+    // chooses the right verb without callers having to remember.
+    const keys = Object.keys(b ?? {});
+    const PATCH_KEYS = new Set([
+      "n_students", "max_hours_per_day", "required_free_days_count",
+      "notes", "nickname", "soft_minimize_sixth_weight",
+    ]);
+    if (keys.length > 0 && keys.every((k) => PATCH_KEYS.has(k))) {
+      return api.patch<SchoolClass>("/api/classes/" + id, b);
+    }
+    return api.put<SchoolClass>("/api/classes/" + id, b);
+  },
   remove: (id: number) => api.del<void>("/api/classes/" + id),
 };
 
@@ -69,8 +82,21 @@ export const classrooms = {
   list: () => api.get<Classroom[]>("/api/classrooms"),
   create: (b: Partial<Classroom>) =>
     api.post<Classroom>("/api/classrooms", b),
-  update: (id: number, b: Partial<Classroom>) =>
-    api.put<Classroom>("/api/classrooms/" + id, b),
+  update: (id: number, b: Partial<Classroom>) => {
+    // Same PATCH-vs-PUT heuristic as `classes.update`: a body that
+    // touches only inline-editable columns goes via PATCH, otherwise
+    // the full-replace PUT path runs.
+    const keys = Object.keys(b ?? {});
+    const PATCH_KEYS = new Set([
+      "capacity", "kind", "notes", "multi_class",
+      "multi_class_max", "multi_class_pref",
+      "multi_class_pref_weight", "plesso_id",
+    ]);
+    if (keys.length > 0 && keys.every((k) => PATCH_KEYS.has(k))) {
+      return api.patch<Classroom>("/api/classrooms/" + id, b);
+    }
+    return api.put<Classroom>("/api/classrooms/" + id, b);
+  },
   remove: (id: number) => api.del<void>("/api/classrooms/" + id),
   suggestedCounts: () =>
     api.get<{ counts: Record<string, number>; n_classes: number }>(

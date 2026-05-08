@@ -175,7 +175,7 @@ class ClassBase(BaseModel):
     section: str | None = None
     curriculum: str | None = None
     curriculum_id: int | None = None
-    n_students: int = 20
+    n_students: int = 25
     notes: str | None = None
     hard_entry_at_8: bool = True
     hard_exit_after_12: bool = True

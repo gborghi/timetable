@@ -200,6 +200,55 @@ def update_class(class_id: int, payload: schemas.ClassIn,
     return _to_out(c, db)
 
 
+@router.patch("/{class_id}", response_model=schemas.ClassOut)
+def patch_class(class_id: int, payload: dict,
+                db: Session = Depends(get_db)):
+    """Partial update -- used by the inline N. studenti edit on
+    /classes (a full ClassIn would fail validation when only one
+    field is sent).
+
+    Only the columns whitelisted below are accepted. Hard-coded
+    bounds match the UI bounds; the model itself does NOT enforce
+    a range, so an out-of-range request is rejected here with a
+    422 -- the inline UX flips back to the server value on error.
+    """
+    c = db.get(models.SchoolClass, class_id)
+    if c is None:
+        raise HTTPException(404, "class not found")
+    allowed = {
+        "n_students", "max_hours_per_day", "required_free_days_count",
+        "notes", "nickname", "soft_minimize_sixth_weight",
+    }
+    for k, v in (payload or {}).items():
+        if k not in allowed:
+            raise HTTPException(422, f"field {k!r} not patchable")
+        if k == "n_students":
+            iv = int(v)
+            if iv < 5 or iv > 50:
+                raise HTTPException(422,
+                    f"n_students must be in [5, 50], got {iv}")
+            c.n_students = iv
+        elif k == "max_hours_per_day":
+            iv = int(v)
+            if iv < 1 or iv > 12:
+                raise HTTPException(422,
+                    f"max_hours_per_day must be in [1, 12], got {iv}")
+            c.max_hours_per_day = iv
+        elif k == "required_free_days_count":
+            iv = int(v)
+            if iv < 0 or iv > 6:
+                raise HTTPException(422,
+                    f"required_free_days_count must be in [0, 6]")
+            c.required_free_days_count = iv
+        elif k == "soft_minimize_sixth_weight":
+            c.soft_minimize_sixth_weight = float(v)
+        else:
+            setattr(c, k, v)
+    db.commit()
+    db.refresh(c)
+    return _to_out(c, db)
+
+
 @router.delete("/{class_id}")
 def delete_class(class_id: int, db: Session = Depends(get_db)):
     c = db.get(models.SchoolClass, class_id)

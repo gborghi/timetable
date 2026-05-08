@@ -165,6 +165,12 @@ export const api = {
       body: body == null ? undefined : JSON.stringify(body),
       ...(opts || {}),
     }),
+  patch: <T = unknown>(p: string, body?: unknown, opts?: RequestOpts) =>
+    request<T>(p, {
+      method: "PATCH",
+      body: body == null ? undefined : JSON.stringify(body),
+      ...(opts || {}),
+    }),
   del: <T = unknown>(p: string, opts?: RequestOpts) =>
     request<T>(p, { method: "DELETE", ...(opts || {}) }),
   raw: request,

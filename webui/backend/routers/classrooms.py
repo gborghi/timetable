@@ -223,6 +223,51 @@ def update_room(room_id: int, payload: schemas.ClassroomIn,
     return _to_out(r)
 
 
+@router.patch("/{room_id}", response_model=schemas.ClassroomOut)
+def patch_room(room_id: int, payload: dict,
+                db: Session = Depends(get_db)):
+    """Partial update -- used by the inline Capienza edit on
+    /classrooms (a full ClassroomIn would fail validation when only
+    one field is sent).
+
+    Whitelist + range checks mirror the UI bounds (5..100 for
+    capacity); out-of-range requests get a 422 and the inline UX
+    flips back to the server value.
+    """
+    r = db.get(models.Classroom, room_id)
+    if r is None:
+        raise HTTPException(404, "classroom not found")
+    allowed = {
+        "capacity", "kind", "notes", "multi_class",
+        "multi_class_max", "multi_class_pref",
+        "multi_class_pref_weight", "plesso_id",
+    }
+    for k, v in (payload or {}).items():
+        if k not in allowed:
+            raise HTTPException(422, f"field {k!r} not patchable")
+        if k == "capacity":
+            iv = int(v)
+            if iv < 5 or iv > 100:
+                raise HTTPException(422,
+                    f"capacity must be in [5, 100], got {iv}")
+            r.capacity = iv
+        elif k == "multi_class":
+            r.multi_class = bool(v)
+        elif k in ("multi_class_max", "multi_class_pref"):
+            iv = int(v)
+            if iv < 1 or iv > 20:
+                raise HTTPException(422,
+                    f"{k} must be in [1, 20], got {iv}")
+            setattr(r, k, iv)
+        elif k == "multi_class_pref_weight":
+            r.multi_class_pref_weight = float(v)
+        else:
+            setattr(r, k, v)
+    db.commit()
+    db.refresh(r)
+    return _to_out(r)
+
+
 @router.delete("/{room_id}")
 def delete_room(room_id: int, db: Session = Depends(get_db)):
     r = db.get(models.Classroom, room_id)

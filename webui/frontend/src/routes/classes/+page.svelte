@@ -30,7 +30,7 @@
     editing = {
       _new: true,
       name: '', nickname: '', year: 1, section: '', curriculum: '', curriculum_id: null,
-      n_students: 22, notes: '',
+      n_students: 25, notes: '',
       hard_entry_at_8: true, hard_exit_after_12: true,
       hard_no_holes: true, hard_dual_math: true,
       hard_dual_italian: true, hard_motorie_pairs: true,
@@ -191,10 +191,40 @@
     { key: 'year', label: 'Anno' },
     { key: 'section', label: 'Sez.' },
     { key: 'curriculum', label: 'Indirizzo' },
-    { key: 'n_students', label: 'Studenti' },
+    { key: 'n_students', label: 'N. studenti' },
     { key: 'ore_totali', label: 'Ore/sett.',
       render: (r) => (r.subjects || []).reduce((s, x) => s + Number(x.hours_per_week || 0), 0) },
   ];
+
+  // Inline n_students editing -- 5..50 client-side, backend authoritative.
+  // Keyed by row.id so concurrent edits to different rows don't collide.
+  const N_STUDENTS_MIN = 5;
+  const N_STUDENTS_MAX = 50;
+  let savingNStudents = new Set();
+  async function saveNStudentsInline(row, raw) {
+    const v = Number(raw);
+    if (!Number.isFinite(v) || v < N_STUDENTS_MIN || v > N_STUDENTS_MAX) {
+      flash(`N. studenti deve essere fra ${N_STUDENTS_MIN} e ${N_STUDENTS_MAX}`,
+            'error');
+      // Revert to the server-side value by reloading the list.
+      await listRef?.reload();
+      return;
+    }
+    if (Number(row.n_students) === v) return;   // no change
+    savingNStudents = new Set([...savingNStudents, row.id]);
+    try {
+      await classesSvc.update(row.id, { n_students: v });
+      row.n_students = v;
+      flash('Studenti aggiornato', 'success');
+      await refreshDataset();
+    } catch (e) {
+      flash('Errore: ' + (e.message || e), 'error');
+      await listRef?.reload();
+    } finally {
+      savingNStudents = new Set([...savingNStudents].filter(
+        (x) => x !== row.id));
+    }
+  }
   const help = {
     fields: ['name', 'year', 'anno', 'section', 'sezione', 'curriculum',
              'indirizzo', 'n_students', 'ore_totali', 'n_subjects'],
@@ -241,7 +271,17 @@
     <td class="text-center">{row.year}</td>
     <td>{row.section ?? ''}</td>
     <td>{row.curriculum ?? ''}</td>
-    <td class="text-center">{row.n_students}</td>
+    <td class="text-center">
+      <input type="number" min={N_STUDENTS_MIN} max={N_STUDENTS_MAX}
+             value={row.n_students}
+             on:change={(e) => saveNStudentsInline(row, e.currentTarget.value)}
+             on:keydown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+             disabled={savingNStudents.has(row.id)}
+             class="w-16 text-center px-1 py-0.5 border border-ink-200 rounded
+                    focus:ring-2 focus:ring-emerald-300"
+             data-testid="class-n-students-input"
+             data-class-id={row.id}/>
+    </td>
     <td class="text-center">
       {(row.subjects || []).reduce((s, x) => s + Number(x.hours_per_week || 0), 0)}
     </td>
@@ -298,7 +338,10 @@
         <input class="mt-1 text-xs" placeholder="(stringa libera, opzionale)"
                bind:value={editing.curriculum}/>
       </div>
-      <div class="field"><label>N. studenti</label><input type="number" bind:value={editing.n_students}/></div>
+      <div class="field"><label>N. studenti</label>
+        <input type="number" min="5" max="50"
+               bind:value={editing.n_students}
+               data-testid="class-n-students-modal-input"/></div>
       <div class="field"><label>Note</label><input bind:value={editing.notes}/></div>
     </div>
 

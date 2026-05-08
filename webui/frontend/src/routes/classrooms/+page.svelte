@@ -257,6 +257,34 @@
     + Number(genCounts.palestra || 0) + Number(genCounts.biblioteca || 0)
     + Number(genCounts.aula_speciale || 0);
 
+  // Inline capacity editing -- 5..100 client-side, backend authoritative.
+  const CAPACITY_MIN = 5;
+  const CAPACITY_MAX = 100;
+  let savingCapacity = new Set();
+  async function saveCapacityInline(row, raw) {
+    const v = Number(raw);
+    if (!Number.isFinite(v) || v < CAPACITY_MIN || v > CAPACITY_MAX) {
+      flash(`Capienza deve essere fra ${CAPACITY_MIN} e ${CAPACITY_MAX}`,
+            'error');
+      await listRef?.reload();
+      return;
+    }
+    if (Number(row.capacity) === v) return;
+    savingCapacity = new Set([...savingCapacity, row.id]);
+    try {
+      await classroomsSvc.update(row.id, { capacity: v });
+      row.capacity = v;
+      flash('Capienza aggiornata', 'success');
+      await refreshDataset();
+    } catch (e) {
+      flash('Errore: ' + (e.message || e), 'error');
+      await listRef?.reload();
+    } finally {
+      savingCapacity = new Set([...savingCapacity].filter(
+        (x) => x !== row.id));
+    }
+  }
+
   const columns = [
     { key: 'name', label: 'Nome' },
     { key: 'kind', label: 'Tipo' },
@@ -352,7 +380,17 @@
     let:row let:columns>
     <td><strong>{row.name}</strong></td>
     <td><span class="pill">{row.kind}</span></td>
-    <td class="text-center">{row.capacity}</td>
+    <td class="text-center">
+      <input type="number" min={CAPACITY_MIN} max={CAPACITY_MAX}
+             value={row.capacity}
+             on:change={(e) => saveCapacityInline(row, e.currentTarget.value)}
+             on:keydown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+             disabled={savingCapacity.has(row.id)}
+             class="w-16 text-center px-1 py-0.5 border border-ink-200 rounded
+                    focus:ring-2 focus:ring-emerald-300"
+             data-testid="classroom-capacity-inline-input"
+             data-classroom-id={row.id}/>
+    </td>
     <td class="text-center">
       {#if row.multi_class}max {row.multi_class_max} (pref {row.multi_class_pref}){:else}no{/if}
     </td>
@@ -403,7 +441,8 @@
       <div class="field"><label>Tipo</label>
         <select bind:value={editing.kind} data-testid="classroom-kind-select">{#each ROOM_KINDS as k}<option value={k.value}>{k.label}</option>{/each}</select>
       </div>
-      <div class="field"><label>Capienza</label><input type="number" bind:value={editing.capacity} data-testid="classroom-capacity-input"/></div>
+      <div class="field"><label>Capienza</label><input type="number" min="5" max="100"
+             bind:value={editing.capacity} data-testid="classroom-capacity-input"/></div>
       <div class="field"><label>Note</label><input bind:value={editing.notes}/></div>
       <div class="field"><label>Plesso</label>
         <select bind:value={editing.plesso_id} data-testid="classroom-plesso-select">
