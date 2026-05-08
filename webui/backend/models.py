@@ -170,6 +170,9 @@ class Teacher(TenantMixin, TimestampMixin, Base):
     mandatory_free_days: Mapped[list["TeacherMandatoryFreeDay"]] = relationship(
         back_populates="teacher", cascade="all, delete-orphan"
     )
+    free_day_preferences: Mapped[list["TeacherFreeDayPreference"]] = relationship(
+        back_populates="teacher", cascade="all, delete-orphan"
+    )
     compatible_classes: Mapped[list["TeacherCompatibleClass"]] = relationship(
         back_populates="teacher", cascade="all, delete-orphan"
     )
@@ -235,6 +238,34 @@ class TeacherMandatoryFreeDay(Base):
     )
     day: Mapped[int] = mapped_column(Integer)
     teacher: Mapped["Teacher"] = relationship(back_populates="mandatory_free_days")
+
+
+class TeacherFreeDayPreference(Base):
+    """SOFT: ordered free-day preferences (up to 3 per teacher).
+
+    Priority 1 = first choice (penalty 30 when violated, i.e. teacher
+    has any lesson that day), 2 = (penalty 20), 3 = (penalty 10).
+    HARD "at least one free day per week" is enforced universally for
+    every teacher by the engine -- it is NOT stored in this table.
+    """
+    __tablename__ = "teacher_free_day_preferences"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    teacher_id: Mapped[int] = mapped_column(
+        ForeignKey("teachers.id", ondelete="CASCADE"), index=True
+    )
+    day: Mapped[int] = mapped_column(
+        Integer, comment="1..6 Lun..Sab")
+    priority: Mapped[int] = mapped_column(
+        Integer, comment="1 (top) .. 3 (low). Penalty = 40 - 10*priority."
+    )
+    teacher: Mapped["Teacher"] = relationship(
+        back_populates="free_day_preferences")
+    __table_args__ = (
+        UniqueConstraint(
+            "teacher_id", "priority", name="uq_tfdp_priority"),
+        UniqueConstraint(
+            "teacher_id", "day", name="uq_tfdp_day"),
+    )
 
 
 class TeacherCompatibleClass(Base):
