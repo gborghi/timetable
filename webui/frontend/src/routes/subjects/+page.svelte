@@ -88,14 +88,16 @@
   };
 </script>
 
-<div class="space-y-4">
+<div class="space-y-4" data-testid="subjects-page">
   <div class="flex items-baseline gap-3 flex-wrap">
     <h1>Materie</h1>
-    <button class="btn ml-auto" on:click={() => (editWeights = !editWeights)}>
+    <button class="btn ml-auto" on:click={() => (editWeights = !editWeights)}
+            data-testid="subjects-toggle-weights">
       {editWeights ? 'Vista materie' : 'Pesi cl. concorso'}
     </button>
     {#if !editWeights}
-      <button class="btn-primary" on:click={newSubject}>+ Nuova materia</button>
+      <button class="btn-primary" on:click={newSubject}
+              data-testid="add-subject-btn">+ Nuova materia</button>
       <ImportButton entity="subjects" onDone={() => listRef?.reload()}/>
     {:else}
       <button class="btn-primary" on:click={saveWeights}>Salva tutti</button>
@@ -118,8 +120,14 @@
         <td class="text-center">{row.dual_hours_weight}</td>
         <td class="text-center">{row.no_sixth_hour_weight}</td>
         <td class="whitespace-nowrap">
-          <button class="btn !text-xs !px-2 !py-1" on:click={() => edit(row)}>Modifica</button>
-          <button class="btn-danger !text-xs !px-2 !py-1" on:click={() => del(row)}>Elimina</button>
+          <button class="btn !text-xs !px-2 !py-1"
+                  data-testid="subject-edit-btn"
+                  data-subject-id={row.id}
+                  on:click={() => edit(row)}>Modifica</button>
+          <button class="btn-danger !text-xs !px-2 !py-1"
+                  data-testid="subject-delete-btn"
+                  data-subject-id={row.id}
+                  on:click={() => del(row)}>Elimina</button>
         </td>
       </tr>
     </SortableQueryableList>
@@ -149,9 +157,9 @@
 
 <Modal open={!!editing} title={editing?._new ? 'Nuova materia' : 'Modifica materia'} onClose={() => (editing = null)}>
   {#if editing}
-    <div class="grid grid-cols-2 gap-3">
-      <div class="field"><label>Nome (chiave)</label><input bind:value={editing.name}/></div>
-      <div class="field"><label>Pretty name</label><input bind:value={editing.pretty_name}/></div>
+    <div class="grid grid-cols-2 gap-3" data-testid="subject-form">
+      <div class="field"><label>Nome (chiave)</label><input bind:value={editing.name} data-testid="subject-name-input"/></div>
+      <div class="field"><label>Pretty name</label><input bind:value={editing.pretty_name} data-testid="subject-pretty-name-input"/></div>
       <div class="field col-span-2"><label>Note</label><input bind:value={editing.notes}/></div>
       <div class="field"><label>Peso "spalmare su pi giorni"</label><input type="number" bind:value={editing.distribute_days_weight}/></div>
       <div class="field"><label>Peso "doppie ore consecutive"</label><input type="number" bind:value={editing.dual_hours_weight}/></div>
@@ -172,8 +180,10 @@
     </div>
 
     <div class="mt-5 flex justify-end gap-2">
-      <button class="btn" on:click={() => (editing = null)}>Annulla</button>
-      <button class="btn-primary" on:click={save}>Salva</button>
+      <button class="btn" on:click={() => (editing = null)}
+              data-testid="subject-cancel-btn">Annulla</button>
+      <button class="btn-primary" on:click={save}
+              data-testid="subject-save-btn">Salva</button>
     </div>
   {/if}
 </Modal>
