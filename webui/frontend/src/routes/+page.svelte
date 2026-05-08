@@ -13,7 +13,13 @@
   let graphMode = 'classes';   // 'classes' | 'teachers'
 
   let availableProfiles = [];
-  let selectedProfile = 'small';
+  // Two independent dropdowns: section 1 ("Importa un profilo gia` calcolato")
+  // pulls names from the on-disk pickle layout; section 2 ("Genera scuola
+  // di test") uses the engine's hardcoded mock profile names. Sharing the
+  // same variable made section 1 silently POST profile='small' (the
+  // default) when 'small' wasn't actually on disk -> 404 and an empty UI.
+  let importProfile = '';
+  let mockProfile = 'small';
   let useOptimized = true;
   let importCurricula = true;
   let importClassrooms = true;
@@ -28,16 +34,26 @@
   onMount(async () => {
     try {
       availableProfiles = await api.get('/api/dataset/available-profiles');
+      // Default to the first available profile so the bind:value matches
+      // an actual <option> -- otherwise the dropdown displays the first
+      // option visually but submits the (stale) initial value.
+      if (availableProfiles.length > 0) {
+        importProfile = availableProfiles[0].name;
+      }
     } catch (e) {
       flash('Errore caricando profili: ' + e.message, 'error');
     }
   });
 
   async function importPickle() {
+    if (!importProfile) {
+      flash('Nessun profilo disponibile da importare', 'error');
+      return;
+    }
     busyImport = true;
     try {
       const res = await api.post('/api/dataset/import-profile', {
-        profile: selectedProfile,
+        profile: importProfile,
         use_optimized: useOptimized,
         import_curricula: importCurricula,
         import_classrooms: importClassrooms,
@@ -56,7 +72,7 @@
     busyMock = true;
     try {
       const res = await api.post('/api/dataset/mock', {
-        profile: selectedProfile, mode: mockMode,
+        profile: mockProfile, mode: mockMode,
         margin: mockMargin, base_max_hours: baseMaxHours,
         custom_curricula: null
       });
@@ -162,16 +178,27 @@
   <ConstraintsImportExportCard />
 
   <section class="grid md:grid-cols-2 gap-6">
-    <div class="card p-5">
+    <div class="card p-5" data-testid="dashboard-import-card">
       <h2 class="mb-3">1) Importa un profilo gia\` calcolato</h2>
       <div class="space-y-3">
         <div class="field">
           <label>Profilo</label>
-          <select bind:value={selectedProfile}>
-            {#each availableProfiles as p}
-              <option value={p.name}>{p.name}{p.has_optimized_solution ? '  (con soluzione ottimizzata)' : ''}</option>
-            {/each}
-          </select>
+          {#if availableProfiles.length === 0}
+            <p class="text-xs text-ink-500 italic"
+               data-testid="dashboard-no-profiles">
+              Nessun profilo precalcolato trovato in
+              <code>engine/scripts/data/&lt;profile&gt;/</code>.
+              Genera una scuola fittizia qui sotto per popolare il DB.
+            </p>
+          {:else}
+            <select bind:value={importProfile}
+                    data-testid="dashboard-import-profile-select">
+              {#each availableProfiles as p}
+                <option value={p.name}
+                        data-testid="dashboard-import-profile-option">{p.name}{p.has_optimized_solution ? '  (con soluzione ottimizzata)' : ''}</option>
+              {/each}
+            </select>
+          {/if}
         </div>
         <label class="flex items-center gap-2 text-sm">
           <input type="checkbox" bind:checked={useOptimized} />
@@ -197,7 +224,10 @@
         </div>
 
         <div class="flex items-center gap-3">
-          <button class="btn-primary" on:click={importPickle} disabled={busyImport}>
+          <button class="btn-primary"
+                  on:click={importPickle}
+                  disabled={busyImport || availableProfiles.length === 0}
+                  data-testid="dashboard-import-btn">
             Importa
           </button>
           <button class="btn" on:click={autoGenerateClassrooms}>
@@ -207,12 +237,13 @@
       </div>
     </div>
 
-    <div class="card p-5">
+    <div class="card p-5" data-testid="dashboard-mock-card">
       <h2 class="mb-3">2) Genera scuola di test</h2>
       <div class="grid grid-cols-2 gap-3">
         <div class="field">
           <label>Profilo</label>
-          <select bind:value={selectedProfile}>
+          <select bind:value={mockProfile}
+                  data-testid="dashboard-mock-profile-select">
             <option value="small">small</option>
             <option value="medium">medium</option>
             <option value="big">big</option>

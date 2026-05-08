@@ -117,7 +117,7 @@
   }
 </script>
 
-<section class="card p-5">
+<section class="card p-5" data-testid="db-import-export-card">
   <div class="flex items-baseline gap-3 flex-wrap">
     <h2>Import / Export database</h2>
     <span class="text-xs text-ink-500 max-w-2xl">
@@ -170,22 +170,25 @@
       </span>
       <button class="btn-primary !text-xs ml-auto"
               on:click={makeSnapshot}
-              disabled={busy}>
+              disabled={busy}
+              data-testid="snapshot-create-btn">
         Crea snapshot
       </button>
       <button class="btn !text-xs"
               on:click={reloadSnapshots}
-              disabled={busy}>
+              disabled={busy}
+              data-testid="snapshot-reload-btn">
         Aggiorna lista
       </button>
     </div>
     {#if snapshots.length === 0}
-      <p class="text-xs text-ink-500 italic">
+      <p class="text-xs text-ink-500 italic"
+         data-testid="snapshot-empty-msg">
         Nessuno snapshot salvato. Premi "Crea snapshot" per produrre
         un backup timestampato del DB corrente.
       </p>
     {:else}
-      <table class="tbl text-sm">
+      <table class="tbl text-sm" data-testid="snapshot-table">
         <thead>
           <tr>
             <th>Filename</th>
@@ -196,19 +199,21 @@
         </thead>
         <tbody>
           {#each snapshots as s (s.filename)}
-            <tr>
+            <tr data-testid="snapshot-row">
               <td><code>{s.filename}</code></td>
               <td class="text-xs">{s.modified_at}</td>
               <td class="text-right">{fmtBytes(s.size_bytes)}</td>
               <td class="whitespace-nowrap">
                 <button class="btn !text-xs !px-2 !py-1"
                         on:click={() => restore(s)}
-                        disabled={busy}>
+                        disabled={busy}
+                        data-testid="snapshot-restore-btn">
                   Ripristina
                 </button>
                 <button class="btn-danger !text-xs !px-2 !py-1"
                         on:click={() => del(s)}
-                        disabled={busy}>
+                        disabled={busy}
+                        data-testid="snapshot-delete-btn">
                   Elimina
                 </button>
               </td>
