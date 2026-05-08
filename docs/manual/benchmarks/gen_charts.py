@@ -171,22 +171,27 @@ def emit_pgfplot_time_per_profile(rows, fh):
 
 def emit_full_results_table(rows, fh):
     fh.write("\\subsection*{Matrice completa dei risultati}\n\n")
-    fh.write("\\begin{longtable}{lllrrrll}\n")
+    fh.write("\\begin{longtable}{llllrrrll}\n")
     fh.write("\\caption{Risultati riga-per-riga del full sweep. "
              "\\texttt{cost} \\`e la somma pesata delle violazioni soft "
              "(scala specifica del modello, lower-is-better). "
              "\\texttt{hard} \\`e True se la soluzione \\`e fattibile "
-             "rispetto a tutti i vincoli hard.}\\\\\n")
+             "rispetto a tutti i vincoli hard. "
+             "\\texttt{dataset=pickle} indica caricamento da pickle "
+             "anagrafico (zero vincoli stratificati); "
+             "\\texttt{dataset=sqlite} indica caricamento dal profilo "
+             "SQLite con le 14 tabelle di vincolo popolate.}\\\\\n")
     fh.write("\\toprule\n")
-    fh.write("Profilo & Tecnica & Famiglia & "
+    fh.write("Profilo & DS & Tecnica & Famiglia & "
              "$t$\\,total (s) & cost & hard & status & note \\\\\n")
     fh.write("\\midrule\n\\endfirsthead\n")
     fh.write("\\toprule\n")
-    fh.write("Profilo & Tecnica & Famiglia & "
+    fh.write("Profilo & DS & Tecnica & Famiglia & "
              "$t$\\,total (s) & cost & hard & status & note \\\\\n")
     fh.write("\\midrule\n\\endhead\n\\bottomrule\n\\endfoot\n")
     for r in rows:
         prof = r["profile"]
+        ds = r.get("dataset", "pickle")
         tech = r["technique"].replace("_", "\\_")
         fam = r["family"]
         tt = _fmt(_f(r["t_total"]))
@@ -195,10 +200,55 @@ def emit_full_results_table(rows, fh):
         status = r["status"]
         note = (r.get("note", "") or r.get("error_msg", ""))[:40]
         note = note.replace("_", "\\_").replace("&", "\\&")
-        fh.write(f"\\texttt{{{prof}}} & \\texttt{{{tech}}} & "
+        fh.write(f"\\texttt{{{prof}}} & \\texttt{{{ds}}} & "
+                 f"\\texttt{{{tech}}} & "
                  f"{fam} & {tt} & {cost} & {hard} & "
                  f"\\texttt{{{status}}} & {note} \\\\\n")
     fh.write("\\end{longtable}\n\n")
+
+
+def emit_pickle_vs_sqlite_delta(rows, fh):
+    """Compare cost on the same (profile, technique) cell between
+    pickle and sqlite datasets. Shows where the constraint
+    stratification matters most."""
+    by_cell = defaultdict(dict)
+    for r in rows:
+        if r["status"] != "ok":
+            continue
+        c = _f(r["cost"])
+        if c is None:
+            continue
+        by_cell[(r["profile"], r["technique"])][r.get("dataset", "pickle")] = c
+    pairs = [(k, v["pickle"], v["sqlite"]) for k, v in by_cell.items()
+             if "pickle" in v and "sqlite" in v]
+    if not pairs:
+        fh.write("\\subsection*{Delta pickle vs.\\ sqlite}\n\n"
+                 "\\emph{Nessuna cella in cui entrambi i dataset "
+                 "abbiano prodotto una soluzione OK; impossibile "
+                 "calcolare il delta.}\n\n")
+        return
+    fh.write("\\subsection*{Delta costo pickle vs.\\ sqlite "
+             "(stesse celle, entrambe OK)}\n\n")
+    fh.write("\\begin{table}[h]\n\\centering\\sffamily\\small\n")
+    fh.write("\\begin{tabular}{lllrrr}\n\\toprule\n")
+    fh.write("Profilo & Tecnica & Famiglia & cost (pickle) & "
+             "cost (sqlite) & $\\Delta$\\,\\% \\\\\n\\midrule\n")
+    pairs.sort(key=lambda p: (p[0][0], p[0][1]))
+    for (prof, tech), cp, cs in pairs:
+        delta = (cs - cp) / cp * 100.0 if cp > 0 else float("inf")
+        fh.write(f"\\texttt{{{prof}}} & "
+                 f"\\texttt{{{tech.replace('_','\\_')}}} & "
+                 f" & {cp:.0f} & {cs:.0f} & "
+                 f"{delta:+.1f}\\% \\\\\n")
+    fh.write("\\bottomrule\n\\end{tabular}\n")
+    fh.write("\\caption{Delta percentuale del costo soft fra il "
+             "dataset \\texttt{pickle} (zero vincoli stratificati) e "
+             "il dataset \\texttt{sqlite} (14 tabelle di vincolo "
+             "popolate). Valori positivi indicano che lo SQLite paga "
+             "il costo dei vincoli aggiuntivi; valori negativi (rari) "
+             "indicano che la stratificazione ha guidato il solver "
+             "verso una soluzione complessivamente migliore.}\n")
+    fh.write("\\label{tab:bench-delta-pickle-sqlite}\n\\end{table}\n\n")
 
 
 def emit_top_bottom(rows, fh):
@@ -390,6 +440,7 @@ def main():
         emit_pgfplot_time_per_profile(rows, fh)
         emit_pgfplot_cost_vs_iter(rows, fh)
         emit_bp_columns_iters(rows, fh)
+        emit_pickle_vs_sqlite_delta(rows, fh)
         emit_top_bottom(rows, fh)
         emit_full_results_table(rows, fh)
     print(f"[gen-charts] wrote {args.out}")
