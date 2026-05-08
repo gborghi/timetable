@@ -15,7 +15,12 @@
 
   // Parameters per step
   let step1 = { ...OPTIMIZE_DEFAULTS };
-  let step1import = { profile: 'small', use_optimized: true };
+  let step1import = { profile: 'mega', use_optimized: true };
+  // Populated from GET /api/dataset/available-profiles on mount, so
+  // the user only sees the profiles whose pkl files actually exist
+  // on disk (post the May-2026 engine/scripts/data/<profile>/
+  // layout migration).
+  let availableProfiles = [];
   let step2 = { time_limit_s: 30, workers: 8, log: true };
   let step3 = {
     k: 4, time_a: 60, time_bridges: 30, time_cluster: 20,
@@ -157,12 +162,30 @@
   function onDragEnd() { dragSrcIdx = null; }
 
   onMount(async () => {
-    await Promise.all([reloadRuns(), reloadActiveProfile()]);
+    await Promise.all([
+      reloadRuns(),
+      reloadActiveProfile(),
+      reloadAvailableProfiles(),
+    ]);
     // Fire-and-forget: best-effort recommendation fetch. If the
     // school has no Phase A yet the endpoint returns 409 and we
     // surface that gracefully in the card.
     fetchDecompRecommendation();
   });
+  async function reloadAvailableProfiles() {
+    try {
+      availableProfiles = (await api.get(
+        '/api/dataset/available-profiles')) || [];
+      // Default the pickle import dropdown to the first available
+      // profile so the button does not 404 when only "mega" is on
+      // disk (the canonical post-rename layout).
+      if (availableProfiles.length
+          && !availableProfiles.some(
+              (p) => p.name === step1import.profile)) {
+        step1import.profile = availableProfiles[0].name;
+      }
+    } catch (_) { availableProfiles = []; }
+  }
   async function reloadRuns() {
     try { runs = (await api.get('/api/optimize/runs?limit=15')); }
     catch (e) { flash('Backend non raggiungibile: ' + e.message, 'error'); }
@@ -279,7 +302,49 @@
       </div>
       <div class="flex gap-2 mt-3">
         <button class="btn-primary" on:click={launchMock}>Genera mock</button>
-        <button class="btn" on:click={launchImport}>Importa pickle ({step1import.profile})</button>
+      </div>
+      <hr class="my-3 border-ink-200"/>
+      <div class="grid grid-cols-2 gap-3">
+        <div class="field">
+          <label>
+            Profilo precalcolato
+            {#if availableProfiles.length === 0}
+              <span class="text-xs text-rose-600 ml-1">
+                (nessun pkl trovato in engine/scripts/data/)
+              </span>
+            {/if}
+          </label>
+          <select bind:value={step1import.profile}
+                  disabled={availableProfiles.length === 0}>
+            {#if availableProfiles.length === 0}
+              <option value="">--</option>
+            {:else}
+              {#each availableProfiles as p}
+                <option value={p.name}>
+                  {p.name}{p.has_optimized_solution
+                    ? ' [+ orario optimized]'
+                    : p.has_decomposed_solution
+                    ? ' [+ orario decomposed]'
+                    : ''}{p.has_profs ? ' [+ profs]' : ''}
+                </option>
+              {/each}
+            {/if}
+          </select>
+        </div>
+        <div class="field">
+          <label class="flex items-center gap-2 mt-5">
+            <input type="checkbox"
+                   bind:checked={step1import.use_optimized}/>
+            Importa orario optimized (se presente)
+          </label>
+        </div>
+      </div>
+      <div class="flex gap-2 mt-3">
+        <button class="btn" on:click={launchImport}
+                disabled={availableProfiles.length === 0
+                          || !step1import.profile}>
+          Importa pickle ({step1import.profile || '--'})
+        </button>
       </div>
     </div>
 

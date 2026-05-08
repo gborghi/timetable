@@ -187,33 +187,44 @@ def import_engine_profile(profile: str, use_optimized: bool,
         os.path.join(here, "..", "..", "engine", "scripts")
     )
 
+    def _resolve_pkl(filename: str) -> str | None:
+        """Locate ``filename`` for the given profile under the
+        post-rename ``engine/scripts/data/<profile>/`` and
+        ``engine/scripts/output/<profile>/`` subdirs, falling back
+        to the flat ``engine/scripts/`` legacy layout."""
+        for cand in (
+            os.path.join(engine_scripts_dir, "data", profile, filename),
+            os.path.join(engine_scripts_dir, "output", profile, filename),
+            os.path.join(engine_scripts_dir, filename),
+        ):
+            if os.path.exists(cand):
+                return cand
+        return None
+
     def target(rid: int):
-        school_pkl = os.path.join(engine_scripts_dir, f"school_{profile}.pkl")
-        profs_pkl = os.path.join(engine_scripts_dir, f"profs_{profile}.pkl")
-        sol_optimized = os.path.join(
-            engine_scripts_dir, f"solution_timetable_{profile}_optimized.pkl"
-        )
-        sol_decomposed = os.path.join(
-            engine_scripts_dir, f"solution_timetable_{profile}_decomposed.pkl"
-        )
-        sol_plain = os.path.join(
-            engine_scripts_dir, f"solution_timetable_{profile}.pkl"
-        )
+        school_pkl = _resolve_pkl(f"school_{profile}.pkl")
+        profs_pkl = _resolve_pkl(f"profs_{profile}.pkl")
+        sol_optimized = _resolve_pkl(
+            f"solution_timetable_{profile}_optimized.pkl")
+        sol_decomposed = _resolve_pkl(
+            f"solution_timetable_{profile}_decomposed.pkl")
+        sol_plain = _resolve_pkl(f"solution_timetable_{profile}.pkl")
         # MEGA pipeline (run_mega_pipeline.py) emits non-canonical
         # filenames: solution_mega_temporal_alns.pkl is the post-ALNS
         # polished result (the equivalent of *_optimized.pkl), and
         # solution_temporal_mega.pkl is the pre-ALNS temporal-decomposed
         # result (the equivalent of *_decomposed.pkl). Honour these as
         # additional fallbacks before giving up.
-        sol_alt_optimized = os.path.join(
-            engine_scripts_dir, f"solution_{profile}_temporal_alns.pkl"
-        )
-        sol_alt_decomposed = os.path.join(
-            engine_scripts_dir, f"solution_temporal_{profile}.pkl"
-        )
-        if not os.path.exists(school_pkl):
+        sol_alt_optimized = _resolve_pkl(
+            f"solution_{profile}_temporal_alns.pkl")
+        sol_alt_decomposed = _resolve_pkl(
+            f"solution_temporal_{profile}.pkl")
+        if not school_pkl:
             raise FileNotFoundError(
-                f"school_{profile}.pkl not found in engine/scripts/"
+                f"school_{profile}.pkl not found "
+                f"(searched engine/scripts/data/{profile}/, "
+                f"engine/scripts/output/{profile}/, "
+                f"engine/scripts/)"
             )
         with open(school_pkl, "rb") as f:
             school = pickle.load(f)
@@ -269,7 +280,7 @@ def import_engine_profile(profile: str, use_optimized: bool,
                 print(f"[import] student generation skipped: {e}")
         # -----------------------------------------------------------------
 
-        if os.path.exists(profs_pkl):
+        if profs_pkl:
             with open(profs_pkl, "rb") as f:
                 profs = pickle.load(f)
             print(f"[import] loaded {profs_pkl}: {len(profs)} teachers")
@@ -277,15 +288,15 @@ def import_engine_profile(profile: str, use_optimized: bool,
                 n = engine_io.import_profs_into_db(db, profs)
                 print(f"[import] {n} assignments imported")
         sol_path = None
-        if use_optimized and os.path.exists(sol_optimized):
+        if use_optimized and sol_optimized:
             sol_path = sol_optimized
-        elif use_optimized and os.path.exists(sol_alt_optimized):
+        elif use_optimized and sol_alt_optimized:
             sol_path = sol_alt_optimized
-        elif os.path.exists(sol_decomposed):
+        elif sol_decomposed:
             sol_path = sol_decomposed
-        elif os.path.exists(sol_alt_decomposed):
+        elif sol_alt_decomposed:
             sol_path = sol_alt_decomposed
-        elif os.path.exists(sol_plain):
+        elif sol_plain:
             sol_path = sol_plain
         if sol_path:
             with open(sol_path, "rb") as f:

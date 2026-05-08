@@ -43,16 +43,47 @@ def generate_mock(payload: schemas.MockGenIn):
     return {"run_id": run_id}
 
 
-@router.post("/import-profile")
-def import_profile(payload: schemas.ImportPickleIn):
+def _engine_scripts_dir() -> str:
     here = os.path.dirname(os.path.abspath(__file__))
-    engine_scripts_dir = os.path.normpath(
+    return os.path.normpath(
         os.path.join(here, "..", "..", "..", "engine", "scripts")
     )
-    school_pkl = os.path.join(engine_scripts_dir, f"school_{payload.profile}.pkl")
-    if not os.path.exists(school_pkl):
+
+
+def _resolve_profile_pkl(name: str, filename: str) -> str | None:
+    """Return the absolute path to ``filename`` for the given profile,
+    or ``None`` if not found. Tries the canonical post-rename layout
+    (``engine/scripts/data/<profile>/<filename>``) first, then falls
+    back to the flat legacy layout (``engine/scripts/<filename>``)
+    for older checkouts.
+
+    Solutions written by run_*_pipeline.py are stored under
+    ``engine/scripts/output/<profile>/`` -- callers looking for a
+    solution_*.pkl should pass ``filename`` rooted at "output/...".
+    The function understands both data/ and output/ subdirs.
+    """
+    base = _engine_scripts_dir()
+    for candidate in (
+        os.path.join(base, "data", name, filename),
+        os.path.join(base, "output", name, filename),
+        os.path.join(base, filename),
+    ):
+        if os.path.exists(candidate):
+            return candidate
+    return None
+
+
+@router.post("/import-profile")
+def import_profile(payload: schemas.ImportPickleIn):
+    school_pkl = _resolve_profile_pkl(
+        payload.profile, f"school_{payload.profile}.pkl")
+    if not school_pkl:
         raise HTTPException(
-            404, f"school_{payload.profile}.pkl not found in engine/scripts/"
+            404,
+            f"school_{payload.profile}.pkl not found "
+            f"(searched engine/scripts/data/{payload.profile}/, "
+            f"engine/scripts/output/{payload.profile}/, "
+            f"engine/scripts/)"
         )
     run_id = optimization.import_engine_profile(
         payload.profile, payload.use_optimized,
@@ -66,35 +97,28 @@ def import_profile(payload: schemas.ImportPickleIn):
 
 @router.get("/available-profiles")
 def list_profiles():
-    here = os.path.dirname(os.path.abspath(__file__))
-    engine_scripts_dir = os.path.normpath(
-        os.path.join(here, "..", "..", "..", "engine", "scripts")
-    )
-
-    def _exists_any(*candidates):
-        return any(os.path.exists(os.path.join(engine_scripts_dir, c))
-                    for c in candidates)
-
     profiles = []
     for name in ("small", "medium", "big", "huge", "superhuge", "mega"):
-        school = os.path.join(engine_scripts_dir, f"school_{name}.pkl")
-        if not os.path.exists(school):
+        school = _resolve_profile_pkl(name, f"school_{name}.pkl")
+        if not school:
             continue
-        has_profs = os.path.exists(
-            os.path.join(engine_scripts_dir, f"profs_{name}.pkl")
-        )
+        has_profs = _resolve_profile_pkl(name, f"profs_{name}.pkl") is not None
         # MEGA's pipeline (run_mega_pipeline.py) writes
         # solution_mega_temporal_alns.pkl (final ALNS-polished) and
         # solution_temporal_mega.pkl (pre-ALNS); other profiles use the
         # canonical solution_timetable_<name>_{optimized,decomposed}.pkl
-        # naming. Detect either form.
-        has_opt = _exists_any(
-            f"solution_timetable_{name}_optimized.pkl",
-            f"solution_{name}_temporal_alns.pkl",
+        # naming. Detect either form, in either layout.
+        has_opt = (
+            _resolve_profile_pkl(
+                name, f"solution_timetable_{name}_optimized.pkl") is not None
+            or _resolve_profile_pkl(
+                name, f"solution_{name}_temporal_alns.pkl") is not None
         )
-        has_dec = _exists_any(
-            f"solution_timetable_{name}_decomposed.pkl",
-            f"solution_temporal_{name}.pkl",
+        has_dec = (
+            _resolve_profile_pkl(
+                name, f"solution_timetable_{name}_decomposed.pkl") is not None
+            or _resolve_profile_pkl(
+                name, f"solution_temporal_{name}.pkl") is not None
         )
         profiles.append({
             "name": name,
