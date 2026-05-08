@@ -1,0 +1,360 @@
+\chapter{Terminologia didattica}
+\label{ch:terminologia_didattica}
+\index{Terminologia!didattica}
+
+\epigraph{``Le parole sono cose, e una piccola goccia
+d'inchiostro che cade come rugiada su un pensiero produce
+quello che fa pensare migliaia, forse milioni di esseri
+umani.''}{\textsc{Lord Byron}, \emph{Don Juan}, III, 88}
+
+\lettrine[lines=3]{I}{l} timetabling delle scuole italiane si
+porta dietro un lessico ricco e spesso non condiviso con il
+resto del mondo. Una stessa entit\`a viene chiamata
+\emph{cattedra} dal preside, \emph{assegnamento} dal sistema
+informativo, \emph{ore di servizio} dal sindacato, \emph{tuple
+$(t,c,s)$} dal solver. Questo capitolo fissa il vocabolario:
+ogni voce porta il termine canonico, gli alias, una definizione
+operativa e un puntatore alle tabelle del database o ai moduli
+del codice in cui il concetto vive.
+
+\section{Entit\`a anagrafiche}
+
+\begin{description}
+\item[Docente.]\index{Docente}\index{Cattedra}
+  \emph{Alias}: insegnante, prof, teacher (codice). Persona
+  fisica titolare di una o pi\`u \emph{cattedre} all'interno
+  della scuola. Nel database \`e una riga della tabella
+  \texttt{teachers}, con \texttt{name}, \texttt{group} (la
+  classe di concorso), \texttt{max\_hours} settimanali e un
+  insieme di flag (sostegno, potenziamento). Le sue
+  indisponibilit\`a sono in \texttt{teacher\_unavailability}.
+
+\item[Cattedra.]\index{Cattedra}\index{Assignment}
+  \emph{Alias}: assegnamento, cattedra di insegnamento, riga
+  dell'\texttt{Assignment}. Tripla
+  $(\text{docente},\text{classe},\text{materia})$ con il
+  numero di ore settimanali. Una cattedra di matematica per
+  la 1A che vale 5 ore \`e la riga
+  $(\text{Borghi}, 1A, \text{Matematica}, 5)$ nella tabella
+  \texttt{assignments}. Tutte le ore di una cattedra finiscono
+  nei sei giorni della settimana e nei sei slot orari di ciascun
+  giorno: il vincolo $\sum_{d,h} x_{tcsdh} = \text{ore}$ \`e il
+  cuore del modello CP-SAT.
+
+\item[Classe.]\index{Classe}
+  \emph{Alias}: aula didattica (talvolta), ``la classe 1A''.
+  \`E un gruppo di studenti che condividono il programma. Nel
+  database \`e una riga di \texttt{classes} con \texttt{name}
+  (es.\ \texttt{1A}), \texttt{year} (1\ldots5), \texttt{section}
+  (A, B, C\ldots), \texttt{curriculum} (es.\ Scientifico,
+  Linguistico) e \texttt{n\_students}. La distinzione tra
+  \emph{classe} e \emph{aula} \`e essenziale: la classe \`e un
+  insieme di studenti, l'aula \`e un'unit\`a fisica.
+
+\item[Aula.]\index{Aula}\index{Classroom}
+  \emph{Alias}: laboratorio, palestra, classroom (codice).
+  Spazio fisico con caratteristiche (capienza,
+  attrezzatura, plesso d'appartenenza). Tabella
+  \texttt{classrooms}. Il vincolo \emph{le lezioni di una
+  classe in uno slot devono avvenire nella stessa aula} \`e
+  uno standard implicito (con eccezioni per articolazioni e
+  laboratori).
+
+\item[Materia.]\index{Materia}\index{Subject}
+  \emph{Alias}: subject, disciplina. La materia in s\'e \`e
+  semplicemente un nome (\emph{Matematica}, \emph{Italiano}).
+  Le ore di ciascuna materia in ciascuna classe sono il
+  prodotto cartesiano (classe $\times$ materia $\to$ ore) che
+  vive in \texttt{class\_subjects}.
+
+\item[Studente.]\index{Studente}
+  Tabella \texttt{students}. Per il modello base $\pi$Tantum
+  non posiziona singoli studenti negli slot --- lo fa per
+  classi. Ma quando ci sono \emph{gruppi articolati} o
+  \emph{potenziamenti}, lo studente diventa un'entit\`a
+  prima classe perch\'e i suoi \texttt{tags} e
+  \texttt{groups} influenzano l'aggregazione.
+\end{description}
+
+\section{Strutture organizzative}
+
+\begin{description}
+\item[Plesso.]\index{Plesso}
+  \emph{Alias}: succursale, sede staccata. Edificio fisico
+  separato sotto la stessa scuola. Una scuola con tre plessi
+  ha tre coordinate $(x,y)$ logiche in
+  \texttt{plessi}. Tipico vincolo: ``Borghi non pu\`o avere
+  un'ora a Plesso A alle 9 e un'ora a Plesso B alle 10''
+  (pendolarismo impossibile). \`E gestito dalla tabella
+  \texttt{plesso\_commuting\_rules} con un \texttt{min\_gap\_hours}
+  minimo tra due ore in plessi diversi.
+
+\item[Indirizzo (curriculum).]\index{Indirizzo}\index{Curriculum}
+  \emph{Alias}: curriculum, profilo, sezione tematica.
+  Definisce il \emph{piano di studi}: quali materie e quante
+  ore. Un \emph{liceo scientifico} ha latino, un \emph{liceo
+  scienze applicate} no; uno \emph{scientifico} fa pi\`u ore
+  di matematica di un \emph{linguistico}. Tabella
+  \texttt{curricula}. Il modello dei dati permette a
+  curricoli di condividere materie, e a un solo curriculum
+  di cambiare orario per materia per anno (la 1A scientifico
+  fa 5 ore di matematica, la 3A scientifico ne fa 4).
+
+\item[Anno (year).]\index{Anno scolastico}
+  \emph{Alias}: classe di anno, anno di corso. Nei licei e
+  istituti italiani \`e un intero in $\{1,2,3,4,5\}$. Le
+  classi del biennio (1, 2) tendono a essere pi\`u numerose
+  (5--6 sezioni); quelle del triennio (3, 4, 5) pi\`u rade.
+  In codice il campo \`e \texttt{class.year}.
+
+\item[Sezione.]\index{Sezione}
+  \emph{Alias}: corso. La lettera della classe (1A, 1B,
+  1C\ldots). \`E il \emph{terzo} indice (anno, sezione,
+  curriculum) che identifica univocamente una classe.
+\end{description}
+
+\section{Forme didattiche speciali}
+
+\begin{description}
+\item[Compresenza.]\index{Compresenza}\index{Coteach}
+  \emph{Alias}: co-teaching, co-docenza, coteach (codice).
+  Due docenti contemporaneamente sulla stessa classe nella
+  stessa ora, di norma per materie a forte componente
+  laboratoriale (lingua $+$ conversatore madrelingua;
+  scienze $+$ tecnico di laboratorio). Tabella
+  \texttt{coteach\_groups} con \texttt{required=True}
+  per le ore obbligatorie, \texttt{required=False} per le
+  ore preferite. Il numero di ore in compresenza \`e
+  \texttt{n\_hours}; il vincolo CP-SAT \`e
+  $x_{t_1} = x_{t_2}$ in tutti gli slot designati.
+
+\item[Sostegno.]\index{Sostegno}
+  \emph{Alias}: docente di sostegno, BES support.
+  Insegnante specializzato che segue uno o pi\`u studenti
+  con bisogni educativi speciali, di norma in compresenza
+  con il docente di materia. La sua presenza \`e modellata
+  come \texttt{is\_support=True} sulla riga
+  \texttt{assignments} corrispondente, e gli slot in cui
+  \`e in compresenza coincidono con quelli dell'altro
+  docente.
+
+\item[Potenziamento.]\index{Potenziamento}
+  \emph{Alias}: hours of empowerment, ore di potenziamento.
+  Ore aggiuntive di una materia oltre il minimo
+  ministeriale, di norma erogate da un secondo docente
+  della stessa classe di concorso. \`E
+  \texttt{is\_potenziamento=True} su \texttt{assignments}
+  e tipicamente \emph{non} si traduce in ore in compresenza:
+  sono ore separate.
+
+\item[Gruppo articolato.]\index{Gruppo articolato}
+  \emph{Alias}: classe articolata, articolata, group (codice).
+  Un sottoinsieme di una classe con uno specifico tag (per
+  esempio: gli studenti di seconda lingua francese vs.\
+  spagnolo all'interno della 3A linguistico). Per il solver
+  un gruppo \`e un'entit\`a separata che vive nello stesso
+  slot della sua classe-base. Tabella \texttt{groups}; le
+  cattedre articolate hanno \texttt{group\_id} non nullo.
+  Vincolo tipico: ``a 1A linguistico, l'ora di
+  conversazione francese e l'ora di conversazione spagnola
+  vanno nello stesso slot ma in due aule diverse''.
+
+\item[Parallel group.]\index{Parallel group}
+  Cattedre di classi diverse fissate alla stessa ora, di
+  solito perch\'e gli studenti vengono ripartiti su gruppi
+  trasversali (es.\ educazione fisica suddivisa in
+  maschile/femminile da due classi parallele). Tabella
+  \texttt{parallel\_groups}; vincolo
+  $x_{t_1, c_1, s, d, h} = x_{t_2, c_2, s, d, h}$ per ogni
+  $(d, h)$ del gruppo.
+\end{description}
+
+\section{Slot temporali e calendario}
+
+\begin{description}
+\item[Slot.]\index{Slot}
+  Coppia $(\text{giorno}, \text{ora})$ in
+  $\{1,\ldots,6\} \times \{1,\ldots,6\}$ per il modello base.
+  Sono 36 slot per settimana. Una lezione occupa esattamente
+  uno slot.
+
+\item[Giorno (day).]
+  Indice da 1 (luned\`i) a 6 (sabato) nel modello classico
+  italiano. Il sabato \`e configurabile come \emph{libero}
+  per scuole che adottano la settimana corta.
+
+\item[Ora (hour).]
+  Indice da 1 a 6, corrispondenti tipicamente a 8:00, 9:00,
+  10:00, 11:00, 12:00, 13:00. Il numero massimo di ore al
+  giorno \`e configurabile per profilo e per indirizzo.
+
+\item[Sesta ora.]\index{Sesta ora}
+  La 6\textsuperscript{a} ora (\texttt{hour=13} nel codice
+  legacy, \texttt{6} nel modello attuale) \`e penalizzata
+  perch\'e in molti istituti termina alle 13:50 e viene
+  preferito non averla.
+
+\item[Buco.]\index{Buco}
+  Slot vuoto fra due slot pieni nella stessa giornata di
+  uno stesso docente o di una stessa classe. \`E penalizzato
+  nello score soft.
+
+\item[Working hours.]\index{Working hours}
+  Tabella \texttt{working\_hours} (importata dai pickle):
+  per ciascun (giorno, ora) un flag che dice se quello slot
+  \`e \emph{operativo} o \emph{chiuso}. Gli slot chiusi non
+  ricevono lezioni. Permette di modellare scuole con
+  orario ridotto al sabato (5 ore) o senza sabato.
+
+\item[Calendario delle festivit\`a.]\index{Calendario}\index{Festivit\`a}
+  Sovrapposto alla settimana modello, descrive le date in
+  cui la scuola \`e chiusa (vacanze, ponti, scioperi). Non
+  entra nel modello CP-SAT direttamente: serve solo
+  all'esportazione XLSX e alla vista Schedule per nascondere
+  i giorni non lavorativi.
+\end{description}
+
+\section{Vincoli e preferenze}
+
+\begin{description}
+\item[Hard.]\index{Vincolo!hard}
+  Vincolo che la soluzione \emph{deve} rispettare. Una
+  violazione hard rende la soluzione infattibile: il
+  Feasibility Check la marca come tale e la pipeline
+  fallisce o ricade su un fallback.
+
+\item[Soft.]\index{Vincolo!soft}
+  Vincolo che si \emph{preferirebbe} rispettare ma che
+  pu\`o essere violato pagando una penalit\`a (la
+  \texttt{soft\_penalty}). Le soft alimentano l'obiettivo
+  che CP-SAT minimizza.
+
+\item[Preferred.]\index{Vincolo!preferred}
+  Equivale a soft con penalit\`a \emph{molto bassa}: il
+  solver lo soddisfa solo se gratis.
+
+\item[Enforced.]\index{Vincolo!enforced}
+  Equivale a hard con priorit\`a esplicita di
+  enforcement: rappresenta vincoli ``istituzionali''
+  (di norma di legge).
+
+\item[Indisponibilit\`a.]\index{Indisponibilit\`a}
+  Slot in cui un'entit\`a (docente, classe, aula) non pu\`o
+  essere usata. Le tabelle dedicate sono
+  \texttt{teacher\_unavailability},
+  \texttt{class\_unavailability},
+  \texttt{classroom\_unavailability}, ciascuna con
+  \texttt{state} $\in$ \{hard, soft\}.
+
+\item[Logical unavailability.]\index{Logical unavailability}
+  Forma sintetica per indisponibilit\`a complesse:
+  \texttt{logical\_unavailabilities} ammette
+  un'espressione DNF (es.\ ``il docente non \`e disponibile
+  il luned\`i mattina O il marted\`i pomeriggio''). \`E
+  derivata in modo automatico dal DSL.
+
+\item[5 stati.]\index{Cinque stati}
+  Le tabelle \texttt{teacher\_class\_preferences} e
+  \texttt{teacher\_curriculum\_preferences} usano una
+  scala a 5 livelli: \texttt{forbidden} (hard escluso),
+  \texttt{soft} (penalit\`a media), \texttt{allowed}
+  (default), \texttt{preferred} (bonus), \texttt{enforced}
+  (hard imposto). \`E la formalizzazione delle preferenze
+  classiche di un dirigente scolastico.
+\end{description}
+
+\section{Termini del modello matematico}
+
+\begin{description}
+\item[$x_{tcsdh}$.]\index{Variabile booleana}
+  Variabile binaria del CP-SAT. Vale 1 se nello slot
+  $(d,h)$ il docente $t$ insegna la materia $s$ alla
+  classe $c$. \`E il \emph{cuore} del modello.
+
+\item[$\text{dc}_{tcsd}$.]\index{Day count}\index{dc value}
+  Conteggio giornaliero di ore: vale tra 0 e
+  $\text{ore}_{tcs}$. Prodotto da Phase A; consumato come
+  ``floor'' o ``valore esatto'' da Phase B. Non \`e una
+  variabile decisione classica del modello finale, ma una
+  decisione gi\`a presa nella fase precedente.
+
+\item[Master LP.]\index{Master LP}
+  Nel framework di Column Generation \`e il problema
+  rilassato che decide \emph{quali pattern selezionare}
+  con coefficienti non interi. Le variabili duali del
+  master alimentano i pricer.
+
+\item[Pattern (colonna).]\index{Pattern}\index{Colonna}
+  Soluzione fattibile ristretta a un'entit\`a (di norma:
+  un docente). Il pricer la genera, il master la valuta,
+  e la $\lambda$-combinazione finale \`e l'orario. Una
+  colonna nel branch-and-price \`e codificata come
+  insieme di slot $\{(c,s,d,h)\}$.
+
+\item[Reduced cost.]\index{Reduced cost}
+  Per una colonna candidata, costo ridotto $=$ costo del
+  pattern $-$ contributo dei duali. Una colonna entra nel
+  master se ha reduced cost $<\,$0.
+
+\item[Ryan-Foster branching.]\index{Ryan-Foster}
+  Strategia di ramificazione su coppie di pattern: dato
+  $\lambda^* \in (0,1)$ frazionario, si cerca una coppia
+  di slot che alcuni pattern usano insieme e altri no, e
+  si ramifica imponendo o vietando l'uso simultaneo.
+
+\item[Dual stabilization.]\index{Dual stabilization}
+  Tecnica per evitare oscillazioni dei duali tra iterazioni
+  di Column Generation: si miscela il vettore duale
+  corrente con il precedente, smussando le variazioni.
+\end{description}
+
+\section{Granularit\`a di pricing nel branch-and-price}
+
+\index{Granularit\`a!pricing}
+
+Le 9 granularit\`a di pricing in $\pi$Tantum, dalla pi\`u
+grossolana alla pi\`u fine, sono:
+
+\begin{description}
+\item[teacher.] Una colonna per docente. Massimo riuso, minor
+  overhead di pricing, ma ogni colonna deve coprire
+  \emph{tutta} la settimana del docente. \`E il default.
+\item[teacher-day.] Una colonna per (docente, giorno). Ogni
+  giornata si pricing\=a separatamente; reagisce meglio a
+  vincoli locali (sostituzioni una-tantum).
+\item[teacher-class.] Una colonna per (docente, classe).
+  Risolve la frammentazione quando un docente lavora in
+  classi molto diverse.
+\item[teacher-class-subject.] Una colonna per cattedra
+  (docente, classe, materia). Massima granularit\`a sui
+  pattern di cattedra; ottima per vincoli che riguardano
+  ``lezioni di matematica della 1A''.
+\item[teacher-subject.] Una colonna per (docente, materia).
+  Compromesso fra teacher e teacher-class-subject.
+\item[class.] Una colonna per classe. Cambia il punto di
+  vista: ogni classe \`e un'entit\`a, non il docente.
+\item[class-day.] Una colonna per (classe, giorno). Utile
+  per pattern di carico orario per la classe.
+\item[day.] Una colonna per giorno: tutti i docenti, tutte
+  le classi, una giornata. Pi\`u onerosa ma cattura
+  globalmente i vincoli intergiornalieri.
+\item[curriculum.] Una colonna per indirizzo. Le decisioni
+  vivono al livello di \emph{tutte le classi dello stesso
+  indirizzo}, comoda per istituti omogenei.
+\end{description}
+
+\sidenote{In codice queste etichette sono il parametro
+\texttt{granularity=} di
+\texttt{run\_column\_generation()} nel file
+\texttt{engine/column\_generation.py}, e per ogni
+granularit\`a esiste una funzione di enumerazione
+\texttt{\_enumerate\_pricing\_keys()}.}
+
+\fleuron
+
+A queste voci si aggiungono i termini algoritmici
+(LNS, ALNS, SA, TS, ILS, VNS, Hall, Lagrangian, Column
+Generation, Monte Carlo) trattati nel
+capitolo~\ref{ch:glossario_discorsivo} con linguaggio
+discorsivo. Il presente capitolo non li ripete: di norma se
+un termine non si trova qui, va cercato l\`a.

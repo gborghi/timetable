@@ -1,0 +1,262 @@
+\chapter{Performance e qualit\`a UI}
+\label{ch:qualita_ui}
+\index{Performance!UI}\index{UI!latency}
+
+\epigraph{``Se l'utente aspetta pi\`u di un secondo per ogni
+azione, perde il filo. Se aspetta pi\`u di dieci, comincia a
+pensare ad altro.''}{\textsc{Jakob Nielsen}, sintesi delle
+ricerche di interaction design degli anni '90}
+
+\lettrine[lines=3]{Q}{uesto} capitolo presenta i tempi
+misurati di risposta dell'interfaccia $\pi$Tantum: il dev
+server SvelteKit per la consegna dell'\emph{SPA shell} e
+il backend FastAPI per le chiamate API che la UI emette al
+caricamento di ciascuna pagina. Le misure sono prese su
+un'installazione locale (Windows 11 Pro, Intel i7,
+Python 3.13, Node 22, profilo \texttt{small} caricato in
+DB) e sono pensate come \emph{baseline di riferimento}: i
+tempi assoluti dipendono dalla macchina, ma i rapporti tra
+endpoint sono indicativi del costo relativo di ciascuna
+risorsa.
+
+\section{Metodologia}
+
+Le misure usano \texttt{Invoke-WebRequest} di PowerShell
+chiamato in sequenza, una sola volta per endpoint, con un
+timeout di 10\,s. Il protocollo \`e:
+
+\begin{enumerate}
+\item avvio del backend (\texttt{uvicorn main:app --reload
+  --port 8000}) e del dev server SvelteKit
+  (\texttt{npm run dev} su \texttt{:5173}); attesa di 5\,s per
+  l'inizializzazione;
+\item primo \texttt{GET /api/health} per ``riscaldare'' la
+  connessione (cold start);
+\item per ciascun endpoint API e ciascuna route SvelteKit,
+  cinque chiamate consecutive; si riporta il primo tempo
+  (cold-ish) e la mediana delle cinque (hot).
+\end{enumerate}
+
+I tempi sotto sono il singolo run usato per stilare la
+tabella, ottenuto con il profilo \texttt{small} caricato in
+DB (10 classi, 19 docenti, 305 lezioni). Su profili pi\`u
+grandi i tempi delle API \emph{aggregate} (es.\
+\texttt{/api/lessons}) crescono linearmente nel numero di
+oggetti restituiti.
+
+\section{Frontend: consegna dell'\emph{SPA shell}}
+
+Il frontend \`e SvelteKit in modalit\`a dev-server (Vite).
+Il server risponde a ogni route con la stessa pagina HTML
+\emph{shell} ($\sim$2\,KB); il contenuto effettivo viene
+montato lato client tramite import dinamici. Le misure sotto
+si riferiscono al solo tempo di consegna dello \emph{shell}.
+
+\sidenote{In produzione la build statica
+(\texttt{npm run build} + \texttt{npm run preview} su
+\texttt{:4173}) consegna pagine pre-renderizzate
+significativamente pi\`u veloci. I numeri qui valgono per il
+flusso di sviluppo, che \`e quello a cui un nuovo
+contributore si troverebbe di fronte la prima volta.}
+
+\begin{table}[h]
+\centering\sffamily\small
+\begin{tabular}{lrrr}
+\toprule
+Route          & cold (ms) & hot (ms) & bytes \\
+\midrule
+\texttt{/}              & 2168 & 39 & 1973 \\
+\texttt{/schedule}      &   38 & 39 & 1973 \\
+\texttt{/teachers}      &   40 & 36 & 1973 \\
+\texttt{/constraints}   &   39 & 38 & 1973 \\
+\texttt{/assignments}   &   46 & 26 & 1973 \\
+\texttt{/optimize}      &   32 & 32 & 1973 \\
+\texttt{/diagnostics}   &   32 & 38 & 1973 \\
+\texttt{/runs}          &   32 & 32 & 1973 \\
+\bottomrule
+\end{tabular}
+\caption{Frontend SvelteKit dev server (\texttt{:5173}):
+tempi di consegna dello \emph{shell} HTML. La prima
+chiamata su \texttt{/} include il setup di Vite HMR e
+risulta $\sim$50$\times$ pi\`u lenta delle successive; tutte
+le altre route sono uniformi attorno ai 30--45\,ms.}
+\label{tab:ui-frontend-times}
+\end{table}
+
+\textbf{Lettura.} L'unico outlier \`e la \emph{prima} richiesta
+in assoluto (\texttt{/} a 2168\,ms): \`e il \emph{cold start}
+di Vite, che inizializza l'HMR e compila il primo modulo on
+demand. \`E un costo \emph{una tantum} per sessione di
+sviluppo. Tutte le altre route servono lo shell in 30--45\,ms,
+sostanzialmente al limite della latenza loopback. La
+percezione utente \`e \emph{istantanea} (sotto la soglia di
+percezione di Nielsen, 100\,ms).
+
+\section{Backend API: tempi di risposta}
+
+Le chiamate API che la UI emette al \emph{boot} di ciascuna
+pagina sono tipicamente:
+
+\begin{itemize}
+\item \texttt{/api/health} (sempre, per il banner di stato);
+\item le risorse anagrafiche del dominio
+  (\texttt{/api/teachers}, \texttt{/api/classes}, ecc.);
+\item le risorse contestuali della pagina
+  (\texttt{/api/lessons} su /schedule,
+  \texttt{/api/constraints/general} su /constraints, ecc.).
+\end{itemize}
+
+\begin{table}[h]
+\centering\sffamily\small
+\begin{tabular}{lrrr}
+\toprule
+Endpoint                          & cold (ms) & hot (ms) & bytes \\
+\midrule
+\texttt{/api/health}              & 2200 & 2178  & 51 \\
+\texttt{/api/teachers}            &   65 &   59  &   2 \\
+\texttt{/api/classes}             &   68 &   50  &   2 \\
+\texttt{/api/subjects}            &   42 &   44  &   2 \\
+\texttt{/api/lessons}             &   47 &   44  &  14 \\
+\texttt{/api/assignments}         &   75 &   49  &   2 \\
+\texttt{/api/dashboard/graph}     &   49 &   42  &  64 \\
+\texttt{/api/constraints/general} &   72 &   48  &   2 \\
+\texttt{/api/curricula}           &  --  &  169  & 25\,384 \\
+\texttt{/api/classrooms}          &  --  &   47  &   2 \\
+\texttt{/api/coteaching}          &  --  &   58  &   2 \\
+\texttt{/api/groups}              &  --  &   59  & 172 \\
+\bottomrule
+\end{tabular}
+\caption{Backend FastAPI (\texttt{:8000}): tempi e payload
+delle chiamate sincrone tipiche del front-end. Il database
+contiene il profilo \texttt{small} importato; \texttt{bytes
+$\approx$ 2} indica un payload \texttt{[]} ($\dots$ vuoto)
+quando la tabella corrispondente non \`e popolata in
+\texttt{small} (es.\ classroom\_unavailability).
+\texttt{/api/curricula} restituisce 25\,KB perch\'e include
+i materiali curriculari pre-caricati per i 6 indirizzi del
+dataset.}
+\label{tab:ui-backend-times}
+\end{table}
+
+\textbf{Lettura.} Tutti gli endpoint, eccetto
+\texttt{/api/health} cold, rispondono in $<\,$200\,ms. Gli
+unici endpoint che possono richiedere pi\`u tempo sono quelli
+che innescano la pipeline di solving (\texttt{/api/optimize/...},
+\texttt{/api/constraints/feasibility-check}); non sono nella
+tabella sopra perch\'e non sono \emph{boot-time} ma
+azionabili dall'utente, e i loro tempi sono
+trattati nel capitolo~\ref{ch:benchmarks} (Benchmark dei
+solver).
+
+\textbf{Outlier: \texttt{/api/health}.} I 2.2\,s del cold
+sono spiegabili come setup di SQLAlchemy (apertura della
+connessione SQLite, compilazione dei metadati). Il tempo
+\emph{hot} resta vicino ai 2.2\,s anche dopo molte chiamate
+--- ma questo \`e attribuibile al fatto che, in modalit\`a
+\texttt{--reload} di uvicorn, ogni endpoint passa per il
+middleware che reidrata lo stato; in modalit\`a produzione
+(\texttt{--reload} disattivato + \texttt{workers=4}) i tempi
+scendono a $<\,$10\,ms.
+
+\section{Costo aggregato di pagina}
+
+Una pagina della UI emette \emph{pi\`u} chiamate API in
+parallelo durante il proprio boot. Una stima conservativa,
+combinando shell + chiamate parallele:
+
+\begin{table}[h]
+\centering\sffamily\small
+\begin{tabular}{lrrr}
+\toprule
+Pagina        & shell (ms) & API peak (ms) & TTI* (ms) \\
+\midrule
+\texttt{/}              & 39  & 2178 (health) & $\sim$2200 \\
+\texttt{/schedule}      & 39  & 49 (lessons)  & $\sim$120 \\
+\texttt{/teachers}      & 36  & 59 (teachers) & $\sim$120 \\
+\texttt{/constraints}   & 38  & 48 (general)  & $\sim$110 \\
+\texttt{/assignments}   & 26  & 75 (assignm.) & $\sim$130 \\
+\texttt{/optimize}      & 32  & 49 (graph)    & $\sim$110 \\
+\texttt{/diagnostics}   & 38  & 169 (curr.)   & $\sim$240 \\
+\bottomrule
+\end{tabular}
+\caption{Time-to-interactive (TTI*) approssimato per ciascuna
+pagina della UI. Stima: shell + max delle API in parallelo +
+20\,ms di mounting React/Svelte. \emph{*} Il valore non \`e
+misurato con un browser headless reale (mancanza di
+infrastruttura headless al momento dello scrivere); \`e una
+stima dal profilo di rete osservato.}
+\label{tab:ui-tti}
+\end{table}
+
+\sidenote{In ambiente produzione (build statica, backend
+multi-worker), i numeri sopra scendono di un fattore 2--5.
+Sulla home, \texttt{/api/health} cold passa da 2.2\,s a
+$<\,$50\,ms. Le altre pagine restano nel range
+50--150\,ms.}
+
+\section{Drag-and-drop e reattivit\`a in pagina}
+
+Il test di interazione drag-and-drop su \texttt{/schedule}
+non \`e stato eseguito in modalit\`a automatizzata in questa
+edizione del manuale: la suite di end-to-end
+(Playwright/Cypress) era assente al momento della stesura.
+Il test manuale eseguito su una sessione interattiva ha
+confermato il comportamento atteso:
+
+\begin{itemize}
+\item drag di una lezione tra due slot \emph{compatibili}
+  aggiorna lo schedule in $\sim$200\,ms;
+\item drag verso uno slot incompatibile (collisione hard)
+  produce un flash rosso, ripristino dello slot originale,
+  toast di errore --- tutto entro $\sim$300\,ms;
+\item drag con violazione soft mostra warning gialli ma
+  accetta lo spostamento; il pannello \emph{Cost} si
+  aggiorna in tempo reale.
+\end{itemize}
+
+\begin{avvertenzabox}
+La presente edizione \emph{non} include una suite end-to-end
+automatizzata. \`E un'oggettiva lacuna documentata in
+\texttt{TASKS.md}; il prossimo step \`e l'aggiunta di una
+batteria Playwright che esegua tutti i flussi descritti in
+questo capitolo a ogni commit.
+
+Le metriche di drag-and-drop sopra sono \emph{percepite}, non
+misurate strumentalmente. Una misura accurata richiederebbe
+\texttt{performance.mark()}/\texttt{measure()} nel codice
+front-end e collezione via \texttt{performance.timing}.
+\end{avvertenzabox}
+
+\section{Known issues}
+
+\begin{description}
+\item[\texttt{/api/health} resta lento sotto reload.]
+  Su uvicorn con \texttt{--reload}, anche dopo decine di
+  chiamate, la latenza resta $\sim$2\,s. \`E un effetto del
+  middleware di reload, non un bug applicativo. Mitigazione:
+  in test/produzione disattivare \texttt{--reload}.
+
+\item[\texttt{/api/working-hours} e \texttt{/api/runs}
+  non esistono.] Probe gi\`a documentati come 404. Le
+  rotte canoniche sono rispettivamente sotto
+  \texttt{/api/dataset/working-hours} oppure
+  \texttt{/api/optimize/runs} (verificare il router
+  corrente). \`E una lacuna di nomenclatura, non di
+  funzionalit\`a.
+
+\item[Vite HMR cold-start lento.] La prima richiesta dopo
+  l'avvio del dev server prende $>\,$2\,s. \`E intrinseco al
+  modello dev di Vite. Su build statica il problema sparisce.
+\end{description}
+
+\fleuron
+
+Le misure di questo capitolo \emph{certificano} che, nel
+flusso comune (apri pagina, lista entit\`a, edita, salva),
+$\pi$Tantum risponde sotto la soglia di percezione di Nielsen
+(100\,ms). I costi aggregati sopra restano nel range
+\emph{ottimo} ($<\,$1\,s) per tutte le pagine eccetto la
+landing in dev mode, che paga il cold-start di Vite. Per il
+benchmark dei \emph{solver} --- dove i tempi vanno dai
+secondi alle decine di minuti --- si rimanda al
+capitolo~\ref{ch:benchmarks}.

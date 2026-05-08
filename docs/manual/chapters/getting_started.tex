@@ -1,0 +1,344 @@
+\chapter{Per iniziare}
+\label{ch:getting_started}
+\index{Getting started}\index{Primo orario}\index{Setup ambiente}
+
+\epigraph{``Il viaggio di mille miglia comincia con un singolo
+passo.''}{\textsc{Lao Tzu}, \emph{Tao Te Ching}, LXIV}
+
+\lettrine[lines=3]{Q}{uesto} capitolo \`e un percorso guidato che
+porta un nuovo lettore --- a scelta sviluppatore o operatore di
+segreteria didattica --- da una macchina vergine al primo orario
+generato e visualizzato a schermo. Le istruzioni sono pensate per
+essere copia-incollabili: in caso di errore, il riquadro
+\emph{Errori comuni} a fondo capitolo \`e il primo posto da
+guardare.
+
+\section{Cosa otteniamo}
+
+A fine capitolo avrai:
+\begin{itemize}
+\item un'installazione locale funzionante di $\pi$Tantum (backend
+  FastAPI + frontend SvelteKit);
+\item un profilo di test importato (\texttt{small}: 8 classi,
+  19 docenti, 6 indirizzi);
+\item un orario settimanale generato dalla pipeline CP-SAT
+  ``Phase A + Phase B per giorno'' visibile nella vista
+  \emph{Schedule};
+\item un primo vincolo personalizzato (in linguaggio DSL) creato
+  dall'interfaccia tab Vincoli e ri-applicato a una nuova
+  generazione.
+\end{itemize}
+
+\sidenote{Tempo stimato per chi parte da zero su Windows 11:
+30--40 minuti, di cui 10 di download dei pacchetti, 10 di prima
+generazione CP-SAT, 10 di esplorazione UI.}
+
+\section{Prerequisiti}
+
+Servono tre cose installate e in \texttt{\$PATH}:
+
+\begin{itemize}
+\item \textbf{Python 3.11 o successivi.} Verifica con
+  \texttt{python --version}. Su Windows il binario fornito da
+  \emph{Microsoft Store} (\texttt{PythonSoftwareFoundation.Python.3.13})
+  funziona. Su macOS conviene installare con
+  \texttt{brew install python@3.13}; su Linux il pacchetto della
+  distribuzione \`e di solito sufficiente.
+\item \textbf{Node.js 20 o superiore.} Verifica con
+  \texttt{node --version}. Serve per il dev-server SvelteKit
+  della UI. Le istruzioni esatte di installazione sono nel
+  capitolo~\ref{ch:installazione} (Installazione).
+\item \textbf{Git} per clonare il repository e poter incrementare
+  il manuale o il codice senza copiare file a mano.
+\end{itemize}
+
+\section{Clonazione e dipendenze}
+
+\sidenote{Tutte le istruzioni assumono una shell aperta nella
+directory padre dove si vuole materializzare il repo. Le path
+nei comandi usano slash forward (\texttt{/}) per compatibilit\`a
+ma su Windows funzionano ugualmente.}
+
+\begin{lstlisting}[style=shell]
+git clone https://github.com/gborghi/timetable.git
+cd timetable
+
+# (opzionale, raccomandato) ambiente virtuale dedicato
+python -m venv .venv
+# attivazione: PowerShell
+.\.venv\Scripts\Activate.ps1
+# attivazione: bash/zsh
+source .venv/bin/activate
+
+# dipendenze backend Python
+pip install -r webui/backend/requirements.txt
+
+# dipendenze frontend Node
+cd webui/frontend && npm install && cd ../..
+\end{lstlisting}
+
+L'installazione del backend tira dentro \texttt{ortools},
+\texttt{fastapi}, \texttt{sqlalchemy}, \texttt{numpy}, \texttt{scipy}
+e una manciata di altri pacchetti. Sulla prima esecuzione
+\texttt{pip} pu\`o scaricare $\sim$200 MB di binari: \`e normale.
+
+\begin{erroricomunibox}
+\textbf{``ortools wheel non trovata''}. Su Python 3.13
+\texttt{ortools} 9.15 \`e disponibile per Windows, macOS e
+Linux x86\_64. Se la macchina \`e ARM (Apple Silicon, Linux
+ARM64) potrebbe servire una build precompilata pi\`u recente
+o l'installazione da sorgente. La via pi\`u breve \`e
+\texttt{pip install --upgrade ortools}.
+
+\textbf{``Permission denied'' o virtualenv mal montato}.
+Su Windows verifica di aver lanciato la PowerShell come
+utente normale (non amministratore) e di non aver impostato
+\texttt{ExecutionPolicy} restrittiva: il comando
+\texttt{Get-ExecutionPolicy} deve restituire almeno
+\texttt{RemoteSigned}.
+\end{erroricomunibox}
+
+\section{Avvio dei due processi}
+
+$\pi$Tantum gira come due processi collaborativi:
+
+\begin{itemize}
+\item il \textbf{backend} FastAPI che serve l'API REST e la logica
+  CP-SAT;
+\item il \textbf{frontend} SvelteKit che presenta l'interfaccia
+  utente in browser.
+\end{itemize}
+
+In due tab di terminale separate (o in due pannelli di tmux):
+
+\begin{lstlisting}[style=shell]
+# Tab 1 (backend)
+cd webui/backend
+uvicorn main:app --reload --port 8000
+
+# Tab 2 (frontend)
+cd webui/frontend
+npm run dev
+\end{lstlisting}
+
+Il backend stampa il messaggio
+\texttt{INFO: Uvicorn running on http://0.0.0.0:8000}; il
+frontend a sua volta annuncia
+\texttt{ready in $\sim$300ms} con l'URL locale.
+
+\sidenote{In alternativa, gli script
+\texttt{webui/start.sh} (Linux/macOS),
+\texttt{webui/start.bat} (Windows cmd) e
+\texttt{webui/start.ps1} (PowerShell) avviano entrambi i
+processi in un colpo solo. La sezione \emph{Provalo subito}
+qui sotto assume questa modalit\`a.}
+
+\begin{esempiobox}[title=Provalo subito]
+\begin{lstlisting}[style=shell]
+cd webui
+./start.ps1   # Windows PowerShell
+# oppure
+./start.sh    # Linux / macOS / Git Bash
+\end{lstlisting}
+Se tutto va, dopo $\sim$10 secondi il browser di default
+si apre su \texttt{http://localhost:5173}\,. La schermata
+mostra il dashboard $\pi$Tantum con la barra di navigazione
+in alto e il pannello \emph{Profili} centrale.
+\end{esempiobox}
+
+\section{Importare il profilo \texttt{small}}
+
+I sei profili di test (\texttt{small}, \texttt{medium},
+\texttt{big}, \texttt{huge}, \texttt{superhuge}, \texttt{mega})
+sono pre-confezionati come pickle in
+\texttt{engine/scripts/data/<size>/}. L'import li copia
+nel database SQLite in uso, ricreando docenti, classi, materie,
+assegnamenti e (se richiesto) le lezioni della soluzione
+gi\`a calcolata.
+
+Dal dashboard:
+
+\begin{enumerate}
+\item Clicca \emph{Importa profilo}.
+\item Seleziona \texttt{small} dal men\`u a tendina.
+\item Lascia attivo \emph{Importa lezioni dalla soluzione
+  pre-calcolata} se vuoi vedere subito un orario senza
+  rilanciare il solver. Disattivalo se vuoi partire da capo.
+\item Clicca \emph{Esegui import}.
+\end{enumerate}
+
+\begin{avvertenzabox}
+L'import \emph{azzera} il database corrente. Eventuali dati
+inseriti manualmente vengono persi: salva un dump prima se ti
+servono. Il file SQLite \`e
+\texttt{webui/backend/timetable.db}.
+
+I pickle di test contengono \emph{solo l'anagrafica}:
+docenti, classi, indirizzi, assegnamenti e (eventualmente) le
+lezioni gi\`a calcolate. \emph{Non} contengono vincoli
+personalizzati. Dopo l'import, le tabelle dei vincoli
+(indisponibilit\`a, compresenze, vincoli DSL custom) saranno
+\textbf{vuote}. Se vuoi riprodurre uno scenario realistico
+con vincoli a strati, devi aggiungerli a mano dalle tab
+\emph{Docenti} (per le indisponibilit\`a) e \emph{Vincoli}
+(per i vincoli logici e DSL).
+\end{avvertenzabox}
+
+\begin{biblioparvabox}
+\sffamily
+Sotto il cofano, l'endpoint
+\texttt{POST /api/dataset/import-profile} chiama
+\texttt{optimization.import\_engine\_profile()} che a sua volta
+delega a tre helper in \texttt{engine\_io.py}:
+\texttt{import\_school\_into\_db()} (anagrafica e classi),
+\texttt{import\_profs\_into\_db()} (assegnamenti) e ---
+opzionalmente ---
+\texttt{import\_solution\_into\_db()} (lezioni da
+\texttt{solution\_<profile>\_optimized.pkl}).
+\end{biblioparvabox}
+
+\section{Visualizzare l'orario}
+
+Vai sulla tab \emph{Schedule} (\texttt{/schedule}). Se hai
+importato la soluzione pre-calcolata vedi una griglia
+$36\text{ slot} = 6\text{ giorni} \times 6\text{ ore}$, con
+una riga per classe, e in ogni cella la lezione: materia, docente,
+eventuale aula. La codifica colore (oro/avorio/indaco) segue il
+gusto vintage del frontend.
+
+I tre comandi essenziali:
+
+\begin{itemize}
+\item \textbf{Filtri rapidi} (top): selezione classe, docente,
+  materia. Quando filtri per docente vedi solo gli slot di quel
+  docente; \`e la vista comoda per chi prepara la sostituzione di
+  un giorno.
+\item \textbf{Drag-and-drop}: trascina una lezione da uno slot
+  all'altro. Se lo spostamento crea una violazione hard l'UI
+  lampeggia in rosso e annulla; se la soluzione resta valida
+  lo slot \`e aggiornato istantaneamente, e il pannello
+  \emph{Cost} in alto si aggiorna.
+\item \textbf{Esporta XLSX} (in basso a destra): genera un file
+  Excel impaginato secondo il modulo classico orario delle scuole
+  italiane. Comodo per stampare o condividere via email.
+\end{itemize}
+
+\section{Lanciare la pipeline da zero}
+
+Ora rifacciamo il giro generando l'orario senza appoggiarsi alla
+soluzione pre-calcolata.
+
+\begin{enumerate}
+\item Reimporta \texttt{small} con \emph{Importa lezioni}
+  disattivato. Il database si svuota delle lezioni; le tabelle
+  Docente, Classe, Materia, Assignment restano popolate.
+\item Vai su \emph{Optimize} (\texttt{/optimize}).
+\item Scegli la pipeline \emph{Phase A + Phase B (giornaliero)}.
+  Tieni i parametri di default: \texttt{time\_a=30s},
+  \texttt{time\_b=12s}, workers $= 2$.
+\item Clicca \emph{Avvia}. L'evento di progresso compare in basso
+  a destra: prima il banner \emph{Phase A in corso\ldots}
+  (durante la distribuzione settimanale dei conteggi giornalieri),
+  poi sei banner \emph{Phase B [day]} che girano uno dopo l'altro.
+\item Al termine il banner verde \emph{Pipeline completata}
+  porta automaticamente alla tab Schedule con il nuovo orario
+  visualizzato.
+\end{enumerate}
+
+\sidenote{La distinzione tra \emph{Phase A} e \emph{Phase B}
+\`e tipica di $\pi$Tantum: la prima distribuisce, per ogni
+cattedra, il numero di ore tra i sei giorni della settimana
+(senza fissare ancora le ore esatte); la seconda, dato il
+conteggio per giorno, decide quale slot orario assegnare a
+ciascuna lezione. \`E la stessa idea della decomposizione
+\emph{schedule = day-distribution + day-assignment} usata
+storicamente nei timetabling competition.}
+
+Per profili pi\`u grandi (\texttt{huge}, \texttt{mega}) la
+pipeline naturale \`e la \emph{decomposizione spettrale} o la
+\emph{branch-and-price} con granularit\`a docente; il
+capitolo~\ref{ch:benchmarks} offre la matrice completa dei tempi
+e il capitolo~\ref{ch:tecniche_di_ottimizzazione_avanzate}
+spiega quando ha senso ciascuna combinazione.
+
+\section{Aggiungere un vincolo dalla UI}
+
+Per chiudere il giro inseriamo un vincolo personalizzato e lo
+applichiamo. Apri la tab \emph{Vincoli} (\texttt{/constraints}) e
+clicca \emph{+ Nuovo vincolo DSL}.
+
+Esempio (incollabile letterale):
+
+\begin{lstlisting}
+forall l in lessons where l.subject == Matematica:
+    l.day != 6
+\end{lstlisting}
+
+Tradotto in italiano: ``per ogni lezione di matematica, il giorno
+non sia il sabato''. Premi \emph{Valida} e poi \emph{Salva}.
+Il vincolo entra come \texttt{level=hard} nella tabella
+\texttt{general\_constraints}.
+
+Torna su Optimize e rilancia la pipeline. Stavolta la Phase A
+si accorge del vincolo via DSL hard e ridistribuisce le ore di
+matematica nei primi cinque giorni. Se il vincolo \`e
+infattibile (per esempio: gi\`a tutti i sabati erano l'unico
+spazio disponibile per matematica) il sistema lo segnala e
+suggerisce di abbassarlo a \texttt{soft}.
+
+\begin{esempiobox}[title=Provalo subito]
+\begin{lstlisting}[style=shell]
+# stesso vincolo, lanciato via API:
+curl -X POST http://localhost:8000/api/constraints/general \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "name": "no_math_saturday",
+    "expression": "forall l in lessons where l.subject == Matematica: l.day != 6",
+    "level": "hard"
+  }'
+\end{lstlisting}
+La risposta JSON contiene \texttt{id} del vincolo creato e
+\texttt{parsed\_ast\_json} con l'AST validato. Per cancellarlo:
+\texttt{DELETE /api/constraints/general/<id>}.
+\end{esempiobox}
+
+\section{Diagnostica e prossimi passi}
+
+A questo punto puoi:
+
+\begin{itemize}
+\item esplorare la tab \emph{Diagnostica}
+  (\texttt{/diagnostics}) che mostra distribuzioni di carico
+  giornaliero per classe e per docente, sesto-ore, buchi,
+  e l'andamento di obiettivo della Phase A;
+\item leggere il capitolo~\ref{ch:dsl_generico_per_i_vincoli}
+  (DSL: tutorial passo-passo) per scrivere vincoli pi\`u
+  sofisticati;
+\item dare un'occhiata al capitolo~\ref{ch:benchmarks} per
+  capire quale tecnica scegliere se la tua scuola somiglia a
+  uno dei profili \texttt{huge} o \texttt{mega};
+\item se vuoi capire come $\pi$Tantum decide internamente,
+  apri il capitolo~\ref{ch:metodo_cpsat} (CP-SAT) e quello
+  sulla decomposizione spettrale.
+\end{itemize}
+
+\fleuron
+
+\begin{erroricomunibox}
+\textbf{``Backend non raggiungibile''}. Il dashboard prova a
+contattare \texttt{http://localhost:8000/api/health}; se non
+risponde, il banner rosso lo segnala. Verifica che il
+processo \texttt{uvicorn} sia ancora in esecuzione e che la
+porta 8000 non sia occupata da un altro servizio.
+
+\textbf{``Pipeline blocca su Phase A''}. Su \texttt{small}
+Phase A termina in 3--5 secondi; oltre 30 secondi sospetta
+che il database sia stato importato male (Assignment senza
+ore). Reimporta il profilo e riprova.
+
+\textbf{``DSL: parser error''}. Le keyword sono
+\emph{case-sensitive}: \texttt{forall}, \texttt{where},
+\texttt{in}, \texttt{exists}, \texttt{count} vanno minuscole.
+Gli identificatori (Borghi, Matematica, ecc.) sono valori
+letterali, senza virgolette.
+\end{erroricomunibox}
