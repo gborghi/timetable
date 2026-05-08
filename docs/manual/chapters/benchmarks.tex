@@ -696,3 +696,140 @@ cat engine/scripts/data/profiles_manifest.json
   buona.
 \end{itemize}
 \end{ideabox}
+
+\section{Bench v2: dataset \texttt{pickle} vs.\ \texttt{sqlite}}
+\label{sec:bench-v2}
+\index{Benchmark!v2}\index{Benchmark!pickle}\index{Benchmark!sqlite}
+
+\sidenote{Il \emph{cuore metodologico} del bench v2 \`e la
+distinzione fra carico vincolare nullo e carico realistico.
+Misurare ``cpsat\_day su small'' non significa nulla finch\'e
+non si specifica \emph{quanti} vincoli stratificati c'erano
+sopra il modello.}
+
+Il \emph{full sweep} della sezione precedente nasce in epoca
+pickle: i profili venivano caricati da
+\texttt{engine/scripts/data/<size>/\{school,profs\}\_<size>.pkl},
+che contenevano solo l'anagrafica (docenti, classi, materie,
+assegnamenti). Il database live restava con le 14 tabelle di
+vincolo \emph{vuote}, quindi il bench misurava \emph{scheduling
+puro}: solo i vincoli strutturali del modello (una lezione per
+slot, somma ore per cattedra rispettata, niente collisioni
+implicite).
+
+Con la migrazione a profili SQLite (cap.~\ref{ch:architettura_dati_profili})
+il bench acquista un secondo dataset, \texttt{sqlite}, in cui
+ciascun profilo arriva pre-caricato di:
+
+\begin{itemize}
+\item indisponibilit\`a docenti (HARD per il 10--20\% e SOFT per
+  il 30\%);
+\item giorni liberi obbligatori (HARD) per il 10\% dei docenti;
+\item compresenze, sostegni, potenziamenti (per ogni profilo
+  2--5 di tipi diversi);
+\item plessi (2--4) con regole di pendolarismo (HARD su primo e
+  ultimo slot, SOFT con penalit\`a su ogni cambio plesso
+  intra-giornata);
+\item \texttt{PlessoEntityPolicy} che vincolano docenti e
+  classi a un plesso specifico;
+\item \texttt{TeacherClassPreferences} a 5 stati (forbidden,
+  soft, allowed, preferred, enforced);
+\item un'aula palestra obbligatoria per Educazione Fisica
+  (HARD);
+\item 5 \texttt{GeneralConstraint} DSL (regole tipo ``Rossi
+  niente luned\`i mattina'', ``classe X non in 6\textsuperscript{a}
+  ora il mercoled\`i'', \dots);
+\item il pragma \texttt{classroom\_capacity\_ok()} per il
+  vincolo HARD \texttt{Classroom.capacity $\ge$ Class.n\_students}
+  (cap.~\ref{ch:architettura_dati_profili}).
+\end{itemize}
+
+Il bench v2, sorgente \texttt{tests/benchmarks/run\_full\_sweep.py}
+con flag \texttt{--source sqlite} (default), aggiunge una
+colonna \texttt{dataset} al CSV con valore \texttt{sqlite} o
+\texttt{pickle}, e fa precedere ogni profilo da un
+\emph{feasibility precheck}:
+
+\begin{lstlisting}[style=py,basicstyle=\ttfamily\small]
+ms = MonolithicSolver(profs, dc_value=None, config=cfg, scope=None)
+sol, status = ms.solve(time_limit_s=120, workers=2)
+if sol is None:
+    # Profilo SQLite infeasible nel budget di 120s.
+    # Rilascia un constraint stringente in build_profile_db.py
+    # e rigenera <profilo>.sqlite.
+\end{lstlisting}
+
+Il precheck \`e una \emph{valvola di sicurezza}: se neanche il
+solver monolitico (full power, 120\,s, scope=None) trova una
+soluzione hard-feasibile, il bench non perde tempo a girare le
+25 tecniche; logga \texttt{status=precheck infeasible} e passa
+al profilo successivo. L'utente vede l'allarme nel CSV e sa
+che deve allentare \emph{un} constraint nel
+\texttt{build\_profile\_db.py} e rigenerare quel singolo
+profilo.
+
+\subsection{Lettura del delta}
+
+\input{manual/benchmarks/charts_generated}
+
+La tabella \emph{Delta costo pickle vs.\ sqlite} (auto-generata
+sopra) confronta, per ogni cella in cui entrambe le datasource
+hanno prodotto una soluzione OK, il costo soft delle due
+configurazioni. Il delta \`e la metrica chiave:
+
+\begin{itemize}
+\item \textbf{$\Delta < 0$}: lo SQLite ha trovato un costo
+  \emph{minore} del pickle (raro). Significa che la
+  stratificazione di vincoli ha prodotto un effetto di
+  \emph{focalizzazione}: il solver, con vincoli pi\`u stretti,
+  esplora una regione di soluzioni di qualit\`a superiore
+  rispetto al ``brodo'' senza vincoli.
+\item \textbf{$\Delta \in [0, +30\%]$}: range tipico. Il costo
+  cresce per via dei vincoli soft violati o delle penalit\`a di
+  pendolarismo, ma resta dello stesso ordine di grandezza.
+\item \textbf{$\Delta > +30\%$}: stratificazione importante.
+  La pipeline ha pagato un costo significativo per soddisfare
+  vincoli aggiuntivi. \`E il caso del SQLite con compresenze
+  obbligatorie e plessi multipli.
+\item \textbf{infeasible}: il SQLite non era satisfiable sotto
+  i vincoli configurati. Il precheck l'ha intercettato e nel
+  CSV trovi una riga \texttt{status=precheck infeasible}.
+\end{itemize}
+
+\begin{esempiobox}[title=Provalo subito]
+\begin{lstlisting}[style=shell]
+# Bench v2 su un solo profilo SQLite (~12 min su small)
+python tests/benchmarks/run_full_sweep.py \\
+  --profiles small --source sqlite --append
+
+# Bench v2 con confronto pickle+sqlite back-to-back
+python tests/benchmarks/run_full_sweep.py \\
+  --profiles small,medium --source both --append
+
+# Solo precheck (skip cell run, utile per validare i 6 DBs)
+python tests/benchmarks/run_full_sweep.py \\
+  --profiles small,medium,big,huge,superhuge,mega \\
+  --source sqlite --techniques cpsat_week
+\end{lstlisting}
+\end{esempiobox}
+
+\subsection{Caveat di interpretazione}
+
+\begin{avvertenzabox}
+Il bench v2 \emph{non} \`e un benchmark scientifico riproducibile
+nel senso stretto: il \texttt{seed=42} fissa l'iniziale ma il
+runtime CP-SAT \`e dipendente dalla macchina (numero di core,
+clock, throttling). I tempi assoluti sotto Windows 11 / i7 /
+8\,worker non sono direttamente confrontabili con un Linux di
+classe server. La metrica robusta \`e il \emph{delta}: una
+tecnica X \`e ``meglio'' di Y se il rapporto $t_X / t_Y$ \`e
+inferiore di un fattore $\ge 1.5$\,$\times$ in tutti i profili
+testati.
+
+Il \texttt{cost} riportato \`e la somma pesata delle violazioni
+soft secondo la metrica \texttt{compute\_soft} di
+\texttt{metaheuristics.py}; se questa metrica cambia tra
+due commit, i costi non sono confrontabili. Il numero di
+\texttt{n\_lessons} resta invece un'invariante strutturale
+ed \`e quello su cui sanity-checkare due run distinti.
+\end{avvertenzabox}
