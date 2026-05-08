@@ -790,6 +790,96 @@ def set_active_solution(db: Session, solution_id: int) -> None:
     db.commit()
 
 
+def synthesize_solution_from_profs(profs: dict[str, Any]) -> dict[tuple, int]:
+    """Greedy round-robin schedule: distribute each cattedra (teacher,
+    class, subject, hours) across the week respecting only teacher and
+    class non-overlap. Output is a solution_dict shaped exactly like
+    what `import_solution_into_db` consumes:
+
+        {(teacher, class, subject, day, hour): 1, ...}
+
+    Used as a fallback when an engine profile (school + profs) is
+    imported but no solver-produced ``solution_*.pkl`` is on disk yet.
+    The placeholder schedule is HARD-feasible w.r.t. teacher/class
+    overlap (ignores room and SOFT objectives), so /schedule renders a
+    full grid the user can then optimise via Phase B.
+    """
+    DAYS, HOURS = list(range(1, 7)), list(range(8, 14))
+    slots = [(d, h) for d in DAYS for h in HOURS]
+    sol: dict[tuple, int] = {}
+    teacher_busy: dict[str, set[tuple[int, int]]] = defaultdict(set)
+    class_busy: dict[str, set[tuple[int, int]]] = defaultdict(set)
+
+    cattedre: list[tuple[int, str, str, str, set[int]]] = []
+    for tname, info in (profs or {}).items():
+        glib = {int(d) for d in (info.get("glibero") or []) if str(d).isdigit() or isinstance(d, int)}
+        for cname, sm in (info.get("classi") or {}).items():
+            for subj, meta in (sm or {}).items():
+                ore = int((meta or {}).get("ore", 0))
+                if ore > 0:
+                    cattedre.append((ore, str(tname), str(cname),
+                                     str(subj), glib))
+    cattedre.sort(reverse=True)
+
+    for ore, tname, cname, subj, glib in cattedre:
+        placed = 0
+        for (d, h) in slots:
+            if placed >= ore:
+                break
+            if d in glib:
+                continue
+            if (d, h) in teacher_busy[tname]:
+                continue
+            if (d, h) in class_busy[cname]:
+                continue
+            sol[(tname, cname, subj, d, h)] = 1
+            teacher_busy[tname].add((d, h))
+            class_busy[cname].add((d, h))
+            placed += 1
+    return sol
+
+
+def ensure_default_working_hours(db: Session, tenant_id: int = 1) -> int:
+    """Defensive: re-seed the canonical lun-sab + 8:00-14:00
+    WorkingDay/WorkingHourSlot configuration if the tenant has none.
+    Returns the number of inserted day rows (0 if already populated).
+
+    init_db() seeds these on a fresh schema; this helper is called
+    from the engine-profile importer in case a previous wipe or a
+    botched migration left the working-hours tables empty -- without
+    them /schedule's grid layout ends up empty even though Lessons
+    exist."""
+    existing = db.query(models.WorkingDay).filter(
+        models.WorkingDay.tenant_id == tenant_id
+    ).count()
+    if existing:
+        return 0
+    defaults = [
+        ("MON", "Lunedi",    0, 1),
+        ("TUE", "Martedi",   1, 2),
+        ("WED", "Mercoledi", 2, 3),
+        ("THU", "Giovedi",   3, 4),
+        ("FRI", "Venerdi",   4, 5),
+        ("SAT", "Sabato",    5, 6),
+    ]
+    for code, label, pos, legacy in defaults:
+        d = models.WorkingDay(
+            tenant_id=tenant_id, code=code, label=label,
+            position=pos, legacy_day_number=legacy, is_active=True,
+        )
+        db.add(d)
+        db.flush()
+        for i in range(6):
+            h = 8 + i
+            db.add(models.WorkingHourSlot(
+                day_id=d.id, slot_index=i,
+                start_time=f"{h:02d}:00", end_time=f"{h+1:02d}:00",
+                label=f"{i+1}ª ora", legacy_hour_number=h,
+            ))
+    db.commit()
+    return len(defaults)
+
+
 def get_active_solution(db: Session) -> models.Solution | None:
     return db.query(models.Solution).filter(
         models.Solution.is_active == True  # noqa: E712
