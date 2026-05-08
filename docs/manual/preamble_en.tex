@@ -130,10 +130,21 @@
 \renewcommand{\epigraphrule}{0.4pt}
 
 \usepackage[hidelinks,bookmarksopen=true,bookmarksdepth=2,
-            colorlinks=false]{hyperref}
+            colorlinks=false,unicode=true,pdfencoding=auto]{hyperref}
+% bookmark extends hyperref to recognise the (dn,label,srcfile,...)
+% keys that lualatex emits via \BKM@entry into manual_en.aux.
+\usepackage{bookmark}
 \usepackage[capitalise]{cleveref}
 \crefname{part}{Part}{Parts}
 \Crefname{part}{Part}{Parts}
+\crefname{chapter}{ch.}{chs.}
+\Crefname{chapter}{Chapter}{Chapters}
+\crefname{section}{sec.}{secs.}
+\Crefname{section}{Section}{Sections}
+\crefname{table}{tab.}{tabs.}
+\Crefname{table}{Table}{Tables}
+\crefname{figure}{fig.}{figs.}
+\Crefname{figure}{Figure}{Figures}
 \usepackage[style=authoryear-comp,backend=biber,sorting=nyt,
             maxbibnames=99,maxcitenames=2,uniquename=false,
             uniquelist=false,giveninits=true]{biblatex}

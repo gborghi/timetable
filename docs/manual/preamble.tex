@@ -141,6 +141,11 @@
 
 \usepackage[hidelinks,bookmarksopen=true,bookmarksdepth=2,
             colorlinks=false,unicode=true,pdfencoding=auto]{hyperref}
+% `bookmark` extends hyperref's bookmark mechanism with the keys
+% (dn, label, srcfile, srcline, ...) that lualatex emits via
+% \BKM@entry into manual.aux. Without it, pass2+ fail with
+% `kvsetkeys: undefined key dn`.
+\usepackage{bookmark}
 \usepackage[capitalise]{cleveref}
 \crefname{part}{Parte}{Parti}
 \Crefname{part}{Parte}{Parti}
