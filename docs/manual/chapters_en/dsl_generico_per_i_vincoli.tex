@@ -442,7 +442,41 @@ forall l in lessons where l.teacher == "Rossi"
         true
 \end{lstlisting}
 
-\subsection{Every case above as SOFT}
+\subsection{Case second language: French in the morning (SOFT)}
+
+Linguistic high-school, FRA-TED curriculum, year~1: the second
+language (French) should preferably fall in the first three
+hours of the morning. SOFT, weight 20:
+
+\begin{lstlisting}
+% level=soft, weight=20
+forall l in lessons
+    where l.subject == "Francese"
+      and l.class.curriculum == "Linguistico-FRA-TED"
+      and l.class.year == 1:
+    l.hour <= 10
+\end{lstlisting}
+
+Each lesson on or after the 4th hour pays 20 of extra cost; the
+solver picks a no-pay assignment when one exists, otherwise
+minimises how many lessons pay.
+
+\subsection{Case Rossi balanced load (SOFT, weight 30)}
+
+A SOFT companion to case~(a): on top of asking for
+non-consecutive days, the head requests a balanced 4+4+4
+distribution over the three occupied days. Per-day overflow
+beyond the fourth hour pays 30:
+
+\begin{lstlisting}
+% level=soft, weight=30
+forall t in teachers where t.name == "Rossi":
+    forall d in days:
+        count l in lessons
+            where l.teacher == t and l.day == d.index: l <= 4
+\end{lstlisting}
+
+\subsection{Every HARD case above as SOFT}
 
 Switch \texttt{level=hard} to \texttt{level=soft} in the modal
 and pick \texttt{weight=$W$}. The solver receives the rule as
@@ -586,82 +620,6 @@ Six tracked steps:
   renders it in the ``DSL constraints'' card of the Statistics
   tab.
 \end{enumerate}
-
-\section{Three narrated cases}
-\label{sec:dsl-three-cases-en}
-
-\subsection{Case Rossi: distribution over three non-consecutive days}
-
-The Rossi teacher requests her 12 weekly hours spread over
-exactly three non-consecutive days, with balanced 4+4+4
-distribution. Three rules:
-
-\begin{lstlisting}
-% (a) Rossi insists on 3 days
-forall t in teachers where t.name == "Rossi":
-    count d in days
-        where exists l in lessons:
-            l.teacher == t and l.day == d.index: d == 3
-
-% (b) those days are not consecutive
-forall l1 in lessons where l1.teacher == "Rossi":
-    forall l2 in lessons where l2.teacher == "Rossi":
-        (l1.day == l2.day)
-        or not consecutive_days(l1.day, l2.day)
-
-% (c) balanced load (SOFT, weight 30)
-% level=soft, weight=30
-forall t in teachers where t.name == "Rossi":
-    forall d in days:
-        count l in lessons
-            where l.teacher == t and l.day == d.index: l <= 4
-\end{lstlisting}
-
-\subsection{Case plesso commuting: school across two buildings}
-
-Two plessi 600\,m apart. RSU rules forbid mid-day transits: no
-teacher may have a lesson in plesso 2 in the hour right after a
-lesson in plesso 1. Classes are pinned to one plesso, so the
-constraint effectively bites teachers.
-
-\begin{lstlisting}
-forall l1 in lessons where l1.classroom.plesso == 1:
-    forall l2 in lessons where l2.classroom.plesso == 2
-                            and l2.teacher == l1.teacher
-                            and consecutive(l1.slot, l2.slot):
-        false
-\end{lstlisting}
-
-\subsection{Case compresenza: maths and support on the same day}
-
-The support-teacher Verdi must be in classroom 2B \emph{the
-same day} as the maths-teacher Bianchi:
-
-\begin{lstlisting}
-forall l in lessons where l.teacher == "Verdi"
-                       and l.class == "2B"
-                       and l.subject == "Sostegno":
-    exists m in lessons where m.teacher == "Bianchi"
-                          and m.class == "2B"
-                          and m.subject == "Matematica"
-                          and same_day(l.slot, m.slot):
-        true
-\end{lstlisting}
-
-\subsection{Case second language: French in the morning (SOFT)}
-
-Linguistic high-school, FRA-TED curriculum, year~1: the second
-language (French) should preferably fall in the first three
-hours. SOFT, weight 20:
-
-\begin{lstlisting}
-% level=soft, weight=20
-forall l in lessons
-    where l.subject == "Francese"
-      and l.class.curriculum == "Linguistico-FRA-TED"
-      and l.class.year == 1:
-    l.hour <= 10
-\end{lstlisting}
 
 \section{DSL architecture diagram}
 \label{sec:dsl-arch-en}
