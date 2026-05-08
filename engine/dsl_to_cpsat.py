@@ -468,6 +468,13 @@ PRAGMA_LEVEL: dict[str, str] = {
     "free_day_choice_3way": "phase_a",
     "subject_day_count_pair": "phase_a",
     "subject_day_count_in": "phase_a",
+    # Free-day pragmas: applicable in BOTH levels so the constraint
+    # is honored regardless of whether Phase A is run, skipped, or
+    # used only as a soft hint (otherwise the bypass techniques
+    # cpsat_week / cpsat_day_skip_phase_a / cpsat_day_soft_hint would
+    # silently drop these rules).
+    "teacher_at_least_n_free_days": "both",
+    "teacher_preferred_free_day_penalty": "both",
 }
 
 
@@ -560,6 +567,11 @@ class DSLConstraintCompiler:
         # multiple pragmas reference it.
         self._cl_day_load_cache: dict = {}
         self._prof_day_load_cache: dict = {}
+        # (teacher, day) -> BoolVar. b == 1 iff teacher has at least
+        # one lesson on that day. Built lazily by
+        # ``_teacher_day_busy_var`` and shared across the free-day
+        # pragmas (HARD floor + SOFT priority).
+        self._teacher_day_busy_cache: dict = {}
         # Optional classroom + plesso resolution carriers. When the
         # caller wants DSL rules that reference ``l.classroom`` /
         # ``l.classroom.plesso`` to be enforced, both must be passed
@@ -955,6 +967,21 @@ class DSLConstraintCompiler:
     #                                            classroom_for_slot +
     #                                            classroom_capacity +
     #                                            class_n_students)
+    #   teacher_at_least_n_free_days(t, n)   -- HARD: teacher has at
+    #                                            least n weekdays with
+    #                                            zero lessons (CCNL
+    #                                            "almeno un giorno
+    #                                            libero" with n=1).
+    #                                            Works in both Phase A
+    #                                            and Phase B.
+    #   teacher_preferred_free_day_penalty(  -- SOFT: pay weight if
+    #     t, day, weight)                       teacher works on day.
+    #                                            Used by the priority-
+    #                                            ordered preferences
+    #                                            (1st/2nd/3rd choice
+    #                                            with weights 30/20/10
+    #                                            by default). Works in
+    #                                            both Phase A and B.
     #
     # Unknown call names fall back to generic static evaluation
     # (boolean leaf): if the name is a known DSL built-in such as
@@ -1146,6 +1173,31 @@ class DSLConstraintCompiler:
             else:
                 weights = [0, 50, 100]
             self._compile_free_day_choice_3way(prof, cands, weights)
+            return True
+        if name == "teacher_at_least_n_free_days":
+            # HARD floor: teacher must have at least n weekdays with
+            # zero lessons. Args: (teacher_name, n).
+            if len(arg_values) != 2:
+                self.diagnostics.append(
+                    "teacher_at_least_n_free_days expects "
+                    "(teacher, n)")
+                return True
+            t = str(arg_values[0])
+            n = int(arg_values[1])
+            self._compile_teacher_at_least_n_free_days(t, n)
+            return True
+        if name == "teacher_preferred_free_day_penalty":
+            # SOFT priority preference: pay weight if teacher works
+            # on the given day. Args: (teacher_name, day, weight).
+            if len(arg_values) != 3:
+                self.diagnostics.append(
+                    "teacher_preferred_free_day_penalty expects "
+                    "(teacher, day, weight)")
+                return True
+            t = str(arg_values[0])
+            d = _normalize_day_value(arg_values[1]) or int(arg_values[1])
+            w = int(arg_values[2])
+            self._compile_teacher_preferred_free_day_penalty(t, d, w)
             return True
         # Unknown call name: leave for the generic path.
         return False
@@ -1746,3 +1798,115 @@ class DSLConstraintCompiler:
             cdl = self._cl_day_load_intvar(cl, d)
             self.model.AddAllowedAssignments(
                 [cdl], [(v,) for v in allowed_clamped])
+
+    # ============================================================
+    # Free-day pragmas (work in BOTH Phase A and Phase B contexts)
+    # ============================================================
+
+    def _teacher_day_busy_var(self, t: str, d: int):
+        """Return a BoolVar that is 1 iff teacher ``t`` has at least
+        one lesson on day ``d``.
+
+        The indicator is built from ``self.slot`` when available
+        (Phase B / monolithic context) and falls back to
+        ``self.day_count`` (Phase A context). Returns ``None`` when
+        neither dimension has any decision variable for
+        ``(t, d)`` -- in that case the teacher is trivially free
+        that day and callers should treat the indicator as the
+        constant 0."""
+        cache_key = (t, int(d))
+        if cache_key in self._teacher_day_busy_cache:
+            return self._teacher_day_busy_cache[cache_key]
+        # Phase B path: OR over (c, s, h) of slot[t, c, s, d, h].
+        slot_vars = []
+        for k in self._by_t.get(t, []):
+            _t, _cl, _s, dd, _h = k
+            if int(dd) == int(d):
+                slot_vars.append(self.slot[k])
+        if slot_vars:
+            b = self.model.NewBoolVar(
+                f"_dsl_busy_{t}_{int(d)}")
+            self.model.Add(sum(slot_vars) >= 1).OnlyEnforceIf(b)
+            self.model.Add(sum(slot_vars) == 0).OnlyEnforceIf(b.Not())
+            self._teacher_day_busy_cache[cache_key] = b
+            return b
+        # Phase A fallback: reified sum of day_count >= 1.
+        dc_vars = [v for (pp, _cl, _s, dd), v in self.day_count.items()
+                   if pp == t and int(dd) == int(d)]
+        if dc_vars:
+            b = self.model.NewBoolVar(
+                f"_dsl_busy_dc_{t}_{int(d)}")
+            self.model.Add(sum(dc_vars) >= 1).OnlyEnforceIf(b)
+            self.model.Add(sum(dc_vars) == 0).OnlyEnforceIf(b.Not())
+            self._teacher_day_busy_cache[cache_key] = b
+            return b
+        self._teacher_day_busy_cache[cache_key] = None
+        return None
+
+    def _teacher_days_in_scope(self, t: str) -> list:
+        """Days the teacher has any decision variable on. Returns
+        a sorted list of distinct day ints. When neither slot nor
+        day_count contains any (t, _, _, d, _) entry, returns an
+        empty list."""
+        days: set[int] = set()
+        for k in self._by_t.get(t, []):
+            _t, _cl, _s, dd, _h = k
+            days.add(int(dd))
+        for (pp, _cl, _s, dd) in self.day_count.keys():
+            if pp == t:
+                days.add(int(dd))
+        return sorted(days)
+
+    def _compile_teacher_at_least_n_free_days(self, t: str, n: int):
+        """HARD: teacher ``t`` must have at least ``n`` weekdays
+        with zero lessons. Encoded as ``sum_d busy_t_d <= D - n``
+        where ``D`` is the number of days in the teacher's scope
+        and ``busy_t_d`` is the per-(teacher, day) busy indicator.
+
+        With ``n=1`` this is the universal CCNL-style "at least one
+        free day" rule. ``n <= 0`` is a no-op. ``n > D`` makes the
+        model infeasible (a diagnostic is emitted before forcing
+        unsat so the cause is greppable in the diagnostics log)."""
+        if int(n) <= 0:
+            return
+        days = self._teacher_days_in_scope(t)
+        if not days:
+            self.diagnostics.append(
+                f"teacher_at_least_n_free_days({t!r}, {n}): "
+                f"teacher absent from slot/day_count -- nothing to "
+                f"constrain")
+            return
+        cap = len(days) - int(n)
+        if cap < 0:
+            self.diagnostics.append(
+                f"teacher_at_least_n_free_days({t!r}, {n}): "
+                f"n exceeds weekdays in scope ({len(days)})")
+            self.model.AddBoolAnd([self.model.NewConstant(0)])
+            return
+        busy_vars = []
+        for d in days:
+            b = self._teacher_day_busy_var(t, d)
+            if b is not None:
+                busy_vars.append(b)
+        if not busy_vars:
+            return
+        self.model.Add(sum(busy_vars) <= cap)
+
+    def _compile_teacher_preferred_free_day_penalty(
+            self, t: str, d: int, w: int):
+        """SOFT: contribute ``w * busy_t_d`` to the soft objective
+        so the solver pays ``w`` whenever teacher ``t`` works on
+        day ``d``. The owning model picks up
+        ``self.soft_cost_terms`` when assembling its objective.
+
+        Used by the priority-ordered free-day preferences (1st/2nd/
+        3rd choice with weights 30/20/10 by default). With three
+        decreasing weights on three distinct days, the solver tends
+        to honor the highest-weight (priority 1) day because
+        violating it costs the most."""
+        if int(w) == 0:
+            return
+        b = self._teacher_day_busy_var(t, int(d))
+        if b is None:
+            return
+        self.soft_cost_terms.append((int(w), b))
