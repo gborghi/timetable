@@ -50,11 +50,15 @@
   // succeeds (see save()).
   let editingClassPrefs = [];   // [{key, state, soft_penalty}]
   let editingCurrPrefs = [];
+  // 3-priority free-day preferences; mirrored as a 3-slot array
+  // (priority 1..3 -> index 0..2; day=0 means "nessuno").
+  let editingFreeDayPriorities = [0, 0, 0];
 
   async function loadPhaseAPrefs(teacher_id) {
     if (!teacher_id) {
       editingClassPrefs = [];
       editingCurrPrefs = [];
+      editingFreeDayPriorities = [0, 0, 0];
       return;
     }
     try {
@@ -69,6 +73,16 @@
         key: p.curriculum_code, state: p.state, soft_penalty: p.soft_penalty
       }));
     } catch { editingCurrPrefs = []; }
+    try {
+      const fdp = await api.get(
+        `/api/teachers/${teacher_id}/free-day-preferences`);
+      const slots = [0, 0, 0];
+      for (const r of (fdp || [])) {
+        const pr = Number(r.priority);
+        if (pr >= 1 && pr <= 3) slots[pr - 1] = Number(r.day);
+      }
+      editingFreeDayPriorities = slots;
+    } catch { editingFreeDayPriorities = [0, 0, 0]; }
   }
 
   async function savePhaseAPrefs(teacher_id) {
@@ -84,6 +98,14 @@
           curriculum_code: p.key, state: p.state, soft_penalty: p.soft_penalty
         }))
       );
+      const prefs = [];
+      for (let i = 0; i < 3; i++) {
+        const d = Number(editingFreeDayPriorities[i] || 0);
+        if (d >= 1 && d <= 6) prefs.push({ day: d, priority: i + 1 });
+      }
+      await api.patch(
+        `/api/teachers/${teacher_id}/free-day-preferences`,
+        { preferences: prefs });
     } catch (e) {
       flash('Errore salvando preferenze Phase A: ' + e.message, 'error');
     }
@@ -583,6 +605,50 @@
           mai (teorico).
         </div>
       </div>
+    </div>
+
+    <!-- Giorni liberi: 3 priorita' SOFT (peso 30/20/10) -->
+    <div class="mt-4 card !shadow-none p-3 bg-ink-50/40 space-y-3"
+         data-test="free-day-priorities">
+      <div class="text-sm font-semibold">
+        Giorni liberi (priorita' 1-3)
+      </div>
+      <p class="text-xs text-ink-500">
+        Tre preferenze ordinate. La 1a scelta paga 30 di penalty se
+        violata, la 2a paga 20, la 3a paga 10. Il vincolo HARD
+        "almeno un giorno libero" e' applicato a tutti i docenti
+        indipendentemente da queste preferenze.
+      </p>
+      <div class="grid grid-cols-3 gap-3">
+        {#each [0, 1, 2] as i}
+          <div class="field">
+            <label>{['1a', '2a', '3a'][i]} scelta giorno libero</label>
+            <select
+              data-test={`free-day-priority-${i + 1}`}
+              value={editingFreeDayPriorities[i] || 0}
+              on:change={(e) => {
+                const next = [...editingFreeDayPriorities];
+                next[i] = Number(e.target.value);
+                editingFreeDayPriorities = next;
+              }}>
+              <option value={0}>(nessuno)</option>
+              <option value={1}>Lunedi</option>
+              <option value={2}>Martedi</option>
+              <option value={3}>Mercoledi</option>
+              <option value={4}>Giovedi</option>
+              <option value={5}>Venerdi</option>
+              <option value={6}>Sabato</option>
+            </select>
+          </div>
+        {/each}
+      </div>
+      {@const _fdpDays = editingFreeDayPriorities.filter((d) => d)}
+      {#if new Set(_fdpDays).size !== _fdpDays.length}
+        <div class="text-xs text-red-600"
+             data-test="free-day-priority-error">
+          ⚠️ I tre giorni delle priorita' devono essere distinti.
+        </div>
+      {/if}
     </div>
 
     <div class="mt-4 grid grid-cols-3 gap-3">

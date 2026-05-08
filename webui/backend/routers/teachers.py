@@ -150,6 +150,14 @@ def _to_out(t: models.Teacher, db=None) -> schemas.TeacherOut:
                         ))
         except Exception:
             pass
+    fdp_rows = sorted(
+        (getattr(t, "free_day_preferences", None) or []),
+        key=lambda r: int(r.priority))
+    free_day_priorities = [
+        schemas.FreeDayPriorityPref(
+            day=int(r.day), priority=int(r.priority))
+        for r in fdp_rows
+    ]
     return schemas.TeacherOut(
         id=t.id,
         name=t.name,
@@ -179,6 +187,7 @@ def _to_out(t: models.Teacher, db=None) -> schemas.TeacherOut:
         compatible_classes=[c.class_name for c in t.compatible_classes],
         classroom_prefs=(_classroom_prefs_for_teacher(db, t.id)
                          if db is not None else []),
+        free_day_priorities=free_day_priorities,
     )
 
 
@@ -443,3 +452,83 @@ def replace_curr_prefs(
     for r in out:
         db.refresh(r)
     return out
+
+
+# ====================================================================
+# 3-priority free-day preferences
+# (TeacherFreeDayPreference table; weights 30/20/10 for 1st/2nd/3rd)
+# ====================================================================
+
+
+@router.get(
+    "/{teacher_id}/free-day-preferences",
+    response_model=list[schemas.FreeDayPriorityPref],
+)
+def list_free_day_priorities(
+    teacher_id: int, db: Session = Depends(get_db)
+):
+    _ensure_teacher(db, teacher_id)
+    rows = (db.query(models.TeacherFreeDayPreference)
+              .filter(
+                  models.TeacherFreeDayPreference.teacher_id == teacher_id)
+              .order_by(models.TeacherFreeDayPreference.priority)
+              .all())
+    return [
+        schemas.FreeDayPriorityPref(
+            day=int(r.day), priority=int(r.priority))
+        for r in rows
+    ]
+
+
+@router.patch(
+    "/{teacher_id}/free-day-preferences",
+    response_model=list[schemas.FreeDayPriorityPref],
+)
+def replace_free_day_priorities(
+    teacher_id: int,
+    payload: schemas.FreeDayPrioritiesIn,
+    db: Session = Depends(get_db),
+):
+    """Replace the teacher's full set of priority preferences.
+
+    Validation:
+    - day must be in 1..6 (Lun..Sab)
+    - priority must be in 1..3
+    - no duplicate days
+    - no duplicate priorities
+    Empty list clears all preferences.
+    """
+    _ensure_teacher(db, teacher_id)
+    seen_days: set[int] = set()
+    seen_pri: set[int] = set()
+    cleaned: list[schemas.FreeDayPriorityPref] = []
+    for p in payload.preferences:
+        d = int(p.day)
+        pr = int(p.priority)
+        if d < 1 or d > 6:
+            raise HTTPException(
+                400, f"day must be in 1..6 (got {d})")
+        if pr < 1 or pr > 3:
+            raise HTTPException(
+                400, f"priority must be in 1..3 (got {pr})")
+        if d in seen_days:
+            raise HTTPException(
+                400, f"duplicate day {d}")
+        if pr in seen_pri:
+            raise HTTPException(
+                400, f"duplicate priority {pr}")
+        seen_days.add(d)
+        seen_pri.add(pr)
+        cleaned.append(p)
+    db.query(models.TeacherFreeDayPreference).filter(
+        models.TeacherFreeDayPreference.teacher_id == teacher_id
+    ).delete()
+    db.flush()
+    for p in cleaned:
+        db.add(models.TeacherFreeDayPreference(
+            teacher_id=teacher_id,
+            day=int(p.day),
+            priority=int(p.priority),
+        ))
+    db.commit()
+    return list_free_day_priorities(teacher_id, db)

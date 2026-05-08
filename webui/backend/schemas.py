@@ -107,6 +107,26 @@ class FreeDayPref(BaseModel):
     soft_penalty: int | None = 100
 
 
+class FreeDayPriorityPref(BaseModel):
+    """One row of the new TeacherFreeDayPreference table.
+
+    `priority` in {1, 2, 3} maps to weights {30, 20, 10}: the 1st
+    choice costs the most to ignore so the solver honors it first.
+    Universal HARD "every teacher >= 1 free day per week" is enforced
+    independently of this list."""
+    day: int
+    priority: int
+
+
+class FreeDayPrioritiesIn(BaseModel):
+    """PATCH payload for /api/teachers/{id}/free-day-preferences.
+
+    Replaces the teacher's full set of priority preferences. Empty
+    list clears them. Server enforces day in 1..6, priority in 1..3,
+    no duplicate days, no duplicate priorities."""
+    preferences: list[FreeDayPriorityPref] = Field(default_factory=list)
+
+
 class TeacherBase(BaseModel):
     name: str
     last_name: str | None = None
@@ -157,6 +177,9 @@ class TeacherOut(TeacherBase):
     mandatory_free_days: list[int] = Field(default_factory=list)
     compatible_classes: list[str] = Field(default_factory=list)
     classroom_prefs: list[TeacherClassroomPrefIn] = Field(default_factory=list)
+    # New: 3-priority free-day preference table rows. Sorted by priority.
+    free_day_priorities: list[FreeDayPriorityPref] = Field(
+        default_factory=list)
     model_config = ConfigDict(from_attributes=True)
 
 
