@@ -199,16 +199,20 @@
   }
 </script>
 
-<div class="space-y-4">
+<div class="space-y-4" data-testid="absences-page">
   <div class="flex items-baseline gap-3 flex-wrap">
     <h1>Assenze e supplenze</h1>
     <div class="ml-auto flex items-center gap-2">
-      <button class="btn !text-xs" on:click={() => shiftWeek(-1)}>&lt; settimana prec.</button>
+      <button class="btn !text-xs" on:click={() => shiftWeek(-1)}
+              data-testid="absences-prev-week">&lt; settimana prec.</button>
       <input type="date" bind:value={weekStart} on:change={load}
              class="px-2 py-1 border border-ink-200 rounded text-sm"
-             title="Lunedi della settimana"/>
-      <button class="btn !text-xs" on:click={() => shiftWeek(1)}>settimana succ. &gt;</button>
-      <button class="btn !text-xs" on:click={() => { weekStart = mondayOf(new Date()); load(); }}>oggi</button>
+             title="Lunedi della settimana"
+             data-testid="absences-week-input"/>
+      <button class="btn !text-xs" on:click={() => shiftWeek(1)}
+              data-testid="absences-next-week">settimana succ. &gt;</button>
+      <button class="btn !text-xs" on:click={() => { weekStart = mondayOf(new Date()); load(); }}
+              data-testid="absences-today">oggi</button>
     </div>
   </div>
 
