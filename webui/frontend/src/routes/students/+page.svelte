@@ -145,14 +145,15 @@
   };
 </script>
 
-<div class="space-y-4">
+<div class="space-y-4" data-testid="students-page">
   <div class="flex items-baseline gap-3 flex-wrap">
     <h1>Studenti</h1>
     <button class="btn ml-auto" on:click={() => (showTagsModal = true)}
             title="Crea, rinomina o elimina i tag degli studenti">
       Gestisci tag
     </button>
-    <button class="btn-primary" on:click={newStudent}>+ Nuovo studente</button>
+    <button class="btn-primary" on:click={newStudent}
+            data-testid="add-student-btn">+ Nuovo studente</button>
     <ImportButton entity="students" onDone={() => listRef?.reload()}/>
   </div>
 
@@ -185,8 +186,14 @@
         {/if}
       </td>
       <td class="whitespace-nowrap">
-        <button class="btn !text-xs !px-2 !py-1" on:click={() => edit(row)}>Modifica</button>
-        <button class="btn-danger !text-xs !px-2 !py-1" on:click={() => del(row)}>Elimina</button>
+        <button class="btn !text-xs !px-2 !py-1"
+                data-testid="student-edit-btn"
+                data-student-id={row.id}
+                on:click={() => edit(row)}>Modifica</button>
+        <button class="btn-danger !text-xs !px-2 !py-1"
+                data-testid="student-delete-btn"
+                data-student-id={row.id}
+                on:click={() => del(row)}>Elimina</button>
       </td>
     </tr>
   </SortableQueryableList>
@@ -206,9 +213,9 @@
 <Modal open={!!editing} title={editing?._new ? 'Nuovo studente' : 'Studente'}
        onClose={() => (editing = null)}>
   {#if editing}
-    <div class="grid grid-cols-2 gap-3">
-      <div class="field"><label>Cognome</label><input bind:value={editing.last_name}/></div>
-      <div class="field"><label>Nome</label><input bind:value={editing.first_name}/></div>
+    <div class="grid grid-cols-2 gap-3" data-testid="student-form">
+      <div class="field"><label>Cognome</label><input bind:value={editing.last_name} data-testid="student-last-name-input"/></div>
+      <div class="field"><label>Nome</label><input bind:value={editing.first_name} data-testid="student-first-name-input"/></div>
       <div class="field col-span-2">
         <label>Nickname (mostrato nell'orario)
           <span class="text-xs text-ink-400">- default: "Cognome Nome"</span>
@@ -258,8 +265,10 @@
     </div>
 
     <div class="mt-5 flex justify-end gap-2">
-      <button class="btn" on:click={() => (editing = null)}>Annulla</button>
-      <button class="btn-primary focus-ring" on:click={save} disabled={saving}>
+      <button class="btn" on:click={() => (editing = null)}
+              data-testid="student-cancel-btn">Annulla</button>
+      <button class="btn-primary focus-ring" on:click={save} disabled={saving}
+              data-testid="student-save-btn">
         {saving ? 'Salvataggio...' : 'Salva'}
       </button>
     </div>
