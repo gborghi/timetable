@@ -204,7 +204,7 @@
   );
 </script>
 
-<div class="container mx-auto p-4 space-y-6">
+<div class="container mx-auto p-4 space-y-6" data-testid="plessi-page">
   <h1 class="text-2xl font-bold">Plessi</h1>
   <p class="text-sm text-ink-600 max-w-3xl">
     Gestisci le sedi fisiche dell'istituto (Sede Centrale,
@@ -234,7 +234,8 @@
   <section class="card p-4 space-y-3">
     <div class="flex items-center gap-3">
       <h2 class="text-xl font-semibold">Plessi</h2>
-      <button class="btn-primary !text-sm" on:click={newPlesso}>
+      <button class="btn-primary !text-sm" on:click={newPlesso}
+              data-testid="add-plesso-btn">
         + Nuovo plesso
       </button>
     </div>
@@ -259,8 +260,12 @@
             </td>
             <td class="py-1 text-right">
               <button class="btn !text-xs"
+                      data-testid="plesso-edit-btn"
+                      data-plesso-id={p.id}
                       on:click={() => editPlesso(p)}>Modifica</button>
               <button class="btn !text-xs !text-rose-700"
+                      data-testid="plesso-delete-btn"
+                      data-plesso-id={p.id}
                       on:click={() => deletePlesso(p)}>Elimina</button>
             </td>
           </tr>
@@ -275,22 +280,26 @@
       </tbody>
     </table>
     {#if editingPlesso}
-      <div class="border border-accent-300 bg-accent-50 rounded p-3 space-y-2">
+      <div class="border border-accent-300 bg-accent-50 rounded p-3 space-y-2"
+           data-testid="plesso-form">
         <div class="grid grid-cols-2 gap-2">
           <label class="field">
             <span class="text-xs">Codice (breve)</span>
             <input type="text" bind:value={editingPlesso.code}
-                   maxlength="16" class="w-full"/>
+                   maxlength="16" class="w-full"
+                   data-testid="plesso-code-input"/>
           </label>
           <label class="field">
             <span class="text-xs">Nome</span>
             <input type="text" bind:value={editingPlesso.name}
-                   class="w-full"/>
+                   class="w-full"
+                   data-testid="plesso-name-input"/>
           </label>
           <label class="field col-span-2">
             <span class="text-xs">Indirizzo</span>
             <input type="text" bind:value={editingPlesso.address}
-                   class="w-full"/>
+                   class="w-full"
+                   data-testid="plesso-address-input"/>
           </label>
           <label class="field col-span-2">
             <span class="text-xs">Note</span>
@@ -299,10 +308,12 @@
           </label>
         </div>
         <div class="flex gap-2 justify-end">
-          <button class="btn" on:click={() => editingPlesso = null}>
+          <button class="btn" on:click={() => editingPlesso = null}
+                  data-testid="plesso-cancel-btn">
             Annulla
           </button>
-          <button class="btn-primary" on:click={savePlesso}>
+          <button class="btn-primary" on:click={savePlesso}
+                  data-testid="plesso-save-btn">
             Salva
           </button>
         </div>
