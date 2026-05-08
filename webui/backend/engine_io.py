@@ -651,6 +651,99 @@ def import_profs_into_db(db: Session, profs: dict[str, Any]) -> int:
     return n
 
 
+# Italian-day-name map used by the orario_classi xlsx exporter. Kept
+# narrow (only the abbreviations the exporter actually emits) so we do
+# not accidentally match columns from a hand-edited xlsx with arbitrary
+# headers.
+_XLSX_DAY_TO_NUM = {
+    "lun": 1, "lun.": 1, "lunedi": 1,
+    "mar": 2, "mar.": 2, "martedi": 2,
+    "mer": 3, "mer.": 3, "mercoledi": 3,
+    "gio": 4, "gio.": 4, "giovedi": 4,
+    "ven": 5, "ven.": 5, "venerdi": 5,
+    "sab": 6, "sab.": 6, "sabato": 6,
+}
+
+
+def solution_dict_from_class_xlsx(xlsx_path: str) -> dict[tuple, int]:
+    """Parse an ``orario_classi_<profile>.xlsx`` (as produced by
+    ``engine.exporters.export_class_schedules_to_xlsx``) and rebuild the
+    ``{(prof, class, subject, day, hour): 1}`` dict. Used as a last-resort
+    fallback by the import-profile flow when the canonical solution pickle
+    is gitignored / absent on disk but the xlsx is checked in.
+    """
+    try:
+        from openpyxl import load_workbook
+    except ImportError as e:  # pragma: no cover
+        raise RuntimeError(f"openpyxl non disponibile: {e}") from e
+
+    wb = load_workbook(xlsx_path, read_only=True, data_only=True)
+    sol: dict[tuple, int] = {}
+    for sheet_name in wb.sheetnames:
+        ws = wb[sheet_name]
+        # A1: "Classe: <name>" — recover the original (un-truncated)
+        # class name; fall back to the (possibly truncated) sheet name
+        # when the title cell is missing.
+        title = ws.cell(row=1, column=1).value or ""
+        if isinstance(title, str) and title.lower().startswith("classe:"):
+            class_name = title.split(":", 1)[1].strip()
+        else:
+            class_name = sheet_name
+
+        # Header row 4: ['Ora', 'Lun', 'Mar', ...]; build column->day map.
+        col_to_day: dict[int, int] = {}
+        for c in range(2, 16):
+            h = ws.cell(row=4, column=c).value
+            if h is None:
+                continue
+            key = str(h).strip().lower().rstrip(".")
+            d = _XLSX_DAY_TO_NUM.get(key)
+            if d is not None:
+                col_to_day[c] = d
+        if not col_to_day:
+            continue  # not a schedule sheet; skip
+
+        # Hour rows: column A holds "1^a (08:00)"; we use the leading
+        # integer as the hour. Stop on the first blank A-cell.
+        for r in range(5, 5 + 12):
+            hour_cell = ws.cell(row=r, column=1).value
+            if hour_cell is None or str(hour_cell).strip() == "":
+                break
+            digits = ""
+            for ch in str(hour_cell):
+                if ch.isdigit():
+                    digits += ch
+                else:
+                    if digits:
+                        break
+            if not digits:
+                continue
+            hour = int(digits)
+            for col, day in col_to_day.items():
+                cell = ws.cell(row=r, column=col).value
+                if cell is None:
+                    continue
+                txt = str(cell).strip()
+                if not txt or txt == "-":
+                    continue
+                if txt.startswith("*CONFLICT*"):
+                    # The exporter writes "*CONFLICT* subj1/prof1 ; subj2/prof2"
+                    # when multiple lessons collided on a slot. Reconstructing
+                    # both halves would create duplicate Lesson rows for the
+                    # same (class, day, hour); skip and let the user re-run
+                    # the optimizer for a clean schedule.
+                    continue
+                if "/" not in txt:
+                    continue
+                subj, prof = txt.split("/", 1)
+                subj = subj.strip()
+                prof = prof.strip()
+                if not subj or not prof:
+                    continue
+                sol[(prof, class_name, subj, day, hour)] = 1
+    return sol
+
+
 def import_solution_into_db(db: Session, solution_dict: dict,
                             name: str, kind: str = "imported",
                             obj_value: float = 0.0,

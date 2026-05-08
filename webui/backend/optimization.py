@@ -298,10 +298,30 @@ def import_engine_profile(profile: str, use_optimized: bool,
             sol_path = sol_alt_decomposed
         elif sol_plain:
             sol_path = sol_plain
+        sol = None
+        sol_label = None
         if sol_path:
             with open(sol_path, "rb") as f:
                 sol = pickle.load(f)
+            sol_label = os.path.basename(sol_path)
             print(f"[import] loaded {sol_path}: {len(sol)} cells")
+        else:
+            # Fallback: rebuild the solution dict from the orario_classi
+            # xlsx if it's checked into engine/scripts/output/<profile>/.
+            # The mega profile is shipped this way (the canonical pickle
+            # is gitignored to keep the repo small, but the xlsx output
+            # is tracked so reviewers can read the schedule).
+            xlsx_path = _resolve_pkl(f"orario_classi_{profile}.xlsx")
+            if xlsx_path:
+                try:
+                    sol = engine_io.solution_dict_from_class_xlsx(xlsx_path)
+                    sol_label = os.path.basename(xlsx_path) + " (xlsx)"
+                    print(f"[import] no solution pickle; "
+                          f"reconstructed {len(sol)} cells from {xlsx_path}")
+                except Exception as e:
+                    print(f"[import] xlsx fallback failed: {e}")
+                    sol = None
+        if sol:
             with SessionLocal() as db:
                 profs_db = engine_io.profs_dict_from_db(db)
             try:
@@ -312,7 +332,7 @@ def import_engine_profile(profile: str, use_optimized: bool,
             with SessionLocal() as db:
                 sid = engine_io.import_solution_into_db(
                     db, sol,
-                    name=f"Imported {profile} ({os.path.basename(sol_path)})",
+                    name=f"Imported {profile} ({sol_label})",
                     kind="imported",
                     obj_value=float(v),
                     metrics=m,

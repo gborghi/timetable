@@ -49,6 +49,12 @@ engine/*.pkl
 engine/scripts/*.pkl
 schedule/*.pkl
 
+# Locally-rebuilt mock-school profile pickles. Each developer regenerates
+# them with scripts/rebuild_profiles.ps1 (see scripts/README.md). The mega
+# pickle pair IS tracked because the dashboard import flow ships with it.
+engine/scripts/data/**/*.pkl
+!engine/scripts/data/mega/*.pkl
+
 # Claude Code worktrees (transient development branches)
 .claude/worktrees/
 
