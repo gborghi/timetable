@@ -164,6 +164,140 @@ def delete_assignment(assignment_id: int, db: Session = Depends(get_db)):
     return {"ok": True}
 
 
+# ---------- Bulk operations ----------
+#
+# These endpoints accept a list of assignment ids and apply a single
+# action across all of them in one DB transaction. Per-row failures
+# are collected in `errors` so the UI can show a partial-success
+# toast without rolling back the rows that did succeed.
+
+
+@router.post("/bulk/delete", response_model=schemas.BulkAssignmentResultOut)
+def bulk_delete_assignments(payload: schemas.BulkAssignmentIdsIn,
+                            db: Session = Depends(get_db)):
+    """Delete every Assignment whose id appears in `payload.ids`.
+    Unknown ids are skipped (counted in n_skipped)."""
+    n_applied = 0
+    n_skipped = 0
+    errors: list[str] = []
+    for aid in payload.ids:
+        a = db.get(models.Assignment, aid)
+        if a is None:
+            n_skipped += 1
+            errors.append(f"id={aid}: cattedra inesistente")
+            continue
+        db.delete(a)
+        n_applied += 1
+    db.commit()
+    return {
+        "ok": n_applied > 0 or not payload.ids,
+        "n_applied": n_applied,
+        "n_skipped": n_skipped,
+        "errors": errors,
+    }
+
+
+@router.post("/bulk/lock", response_model=schemas.BulkAssignmentResultOut)
+def bulk_lock_assignments(payload: schemas.BulkAssignmentLockIn,
+                          db: Session = Depends(get_db)):
+    """Set `locked=payload.locked` on every Assignment in
+    `payload.ids`. Useful to pin or unpin a batch of cattedre at
+    once before launching Phase A so the solver respects the
+    user's choices."""
+    n_applied = 0
+    n_skipped = 0
+    errors: list[str] = []
+    for aid in payload.ids:
+        a = db.get(models.Assignment, aid)
+        if a is None:
+            n_skipped += 1
+            errors.append(f"id={aid}: cattedra inesistente")
+            continue
+        a.locked = bool(payload.locked)
+        n_applied += 1
+    db.commit()
+    return {
+        "ok": True,
+        "n_applied": n_applied,
+        "n_skipped": n_skipped,
+        "errors": errors,
+    }
+
+
+@router.post("/bulk/change-teacher",
+             response_model=schemas.BulkAssignmentResultOut)
+def bulk_change_teacher(payload: schemas.BulkAssignmentChangeTeacherIn,
+                         db: Session = Depends(get_db)):
+    """Reassign every selected cattedra to `payload.teacher_name`.
+    The new teacher must be qualified for the row's subject (i.e.
+    have a TeacherSubject row); rows where this fails are reported
+    in `errors` and skipped, leaving the existing teacher in place."""
+    new_t = db.query(models.Teacher).filter(
+        models.Teacher.name == payload.teacher_name
+    ).first()
+    if new_t is None:
+        raise HTTPException(404, f"docente '{payload.teacher_name}' "
+                                  "non trovato")
+    qualified_subjects = {
+        ts.subject for ts in db.query(models.TeacherSubject)
+        .filter(models.TeacherSubject.teacher_id == new_t.id).all()
+    }
+    n_applied = 0
+    n_skipped = 0
+    errors: list[str] = []
+    for aid in payload.ids:
+        a = db.get(models.Assignment, aid)
+        if a is None:
+            n_skipped += 1
+            errors.append(f"id={aid}: cattedra inesistente")
+            continue
+        if a.subject not in qualified_subjects:
+            n_skipped += 1
+            errors.append(f"id={aid}: '{payload.teacher_name}' non e' "
+                          f"qualificato per {a.subject}")
+            continue
+        a.teacher_id = new_t.id
+        n_applied += 1
+    db.commit()
+    return {
+        "ok": True,
+        "n_applied": n_applied,
+        "n_skipped": n_skipped,
+        "errors": errors,
+    }
+
+
+@router.post("/bulk/set-flag",
+             response_model=schemas.BulkAssignmentResultOut)
+def bulk_set_flag(payload: schemas.BulkAssignmentSetFlagIn,
+                  db: Session = Depends(get_db)):
+    """Toggle `is_potenziamento` or `is_support` on every selected
+    row. Other flag names are rejected with a 400 to prevent
+    arbitrary attribute writes."""
+    if payload.flag not in ("is_potenziamento", "is_support"):
+        raise HTTPException(
+            400, f"flag '{payload.flag}' non supportato; "
+                 "solo is_potenziamento, is_support")
+    n_applied = 0
+    n_skipped = 0
+    errors: list[str] = []
+    for aid in payload.ids:
+        a = db.get(models.Assignment, aid)
+        if a is None:
+            n_skipped += 1
+            errors.append(f"id={aid}: cattedra inesistente")
+            continue
+        setattr(a, payload.flag, bool(payload.value))
+        n_applied += 1
+    db.commit()
+    return {
+        "ok": True,
+        "n_applied": n_applied,
+        "n_skipped": n_skipped,
+        "errors": errors,
+    }
+
+
 def _teacher_display(t: models.Teacher) -> str:
     if t.nickname:
         return t.nickname

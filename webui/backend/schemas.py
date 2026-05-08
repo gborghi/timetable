@@ -803,6 +803,47 @@ class ManualAssignmentOut(BaseModel):
     new_assignment: AssignmentOut | None = None
 
 
+# ---------- Bulk Assignments ----------
+
+
+class BulkAssignmentIdsIn(BaseModel):
+    """Generic bulk operation payload addressing a list of
+    Assignment ids. Used by /api/assignments/bulk/{action} endpoints
+    where the action determines what to do with the selected rows."""
+    ids: list[int]
+
+
+class BulkAssignmentLockIn(BaseModel):
+    ids: list[int]
+    locked: bool = True
+
+
+class BulkAssignmentChangeTeacherIn(BaseModel):
+    """Reassign every selected (class|group, subject) pair to a new
+    teacher. The teacher must be qualified for each subject in the
+    selection or the row is reported in `errors`."""
+    ids: list[int]
+    teacher_name: str
+
+
+class BulkAssignmentSetFlagIn(BaseModel):
+    """Toggle a boolean flag (is_potenziamento, is_support) on every
+    selected row."""
+    ids: list[int]
+    flag: str  # 'is_potenziamento' | 'is_support'
+    value: bool
+
+
+class BulkAssignmentResultOut(BaseModel):
+    """Summary of a bulk operation. `errors` contains per-row issues
+    (unknown id, teacher not qualified, etc.) so the UI can surface
+    a partial-success toast without rolling back."""
+    ok: bool
+    n_applied: int
+    n_skipped: int
+    errors: list[str] = []
+
+
 # ---------- Classrooms ----------
 
 
