@@ -544,6 +544,48 @@ class Lesson(Base):
     )
 
 
+class UnscheduledLesson(Base):
+    """A Lesson that has been "svincolata" (unscheduled) but kept in
+    the system for re-placement.
+
+    The user removes a lesson from the active grid via "Svincola"
+    instead of "Elimina"; we delete the row from `lessons` and
+    re-create the same teacher/class/subject/classroom payload here.
+    Reschedule is the inverse: delete from this table, insert into
+    `lessons` at the chosen day/hour.
+
+    Decoupled from `lessons` so that:
+      - existing /by-class /by-teacher /by-slot queries don't need
+        a `WHERE day IS NOT NULL` filter (would touch ~20 places)
+      - the active solution stays semantically clean (every lesson
+        in the active solution has a real day/hour)
+      - we never accidentally show unscheduled rows in conflict
+        scanners or coverage reports
+    """
+    __tablename__ = "unscheduled_lessons"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    solution_id: Mapped[int] = mapped_column(
+        ForeignKey("solutions.id", ondelete="CASCADE"), index=True
+    )
+    teacher_name: Mapped[str] = mapped_column(String(120), index=True)
+    class_name: Mapped[str] = mapped_column(String(40), index=True)
+    group_name: Mapped[str | None] = mapped_column(
+        String(120), nullable=True, index=True,
+    )
+    subject: Mapped[str] = mapped_column(String(64))
+    classroom_name: Mapped[str | None] = mapped_column(
+        String(64), nullable=True
+    )
+    cotaught_with: Mapped[str | None] = mapped_column(
+        Text, nullable=True
+    )
+    # Diagnostic / lineage: the day/hour the lesson originally lived
+    # at before being unscheduled. Useful in the UI tooltip ("era
+    # in lun 9-10"). Not used by the solver.
+    original_day: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    original_hour: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
 class DayCount(Base):
     """Cached Phase-A day counts for the active solution. Used by repair /
     drag-drop validation if available."""

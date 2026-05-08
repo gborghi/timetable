@@ -44,6 +44,7 @@ from backend.routers import (  # noqa: E402
     diagnostics,
     groups,
     imports,
+    lessons,
     logical,
     monitor,
     optimize,
@@ -124,6 +125,7 @@ app.include_router(coteaching.router)
 app.include_router(assignments.router)
 app.include_router(dataset.router)
 app.include_router(schedule.router)
+app.include_router(lessons.router)
 app.include_router(optimize.router)
 app.include_router(plessi.router)
 app.include_router(logical.router)
