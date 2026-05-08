@@ -452,9 +452,8 @@ priorit\`a 1 perch\'e ignorarla costa di pi\`u.
 Si consideri un docente con cinque ore settimanali e le
 tre preferenze [Luned\`i pri.1, Marted\`i pri.2, Mercoled\`i
 pri.3]. Il pavimento HARD richiede $\ge 1$ giorno libero.
-Le tre penalty in conflitto sono $30 \cdot \mathbf{1}_{\rm
-Lun} + 20 \cdot \mathbf{1}_{\rm Mar} + 10 \cdot
-\mathbf{1}_{\rm Mer}$; il solver paga 0 lasciando libero
+Le tre penalty in conflitto sono $30 \cdot \mathbf{1}_{\mathrm{Lun}} + 20 \cdot \mathbf{1}_{\mathrm{Mar}} + 10 \cdot
+\mathbf{1}_{\mathrm{Mer}}$; il solver paga 0 lasciando libero
 Luned\`i, 30 lasciando libero Marted\`i (paga la
 priorit\`a 1), e cos\`i via. La scelta razionale \`e
 quindi Luned\`i, salvo conflitti con altri vincoli HARD

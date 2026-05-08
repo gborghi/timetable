@@ -14,7 +14,7 @@ Profilo & best-cost & best-cost (s) & best-time & best-time (cost) & ok & not-ok
 small & \texttt{bp\_teacher-class} & 37.9 & \texttt{bp\_curriculum} & 1110 & 40 & 10 \\
 medium & \texttt{bp\_teacher} & 166.2 & \texttt{decomp\_curriculum} & 6010 & 35 & 15 \\
 big & \texttt{bp\_teacher-class-subject} & 241.2 & \texttt{decomp\_temporal} & 4930 & 40 & 10 \\
-huge & -- & -- & -- & -- & 0 & 0 \\
+huge & \texttt{bp\_teacher} & 272.2 & \texttt{decomp\_temporal} & 7420 & 21 & 4 \\
 superhuge & -- & -- & -- & -- & 0 & 0 \\
 mega & -- & -- & -- & -- & 0 & 0 \\
 \bottomrule
@@ -34,7 +34,7 @@ Profilo & greedy & cpsat & decomp & cg & bp & meta \\
 small & -- & 36.3 & 32.8 & 35.9 & 35.3 & 55.9 \\
 medium & -- & 79.7 & 73.9 & 155.9 & 162.4 & 118.2 \\
 big & -- & 152.5 & 192.3 & 239.0 & 240.5 & 222.9 \\
-huge & -- & -- & -- & -- & -- & -- \\
+huge & -- & 201.9 & 252.3 & 271.9 & 272.5 & 318.9 \\
 superhuge & -- & -- & -- & -- & -- & -- \\
 mega & -- & -- & -- & -- & -- & -- \\
 \bottomrule
@@ -54,7 +54,7 @@ Profilo & baseline (s) & best speedup & cost gap \\
 small & 38.4 & 1.49\,$\times$ (\texttt{decomp\_curriculum}) & -5.1\% \\
 medium & 80.1 & 1.40\,$\times$ (\texttt{decomp\_curriculum}) & +38.8\% \\
 big & 152.7 & 1.01\,$\times$ (\texttt{decomp\_temporal}) & +8.7\% \\
-huge & -- & -- & -- \\
+huge & 201.9 & 1.01\,$\times$ (\texttt{decomp\_temporal}) & -6.1\% \\
 superhuge & -- & -- & -- \\
 mega & -- & -- & -- \\
 \bottomrule
@@ -78,15 +78,15 @@ mega & -- & -- & -- \\
   ymajorgrids=true, grid style=dashed,
   every axis plot/.append style={fill opacity=0.7},
 ]
-\addplot+[fill=cIndaco, draw=cIndaco!50!black] coordinates {(small,36.3) (medium,79.7) (big,152.5)};
+\addplot+[fill=cIndaco, draw=cIndaco!50!black] coordinates {(small,36.3) (medium,79.7) (big,152.5) (huge,201.9)};
 \addlegendentry{cpsat}
-\addplot+[fill=cSiena, draw=cSiena!50!black] coordinates {(small,32.8) (medium,73.9) (big,192.3)};
+\addplot+[fill=cSiena, draw=cSiena!50!black] coordinates {(small,32.8) (medium,73.9) (big,192.3) (huge,252.3)};
 \addlegendentry{decomp}
-\addplot+[fill=cOro, draw=cOro!50!black] coordinates {(small,35.9) (medium,155.9) (big,239.0)};
+\addplot+[fill=cOro, draw=cOro!50!black] coordinates {(small,35.9) (medium,155.9) (big,239.0) (huge,271.9)};
 \addlegendentry{cg}
-\addplot+[fill=cEnf, draw=cEnf!50!black] coordinates {(small,35.3) (medium,162.4) (big,240.5)};
+\addplot+[fill=cEnf, draw=cEnf!50!black] coordinates {(small,35.3) (medium,162.4) (big,240.5) (huge,272.5)};
 \addlegendentry{bp}
-\addplot+[fill=cSoft, draw=cSoft!50!black] coordinates {(small,55.9) (medium,118.2) (big,222.9)};
+\addplot+[fill=cSoft, draw=cSoft!50!black] coordinates {(small,55.9) (medium,118.2) (big,222.9) (huge,318.9)};
 \addlegendentry{meta}
 \end{axis}
 \end{tikzpicture}
@@ -207,11 +207,11 @@ Profilo & Tecnica & cost (pickle) & cost (sqlite) & $\Delta$\,\% \\
 \toprule
 \# & Profilo & Tecnica & Famiglia & cost & $t$\,total (s) \\
 \midrule
-1 & \texttt{big} & \texttt{bp\_teacher-class-subject} & bp & 6250 & 242.1 \\
-2 & \texttt{big} & \texttt{bp\_teacher-class} & bp & 6160 & 242.2 \\
-3 & \texttt{big} & \texttt{decomp\_curriculum} & decomp & 6040 & 232.4 \\
-4 & \texttt{medium} & \texttt{decomp\_curriculum} & decomp & 6010 & 57.4 \\
-5 & \texttt{big} & \texttt{bp\_curriculum} & bp & 5880 & 241.8 \\
+1 & \texttt{huge} & \texttt{bp\_curriculum} & bp & 9240 & 273.2 \\
+2 & \texttt{huge} & \texttt{bp\_class} & bp & 8650 & 272.2 \\
+3 & \texttt{huge} & \texttt{meta\_vns} & meta & 8630 & 504.0 \\
+4 & \texttt{huge} & \texttt{meta\_tabu} & meta & 8630 & 307.1 \\
+5 & \texttt{huge} & \texttt{meta\_sa} & meta & 8630 & 294.3 \\
 \bottomrule
 \end{tabular}
 
@@ -379,5 +379,30 @@ Profilo & DS & Tecnica & Famiglia & $t$\,total (s) & cost & hard & status & note
 \texttt{big} & \texttt{sqlite} & \texttt{meta\_sa} & meta & 214.5 & 5140 & True & \texttt{ok} &  \\
 \texttt{big} & \texttt{sqlite} & \texttt{meta\_tabu} & meta & 219.8 & 5140 & True & \texttt{ok} &  \\
 \texttt{big} & \texttt{sqlite} & \texttt{meta\_vns} & meta & 384.6 & 5140 & True & \texttt{ok} &  \\
+\texttt{huge} & \texttt{sqlite} & \texttt{bp\_class} & bp & 272.2 & 8650 & True & \texttt{ok} &  \\
+\texttt{huge} & \texttt{sqlite} & \texttt{bp\_class-day} & bp & 272.3 & 8440 & True & \texttt{ok} &  \\
+\texttt{huge} & \texttt{sqlite} & \texttt{bp\_curriculum} & bp & 273.2 & 9240 & True & \texttt{ok} &  \\
+\texttt{huge} & \texttt{sqlite} & \texttt{bp\_day} & bp & 272.6 & 7530 & True & \texttt{ok} &  \\
+\texttt{huge} & \texttt{sqlite} & \texttt{bp\_teacher} & bp & 272.2 & 7100 & True & \texttt{ok} &  \\
+\texttt{huge} & \texttt{sqlite} & \texttt{bp\_teacher-class} & bp & 272.3 & 7480 & True & \texttt{ok} &  \\
+\texttt{huge} & \texttt{sqlite} & \texttt{bp\_teacher-class-subject} & bp & 272.5 & 8330 & True & \texttt{ok} &  \\
+\texttt{huge} & \texttt{sqlite} & \texttt{bp\_teacher-day} & bp & 272.6 & 7110 & True & \texttt{ok} &  \\
+\texttt{huge} & \texttt{sqlite} & \texttt{bp\_teacher-subject} & bp & 272.3 & 8140 & True & \texttt{ok} &  \\
+\texttt{huge} & \texttt{sqlite} & \texttt{cg\_iterative\_diversified} & cg & 271.9 & 7690 & True & \texttt{ok} &  \\
+\texttt{huge} & \texttt{sqlite} & \texttt{cpsat\_day} & cpsat & 201.9 & 7900 & True & \texttt{ok} &  \\
+\texttt{huge} & \texttt{sqlite} & \texttt{cpsat\_day\_skip\_phase\_a} & cpsat & 142.9 & 7640 & False & \texttt{hard\_violation} & week+skip, mono\_budget=t\_b*6=108.0s, sta \\
+\texttt{huge} & \texttt{sqlite} & \texttt{cpsat\_day\_soft\_hint} & cpsat & 238.4 & 8850 & False & \texttt{hard\_violation} & week+soft\_hint, 1447 hints, status=FEASI \\
+\texttt{huge} & \texttt{sqlite} & \texttt{cpsat\_week} & cpsat & 639.8 & 3150 & False & \texttt{hard\_violation} & week+skip, 20412 slot vars, status=FEASI \\
+\texttt{huge} & \texttt{sqlite} & \texttt{decomp\_curriculum} & decomp & 403.2 & 7700 & True & \texttt{ok} &  \\
+\texttt{huge} & \texttt{sqlite} & \texttt{decomp\_metis} & decomp & 207.6 & 8050 & True & \texttt{ok} &  \\
+\texttt{huge} & \texttt{sqlite} & \texttt{decomp\_spectral\_v2} & decomp & 199.2 & 7500 & True & \texttt{ok} & spectral\_v2 entry = monolithic fallback \\
+\texttt{huge} & \texttt{sqlite} & \texttt{decomp\_temporal} & decomp & 199.1 & 7420 & True & \texttt{ok} &  \\
+\texttt{huge} & \texttt{sqlite} & \texttt{greedy\_pure} & greedy & 0.0 & -- &  & \texttt{unwired} & no standalone greedy Phase A in codebase \\
+\texttt{huge} & \texttt{sqlite} & \texttt{meta\_alns} & meta & 309.0 & 8630 & True & \texttt{ok} &  \\
+\texttt{huge} & \texttt{sqlite} & \texttt{meta\_lagrangian} & meta & 203.8 & 8630 & True & \texttt{ok} &  \\
+\texttt{huge} & \texttt{sqlite} & \texttt{meta\_lns} & meta & 295.5 & 8560 & True & \texttt{ok} &  \\
+\texttt{huge} & \texttt{sqlite} & \texttt{meta\_sa} & meta & 294.3 & 8630 & True & \texttt{ok} &  \\
+\texttt{huge} & \texttt{sqlite} & \texttt{meta\_tabu} & meta & 307.1 & 8630 & True & \texttt{ok} &  \\
+\texttt{huge} & \texttt{sqlite} & \texttt{meta\_vns} & meta & 504.0 & 8630 & True & \texttt{ok} &  \\
 \end{longtable}
 
