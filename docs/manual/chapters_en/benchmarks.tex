@@ -254,3 +254,102 @@ In practice $\pi$Tantum suggests the right path automatically:
 the value \texttt{auto} for the \texttt{granularity} parameter is
 resolved server-side from the number of classes (cf.\ Sec.~4 of
 \texttt{docs/optimization\_strategies.md}).
+
+\section{Bench v2: \texttt{pickle} vs.\ \texttt{sqlite} datasets}
+\label{sec:bench-v2-en}
+
+The original full sweep was born in the pickle era: profiles
+were loaded from
+\texttt{engine/scripts/data/<size>/\{school,profs\}\_<size>.pkl},
+which carry only anagrafica (teachers, classes, subjects,
+assignments). The 14 constraint tables in the live database
+remained empty, so the bench measured \emph{pure scheduling}: only
+the structural constraints of the model (one lesson per slot,
+hour budget per cattedra, implicit non-collision).
+
+With the migration to SQLite profile snapshots
+(cf.\ Chapter~\ref{ch:architettura_dati_profili}) the bench
+gains a second dataset, \texttt{sqlite}, where each profile
+arrives pre-loaded with: teacher unavailabilities (HARD for
+10--20\% of teachers and SOFT for 30\%), mandatory free days
+(HARD), 2--5 coteach groups, support and potenziamento entries,
+2--4 plessi with pendolarismo rules (HARD on first/last slot,
+SOFT with per-cross penalty), \texttt{PlessoEntityPolicy} for
+specific teachers/classes, 5-state
+\texttt{TeacherClassPreferences}, a mandatory gym room for
+phys-ed (HARD), 5 \texttt{GeneralConstraint} DSL rules, and the
+\texttt{classroom\_capacity\_ok()} pragma enforcing
+\texttt{Classroom.capacity $\ge$ Class.n\_students}.
+
+The bench v2, source
+\texttt{tests/benchmarks/run\_full\_sweep.py} with
+\texttt{--source sqlite} (default), adds a \texttt{dataset}
+column to the CSV and runs a feasibility precheck via
+\texttt{MonolithicSolver(scope=None, time=120s)} on each SQLite
+profile before the bench cells: if the monolithic solver cannot
+satisfy, the bench logs \texttt{status=precheck infeasible} and
+skips the 25 cells, signalling that the user must relax one
+constraint in \texttt{build\_profile\_db.py} and rebuild the
+SQLite snapshot.
+
+\subsection{Reading the delta}
+
+The auto-generated table \emph{Delta cost pickle vs.\ sqlite}
+(in the IT chapter, Section~\ref{sec:bench-v2}) compares the
+soft cost on every cell where both datasets produced an OK
+solution. The delta is the key metric:
+
+\begin{itemize}
+\item \textbf{$\Delta < 0$}: the SQLite scenario achieved a
+  \emph{lower} cost than the pickle one (rare). It means the
+  added constraint pressure focused the solver into a higher-
+  quality region of the solution space.
+\item \textbf{$\Delta \in [0, +30\%]$}: typical range. The cost
+  grows because of soft violations and pendolarismo penalties,
+  but stays in the same order of magnitude.
+\item \textbf{$\Delta > +30\%$}: significant stratification.
+  The pipeline paid a real cost for satisfying additional
+  constraints; the SQLite scenario with mandatory coteach and
+  multi-plesso geometry typically lands here.
+\item \textbf{infeasible}: the SQLite snapshot was not
+  satisfiable under its constraint set; the precheck caught it
+  and a \texttt{status=precheck infeasible} row appears in the
+  CSV.
+\end{itemize}
+
+\begin{esempiobox}[title=Try it now]
+\begin{lstlisting}[style=shell]
+# Bench v2 on a single SQLite profile (~12 min for small)
+python tests/benchmarks/run_full_sweep.py \
+  --profiles small --source sqlite --append
+
+# Back-to-back pickle+sqlite comparison
+python tests/benchmarks/run_full_sweep.py \
+  --profiles small,medium --source both --append
+
+# Precheck only (skip cells; useful to validate the 6 SQLite DBs)
+python tests/benchmarks/run_full_sweep.py \
+  --profiles small,medium,big,huge,superhuge,mega \
+  --source sqlite --techniques cpsat_week
+\end{lstlisting}
+\end{esempiobox}
+
+\subsection{Caveats}
+
+\begin{avvertenzabox}
+The bench v2 is \emph{not} a strictly reproducible scientific
+benchmark: \texttt{seed=42} fixes the initial seed but the
+CP-SAT runtime is machine-dependent (number of cores, clock,
+throttling). Absolute timings on Windows~11 / i7 / 8~workers
+do not directly compare to a Linux server-class box. The robust
+metric is the \emph{delta}: technique X is ``better'' than Y if
+the ratio $t_X / t_Y$ is at least 1.5\,$\times$ smaller across
+all profiles tested.
+
+The reported \texttt{cost} is the weighted sum of soft
+violations per the \texttt{compute\_soft} metric in
+\texttt{metaheuristics.py}; if the metric definition changes
+between two commits, the costs are not comparable. The
+\texttt{n\_lessons} count is instead a structural invariant
+and is the right value to sanity-check across runs.
+\end{avvertenzabox}
