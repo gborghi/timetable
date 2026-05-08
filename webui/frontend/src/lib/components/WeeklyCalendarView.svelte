@@ -340,6 +340,22 @@
                                 ev.clientY - rect.top));
   }
 
+  function _setDragCursor(kind) {
+    if (typeof document === 'undefined') return;
+    document.body.classList.remove(
+      'cal-edit-dragging-move', 'cal-edit-dragging-resize');
+    if (kind === 'move' || kind === 'create') {
+      document.body.classList.add('cal-edit-dragging-move');
+    } else if (kind === 'resize-top' || kind === 'resize-bottom') {
+      document.body.classList.add('cal-edit-dragging-resize');
+    }
+  }
+  function _clearDragCursor() {
+    if (typeof document === 'undefined') return;
+    document.body.classList.remove(
+      'cal-edit-dragging-move', 'cal-edit-dragging-resize');
+  }
+
   function onEditDayMouseDown(ev, dayId, dayColEl) {
     if (mode !== 'edit' || readonly || ev.button !== 0) return;
     // Did we click on an existing slot? The slot's own mousedown
@@ -353,6 +369,7 @@
       anchorY: y, currentY: y, startTime: t,
     };
     selectedSel = null;
+    _setDragCursor('create');
     ev.preventDefault();
   }
 
@@ -370,6 +387,7 @@
       anchorY: y, currentY: y,
       original: { ...slot },
     };
+    _setDragCursor(edge || 'move');
   }
 
   function onEditMouseMove(ev) {
@@ -393,6 +411,7 @@
     const drag = editDrag;
     editDrag = null;
     editDragPreview = null;
+    _clearDragCursor();
     if (mode !== 'edit') return;
     if (drag.kind === 'create') {
       const a = drag.anchorY;
@@ -1255,10 +1274,18 @@
     background: #dbeafe;
     border: 1px dashed #2563eb;
     color: #1e3a8a;
-    cursor: move;
+    cursor: grab;
     z-index: 2;
   }
+  .cal-event--edit:active { cursor: grabbing; }
   .cal-event--edit:hover { filter: brightness(0.94); }
+  /* While a drag is in flight the cursor must stick to grabbing /
+     ns-resize regardless of where the mouse moves -- the container
+     class is toggled from JS based on editDrag.kind. */
+  :global(body.cal-edit-dragging-move),
+  :global(body.cal-edit-dragging-move *) { cursor: grabbing !important; }
+  :global(body.cal-edit-dragging-resize),
+  :global(body.cal-edit-dragging-resize *) { cursor: ns-resize !important; }
   .cal-event--selected {
     outline: 2px solid #1d4ed8;
     outline-offset: 1px;
@@ -1292,47 +1319,62 @@
   .cal-edit-handle--bot { bottom: 0; }
   .cal-edit-handle:hover { background: rgba(29, 78, 216, 0.45); }
 
-  /* Per-slot Modifica/Cancella action buttons (edit mode). Visible
-     unconditionally so the user doesn't need to remember a keyboard
-     shortcut. Stacked top-right, small, unobtrusive. */
+  /* Per-slot Modifica/Cancella action labels (edit mode). Plain text
+     links, no border / background, so they don't overlap visually
+     with the time + label rendered in the slot body. */
   .cal-event-actions {
     position: absolute;
-    top: 4px;
+    top: 2px;
     right: 4px;
     display: flex;
-    gap: 4px;
+    gap: 6px;
     z-index: 5;
   }
   .cal-event-btn {
-    font-size: 11px;
+    font-size: 9px;
     line-height: 1;
-    padding: 3px 6px;
-    border-radius: 4px;
-    border: 1px solid rgba(0, 0, 0, 0.15);
-    background: rgba(255, 255, 255, 0.92);
+    padding: 0;
+    border: 0;
+    background: transparent;
     color: #1f2937;
+    text-decoration: underline;
     cursor: pointer;
   }
-  .cal-event-btn:hover { background: #fff; }
-  .cal-event-btn--danger { color: #b91c1c; border-color: rgba(185, 28, 28, 0.3); }
-  .cal-event-btn--danger:hover { background: #fef2f2; }
+  .cal-event-btn:hover { color: #111827; }
+  .cal-event-btn--danger { color: #b91c1c; }
+  .cal-event-btn--danger:hover { color: #7f1d1d; }
 
   /* Inline edit popover replacing the slot's body while ``editPopover``
-     targets it. Sized to fit inside the slot rectangle. */
-  .cal-event--editing { cursor: default; overflow: visible; }
+     targets it. Sized to fit inside the slot rectangle. The slot
+     itself bumps z-index so the popover overlaps neighbouring slots
+     in adjacent days; the popover content shows above any other
+     calendar element. */
+  .cal-event--editing {
+    cursor: default;
+    overflow: visible;
+    z-index: 50;
+  }
   .cal-edit-popover {
     position: absolute;
-    inset: 8px 4px 8px 4px;
+    /* Free the popover from the slot's height -- when the slot is
+       short (e.g. 60 min = 60 px) the form would be clipped. Anchor
+       to the top-left and let it grow downward over the neighbouring
+       slots, which we explicitly outrank via z-index. */
+    top: 0;
+    left: 4px;
+    width: max(220px, calc(100% - 8px));
+    min-height: 110px;
     background: #fff;
     border: 1px solid #cbd5e1;
     border-radius: 6px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
-    padding: 6px 8px;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+    padding: 8px 10px;
     display: flex;
     flex-direction: column;
-    gap: 4px;
-    z-index: 10;
+    gap: 6px;
+    z-index: 100;
     font-size: 11px;
+    color: #1f2937;
   }
   .cal-edit-popover-row {
     display: flex;
