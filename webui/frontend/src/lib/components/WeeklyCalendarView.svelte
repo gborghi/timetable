@@ -292,6 +292,8 @@
   let selectedSel = null;     // { dayId, idx } currently selected slot
   let editDrag = null;        // active drag operation
   let editDragPreview = null; // {dayId, top, height, label} for hover
+  let editPopover = null;     // {dayId, idx, start_time, end_time, label}
+  // when set, an inline form replaces the slot body for that slot.
 
   $: if (mode === 'edit' && _config?.days && editingDays === null) {
     editingDays = _config.days.map(
@@ -487,12 +489,48 @@
 
   function onEditKeyDown(ev) {
     if (mode !== 'edit' || !selectedSel) return;
-    if (ev.key === 'Delete' || ev.key === 'Backspace') {
-      ev.preventDefault();
-      _editApplyDelete(selectedSel.dayId, selectedSel.idx);
-    } else if (ev.key === 'Escape') {
+    if (ev.key === 'Escape') {
       selectedSel = null;
+      editPopover = null;
     }
+  }
+
+  function _openEditPopover(dayId, idx) {
+    const day = editingDays.find((d) => d.id === dayId);
+    const slot = day?.slots[idx];
+    if (!slot) return;
+    selectedSel = { dayId, idx };
+    editPopover = {
+      dayId, idx,
+      start_time: slot.start_time,
+      end_time: slot.end_time,
+      label: slot.label || '',
+    };
+  }
+
+  function _applyEditPopover() {
+    if (!editPopover) return;
+    const { dayId, idx, start_time, end_time, label } = editPopover;
+    if (!start_time || !end_time || start_time >= end_time) {
+      editPopover = null;
+      return;
+    }
+    const days = editingDays.map((d) => ({
+      ...d, slots: d.slots.map((s) => ({ ...s })),
+    }));
+    const day = days.find((dd) => dd.id === dayId);
+    if (!day || !day.slots[idx]) { editPopover = null; return; }
+    const [h, m] = start_time.split(':').map(Number);
+    day.slots[idx] = {
+      ...day.slots[idx],
+      start_time, end_time, label,
+      legacy_hour_number: Number.isFinite(h) ? h : day.slots[idx].legacy_hour_number,
+    };
+    day.slots = _reindexSlots(
+      [...day.slots].sort((a, b) =>
+        a.start_time < b.start_time ? -1 : a.start_time > b.start_time ? 1 : 0));
+    _commitEditingDays(days);
+    editPopover = null;
   }
 
   // ---------------------------------------------------------------
@@ -813,28 +851,75 @@
                   {@const isSelected = selectedSel
                       && selectedSel.dayId === dayId
                       && selectedSel.idx === sIdx}
+                  {@const isEditing = editPopover
+                      && editPopover.dayId === dayId
+                      && editPopover.idx === sIdx}
                   <div class="cal-event cal-event--edit"
                        class:cal-event--selected={isSelected}
+                       class:cal-event--editing={isEditing}
                        style="top: {_pxFromTime(slot.start_time, displayBgRange)}px;
                               height: {_pxDuration(slot)}px"
                        data-day={dnum}
                        data-slot-idx={sIdx}
                        on:mousedown={(e) =>
-                         onEditSlotMouseDown(e, dayId, sIdx,
+                         (!isEditing) && onEditSlotMouseDown(e, dayId, sIdx,
                                               d._colEl, 'move')}
-                       title={`${slot.start_time}-${slot.end_time} -- trascina i bordi per ridimensionare, il corpo per spostare, Canc per eliminare`}>
+                       title={`${slot.start_time}-${slot.end_time} -- trascina i bordi per ridimensionare, il corpo per spostare`}>
                     <div class="cal-edit-handle cal-edit-handle--top"
                          on:mousedown|stopPropagation={(e) =>
-                           onEditSlotMouseDown(e, dayId, sIdx,
+                           (!isEditing) && onEditSlotMouseDown(e, dayId, sIdx,
                                                 d._colEl, 'resize-top')}>
                     </div>
-                    <div class="cal-event-time">
-                      {slot.start_time}-{slot.end_time}
-                    </div>
-                    <div class="cal-event-label">{slot.label || ''}</div>
+                    {#if isEditing}
+                      <div class="cal-edit-popover"
+                           on:mousedown|stopPropagation={() => {}}>
+                        <div class="cal-edit-popover-row">
+                          <label>Inizio
+                            <input type="time" bind:value={editPopover.start_time}/>
+                          </label>
+                          <label>Fine
+                            <input type="time" bind:value={editPopover.end_time}/>
+                          </label>
+                        </div>
+                        <label class="cal-edit-popover-row">Etichetta
+                          <input type="text" bind:value={editPopover.label}
+                                 placeholder="es. 1ª ora"/>
+                        </label>
+                        <div class="cal-edit-popover-actions">
+                          <button type="button" class="cal-edit-btn"
+                                  on:click|stopPropagation={() => (editPopover = null)}>
+                            Annulla
+                          </button>
+                          <button type="button" class="cal-edit-btn cal-edit-btn--primary"
+                                  on:click|stopPropagation={_applyEditPopover}>
+                            Applica
+                          </button>
+                        </div>
+                      </div>
+                    {:else}
+                      <div class="cal-event-actions"
+                           on:mousedown|stopPropagation={() => {}}>
+                        <button type="button" class="cal-event-btn"
+                                title="Modifica orari/etichetta"
+                                aria-label="Modifica slot"
+                                on:click|stopPropagation={() => _openEditPopover(dayId, sIdx)}>
+                          Modifica
+                        </button>
+                        <button type="button" class="cal-event-btn cal-event-btn--danger"
+                                title="Cancella slot"
+                                aria-label="Cancella slot"
+                                on:click|stopPropagation={() => _editApplyDelete(dayId, sIdx)}>
+                          Cancella
+                        </button>
+                      </div>
+                      <div class="cal-event-time">
+                        {slot.start_time}-{slot.end_time}
+                      </div>
+                      <div class="cal-event-label">{slot.label || ''}</div>
+                    {/if}
                     <div class="cal-edit-handle cal-edit-handle--bot"
                          on:mousedown|stopPropagation={(e) =>
-                           onEditSlotMouseDown(e, dayId, sIdx,
+                           (!isEditing) && onEditSlotMouseDown(e, dayId, sIdx,
                                                 d._colEl, 'resize-bottom')}>
                     </div>
                   </div>
@@ -1026,7 +1111,7 @@
     </div>
   {/if}
 
-  {#if mode !== 'schedule'}
+  {#if mode !== 'schedule' && mode !== 'edit'}
   <KeyboardConstraintLegend visible={hovering} variant="matrix"/>
   {/if}
 </div>
@@ -1206,6 +1291,91 @@
   .cal-edit-handle--top { top: 0; }
   .cal-edit-handle--bot { bottom: 0; }
   .cal-edit-handle:hover { background: rgba(29, 78, 216, 0.45); }
+
+  /* Per-slot Modifica/Cancella action buttons (edit mode). Visible
+     unconditionally so the user doesn't need to remember a keyboard
+     shortcut. Stacked top-right, small, unobtrusive. */
+  .cal-event-actions {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    display: flex;
+    gap: 4px;
+    z-index: 5;
+  }
+  .cal-event-btn {
+    font-size: 11px;
+    line-height: 1;
+    padding: 3px 6px;
+    border-radius: 4px;
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    background: rgba(255, 255, 255, 0.92);
+    color: #1f2937;
+    cursor: pointer;
+  }
+  .cal-event-btn:hover { background: #fff; }
+  .cal-event-btn--danger { color: #b91c1c; border-color: rgba(185, 28, 28, 0.3); }
+  .cal-event-btn--danger:hover { background: #fef2f2; }
+
+  /* Inline edit popover replacing the slot's body while ``editPopover``
+     targets it. Sized to fit inside the slot rectangle. */
+  .cal-event--editing { cursor: default; overflow: visible; }
+  .cal-edit-popover {
+    position: absolute;
+    inset: 8px 4px 8px 4px;
+    background: #fff;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+    padding: 6px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    z-index: 10;
+    font-size: 11px;
+  }
+  .cal-edit-popover-row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+  .cal-edit-popover-row label {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 10px;
+    color: #475569;
+    flex: 1 1 0;
+  }
+  .cal-edit-popover input[type='time'],
+  .cal-edit-popover input[type='text'] {
+    border: 1px solid #cbd5e1;
+    border-radius: 3px;
+    padding: 2px 4px;
+    font-size: 11px;
+    width: 100%;
+  }
+  .cal-edit-popover-actions {
+    display: flex;
+    gap: 6px;
+    justify-content: flex-end;
+    margin-top: auto;
+  }
+  .cal-edit-btn {
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    border: 1px solid #cbd5e1;
+    background: #f8fafc;
+    cursor: pointer;
+  }
+  .cal-edit-btn:hover { background: #e2e8f0; }
+  .cal-edit-btn--primary {
+    background: #2563eb;
+    border-color: #2563eb;
+    color: #fff;
+  }
+  .cal-edit-btn--primary:hover { background: #1d4ed8; }
   /* Hide click outline on the wrapping scroll container that catches
      keyboard Delete events (it must be focusable, but the visual
      focus ring is distracting on the calendar itself). */

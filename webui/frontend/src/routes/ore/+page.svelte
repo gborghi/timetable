@@ -276,10 +276,9 @@
             <h2 class="text-lg font-medium">Editor calendario</h2>
             <p class="text-xs text-ink-600">
               Trascina su un'area vuota per creare uno slot.
-              Trascina i bordi (alto/basso) per ridimensionare,
-              il corpo per spostare. Click + <kbd
-                class="px-1 border border-ink-300 rounded text-[10px]"
-                >Canc</kbd> per eliminare lo slot selezionato.
+              Trascina i bordi per ridimensionarlo, il corpo per
+              spostarlo. Su ogni slot trovi i bottoni
+              <strong>Modifica</strong> e <strong>Cancella</strong>.
               Snap a 15 min.
             </p>
           </div>
