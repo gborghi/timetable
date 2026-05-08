@@ -251,21 +251,24 @@
   };
 </script>
 
-<div class="space-y-4">
+<div class="space-y-4" data-testid="constraints-page">
   <div class="flex items-baseline gap-3 flex-wrap">
     <h1>Vincoli</h1>
     <button class="btn-primary ml-auto"
-            on:click={() => (newConstraintOpen = true)}>
+            on:click={() => (newConstraintOpen = true)}
+            data-testid="new-constraint-btn">
       + Nuovo vincolo
     </button>
     <button class="btn-primary"
             on:click={() => (newDSLConstraintOpen = true)}
-            title="Vincolo espresso in DSL generico (forall/exists/count su lessons/teachers/...)">
+            title="Vincolo espresso in DSL generico (forall/exists/count su lessons/teachers/...)"
+            data-testid="new-dsl-constraint-btn">
       + Nuovo vincolo DSL
     </button>
     <button class="btn-primary"
             on:click={() => (feasibilityOpen = !feasibilityOpen)}
-            title="Analisi MUS dei vincoli HARD/ENFORCED">
+            title="Analisi MUS dei vincoli HARD/ENFORCED"
+            data-testid="feasibility-toggle-btn">
       {feasibilityOpen ? 'Nascondi' : ''} Feasibility Check
     </button>
     <button class="btn"
