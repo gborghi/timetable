@@ -389,39 +389,105 @@ della generazione automatica si trovano nel modulo
 \texttt{webui/backend/mock\_classrooms.py}.
 
 \section{Le preferenze di giorno libero per i docenti}
+\label{sec:vincoli-giorno-libero-docente}
 
 I docenti hanno diritto, per contratto collettivo nazionale
-del settore scolastico italiano, a un certo numero di giorni
-liberi a settimana, tipicamente uno per il personale a
-tempo pieno. $\pi$Tantum gestisce questa esigenza in modo
-flessibile attraverso un meccanismo a tre slot di preferenza
-ordinati. Il primo slot rappresenta il giorno libero
-ideale del docente, per esempio il sabato; il secondo
-rappresenta il giorno di ripiego se il primo non \`e
-realizzabile, per esempio il mercoled\`i; il terzo
-rappresenta l'ultima alternativa, per esempio il luned\`i.
+del settore scolastico italiano, ad almeno un giorno libero
+a settimana per il personale a tempo pieno. $\pi$Tantum
+modella questa esigenza con un'architettura a due livelli:
+un \emph{pavimento} HARD universale ``almeno N giorni
+liberi'' e una preferenza \emph{ordinata in priorit\`a} a
+tre livelli SOFT.
 
-Per ciascuna delle tre preferenze, il docente o il
-coordinatore pu\`o scegliere se essa sia di tipo HARD
-(assoluta, non negoziabile) o di tipo SOFT con un peso
-configurabile. A questo si aggiunge il campo
-\texttt{required\_free\_days\_count}, che indica quanti
-giorni liberi servano in totale: il valore predefinito \`e
-uno, conforme al contratto collettivo, ma scuole con
-docenti a tempo parziale possono richiederne di pi\`u.
+\subsection*{Pavimento HARD: ``almeno un giorno libero''}
 
-Un esempio illustra la flessibilit\`a del meccanismo. Si
-consideri un docente con le preferenze [sabato HARD,
-mercoled\`i SOFT con peso 50, luned\`i SOFT con peso 20] e
-con \texttt{required\_free\_days\_count = 1}. Il sistema
-cercher\`a sicuramente di mantenere libero il sabato,
-perch\'e \`e HARD; se non riuscisse, in seconda istanza
-cercher\`a di liberare il mercoled\`i (con un costo SOFT
-di 50 se non ci riesce); in terza istanza cercher\`a di
-liberare il luned\`i (con un costo di 20). La gradazione
-permette al sistema di scegliere il compromesso pi\`u
-ragionevole quando le preferenze multiple dei vari docenti
-entrano in conflitto fra loro.
+Il vincolo HARD \`e universale: per ogni docente $t$ il
+sistema impone
+\[
+   \sum_{d \in \mathrm{giorni}} \mathbf{1}\{\text{$t$ ha almeno
+   una lezione il giorno $d$}\}
+   \;\le\; |\mathrm{giorni}| - n_t,
+\]
+dove $n_t$ \`e il valore di
+\texttt{Teacher.required\_free\_days\_count} (predefinito 1,
+conforme al contratto collettivo). Il pragma DSL canonico
+\`e
+\begin{verbatim}
+teacher_at_least_n_free_days("Rossi", 1)
+\end{verbatim}
+ed \`e registrato con \texttt{level=both} nel compilatore
+DSL: si applica uniformemente a Phase A, Phase B,
+\texttt{cpsat\_week}, \texttt{cpsat\_day\_skip\_phase\_a} e
+\texttt{cpsat\_day\_soft\_hint}. Il vecchio meccanismo
+\texttt{free\_day\_choice\_3way} viveva solo in Phase A e
+veniva silenziosamente bypassato dalle ultime tre tecniche
+producendo \texttt{hard\_violation}; il nuovo pragma
+risolve l'asimmetria.
+
+\subsection*{Preferenze SOFT ordinate in priorit\`a}
+
+Sopra il pavimento, ogni docente ha tre preferenze ordinate
+nella tabella \texttt{teacher\_free\_day\_preferences}
+(colonne \texttt{teacher\_id}, \texttt{day} 1..6,
+\texttt{priority} 1..3). Le tre priorit\`a corrispondono a
+penalty fisse:
+\begin{itemize}
+  \item priorit\`a 1: peso 30 (prima scelta -- la pi\`u
+    costosa da ignorare),
+  \item priorit\`a 2: peso 20 (seconda scelta),
+  \item priorit\`a 3: peso 10 (terza scelta).
+\end{itemize}
+La formula \`e $w_p = 40 - 10 p$. Per ogni riga il
+traduttore DSL emette il pragma SOFT canonico
+\begin{verbatim}
+teacher_preferred_free_day_penalty("Rossi", 6, 30)
+\end{verbatim}
+che contribuisce al costo SOFT con $w_p \cdot
+\mathbf{1}\{\text{Rossi lavora il giorno 6}\}$. Il
+solver minimizza la somma, quindi tende a onorare prima la
+priorit\`a 1 perch\'e ignorarla costa di pi\`u.
+
+\subsection*{Esempio numerico}
+
+Si consideri un docente con cinque ore settimanali e le
+tre preferenze [Luned\`i pri.1, Marted\`i pri.2, Mercoled\`i
+pri.3]. Il pavimento HARD richiede $\ge 1$ giorno libero.
+Le tre penalty in conflitto sono $30 \cdot \mathbf{1}_{\rm
+Lun} + 20 \cdot \mathbf{1}_{\rm Mar} + 10 \cdot
+\mathbf{1}_{\rm Mer}$; il solver paga 0 lasciando libero
+Luned\`i, 30 lasciando libero Marted\`i (paga la
+priorit\`a 1), e cos\`i via. La scelta razionale \`e
+quindi Luned\`i, salvo conflitti con altri vincoli HARD
+(p.es. una lezione fissata a Luned\`i da un altro docente
+in compresenza).
+
+\subsection*{Provalo (SQL)}
+
+Per ispezionare le preferenze del DB:
+\begin{verbatim}
+-- pavimento HARD per docente:
+SELECT t.name, t.required_free_days_count
+  FROM teachers t ORDER BY t.id;
+
+-- 3 preferenze SOFT priority-ordered:
+SELECT t.name, p.day, p.priority,
+       40 - 10*p.priority AS weight
+  FROM teacher_free_day_preferences p
+  JOIN teachers t ON t.id = p.teacher_id
+ ORDER BY t.name, p.priority;
+\end{verbatim}
+
+\subsection*{Caso particolare: vincolo HARD su un giorno
+specifico}
+
+Per docenti a tempo parziale che debbano \emph{per
+contratto} essere fuori servizio in un giorno specifico
+(per esempio Luned\`i) il sistema mantiene la tabella
+distinta \texttt{teacher\_mandatory\_free\_days}: ogni
+riga \`e tradotta come HARD ``zero lezioni il giorno X''.
+Il pavimento universale e le preferenze SOFT continuano a
+valere; la riga HARD per-giorno semplicemente forza un
+ulteriore vincolo che il solver deve rispettare.
 
 \section{Le preferenze di giorno libero per le classi}
 
