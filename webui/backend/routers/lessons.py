@@ -83,6 +83,25 @@ def _serialise_unscheduled(u: models.UnscheduledLesson) -> dict:
 # ---------- endpoints ----------
 
 
+@router.get("")
+def list_scheduled(db: Session = Depends(get_db)):
+    """Return every Lesson in the active solution as a flat list.
+
+    The legacy /api/schedule/by-class folds co-teachings into a single
+    cell with a list of teachers, dropping all but one ``lesson_id`` --
+    that's lossy for the calendar UI which renders each Lesson as its
+    own draggable event. This endpoint hands back the raw rows so the
+    frontend can group them itself."""
+    from .. import engine_io
+    active = engine_io.get_active_solution(db)
+    if active is None:
+        return {"lessons": []}
+    rows = db.query(models.Lesson).filter(
+        models.Lesson.solution_id == active.id
+    ).order_by(models.Lesson.id).all()
+    return {"lessons": [_serialise(l) for l in rows]}
+
+
 @router.get("/unscheduled")
 def list_unscheduled(db: Session = Depends(get_db)):
     """Return every lesson in the unscheduled pool, scoped to the

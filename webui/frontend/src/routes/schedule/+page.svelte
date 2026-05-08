@@ -1,890 +1,546 @@
 <script>
+  /**
+   * /schedule -- timetable view + interactive editor.
+   *
+   * The default UI is the WeeklyCalendarView in mode='schedule':
+   *   - Background: configured Tab Ore slots; non-configured hours are
+   *     red while a drag is in progress (drop reject).
+   *   - Foreground: each Lesson rendered as a draggable, clickable
+   *     event coloured by deterministic palette (consistent across
+   *     views).
+   *   - Filter dropdown: Globale | Per classe | Per docente | Per aula
+   *     -- combined with an autocomplete entity picker.
+   *   - Click on an event -> "Lesson actions" modal (Modifica / Sposta
+   *     / Svincola / Elimina).
+   *   - Click on an empty configured slot -> AddLessonModal.
+   *   - Drag an event onto a slot -> POST /api/lessons/{id}/move.
+   *   - Pool sidebar: list of UnscheduledLessons; drag onto the
+   *     calendar to POST /api/lessons/unscheduled/{id}/reschedule.
+   *   - Soft-conflict preview: while dragging, every existing event
+   *     sharing the dragged lesson's teacher / class / room gets an
+   *     outline + badge.
+   *
+   * The legacy 6x6 matrix UI is preserved temporarily behind
+   * `?legacy=true` so users can fall back if anything regresses; that
+   * fallback will be deleted in a follow-up after the calendar UI is
+   * exercised.
+   */
   import { onMount } from 'svelte';
+  import { page } from '$app/stores';
   import { api, downloadUrl } from '$lib/api';
   import { flash, refreshDataset } from '$lib/stores';
   import { DAYS, HOURS, DAY_NAMES_IT } from '$lib/constants';
-  import MoveModeBanner from '$lib/components/schedule/MoveModeBanner.svelte';
+  import WeeklyCalendarView from '$lib/components/WeeklyCalendarView.svelte';
+  import Modal from '$lib/components/Modal.svelte';
   import RoomDropdown from '$lib/components/schedule/RoomDropdown.svelte';
-  import PreviewCellHint from '$lib/components/schedule/PreviewCellHint.svelte';
   import RoomClearedNoticeModal from '$lib/components/schedule/RoomClearedNoticeModal.svelte';
   import SolutionsTable from '$lib/components/schedule/SolutionsTable.svelte';
   import AddLessonModal from '$lib/components/schedule/AddLessonModal.svelte';
 
-  let view = 'classes';   // classes | teachers | rooms | slot
-  // each entity gets an independent layout toggle:
-  //   'matrix' = per-entity 6x6 grid with drag-drop / move preview
-  //   'list'   = single big table with one row per entity and 36 slot columns
-  let classesViewMode = 'matrix';
-  let teachersViewMode = 'matrix';
-  let roomsViewMode = 'matrix';
+  // Layout: read ?legacy=true once at mount to opt into the old 6x6
+  // matrix UI. Anything else -> calendar view.
+  let legacyMode = false;
+  $: legacyMode = $page.url.searchParams.get('legacy') === 'true';
+
+  // --- Calendar-view state -----------------------------------------
+  let view = 'global';      // 'global' | 'class' | 'teacher' | 'room'
+  let entityId = '';         // selected name (when view !== 'global')
+  let entityFilter = '';     // autocomplete typed text
+  let workingHoursConfig = null;
+  let lessons = [];          // flat list of scheduled Lessons
+  let unscheduled = [];      // pool entries
+  let summary = null;        // { obj_value, metrics }
+  let solutions = [];
+  let allRooms = [];
+  let teachersWithSubjects = [];
+  // Lesson-actions modal state.
+  let actionLesson = null;
+  let actionMode = 'menu';   // menu | edit | move
+  // AddLessonModal state.
+  let addLessonOpen = false;
+  let addLessonMode = 'slot';
+  let addLessonDay = 1;
+  let addLessonHour = 8;
+  let addLessonPreset = {};
+  // Click-to-move state (alternative to drag-drop).
+  let pendingMoveLessonId = null;
+  // Room-cleared notice modal.
+  let roomClearedNotice = null;
+
+  // --- Legacy state (kept for ?legacy=true fallback) ---------------
   let classData = null;
   let teacherData = null;
   let roomData = null;
   let slotData = null;
-  let selectedClass = '';
-  let selectedTeacher = '';
-  let selectedRoom = '';
+  let selectedClass = '', selectedTeacher = '', selectedRoom = '';
   let slotDay = 1, slotHour = 8;
-  let dragging = null;
-  let dropTarget = null;
-  let lastMoveOutcome = null;
-  let solutions = [];
-  let allRooms = [];
-  // [{name, subjects:[]}] for the AddLessonModal subject filter.
-  let teachersWithSubjects = [];
-  // 'move mode' state
-  let moveSrc = null;          // {lesson_id, teacher, cls, subject, day, hour}
-  let movePreview = null;      // map "d-h" -> {status, reason, delta_soft}
-  let movePreviewBusy = false;
-  // When the backend reports room_cleared after a move, we surface a
-  // modal alert so the user knows the old classroom couldn't follow the
-  // lesson and must be replaced manually.
-  let roomClearedNotice = null;  // {room, day, hour, ctx, class_name, teacher}
 
-  // Empty-cell create-lesson modal state.
-  let addLessonOpen = false;
-  let addLessonMode = 'class';
-  let addLessonDay = 1;
-  let addLessonHour = 8;
-  let addLessonPreset = {};
+  $: classNames = [...new Set(lessons.map((l) => l.class_name).filter(Boolean))]
+    .sort();
+  $: teacherNames = [...new Set(lessons.map((l) => l.teacher_name).filter(Boolean))]
+    .sort();
+  $: roomNames = (() => {
+    const set = new Set();
+    for (const l of lessons) if (l.classroom_name) set.add(l.classroom_name);
+    for (const r of allRooms) set.add(r);
+    return [...set].sort();
+  })();
 
-  function openAddLesson(mode, day, hour, preset) {
-    addLessonMode = mode;
-    addLessonDay = day;
-    addLessonHour = hour;
-    addLessonPreset = preset || {};
-    addLessonOpen = true;
-  }
-  $: allTeachers = teacherData?.teachers ?? [];
-  $: allClasses  = classData?.classes  ?? [];
+  $: entitySource = view === 'class' ? classNames
+    : view === 'teacher' ? teacherNames
+    : view === 'room' ? roomNames : [];
+  $: filteredEntities = entitySource.filter(
+    (n) => !entityFilter || n.toLowerCase().includes(entityFilter.toLowerCase()));
+
+  $: calendarFilter = view === 'global'
+    ? { type: null, id: null }
+    : { type: view, id: entityId || null };
+
+  $: calendarTitle = view === 'global'
+    ? 'Orario globale'
+    : view === 'class' ? `Orario classe ${entityId || '...'}`
+    : view === 'teacher' ? `Orario docente ${entityId || '...'}`
+    : `Orario aula ${entityId || '...'}`;
 
   onMount(async () => {
-    await loadAll();
-    solutions = await api.get('/api/schedule/solutions');
-    allRooms = (await api.get('/api/classrooms')).map((r) => r.name).sort();
+    if (legacyMode) {
+      await loadLegacy();
+      return;
+    }
+    await loadCalendar();
+    try {
+      workingHoursConfig = await api.get('/api/working-hours/config');
+    } catch { /* fallback to default config in WeeklyCalendarView */ }
+    try {
+      solutions = await api.get('/api/schedule/solutions');
+    } catch { solutions = []; }
+    try {
+      allRooms = (await api.get('/api/classrooms')).map((r) => r.name).sort();
+    } catch { allRooms = []; }
     try {
       const t = await api.get('/api/teachers');
       teachersWithSubjects = (t || []).map((x) => ({
-        name: x.name,
-        subjects: x.subjects ?? [],
+        name: x.name, subjects: x.subjects ?? [],
       })).sort((a, b) => a.name.localeCompare(b.name));
     } catch { teachersWithSubjects = []; }
   });
 
-  async function loadAll() {
+  async function loadCalendar() {
     try {
-      classData = await api.get('/api/schedule/by-class');
-      if (classData?.classes?.length) selectedClass = classData.classes[0];
-      teacherData = await api.get('/api/schedule/by-teacher');
-      if (teacherData?.teachers?.length) selectedTeacher = teacherData.teachers[0];
-      roomData = await api.get('/api/schedule/by-room');
-      if (roomData?.rooms?.length && !selectedRoom) selectedRoom = roomData.rooms[0];
-    } catch (e) {
-      flash('Nessuna soluzione attiva: ' + e.message, 'error');
-    }
-  }
-
-  function loadSlot() {
-    api.get(`/api/schedule/by-slot?day=${slotDay}&hour=${slotHour}`)
-      .then((d) => slotData = d)
-      .catch((e) => flash(e.message, 'error'));
-  }
-
-  function startDrag(ev, payload) {
-    dragging = payload;
-    ev.dataTransfer.effectAllowed = 'move';
-    ev.target.classList.add('dragging');
-  }
-  function endDrag(ev) {
-    if (ev.target.classList) ev.target.classList.remove('dragging');
-  }
-  function overTarget(ev, key) {
-    ev.preventDefault();
-    dropTarget = key;
-  }
-  function leaveTarget(ev) { dropTarget = null; }
-
-  async function dropOn(ev, dst) {
-    ev.preventDefault();
-    if (!dragging) return;
-    const payload = {
-      teacher_name: dragging.teacher,
-      class_name: dragging.cls,
-      subject: dragging.subject,
-      src_day: dragging.day,
-      src_hour: dragging.hour,
-      dst_day: dst.day,
-      dst_hour: dst.hour
-    };
-    dragging = null;
-    dropTarget = null;
-    try {
-      const r = await api.put('/api/schedule/move-lesson', payload);
-      lastMoveOutcome = r;
-      if (!r.accepted) {
-        flash('Mossa rifiutata: ' + r.reason, 'error');
-      } else {
-        flash(r.reason || 'Mossa accettata', 'success');
-      }
-      await loadAll();
-      await refreshDataset();
-      if (r.accepted && r.room_cleared) {
-        roomClearedNotice = {
-          room: r.cleared_room,
-          day: dst.day,
-          hour: dst.hour,
-          class_name: payload.class_name,
-          teacher: payload.teacher_name,
-          subject: payload.subject,
-        };
+      const [r, u, summaryData] = await Promise.all([
+        api.get('/api/lessons'),
+        api.get('/api/lessons/unscheduled'),
+        api.get('/api/schedule/by-class').catch(() => null),
+      ]);
+      lessons = r.lessons || [];
+      unscheduled = u.lessons || [];
+      summary = summaryData
+        ? { obj_value: summaryData.obj_value, metrics: summaryData.metrics }
+        : null;
+      // Default entity selection so the autocomplete starts useful.
+      if (view === 'class' && !entityId && classNames.length) {
+        entityId = classNames[0];
+      } else if (view === 'teacher' && !entityId && teacherNames.length) {
+        entityId = teacherNames[0];
+      } else if (view === 'room' && !entityId && roomNames.length) {
+        entityId = roomNames[0];
       }
     } catch (e) {
-      flash('Errore: ' + e.message, 'error');
+      flash('Errore caricamento orario: ' + e.message, 'error');
+      lessons = [];
+      unscheduled = [];
     }
   }
 
-  // ---- Move mode (click-to-select-then-click-target) ---------------
-  async function startMove(cell, day, hour, ctx) {
-    // ctx tells if we're in classes view or teachers view (so we can
-    // pick the right teacher/class)
-    if (!cell || !cell.lesson_id) return;
-    const teacher = ctx === 'classes' ? cell.teachers[0] : selectedTeacher;
-    const cls = ctx === 'classes' ? selectedClass : cell.class_name;
-    const subject = ctx === 'classes' ? cell.subjects[0] : cell.subject;
-    moveSrc = { lesson_id: cell.lesson_id, teacher, cls, subject, day, hour };
-    movePreview = null;
-    movePreviewBusy = true;
+  function onSelectView(v) {
+    view = v;
+    entityId = '';
+    entityFilter = '';
+    if (v === 'class' && classNames.length) entityId = classNames[0];
+    if (v === 'teacher' && teacherNames.length) entityId = teacherNames[0];
+    if (v === 'room' && roomNames.length) entityId = roomNames[0];
+  }
+
+  // ---- Lesson actions modal --------------------------------------
+  function onLessonClick(l) {
+    actionLesson = l;
+    actionMode = 'menu';
+  }
+  function closeActions() {
+    actionLesson = null;
+    actionMode = 'menu';
+    pendingMoveLessonId = null;
+  }
+  function startEdit() { actionMode = 'edit'; }
+  function startMove() {
+    pendingMoveLessonId = actionLesson?.id ?? null;
+    actionLesson = null;
+    actionMode = 'menu';
+    flash('Click su uno slot vuoto per spostare la lezione', 'success');
+  }
+  async function svincolaLesson() {
+    if (!actionLesson) return;
+    if (!confirm('Svincolare questa lezione? Verra messa nel pool '
+                 + 'unscheduled e non occupera piu lo slot.')) return;
     try {
-      const r = await api.post('/api/schedule/move-preview',
-        { lesson_id: cell.lesson_id });
-      const map = {};
-      for (const s of (r.results || [])) {
-        map[s.day + '-' + s.hour] = s;
-      }
-      movePreview = map;
-    } catch (e) {
-      flash('Errore preview: ' + e.message, 'error');
-      moveSrc = null;
-    } finally {
-      movePreviewBusy = false;
-    }
-  }
-
-  function cancelMove() {
-    moveSrc = null;
-    movePreview = null;
-  }
-
-  async function confirmMove(day, hour) {
-    if (!moveSrc) return;
-    if (day === moveSrc.day && hour === moveSrc.hour) {
-      cancelMove();
-      return;
-    }
-    const cell = movePreview ? movePreview[day + '-' + hour] : null;
-    if (cell && cell.status === 'hard_violation') {
-      flash('Slot non valido: ' + cell.reason, 'error');
-      return;
-    }
-    try {
-      const r = await api.put('/api/schedule/move-lesson', {
-        teacher_name: moveSrc.teacher,
-        class_name: moveSrc.cls,
-        subject: moveSrc.subject,
-        src_day: moveSrc.day,
-        src_hour: moveSrc.hour,
-        dst_day: day,
-        dst_hour: hour
-      });
-      lastMoveOutcome = r;
-      if (!r.accepted) flash('Mossa rifiutata: ' + r.reason, 'error');
-      else flash(r.reason || 'Mossa applicata', 'success');
-      const movedDay = day;
-      const movedHour = hour;
-      const movedSrc = moveSrc;
-      cancelMove();
-      await loadAll();
-      await refreshDataset();
-      if (r.accepted && r.room_cleared) {
-        roomClearedNotice = {
-          room: r.cleared_room,
-          day: movedDay,
-          hour: movedHour,
-          class_name: movedSrc.cls,
-          teacher: movedSrc.teacher,
-          subject: movedSrc.subject,
-        };
-      }
-    } catch (e) {
-      flash('Errore: ' + e.message, 'error');
-    }
-  }
-
-  function previewClass(d, h) {
-    if (!movePreview) return null;
-    return movePreview[d + '-' + h] || null;
-  }
-
-  /**
-   * Keyboard alternative to drag-drop. On a filled cell:
-   *   Enter            -> start move
-   *   Escape           -> cancel move
-   * On any cell while in move-mode:
-   *   Enter            -> confirm move into this slot
-   * Used by the class and teacher matrix cells with tabindex=0.
-   */
-  function onCellKey(ev, cell, d, h, ctx) {
-    if (ev.key === 'Escape' && moveSrc) {
-      ev.preventDefault();
-      cancelMove();
-      return;
-    }
-    if (ev.key !== 'Enter') return;
-    ev.preventDefault();
-    if (moveSrc) {
-      confirmMove(d, h);
-    } else if (cell) {
-      startMove(cell, d, h, ctx);
-    }
-  }
-
-  async function unscheduleLesson(cell) {
-    if (!cell || !cell.lesson_id) return;
-    if (!confirm(
-      `Svincolare la lezione (${cell.subjects?.join('+')
-        ?? cell.subject ?? '?'}, ${cell.class_name
-        ?? cell.teachers?.join('+') ?? '?'}) dallo slot?\n\n`
-      + 'La cattedra resta invariata: l\'ora dovra\' essere '
-      + 'ripiazzata altrove al prossimo run del solver.'
-    )) return;
-    try {
-      await api.del('/api/schedule/lesson/' + cell.lesson_id);
+      await api.post('/api/lessons/' + actionLesson.id + '/unschedule');
       flash('Lezione svincolata', 'success');
-      await loadAll();
+      closeActions();
+      await loadCalendar();
       await refreshDataset();
     } catch (e) { flash('Errore: ' + e.message, 'error'); }
   }
-
-  async function deleteLesson(cell) {
-    if (!cell || !cell.lesson_id) return;
-    if (!confirm(
-      `Eliminare la lezione (${cell.subjects?.join('+')
-        ?? cell.subject ?? '?'}, ${cell.class_name
-        ?? cell.teachers?.join('+') ?? '?'})?\n\n`
-      + 'La cattedra del docente verra ridotta di 1 ora '
-      + '(non sara piu ripiazzata).'
-    )) return;
+  async function eliminaLesson() {
+    if (!actionLesson) return;
+    if (!confirm('Eliminare definitivamente questa lezione?')) return;
     try {
-      await api.del('/api/schedule/lesson/' + cell.lesson_id
-                     + '?reduce_assignment=true');
-      flash('Lezione eliminata + cattedra ridotta', 'success');
-      await loadAll();
+      await api.del('/api/lessons/' + actionLesson.id);
+      flash('Lezione eliminata', 'success');
+      closeActions();
+      await loadCalendar();
       await refreshDataset();
     } catch (e) { flash('Errore: ' + e.message, 'error'); }
   }
-
-  async function setRoom(lessonId, roomName) {
+  async function setLessonRoom(lessonId, roomName) {
     try {
       const url = '/api/schedule/lesson/' + lessonId + '/classroom'
         + (roomName ? '?classroom_name=' + encodeURIComponent(roomName) : '');
       await api.put(url);
       flash('Aula aggiornata', 'success');
-      await loadAll();
-    } catch (e) {
-      flash('Errore: ' + e.message, 'error');
-    }
+      // Refresh local state without closing the modal so the user
+      // sees the new value reflected.
+      await loadCalendar();
+      // Re-bind actionLesson to the (possibly modified) row.
+      if (actionLesson) {
+        const fresh = lessons.find((l) => l.id === actionLesson.id);
+        if (fresh) actionLesson = fresh;
+      }
+    } catch (e) { flash('Errore: ' + e.message, 'error'); }
   }
 
+  // ---- Drag-drop / pool drop -------------------------------------
+  async function onLessonMove(lessonId, day, hour) {
+    try {
+      const r = await api.post('/api/lessons/' + lessonId + '/move',
+                                { day, hour });
+      if (r && r.accepted === false) {
+        flash('Mossa rifiutata: ' + (r.reason || 'vincolo violato'), 'error');
+      } else {
+        flash(r?.reason || 'Lezione spostata', 'success');
+        if (r && r.accepted && r.room_cleared) {
+          roomClearedNotice = {
+            room: r.cleared_room, day, hour,
+            class_name: r.class_name || '', teacher: r.teacher_name || '',
+            subject: r.subject || '',
+          };
+        }
+      }
+      await loadCalendar();
+      await refreshDataset();
+    } catch (e) { flash('Errore: ' + e.message, 'error'); }
+  }
+  async function onUnscheduledDrop(unschedId, day, hour) {
+    try {
+      await api.post('/api/lessons/unscheduled/' + unschedId + '/reschedule',
+                      { day, hour });
+      flash('Lezione ripiazzata', 'success');
+      await loadCalendar();
+      await refreshDataset();
+    } catch (e) { flash('Errore: ' + e.message, 'error'); }
+  }
+  function onSlotClick(day, hour) {
+    if (pendingMoveLessonId) {
+      const id = pendingMoveLessonId;
+      pendingMoveLessonId = null;
+      onLessonMove(id, day, hour);
+      return;
+    }
+    addLessonMode = view === 'class' ? 'class'
+      : view === 'teacher' ? 'teacher'
+      : view === 'room' ? 'room' : 'slot';
+    addLessonDay = day;
+    addLessonHour = hour;
+    addLessonPreset = view === 'class' && entityId ? { class_name: entityId }
+      : view === 'teacher' && entityId ? { teacher_name: entityId }
+      : view === 'room' && entityId ? { classroom_name: entityId }
+      : {};
+    addLessonOpen = true;
+  }
+
+  // ---- Solutions / exports ---------------------------------------
   async function activateSolution(id) {
     try {
       await api.post('/api/schedule/solutions/' + id + '/activate');
       flash('Soluzione attivata', 'success');
-      await loadAll();
       solutions = await api.get('/api/schedule/solutions');
+      await loadCalendar();
       await refreshDataset();
-    } catch (e) {
-      flash('Errore: ' + e.message, 'error');
-    }
+    } catch (e) { flash('Errore: ' + e.message, 'error'); }
   }
-
   async function delSolution(id) {
     if (!confirm('Eliminare questa soluzione?')) return;
     try {
       await api.del('/api/schedule/solutions/' + id);
       solutions = await api.get('/api/schedule/solutions');
-      await loadAll();
+      await loadCalendar();
     } catch (e) { flash(e.message, 'error'); }
   }
 
-  $: selClassGrid = classData && selectedClass ? classData.grid[selectedClass] : null;
-  $: selTeacherGrid = teacherData && selectedTeacher ? teacherData.grid[selectedTeacher] : null;
-  $: selRoomGrid = roomData && selectedRoom ? roomData.grid[selectedRoom] : null;
-
-  // Per-slot set of occupied classroom names. Used by the cell dropdowns
-  // to color free rooms green and disable busy rooms (red).
-  $: occupiedAt = (() => {
-    const out = {};
-    if (!roomData) return out;
-    for (const d of DAYS) for (const h of HOURS) {
-      const set = new Set();
-      for (const rn of roomData.rooms) {
-        const lst = roomData.grid?.[rn]?.[d]?.[h] ?? [];
-        if (lst.length > 0) set.add(rn);
-      }
-      out[d + '-' + h] = set;
+  // ---- Legacy fallback ------------------------------------------
+  async function loadLegacy() {
+    try {
+      classData = await api.get('/api/schedule/by-class');
+      if (classData?.classes?.length) selectedClass = classData.classes[0];
+      teacherData = await api.get('/api/schedule/by-teacher');
+      if (teacherData?.teachers?.length)
+        selectedTeacher = teacherData.teachers[0];
+      roomData = await api.get('/api/schedule/by-room');
+      if (roomData?.rooms?.length && !selectedRoom)
+        selectedRoom = roomData.rooms[0];
+    } catch (e) {
+      flash('Nessuna soluzione attiva: ' + e.message, 'error');
     }
-    return out;
-  })();
-
-  function isRoomBusy(d, h, roomName, currentRoom) {
-    // The room currently assigned to this very lesson stays selectable,
-    // so the user can keep it. Any other occupied room is red+disabled.
-    if (roomName === currentRoom) return false;
-    return (occupiedAt[d + '-' + h] || new Set()).has(roomName);
+  }
+  function loadSlot() {
+    api.get(`/api/schedule/by-slot?day=${slotDay}&hour=${slotHour}`)
+      .then((d) => slotData = d)
+      .catch((e) => flash(e.message, 'error'));
   }
 </script>
 
 <div class="space-y-4" data-testid="schedule-page">
   <div class="flex items-baseline gap-3 flex-wrap">
     <h1>Orario</h1>
-    {#if classData}
+    {#if !legacyMode && summary}
+      <span class="text-sm text-ink-500" data-testid="schedule-obj-value">
+        obj=<code>{summary.obj_value}</code>
+        - {Object.entries(summary.metrics || {}).map(([k, v]) => `${k}=${v}`).join(' ')}
+      </span>
+    {:else if legacyMode && classData}
       <span class="text-sm text-ink-500" data-testid="schedule-obj-value">
         obj=<code>{classData.obj_value}</code>
         - {Object.entries(classData.metrics || {}).map(([k, v]) => `${k}=${v}`).join(' ')}
       </span>
     {/if}
-    <div class="ml-auto flex gap-1">
-      <button class="btn !text-xs" class:bg-ink-100={view === 'classes'} on:click={() => (view = 'classes')} data-testid="schedule-view-classes">per classe</button>
-      <button class="btn !text-xs" class:bg-ink-100={view === 'teachers'} on:click={() => (view = 'teachers')} data-testid="schedule-view-teachers">per docente</button>
-      <button class="btn !text-xs" class:bg-ink-100={view === 'rooms'} on:click={() => (view = 'rooms')} data-testid="schedule-view-rooms">per aula</button>
-      <button class="btn !text-xs" class:bg-ink-100={view === 'slot'} on:click={() => { view = 'slot'; loadSlot(); }} data-testid="schedule-view-slot">per slot</button>
-    </div>
-    <a class="btn-primary !text-xs" href={downloadUrl('/api/schedule/export/xlsx-classes')} data-testid="schedule-export-xlsx-classes">xlsx classi</a>
-    <a class="btn !text-xs" href={downloadUrl('/api/schedule/export/xlsx-teachers')} data-testid="schedule-export-xlsx-teachers">xlsx docenti</a>
-    <a class="btn !text-xs" href={downloadUrl('/api/schedule/export/pdf-classes')} data-testid="schedule-export-pdf-classes">pdf classi</a>
-    <a class="btn !text-xs" href={downloadUrl('/api/schedule/export/pdf-teachers')} data-testid="schedule-export-pdf-teachers">pdf docenti</a>
+    <a class="btn-primary !text-xs ml-auto"
+       href={downloadUrl('/api/schedule/export/xlsx-classes')}
+       data-testid="schedule-export-xlsx-classes">xlsx classi</a>
+    <a class="btn !text-xs"
+       href={downloadUrl('/api/schedule/export/xlsx-teachers')}
+       data-testid="schedule-export-xlsx-teachers">xlsx docenti</a>
+    <a class="btn !text-xs"
+       href={downloadUrl('/api/schedule/export/pdf-classes')}
+       data-testid="schedule-export-pdf-classes">pdf classi</a>
+    <a class="btn !text-xs"
+       href={downloadUrl('/api/schedule/export/pdf-teachers')}
+       data-testid="schedule-export-pdf-teachers">pdf docenti</a>
+    {#if !legacyMode}
+      <a class="btn !text-xs" href="?legacy=true"
+         data-testid="schedule-legacy-link">vista legacy</a>
+    {:else}
+      <a class="btn !text-xs" href="/schedule"
+         data-testid="schedule-calendar-link">vista calendario</a>
+    {/if}
   </div>
 
-  {#if !classData}
-    <div class="card p-6 text-center text-ink-500" data-testid="schedule-empty-state">
-      Nessuna soluzione attiva. Vai al
-      <a class="text-accent-500 underline" href="/optimize">Workflow</a>
-      e lancia almeno la Phase B, oppure importa un pickle dalla
-      <a class="text-accent-500 underline" href="/">Dashboard</a>.
+  {#if legacyMode}
+    <!-- The legacy 6x6 matrix UI is intentionally minimal here: it
+         exists as a safety net only. Most users see the calendar. -->
+    <div class="card p-4">
+      <p class="text-sm text-ink-500 mb-3">
+        Vista legacy (matrice 6x6). La nuova vista calendario e
+        disponibile rimuovendo <code>?legacy=true</code> dall'URL.
+      </p>
+      {#if classData}
+        <div class="flex gap-2 mb-2">
+          <select bind:value={selectedClass}
+                  class="px-2 py-1 rounded border border-ink-200">
+            {#each classData.classes as c}<option>{c}</option>{/each}
+          </select>
+        </div>
+        {#if selectedClass && classData.grid[selectedClass]}
+          <div class="overflow-auto">
+            <table class="tbl text-xs">
+              <thead><tr>
+                <th></th>
+                {#each DAYS as d}<th>{DAY_NAMES_IT[d]}</th>{/each}
+              </tr></thead>
+              <tbody>
+                {#each HOURS as h}
+                  <tr>
+                    <td>{h}:00</td>
+                    {#each DAYS as d}
+                      {@const cell = classData.grid[selectedClass][d][h]}
+                      <td class="p-1">
+                        {#if cell}
+                          <div class="font-semibold">{cell.subjects.join('+')}</div>
+                          <div class="text-[10px] text-ink-500">{cell.teachers.join(' + ')}</div>
+                        {:else}-{/if}
+                      </td>
+                    {/each}
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </div>
+        {/if}
+      {/if}
     </div>
   {:else}
+    {#if lessons.length === 0}
+      <div class="card p-6 text-center text-ink-500"
+           data-testid="schedule-empty-state">
+        Nessuna soluzione attiva. Vai al
+        <a class="text-accent-500 underline" href="/optimize">Workflow</a>
+        e lancia almeno la Phase B, oppure importa un pickle dalla
+        <a class="text-accent-500 underline" href="/">Dashboard</a>.
+      </div>
+    {/if}
 
-  {#if view === 'classes'}
-    <div class="card p-3 flex items-center gap-3 flex-wrap" data-testid="schedule-classes-view">
-      {#if classesViewMode === 'matrix'}
-        <label class="text-sm">Classe</label>
-        <select class="ml-2 px-2 py-1.5 rounded-md border border-ink-200" bind:value={selectedClass} data-testid="schedule-class-select">
-          {#each classData.classes as c}<option>{c}</option>{/each}
-        </select>
-      {:else}
-        <span class="text-sm text-ink-500">Lista: {classData.classes.length} classi</span>
-      {/if}
-      <div class="ml-auto flex gap-1">
-        <button class="btn !text-xs" class:bg-ink-100={classesViewMode === 'matrix'}
-                on:click={() => (classesViewMode = 'matrix')} data-testid="schedule-classes-mode-matrix">matrice</button>
-        <button class="btn !text-xs" class:bg-ink-100={classesViewMode === 'list'}
-                on:click={() => (classesViewMode = 'list')} data-testid="schedule-classes-mode-list">lista</button>
+    <div class="card p-3 flex items-center gap-3 flex-wrap"
+         data-testid="schedule-view-bar">
+      <div class="flex gap-1">
+        <button class="btn !text-xs"
+                class:bg-ink-100={view === 'global'}
+                on:click={() => onSelectView('global')}
+                data-testid="schedule-view-global">Globale</button>
+        <button class="btn !text-xs"
+                class:bg-ink-100={view === 'class'}
+                on:click={() => onSelectView('class')}
+                data-testid="schedule-view-classes">Per classe</button>
+        <button class="btn !text-xs"
+                class:bg-ink-100={view === 'teacher'}
+                on:click={() => onSelectView('teacher')}
+                data-testid="schedule-view-teachers">Per docente</button>
+        <button class="btn !text-xs"
+                class:bg-ink-100={view === 'room'}
+                on:click={() => onSelectView('room')}
+                data-testid="schedule-view-rooms">Per aula</button>
       </div>
-    </div>
-    {#if classesViewMode === 'matrix' && selClassGrid}
-      <MoveModeBanner {moveSrc} {movePreviewBusy} showLegend={true} onCancel={cancelMove}/>
-      <div class="card p-4 overflow-auto">
-        <div class="timetable-grid">
-          <div></div>
-          {#each DAYS as d}
-            <div class="text-xs text-center font-semibold text-ink-500 pb-1">{DAY_NAMES_IT[d]}</div>
-          {/each}
-          {#each HOURS as h}
-            <div class="text-xs text-ink-500 pr-2 pt-2">{h}:00</div>
-            {#each DAYS as d}
-              {@const cell = selClassGrid[d][h]}
-              {@const key = 'cell-' + d + '-' + h}
-              {@const pv = movePreview ? movePreview[d + '-' + h] : null}
-              <div class="cell card !shadow-none p-2 text-xs relative focus:ring-2 focus:ring-accent-500 focus:outline-none"
-                class:drop-target={dropTarget === key && dragging}
-                class:!bg-emerald-100={moveSrc && pv && pv.status === 'ok' && pv.delta_soft !== 0}
-                class:!bg-emerald-50={moveSrc && pv && pv.status === 'ok' && pv.delta_soft === 0}
-                class:!bg-amber-100={moveSrc && pv && pv.status === 'soft_worse'}
-                class:!bg-red-200={moveSrc && pv && pv.status === 'hard_violation'}
-                class:cursor-pointer={moveSrc}
-                tabindex={cell || moveSrc ? 0 : -1}
-                role={cell || moveSrc ? 'button' : undefined}
-                aria-label={cell
-                  ? `${cell.subjects.join('+')} con ${cell.teachers.join(' + ')}, ${DAY_NAMES_IT[d]} ${h}:00. Premi Invio per spostare.`
-                  : (moveSrc ? `Slot vuoto ${DAY_NAMES_IT[d]} ${h}:00. Premi Invio per spostare qui.` : undefined)}
-                title={pv && pv.reason ? pv.reason
-                  : (pv && pv.delta_soft != null
-                     ? (pv.delta_soft > 0 ? '+' + pv.delta_soft : '' + pv.delta_soft)
-                       + ' punti SOFT'
-                     : '')}
-                on:click={moveSrc ? () => confirmMove(d, h) : undefined}
-                on:keydown={(e) => onCellKey(e, cell, d, h, 'classes')}
-                on:dragover={(e) => overTarget(e, key)}
-                on:dragleave={leaveTarget}
-                on:drop={(e) => dropOn(e, { day: d, hour: h })}>
-                {#if cell}
-                  <div class="flex items-center justify-between">
-                    <div class="font-semibold cursor-grab"
-                      draggable="true"
-                      on:dragstart={(e) => startDrag(e, {
-                        teacher: cell.teachers[0],
-                        cls: selectedClass,
-                        subject: cell.subjects[0],
-                        day: d, hour: h
-                      })}
-                      on:dragend={endDrag}>
-                      {cell.subjects.join('+')}
-                    </div>
-                    {#if !moveSrc}
-                      <!-- Horizontal icon row with native tooltips. -->
-                      <div class="flex items-center gap-0.5 leading-none">
-                        <button class="text-accent-500 hover:bg-accent-500/10 rounded p-0.5 focus-ring"
-                          title="Sposta (oppure Invio sulla cella)"
-                          aria-label="Sposta"
-                          on:click|stopPropagation={() => startMove(cell, d, h, 'classes')}>
-                          <span class="text-[12px] leading-none">↔</span>
-                        </button>
-                        <button class="text-amber-600 hover:bg-amber-500/10 rounded p-0.5 focus-ring"
-                          title="Svincola dallo slot (la cattedra resta)"
-                          aria-label="Svincola"
-                          on:click|stopPropagation={() => unscheduleLesson(cell)}>
-                          <span class="text-[12px] leading-none">⛓</span>
-                        </button>
-                        <button class="text-rose-600 hover:bg-rose-500/10 rounded p-0.5 focus-ring"
-                          title="Elimina (riduce la cattedra di 1 ora)"
-                          aria-label="Elimina"
-                          on:click|stopPropagation={() => deleteLesson(cell)}>
-                          <span class="text-[12px] leading-none">×</span>
-                        </button>
-                      </div>
-                    {/if}
-                  </div>
-                  <div class="text-ink-500">{cell.teachers.join(' + ')}</div>
-                  <div class="mt-1">
-                    <RoomDropdown lessonId={cell.lesson_id}
-                                  currentRoom={cell.classroom}
-                                  {allRooms}
-                                  isBusy={(r) => isRoomBusy(d, h, r, cell.classroom)}
-                                  onChange={setRoom}/>
-                  </div>
-                {:else}
-                  <PreviewCellHint preview={pv} active={!!moveSrc}/>
-                  {#if !moveSrc}
-                    <button type="button"
-                      class="absolute top-1 right-1 text-[10px] text-accent-500 hover:underline focus-ring"
-                      title="Crea nuova lezione qui"
-                      on:click|stopPropagation={() => openAddLesson('class', d, h, { class_name: selectedClass })}>
-                      + nuovo
-                    </button>
-                  {/if}
-                {/if}
-              </div>
-            {/each}
-          {/each}
+      {#if view !== 'global'}
+        <div class="flex items-center gap-2 ml-2">
+          <input type="text" placeholder="cerca..."
+                 bind:value={entityFilter}
+                 list="schedule-entity-list"
+                 class="px-2 py-1 rounded border border-ink-200 text-sm"
+                 data-testid="schedule-entity-filter"/>
+          <datalist id="schedule-entity-list">
+            {#each filteredEntities as n}<option value={n}></option>{/each}
+          </datalist>
+          <select bind:value={entityId}
+                  class="px-2 py-1 rounded border border-ink-200 text-sm"
+                  data-testid="schedule-entity-select">
+            {#each filteredEntities as n}<option value={n}>{n}</option>{/each}
+          </select>
         </div>
-      </div>
-    {:else if classesViewMode === 'list'}
-      <div class="card p-2 overflow-auto">
-        <table class="tbl text-xs">
-          <thead>
-            <tr>
-              <th class="sticky left-0 bg-white z-10">Classe</th>
-              {#each DAYS as d}{#each HOURS as h}
-                <th class="text-[10px] text-center min-w-12">
-                  {DAY_NAMES_IT[d][0]}{h}
-                </th>
-              {/each}{/each}
-            </tr>
-          </thead>
-          <tbody>
-            {#each classData.classes as cn}
-              <tr>
-                <td class="sticky left-0 bg-white font-semibold">{cn}</td>
-                {#each DAYS as d}{#each HOURS as h}
-                  {@const cell = classData.grid[cn]?.[d]?.[h] ?? null}
-                  <td class="p-1 text-[10px] text-center"
-                      class:bg-emerald-50={!cell}
-                      class:bg-amber-50={cell && cell.subjects.length > 1}
-                      class:bg-white={cell && cell.subjects.length === 1}
-                      title={cell ? cell.teachers.join(' + ') + ' / ' + cell.subjects.join('+') + (cell.classroom ? ' / ' + cell.classroom : '') : ''}>
-                    {#if cell}
-                      <div class="font-semibold">{cell.subjects.join('+')}</div>
-                      <div class="text-ink-400 text-[9px] truncate">{cell.teachers.join('+')}</div>
-                    {:else}
-                      <span class="text-ink-300">-</span>
-                    {/if}
-                  </td>
-                {/each}{/each}
-              </tr>
-            {/each}
-          </tbody>
-        </table>
-      </div>
-    {/if}
-  {:else if view === 'teachers'}
-    <div class="card p-3 flex items-center gap-3 flex-wrap" data-testid="schedule-teachers-view">
-      {#if teachersViewMode === 'matrix'}
-        <label class="text-sm">Docente</label>
-        <select class="ml-2 px-2 py-1.5 rounded-md border border-ink-200" bind:value={selectedTeacher} data-testid="schedule-teacher-select">
-          {#each teacherData.teachers as t}<option>{t}</option>{/each}
-        </select>
-      {:else}
-        <span class="text-sm text-ink-500">Lista: {teacherData.teachers.length} docenti</span>
       {/if}
-      <div class="ml-auto flex gap-1">
-        <button class="btn !text-xs" class:bg-ink-100={teachersViewMode === 'matrix'}
-                on:click={() => (teachersViewMode = 'matrix')} data-testid="schedule-teachers-mode-matrix">matrice</button>
-        <button class="btn !text-xs" class:bg-ink-100={teachersViewMode === 'list'}
-                on:click={() => (teachersViewMode = 'list')} data-testid="schedule-teachers-mode-list">lista</button>
-      </div>
-    </div>
-    {#if teachersViewMode === 'matrix' && selTeacherGrid}
-      <MoveModeBanner {moveSrc} onCancel={cancelMove}/>
-      <div class="card p-4 overflow-auto">
-        <div class="timetable-grid">
-          <div></div>
-          {#each DAYS as d}<div class="text-xs text-center font-semibold text-ink-500 pb-1">{DAY_NAMES_IT[d]}</div>{/each}
-          {#each HOURS as h}
-            <div class="text-xs text-ink-500 pr-2 pt-2">{h}:00</div>
-            {#each DAYS as d}
-              {@const cell = selTeacherGrid[d][h]}
-              {@const key = 'cell-t-' + d + '-' + h}
-              {@const pv = movePreview ? movePreview[d + '-' + h] : null}
-              <div class="cell card !shadow-none p-2 text-xs relative focus:ring-2 focus:ring-accent-500 focus:outline-none"
-                class:drop-target={dropTarget === key && dragging}
-                class:!bg-emerald-100={moveSrc && pv && pv.status === 'ok' && pv.delta_soft !== 0}
-                class:!bg-emerald-50={moveSrc && pv && pv.status === 'ok' && pv.delta_soft === 0}
-                class:!bg-amber-100={moveSrc && pv && pv.status === 'soft_worse'}
-                class:!bg-red-200={moveSrc && pv && pv.status === 'hard_violation'}
-                class:cursor-pointer={moveSrc}
-                tabindex={cell || moveSrc ? 0 : -1}
-                role={cell || moveSrc ? 'button' : undefined}
-                aria-label={cell
-                  ? `${cell.class_name} ${cell.subject}, ${DAY_NAMES_IT[d]} ${h}:00. Premi Invio per spostare.`
-                  : (moveSrc ? `Slot vuoto ${DAY_NAMES_IT[d]} ${h}:00. Premi Invio per spostare qui.` : undefined)}
-                title={pv && pv.reason ? pv.reason
-                  : (pv && pv.delta_soft != null
-                     ? (pv.delta_soft > 0 ? '+' + pv.delta_soft : '' + pv.delta_soft)
-                       + ' punti SOFT'
-                     : '')}
-                on:click={moveSrc ? () => confirmMove(d, h) : undefined}
-                on:keydown={(e) => onCellKey(e, cell, d, h, 'teachers')}
-                on:dragover={(e) => overTarget(e, key)}
-                on:dragleave={leaveTarget}
-                on:drop={(e) => dropOn(e, { day: d, hour: h })}>
-                {#if cell}
-                  <div class="flex items-center justify-between">
-                    <div class="font-semibold cursor-grab"
-                      draggable="true"
-                      on:dragstart={(e) => startDrag(e, {
-                        teacher: selectedTeacher,
-                        cls: cell.class_name,
-                        subject: cell.subject,
-                        day: d, hour: h
-                      })}
-                      on:dragend={endDrag}>
-                      {cell.class_name}
-                    </div>
-                    {#if !moveSrc}
-                      <div class="flex items-center gap-0.5 leading-none">
-                        <button class="text-accent-500 hover:bg-accent-500/10 rounded p-0.5 focus-ring"
-                          title="Sposta (oppure Invio sulla cella)"
-                          aria-label="Sposta"
-                          on:click|stopPropagation={() => startMove(cell, d, h, 'teachers')}>
-                          <span class="text-[12px] leading-none">↔</span>
-                        </button>
-                        <button class="text-amber-600 hover:bg-amber-500/10 rounded p-0.5 focus-ring"
-                          title="Svincola dallo slot (la cattedra resta)"
-                          aria-label="Svincola"
-                          on:click|stopPropagation={() => unscheduleLesson(cell)}>
-                          <span class="text-[12px] leading-none">⛓</span>
-                        </button>
-                        <button class="text-rose-600 hover:bg-rose-500/10 rounded p-0.5 focus-ring"
-                          title="Elimina (riduce la cattedra di 1 ora)"
-                          aria-label="Elimina"
-                          on:click|stopPropagation={() => deleteLesson(cell)}>
-                          <span class="text-[12px] leading-none">×</span>
-                        </button>
-                      </div>
-                    {/if}
-                  </div>
-                  <div class="text-ink-500">{cell.subject}</div>
-                  <div class="mt-1">
-                    <RoomDropdown lessonId={cell.lesson_id}
-                                  currentRoom={cell.classroom}
-                                  {allRooms}
-                                  isBusy={(r) => isRoomBusy(d, h, r, cell.classroom)}
-                                  onChange={setRoom}/>
-                  </div>
-                {:else}
-                  <PreviewCellHint preview={pv} active={!!moveSrc}/>
-                  {#if !moveSrc}
-                    <button type="button"
-                      class="absolute top-1 right-1 text-[10px] text-accent-500 hover:underline focus-ring"
-                      title="Crea nuova lezione qui"
-                      on:click|stopPropagation={() => openAddLesson('teacher', d, h, { teacher_name: selectedTeacher })}>
-                      + nuovo
-                    </button>
-                  {/if}
-                {/if}
-              </div>
-            {/each}
-          {/each}
-        </div>
-      </div>
-    {:else if teachersViewMode === 'list'}
-      <div class="card p-2 overflow-auto">
-        <table class="tbl text-xs">
-          <thead>
-            <tr>
-              <th class="sticky left-0 bg-white z-10">Docente</th>
-              {#each DAYS as d}{#each HOURS as h}
-                <th class="text-[10px] text-center min-w-12">
-                  {DAY_NAMES_IT[d][0]}{h}
-                </th>
-              {/each}{/each}
-            </tr>
-          </thead>
-          <tbody>
-            {#each teacherData.teachers as tn}
-              <tr>
-                <td class="sticky left-0 bg-white font-semibold">{tn}</td>
-                {#each DAYS as d}{#each HOURS as h}
-                  {@const cell = teacherData.grid[tn]?.[d]?.[h] ?? null}
-                  <td class="p-1 text-[10px] text-center"
-                      class:bg-emerald-50={!cell}
-                      class:bg-white={cell}
-                      title={cell ? cell.class_name + ' / ' + cell.subject + (cell.classroom ? ' / ' + cell.classroom : '') : ''}>
-                    {#if cell}
-                      <div class="font-semibold">{cell.class_name}</div>
-                      <div class="text-ink-400 text-[9px] truncate">{cell.subject}</div>
-                    {:else}
-                      <span class="text-ink-300">-</span>
-                    {/if}
-                  </td>
-                {/each}{/each}
-              </tr>
-            {/each}
-          </tbody>
-        </table>
-      </div>
-    {/if}
-  {:else if view === 'rooms'}
-    {#if roomData}
-    <div class="card p-3 flex items-center gap-3 flex-wrap" data-testid="schedule-rooms-view">
-      {#if roomsViewMode === 'matrix'}
-        <label class="text-sm">Aula</label>
-        <select class="ml-2 px-2 py-1.5 rounded-md border border-ink-200" bind:value={selectedRoom} data-testid="schedule-room-select">
-          {#each roomData.rooms as r}<option>{r}</option>{/each}
-        </select>
-        {#if selectedRoom && roomData.rooms_meta[selectedRoom]}
-          <span class="pill">{roomData.rooms_meta[selectedRoom].kind}</span>
-          <span class="text-xs text-ink-500">cap. {roomData.rooms_meta[selectedRoom].capacity}</span>
-        {/if}
-      {:else}
-        <span class="text-sm text-ink-500">Lista: {roomData.rooms.length} aule</span>
+      {#if pendingMoveLessonId}
+        <span class="ml-auto px-2 py-1 rounded bg-amber-100 border border-amber-300 text-xs"
+              data-testid="schedule-pending-move">
+          Modalita sposta -- click su uno slot vuoto per confermare
+          <button class="ml-2 underline"
+                  on:click={() => (pendingMoveLessonId = null)}>annulla</button>
+        </span>
       {/if}
-      <div class="ml-auto flex gap-1">
-        <button class="btn !text-xs" class:bg-ink-100={roomsViewMode === 'matrix'}
-                on:click={() => (roomsViewMode = 'matrix')} data-testid="schedule-rooms-mode-matrix">matrice</button>
-        <button class="btn !text-xs" class:bg-ink-100={roomsViewMode === 'list'}
-                on:click={() => (roomsViewMode = 'list')} data-testid="schedule-rooms-mode-list">lista</button>
-      </div>
     </div>
-    {#if roomsViewMode === 'matrix' && selRoomGrid}
-      <MoveModeBanner {moveSrc} onCancel={cancelMove}/>
-      <div class="card p-4 overflow-auto">
-        <div class="timetable-grid">
-          <div></div>
-          {#each DAYS as d}<div class="text-xs text-center font-semibold text-ink-500 pb-1">{DAY_NAMES_IT[d]}</div>{/each}
-          {#each HOURS as h}
-            <div class="text-xs text-ink-500 pr-2 pt-2">{h}:00</div>
-            {#each DAYS as d}
-              {@const lst = selRoomGrid?.[d]?.[h] ?? []}
-              {@const key = 'cell-r-' + d + '-' + h}
-              {@const pv = movePreview ? movePreview[d + '-' + h] : null}
-              {@const isMulti = lst.length > 1}
-              <div class="cell card !shadow-none p-2 text-xs relative"
-                class:drop-target={dropTarget === key && dragging}
-                class:!bg-emerald-100={moveSrc && pv && pv.status === 'ok' && pv.delta_soft !== 0}
-                class:!bg-emerald-50={moveSrc && pv && pv.status === 'ok' && pv.delta_soft === 0}
-                class:!bg-amber-100={moveSrc && pv && pv.status === 'soft_worse'}
-                class:!bg-red-200={moveSrc && pv && pv.status === 'hard_violation'}
-                class:!bg-red-50={!moveSrc && isMulti}
-                class:cursor-pointer={moveSrc}
-                title={pv && pv.reason ? pv.reason
-                  : (pv && pv.delta_soft != null
-                     ? (pv.delta_soft > 0 ? '+' + pv.delta_soft : '' + pv.delta_soft)
-                       + ' punti SOFT'
-                     : (isMulti ? lst.length + ' lezioni nello stesso slot' : ''))}
-                on:click={moveSrc ? () => confirmMove(d, h) : undefined}
-                on:dragover={(e) => overTarget(e, key)}
-                on:dragleave={leaveTarget}
-                on:drop={(e) => dropOn(e, { day: d, hour: h })}>
-                {#if lst.length}
-                  {#each lst as l}
-                    <div class="cursor-grab"
-                      draggable="true"
-                      on:dragstart={(e) => startDrag(e, {
-                        teacher: l.teacher, cls: l.class_name,
-                        subject: l.subject, day: d, hour: h
-                      })}
-                      on:dragend={endDrag}>
-                      <div class="font-semibold">{l.class_name}</div>
-                      <div class="text-ink-500">{l.subject}</div>
-                      <div class="text-ink-400 text-[10px]">{l.teacher}</div>
-                      {#if !moveSrc}
-                        {@const _cell = { lesson_id: l.lesson_id,
-                                           class_name: l.class_name,
-                                           subject: l.subject,
-                                           teachers: [l.teacher],
-                                           subjects: [l.subject] }}
-                        <div class="flex items-center gap-0.5 mt-1 leading-none">
-                          <button class="text-accent-500 hover:bg-accent-500/10 rounded p-0.5"
-                            title="Sposta"
-                            aria-label="Sposta"
-                            on:click|stopPropagation={() => startMove(_cell, d, h, 'teachers')}>
-                            <span class="text-[12px] leading-none">↔</span>
-                          </button>
-                          <button class="text-amber-600 hover:bg-amber-500/10 rounded p-0.5"
-                            title="Svincola dallo slot"
-                            aria-label="Svincola"
-                            on:click|stopPropagation={() => unscheduleLesson(_cell)}>
-                            <span class="text-[12px] leading-none">⛓</span>
-                          </button>
-                          <button class="text-rose-600 hover:bg-rose-500/10 rounded p-0.5"
-                            title="Elimina (riduce cattedra)"
-                            aria-label="Elimina"
-                            on:click|stopPropagation={() => deleteLesson(_cell)}>
-                            <span class="text-[12px] leading-none">×</span>
-                          </button>
-                        </div>
-                      {/if}
-                    </div>
-                  {/each}
-                {:else}
-                  <PreviewCellHint preview={pv} active={!!moveSrc}/>
-                  {#if !moveSrc}
-                    <button type="button"
-                      class="absolute top-1 right-1 text-[10px] text-accent-500 hover:underline focus-ring"
-                      title="Crea nuova lezione qui"
-                      on:click|stopPropagation={() => openAddLesson('room', d, h, { classroom_name: selectedRoom })}>
-                      + nuovo
-                    </button>
-                  {/if}
-                {/if}
-              </div>
-            {/each}
-          {/each}
-        </div>
-      </div>
-    {:else if roomsViewMode === 'list'}
-      <div class="card p-4 overflow-auto">
-        <table class="tbl">
-          <thead>
-            <tr>
-              <th>Aula</th><th>Tipo</th>
-              {#each DAYS as d}{#each HOURS as h}<th class="text-[10px]">{DAY_NAMES_IT[d][0]}{h}</th>{/each}{/each}
-            </tr>
-          </thead>
-          <tbody>
-            {#each roomData.rooms as rn}
-              <tr>
-                <td><strong>{rn}</strong></td>
-                <td><span class="pill">{(roomData.rooms_meta[rn]?.kind) || ''}</span></td>
-                {#each DAYS as d}{#each HOURS as h}
-                  {@const lst = roomData.grid[rn]?.[d]?.[h] ?? []}
-                  <td class="text-[10px]" class:bg-emerald-50={lst.length === 0} class:bg-amber-50={lst.length === 1} class:bg-red-100={lst.length > 1}>
-                    {#each lst as l}
-                      <div>{l.class_name}<br/>{l.subject[0]}{l.subject[1]||''}</div>
-                    {/each}
-                  </td>
-                {/each}{/each}
-              </tr>
-            {/each}
-          </tbody>
-        </table>
-      </div>
-    {/if}
-    {/if}
-  {:else if view === 'slot'}
-    <div class="card p-3 flex gap-3 items-end" data-testid="schedule-slot-view">
-      <div class="field">
-        <label>Giorno</label>
-        <select bind:value={slotDay} on:change={loadSlot} data-testid="schedule-slot-day">
-          {#each DAYS as d}<option value={d}>{DAY_NAMES_IT[d]}</option>{/each}
-        </select>
-      </div>
-      <div class="field">
-        <label>Ora</label>
-        <select bind:value={slotHour} on:change={loadSlot} data-testid="schedule-slot-hour">
-          {#each HOURS as h}<option value={h}>{h}:00</option>{/each}
-        </select>
-      </div>
-      <button class="btn" on:click={loadSlot} data-testid="schedule-slot-refresh">Aggiorna</button>
-      <button class="btn-primary ml-auto"
-              on:click={() => openAddLesson('slot', slotDay, slotHour, {})}
-              data-testid="schedule-add-event-slot-btn">
-        + Nuovo evento in questo slot
-      </button>
-    </div>
-    {#if slotData}
-      <div class="card overflow-x-auto" data-testid="schedule-slot-table">
-        <table class="tbl">
-          <thead><tr><th>Classe</th><th>Materia</th><th>Docente</th><th>Aula</th></tr></thead>
-          <tbody>
-            {#each slotData.lessons as l}
-              <tr data-testid="schedule-slot-row">
-                <td><strong>{l.class_name}</strong></td>
-                <td>{l.subject}</td>
-                <td>{l.teacher}</td>
-                <td>{l.classroom ?? ''}</td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
+
+    {#if lessons.length > 0 || unscheduled.length > 0}
+      <div class="card p-2"
+           data-testid="schedule-calendar-card">
+        <WeeklyCalendarView mode="schedule"
+                            title={calendarTitle}
+                            config={workingHoursConfig}
+                            {lessons}
+                            unscheduled_lessons={unscheduled}
+                            filter_by={calendarFilter}
+                            on_lesson_click={onLessonClick}
+                            on_slot_click={onSlotClick}
+                            on_lesson_move={onLessonMove}
+                            on_unscheduled_drop={onUnscheduledDrop}/>
       </div>
     {/if}
   {/if}
-  {/if}
 
-  {#if lastMoveOutcome}
-    <div class="card p-3 text-sm">
-      <strong>Ultima mossa</strong>:
-      {#if lastMoveOutcome.accepted}
-        <span class="pill-green">accepted</span>
-      {:else}
-        <span class="pill-red">rejected</span>
-      {/if}
-      - {lastMoveOutcome.reason}
-      {#if lastMoveOutcome.obj_before != null}
-        - obj {lastMoveOutcome.obj_before} -&gt; {lastMoveOutcome.obj_after}
-        ({lastMoveOutcome.delta > 0 ? '+' : ''}{lastMoveOutcome.delta})
-      {/if}
-    </div>
-  {/if}
+  <!-- Lesson-actions modal: shown after a lesson click (calendar mode) -->
+  <Modal open={actionLesson !== null && actionMode === 'menu'}
+         title="Azioni lezione"
+         onClose={closeActions}>
+    {#if actionLesson}
+      <div class="space-y-3" data-testid="schedule-actions-modal">
+        <div class="text-sm">
+          <div><strong>Classe:</strong> {actionLesson.class_name}</div>
+          <div><strong>Docente:</strong> {actionLesson.teacher_name}</div>
+          <div><strong>Materia:</strong> {actionLesson.subject || '-'}</div>
+          <div><strong>Aula:</strong> {actionLesson.classroom_name || '-'}</div>
+          <div><strong>Slot:</strong> {DAY_NAMES_IT[actionLesson.day]}
+            {actionLesson.hour}:00</div>
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <button class="btn"
+                  on:click={startEdit}
+                  data-testid="schedule-action-edit">Modifica</button>
+          <button class="btn"
+                  on:click={startMove}
+                  data-testid="schedule-action-move">Sposta</button>
+          <button class="btn"
+                  on:click={svincolaLesson}
+                  data-testid="schedule-action-unschedule">Svincola</button>
+          <button class="btn !bg-rose-50 !border-rose-200 !text-rose-700"
+                  on:click={eliminaLesson}
+                  data-testid="schedule-action-delete">Elimina</button>
+        </div>
+      </div>
+    {/if}
+  </Modal>
 
-<RoomClearedNoticeModal notice={roomClearedNotice}
-                       onClose={() => (roomClearedNotice = null)}/>
+  <Modal open={actionLesson !== null && actionMode === 'edit'}
+         title="Modifica aula"
+         onClose={closeActions}>
+    {#if actionLesson}
+      <div class="space-y-3" data-testid="schedule-edit-modal">
+        <div class="text-sm">
+          {actionLesson.class_name} -- {actionLesson.subject || ''}
+          ({actionLesson.teacher_name}) @
+          {DAY_NAMES_IT[actionLesson.day]} {actionLesson.hour}:00
+        </div>
+        <div class="field">
+          <label for="schedule-edit-room">Aula</label>
+          <RoomDropdown lessonId={actionLesson.id}
+                        currentRoom={actionLesson.classroom_name}
+                        {allRooms}
+                        isBusy={() => false}
+                        onChange={setLessonRoom}/>
+        </div>
+        <div class="flex justify-end pt-3 border-t border-ink-100">
+          <button class="btn" on:click={closeActions}
+                  data-testid="schedule-edit-close">Chiudi</button>
+        </div>
+      </div>
+    {/if}
+  </Modal>
 
-<AddLessonModal bind:open={addLessonOpen}
-                mode={addLessonMode}
-                day={addLessonDay}
-                hour={addLessonHour}
-                preset={addLessonPreset}
-                teachers={teachersWithSubjects.length
-                          ? teachersWithSubjects : allTeachers}
-                classes={allClasses}
-                rooms={allRooms}
-                onClose={() => (addLessonOpen = false)}
-                onCreated={async () => { await loadAll(); if (view === 'slot') loadSlot(); refreshDataset(); }}/>
+  <RoomClearedNoticeModal notice={roomClearedNotice}
+                          onClose={() => (roomClearedNotice = null)}/>
 
-<SolutionsTable {solutions}
-                onActivate={activateSolution}
-                onDelete={delSolution}/>
+  <AddLessonModal bind:open={addLessonOpen}
+                  mode={addLessonMode}
+                  day={addLessonDay}
+                  hour={addLessonHour}
+                  preset={addLessonPreset}
+                  teachers={teachersWithSubjects}
+                  classes={classNames}
+                  rooms={allRooms}
+                  onClose={() => (addLessonOpen = false)}
+                  onCreated={async () => { await loadCalendar();
+                    await refreshDataset(); }}/>
+
+  <SolutionsTable {solutions}
+                  onActivate={activateSolution}
+                  onDelete={delSolution}/>
 </div>
+
+<style>
+  /* Tighten the gap between the calendar card and the surrounding
+     spacing so the calendar can use the full width. */
+  :global(.weekly-calendar) { padding: 4px; }
+</style>
