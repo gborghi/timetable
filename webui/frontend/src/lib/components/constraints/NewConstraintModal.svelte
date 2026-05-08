@@ -278,10 +278,10 @@
     </div>
 
     {#if step === 1}
-      <div class="space-y-3">
+      <div class="space-y-3" data-testid="wizard-step-1">
         <div class="field">
           <label>Categoria del vincolo</label>
-          <select bind:value={scope}>
+          <select bind:value={scope} data-testid="wizard-scope">
             {#each SCOPE_OPTIONS as o}
               <option value={o.value}>{o.label}</option>
             {/each}
@@ -291,7 +291,7 @@
         {#if scope === 'teacher' || scope === 'teacher_room'}
           <div class="field">
             <label>Docente *</label>
-            <select bind:value={ownerId}>
+            <select bind:value={ownerId} data-testid="wizard-owner">
               <option value={null}>-- scegli --</option>
               {#each teachers as t}<option value={t.id}>{t.name}</option>{/each}
             </select>
@@ -300,7 +300,7 @@
         {#if scope === 'class'}
           <div class="field">
             <label>Classe *</label>
-            <select bind:value={ownerId}>
+            <select bind:value={ownerId} data-testid="wizard-owner">
               <option value={null}>-- scegli --</option>
               {#each classes as c}<option value={c.id}>{c.name}</option>{/each}
             </select>
@@ -309,7 +309,7 @@
         {#if scope === 'classroom' || scope === 'subject_room'}
           <div class="field">
             <label>Aula *</label>
-            <select bind:value={ownerId}>
+            <select bind:value={ownerId} data-testid="wizard-owner">
               <option value={null}>-- scegli --</option>
               {#each classrooms as r}<option value={r.id}>{r.name}</option>{/each}
             </select>
@@ -367,10 +367,10 @@
         {/if}
       </div>
     {:else if step === 3}
-      <div class="space-y-3">
+      <div class="space-y-3" data-testid="wizard-step-3">
         <div class="field">
           <label>Tipo di vincolo</label>
-          <select bind:value={kind}>
+          <select bind:value={kind} data-testid="wizard-kind">
             {#each availableKinds as k}
               <option value={k.value}>{k.label}</option>
             {/each}
@@ -381,13 +381,13 @@
           <div class="grid grid-cols-2 gap-3">
             <div class="field">
               <label>Giorno *</label>
-              <select bind:value={day}>
+              <select bind:value={day} data-testid="wizard-day">
                 {#each DAYS as d}<option value={d}>{DAY_NAMES_IT[d]}</option>{/each}
               </select>
             </div>
             <div class="field">
               <label>Ora *</label>
-              <select bind:value={hour}>
+              <select bind:value={hour} data-testid="wizard-hour">
                 {#each HOURS as h}<option value={h}>{h}:00</option>{/each}
               </select>
             </div>
@@ -402,6 +402,7 @@
             <label>Espressione DNF *</label>
             <input bind:value={expression}
                    class="font-mono"
+                   data-testid="wizard-expression"
                    placeholder="(lun8 AND lun9) OR (mar8 AND mar9)"/>
             <div class="text-xs text-ink-500">
               Espressione booleana. Slot validi: <code>lun8..sab13</code>.
@@ -472,14 +473,19 @@
         {/if}
         {#if step === 1}
           <button class="btn-primary" on:click={() => step = 2}
+                  data-testid="wizard-next"
                   disabled={!step1Valid()}>Avanti</button>
         {:else if step === 2}
-          <button class="btn-primary" on:click={() => step = 3}>Avanti</button>
+          <button class="btn-primary" on:click={() => step = 3}
+                  data-testid="wizard-next">Avanti</button>
         {:else if step === 3}
           <button class="btn-primary" on:click={() => step = 4}
+                  data-testid="wizard-next"
                   disabled={!step3Valid()}>Avanti</button>
         {:else if step === 4 && !createdResult}
-          <button class="btn-primary" on:click={submit} disabled={busy}>
+          <button class="btn-primary" on:click={submit}
+                  data-testid="wizard-submit"
+                  disabled={busy}>
             {busy ? '...' : 'Crea vincolo'}
           </button>
         {:else if createdResult}

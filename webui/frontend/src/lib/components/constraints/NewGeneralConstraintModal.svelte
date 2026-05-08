@@ -155,6 +155,7 @@
                        rounded-md border border-ink-200"
                 bind:value={expression}
                 on:input={onExpressionChange}
+                data-testid="dsl-expression"
                 placeholder="forall l in lessons where l.teacher == Borghi: l.hour != 6"></textarea>
     </div>
 
@@ -184,7 +185,7 @@
     <div class="grid grid-cols-3 gap-3">
       <div class="field">
         <label>Livello</label>
-        <select bind:value={level}>
+        <select bind:value={level} data-testid="dsl-level">
           <option value="hard">🟥 HARD</option>
           <option value="soft">🟨 SOFT (penalty)</option>
           <option value="preferred">🟦 PREFERRED (bonus)</option>
@@ -194,12 +195,12 @@
       {#if level === 'soft' || level === 'preferred'}
         <div class="field">
           <label>Peso</label>
-          <input type="number" bind:value={weight}/>
+          <input type="number" bind:value={weight} data-testid="dsl-weight"/>
         </div>
       {/if}
       <div class="field {level === 'soft' || level === 'preferred' ? '' : 'col-span-2'}">
         <label>Etichetta (opzionale)</label>
-        <input bind:value={label} placeholder="es. lab fisica capienza"/>
+        <input bind:value={label} data-testid="dsl-label" placeholder="es. lab fisica capienza"/>
       </div>
     </div>
 
@@ -214,6 +215,7 @@
     <div class="flex justify-end gap-2 pt-3 border-t border-ink-100">
       <button class="btn" on:click={onClose} disabled={busy}>Annulla</button>
       <button class="btn-primary" on:click={submit}
+              data-testid="dsl-submit"
               disabled={busy || !expression.trim()
                           || (validateResult && !validateResult.ok)}>
         {busy ? '...' : 'Crea vincolo'}

@@ -273,6 +273,7 @@
     </button>
     <button class="btn"
             on:click={() => searchResults === null ? (searchResults = []) : (searchResults = null)}
+            data-testid="constraints-search-toggle"
             title="Ricerca avanzata: trova tutti i vincoli che coinvolgono un'entita' specifica">
       🔍 Ricerca
     </button>
@@ -312,6 +313,7 @@
         <div class="field col-span-3">
           <label>Tipo entita'</label>
           <select bind:value={searchEntityType}
+                  data-testid="search-entity-type"
                   on:change={() => (searchEntityId = null)}>
             <option value="">(qualunque)</option>
             <option value="teacher">Docente</option>
@@ -325,6 +327,7 @@
         <div class="field col-span-4">
           <label>Entita'</label>
           <select bind:value={searchEntityId}
+                  data-testid="search-entity-id"
                   disabled={!searchEntityType}>
             <option value={null}>(scegli)</option>
             {#each searchEntityOptions as o}
@@ -335,14 +338,17 @@
         <div class="field col-span-3">
           <label>Filtro testo (opzionale)</label>
           <input bind:value={searchText}
+                 data-testid="search-text"
                  placeholder="es. LabFisica, Mate, Borghi"/>
         </div>
         <div class="col-span-2 flex gap-1">
           <button class="btn-primary !text-xs" on:click={runSearch}
+                  data-testid="search-run"
                   disabled={searchBusy}>
             {searchBusy ? '...' : 'Cerca'}
           </button>
-          <button class="btn !text-xs" on:click={resetSearch}>Reset</button>
+          <button class="btn !text-xs" on:click={resetSearch}
+                  data-testid="search-reset">Reset</button>
         </div>
       </div>
 
@@ -416,7 +422,7 @@
   {/if}
 
   {#if dslConstraints.length > 0}
-    <details class="card p-3 bg-ink-50/40" open>
+    <details class="card p-3 bg-ink-50/40" open data-testid="dsl-constraints-table">
       <summary class="cursor-pointer text-sm font-medium">
         Vincoli DSL generici ({dslConstraints.length})
       </summary>
@@ -429,7 +435,7 @@
         </thead>
         <tbody>
           {#each dslConstraints as c (c.id)}
-            <tr>
+            <tr data-testid="dsl-row-{c.id}">
               <td class="text-ink-400">#{c.id}</td>
               <td>{c.label || ''}</td>
               <td>
@@ -447,6 +453,7 @@
               <td><code class="text-[10px]">{c.expression}</code></td>
               <td class="text-right">
                 <button class="btn-red !text-[10px] !px-1.5 !py-0.5"
+                        data-testid="dsl-delete-{c.id}"
                         on:click={() => deleteDSL(c.id)}>✕</button>
               </td>
             </tr>
