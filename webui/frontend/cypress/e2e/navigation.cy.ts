@@ -14,14 +14,21 @@
 const ROUTES = [
   '/',
   '/assignments',
+  '/assenze-supplenze',
   '/classes',
   '/classrooms',
+  '/constraints',
   '/coteaching',
   '/curricula',
+  '/diagnostics',
   '/groups',
+  '/import',
   '/monitor',
   '/optimize',
+  '/ore',
+  '/plessi',
   '/runs',
+  '/schedule',
   '/students',
   '/subjects',
   '/teachers',
@@ -35,6 +42,9 @@ describe('Top-level navigation smoke', () => {
       // would still be 200 even if the JS bundle errors. Wait for
       // a body element with text.
       cy.get('body').should('not.be.empty');
+      // The shared layout's navbar must always be present -- if it
+      // is missing, hydration failed silently.
+      cy.get('[data-testid="navbar"]').should('exist');
       // No top-level red error banner.
       cy.get('body').then(($body) => {
         const errors = $body.find('.error-banner, [data-error]');
