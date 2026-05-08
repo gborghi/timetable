@@ -144,6 +144,44 @@ def test_teacher_subject_iterates():
             or info["feasible_after_completion"]), info
 
 
+# ---------- class-day ----------
+
+def test_class_day_pricer_smoke():
+    """Direct call to the class-day pricer with a strong dual on
+    (T1, 1A, Mat, day=1) must produce a HARD-feasible partial
+    pattern restricted to the (1A, day=1) cell that places all 4
+    Mat-hours of T1 there, with rc < 0."""
+    import column_generation as cg
+    profs = _two_class_profs()
+    dc_value = _two_class_dc()
+    lambda_cover = {("T1", "1A", "Mat", 1): 100.0}
+    col, rc = cg._pricing_subproblem_class_day(
+        "1A", 1, profs, dc_value,
+        lambda_cover, mu_class={}, mu_teacher={},
+        time_limit=2.0, workers=1,
+    )
+    assert col is not None, f"class-day pricer returned None, rc={rc}"
+    assert rc < 0.0, f"expected rc<0, got {rc}"
+    for (_p, c, _s, d, _h), v in col.items():
+        if v:
+            assert c == "1A" and d == 1, (
+                f"class-day column leaked to ({c}, day={d})")
+    placed = sum(1 for v in col.values() if v)
+    assert placed == 4, (
+        f"class-day must place all 4h of (T1, 1A, Mat) on day 1, "
+        f"got {placed}")
+
+
+def test_class_day_iterates():
+    """End-to-end BP with granularity=class-day must enter the BP
+    loop, not fall back to iterative-diversified, and converge to
+    a HARD-feasible (or completion-feasible) plan."""
+    sol, info = _run_bp("class-day")
+    _assert_bp_iterated(info, "class-day")
+    assert (info["feasible_after_assembly"]
+            or info["feasible_after_completion"]), info
+
+
 # ---------- parity check across all 9 granularities (regression
 # guard for sibling sessions wiring class-day / teacher-class-subject)
 
