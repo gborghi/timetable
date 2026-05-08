@@ -121,7 +121,8 @@
         </span>
       </a>
       <nav class="flex flex-wrap gap-1 ml-4 relative"
-           aria-label="Navigazione principale">
+           aria-label="Navigazione principale"
+           data-testid="navbar">
         {#each navGroups as g}
           {#if g.kind === 'link'}
             {@const active = isLinkActive(g.href, g.exact)}
@@ -129,7 +130,9 @@
                class="px-3 py-1.5 text-sm rounded-md hover:bg-ink-100 focus-ring"
                class:bg-ink-100={active}
                class:font-medium={active}
-               aria-current={active ? 'page' : undefined}>{g.label}</a>
+               aria-current={active ? 'page' : undefined}
+               data-testid="nav-link"
+               data-nav-label={g.label}>{g.label}</a>
           {:else}
             {@const active = isMenuActive(g)}
             {@const open = openMenu === g.label}
@@ -141,6 +144,8 @@
                       class:font-medium={active}
                       aria-haspopup="true"
                       aria-expanded={open}
+                      data-testid="nav-menu"
+                      data-nav-label={g.label}
                       on:click={() => toggleMenu(g.label)}
                       on:keydown={(e) => onMenuKeydown(e, g.label)}>
                 {g.label}
@@ -155,6 +160,8 @@
                             min-w-[10rem] bg-white border border-ink-200
                             rounded-md shadow-lg py-1"
                      role="menu"
+                     data-testid="nav-dropdown"
+                     data-nav-parent={g.label}
                      on:mouseleave={closeMenu}>
                   {#each g.children as c}
                     {@const childActive = isLinkActive(c.href, false)}
@@ -165,6 +172,8 @@
                        class:font-medium={childActive}
                        role="menuitem"
                        aria-current={childActive ? 'page' : undefined}
+                       data-testid="nav-child-link"
+                       data-nav-label={c.label}
                        on:click={closeMenu}>{c.label}</a>
                   {/each}
                 </div>
