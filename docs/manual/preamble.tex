@@ -21,7 +21,7 @@
 % =====================================================================
 \documentclass[
   paper=A4,
-  fontsize=11pt,
+  fontsize=12pt,
   headings=optiontoheadandtoc,
   twoside=true,
   open=right,
@@ -63,9 +63,9 @@
 % per la marginalia, margine interno piu' stretto (ma sufficiente per
 % la rilegatura), testatina aerea, piede ampio.
 \usepackage[a4paper,
-  inner=2.8cm, outer=4.2cm, top=2.8cm, bottom=3.2cm,
-  marginparwidth=2.8cm, marginparsep=0.55cm,
-  headheight=15pt, headsep=20pt, footskip=24pt,
+  inner=2.5cm, outer=3.8cm, top=2.6cm, bottom=3.0cm,
+  marginparwidth=2.6cm, marginparsep=0.50cm,
+  headheight=16pt, headsep=18pt, footskip=22pt,
 ]{geometry}
 
 % ---------- Pacchetti editoriali (preservati dalla versione 2026-04) ----------
@@ -140,7 +140,18 @@
 \renewcommand{\epigraphrule}{0.4pt}
 
 \usepackage[hidelinks,bookmarksopen=true,bookmarksdepth=2,
-            colorlinks=false]{hyperref}
+            colorlinks=false,unicode=true,pdfencoding=auto]{hyperref}
+\usepackage[capitalise]{cleveref}
+\crefname{part}{Parte}{Parti}
+\Crefname{part}{Parte}{Parti}
+\crefname{chapter}{cap.}{capp.}
+\Crefname{chapter}{Capitolo}{Capitoli}
+\crefname{section}{sez.}{sezz.}
+\Crefname{section}{Sezione}{Sezioni}
+\crefname{table}{tab.}{tabb.}
+\Crefname{table}{Tabella}{Tabelle}
+\crefname{figure}{fig.}{figg.}
+\Crefname{figure}{Figura}{Figure}
 \usepackage[style=authoryear-comp,backend=biber,sorting=nyt,
             maxbibnames=99,maxcitenames=2,uniquename=false,
             uniquelist=false,giveninits=true]{biblatex}
