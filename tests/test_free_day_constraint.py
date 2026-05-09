@@ -125,6 +125,41 @@ def test_at_least_n_free_days_infeasible_when_n_exceeds_capacity():
     assert status == cp_model.INFEASIBLE
 
 
+def test_at_least_three_free_days_feasible_with_max_two_per_day():
+    """Boundary case: ``n=3`` -> teacher works at most 3 days.
+    5 hours over 3 days needs 2+2+1, which is feasible at
+    max_per_day=2. Verifies the floor doesn't over-constrain."""
+    triples = [("T1", "1A", "Mat", 5)]
+    model, day_count, days = _build_dc_model(
+        triples, max_per_day=2)
+    compiler = d2c.DSLConstraintCompiler(
+        model, slot={}, day_count=day_count, level="both")
+    compiler.compile('teacher_at_least_n_free_days("T1", 3)')
+    solver, status = _solve(model)
+    assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE), (
+        f"expected feasible (5 hours over <=3 days at max=2/day); "
+        f"got {status}")
+    busy = _busy_days(solver, day_count, "T1", days)
+    assert len(busy) <= len(days) - 3, (
+        f"prof busy on {len(busy)} days; expected <= 3 with n=3")
+
+
+def test_at_least_three_free_days_infeasible_with_max_one_per_day():
+    """Boundary case: ``n=3`` + max_per_day=1 forces 5 hours into
+    at most 3 days, which is infeasible. Confirms the HARD floor
+    composes correctly with cattedra-day caps."""
+    triples = [("T1", "1A", "Mat", 5)]
+    model, day_count, _ = _build_dc_model(
+        triples, max_per_day=1)
+    compiler = d2c.DSLConstraintCompiler(
+        model, slot={}, day_count=day_count, level="both")
+    compiler.compile('teacher_at_least_n_free_days("T1", 3)')
+    _, status = _solve(model)
+    assert status == cp_model.INFEASIBLE, (
+        f"expected INFEASIBLE (5 hours, max 3 busy days, "
+        f"max 1/day = capacity 3 < 5); got {status}")
+
+
 # ============================================================
 # Test 2 -- SOFT priority preferences. With Mon=30, Tue=20, Wed=10
 #          and only 2 hours to place across 6 days, the optimal
@@ -267,3 +302,17 @@ def test_small_profile_emits_at_least_one_free_day_per_teacher():
     assert not legacy_rules, (
         f"no rule must use the legacy free_day_choice_3way pragma "
         f"(found {len(legacy_rules)})")
+    # The 70/25/5 stratified distribution from build_profile_db.py
+    # must surface as the per-teacher floor `n` arg in the emitted
+    # pragma. We parse `n` out of the expression string and check
+    # that all three values {1, 2, 3} appear when the profile is
+    # large enough (small has 20 teachers -> at least one in each
+    # bucket per the rounding rules).
+    import re
+    floor_ns = sorted({
+        int(re.search(r",\s*(\d+)\s*\)\s*$", r["expression"]).group(1))
+        for r in floor_rules
+    })
+    assert floor_ns == [1, 2, 3], (
+        f"expected stratified floors {{1, 2, 3}}; got {floor_ns}. "
+        "Did build_profile_db.py emit the 70/25/5 distribution?")

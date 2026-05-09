@@ -205,14 +205,23 @@ with a two-layer architecture: a \emph{universal HARD floor}
 ``at least $n$ free days per week'' plus a \emph{three-tier
 priority-ordered SOFT preference} system.
 
-\paragraph{HARD floor.} For every teacher $t$ the DSL
-translator emits
+\paragraph{HARD floor.} The number $n_t$ is per-teacher,
+loaded from the column \texttt{Teacher.min\_free\_days}
+(Integer, NOT NULL, DEFAULT 1). Typical values:
+\begin{itemize}
+  \item $n_t = 1$: full-time CCNL (default; about 70\% of
+    teachers in the stress profiles).
+  \item $n_t = 2$: split / reduced timetable (about 25\%).
+  \item $n_t = 3$: heavy part-time (about 5\%).
+  \item $n_t = 0$: constraint disabled (rare; typically
+    short-term substitutes).
+\end{itemize}
+For every teacher the DSL translator emits
 \begin{verbatim}
-teacher_at_least_n_free_days("Rossi", 1)
+teacher_at_least_n_free_days("Rossi", 2)
 \end{verbatim}
-sourced from \texttt{Teacher.required\_free\_days\_count}
-(default 1). The compiler translates this to
-$\sum_d \mathbf{1}\{t\text{ busy on day }d\} \le |D| - n$,
+The compiler translates this to
+$\sum_d \mathbf{1}\{t\text{ busy on day }d\} \le |D| - n_t$,
 where the busy indicator is built from the slot Bools
 (Phase B / monolithic) or the day\_count IntVars (Phase A
 fallback). The pragma is registered with
@@ -223,6 +232,15 @@ The legacy Phase-A-only \texttt{free\_day\_choice\_3way}
 pragma was silently dropped by these bypasses, producing
 \texttt{hard\_violation} rows on the v2 SQLite bench; the
 new pragma fixes the asymmetry.
+
+\paragraph{Feasibility note.} With \texttt{max\_per\_day} = 2
+and $n_t = 3$ the teacher's weekly hours must fit in
+$|D| - n_t = 3$ working days: 5 hours work (2+2+1), 7 do
+not (theoretical max 6). The stress profiles avoid
+combining $n_t = 3$ with cattedre exceeding 6 hours. If
+the user picks values incompatible with the weekly load,
+the solver returns \texttt{INFEASIBLE} -- there is no
+silent fallback.
 
 \paragraph{SOFT priority preferences.} On top of the
 floor, every teacher has up to three preferred free days
@@ -240,7 +258,9 @@ and the compiler contributes $w_p \cdot
 objective. Under minimisation the solver tends to honor
 priority 1 first because ignoring it costs the most.
 
-\paragraph{Worked example.} A teacher with 5 weekly hours
+\paragraph{Worked examples for $N \in \{1, 2, 3\}$.}
+
+\textit{$N = 1$ (full-time)}. A teacher with 5 weekly hours
 and preferences [Mon pri.1, Tue pri.2, Wed pri.3] pays
 $30\,\mathbf{1}_{\mathrm{Mon}} + 20\,\mathbf{1}_{\mathrm{Tue}} +
 10\,\mathbf{1}_{\mathrm{Wed}}$. Leaving Monday free costs 0;
@@ -249,11 +269,32 @@ costs 50. The HARD floor forces $\ge 1$ free day, so
 Monday is the rational pick unless other HARDs (e.g. a
 fixed coteach lesson on Monday) make it infeasible.
 
+\textit{$N = 2$ (split timetable)}. Same preferences,
+4 weekly hours. The HARD floor forces \emph{two} free
+days, so the teacher works at most 4 days. Under the SOFT
+priorities the optimum leaves Mon \& Tue free (cost 10:
+only priority 3 pays). The 4 hours spread over Wed..Sat,
+one per day.
+
+\textit{$N = 3$ (heavy part-time)}. Same preferences,
+5 weekly hours. The HARD floor forces \emph{three} free
+days, so the teacher works at most 3 days. With
+\texttt{max\_per\_day} = 2 the 5 hours pack as $2 + 2 + 1$;
+the solver picks the three days that leave Mon, Tue, Wed
+free (SOFT cost 0). With 7 hours instead of 5, the
+combination $N = 3$ + \texttt{max\_per\_day} = 2 would be
+\texttt{INFEASIBLE} (capacity $3 \times 2 = 6 < 7$).
+
 \paragraph{Try it (SQL).}
 \begin{verbatim}
 -- HARD floor per teacher:
-SELECT t.name, t.required_free_days_count
+SELECT t.name, t.min_free_days
   FROM teachers t ORDER BY t.id;
+
+-- stratified distribution in the stress profiles
+-- (expected 70/25/5 split):
+SELECT min_free_days, COUNT(*)
+  FROM teachers GROUP BY min_free_days;
 
 -- 3 SOFT priority-ordered preferences:
 SELECT t.name, p.day, p.priority,

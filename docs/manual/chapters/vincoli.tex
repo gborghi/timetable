@@ -399,21 +399,32 @@ un \emph{pavimento} HARD universale ``almeno N giorni
 liberi'' e una preferenza \emph{ordinata in priorit\`a} a
 tre livelli SOFT.
 
-\subsection*{Pavimento HARD: ``almeno un giorno libero''}
+\subsection*{Pavimento HARD: ``almeno $N$ giorni liberi''}
 
-Il vincolo HARD \`e universale: per ogni docente $t$ il
-sistema impone
+Il vincolo HARD \`e universale ma il numero $N$ \`e
+\emph{per docente}: la colonna
+\texttt{Teacher.min\_free\_days} (Integer, NOT NULL, DEFAULT
+1) carica il valore di $n_t$. Il sistema impone, per ogni
+docente $t$,
 \[
    \sum_{d \in \mathrm{giorni}} \mathbf{1}\{\text{$t$ ha almeno
    una lezione il giorno $d$}\}
-   \;\le\; |\mathrm{giorni}| - n_t,
+   \;\le\; |\mathrm{giorni}| - n_t.
 \]
-dove $n_t$ \`e il valore di
-\texttt{Teacher.required\_free\_days\_count} (predefinito 1,
-conforme al contratto collettivo). Il pragma DSL canonico
-\`e
+Equivalentemente, $t$ deve avere almeno $n_t$ giornate con
+zero lezioni. Casi tipici:
+\begin{itemize}
+  \item $n_t = 1$: tempo pieno CCNL (default per circa il
+    70\% del corpo docente nei profili stress).
+  \item $n_t = 2$: cattedra ridotta o ``orario spezzato''
+    (circa 25\% nei profili stress).
+  \item $n_t = 3$: incarichi part-time pesanti (circa 5\%).
+  \item $n_t = 0$: vincolo disabilitato (caso eccezionale,
+    tipicamente per docenti in supplenza breve).
+\end{itemize}
+Il pragma DSL canonico \`e
 \begin{verbatim}
-teacher_at_least_n_free_days("Rossi", 1)
+teacher_at_least_n_free_days("Rossi", 2)
 \end{verbatim}
 ed \`e registrato con \texttt{level=both} nel compilatore
 DSL: si applica uniformemente a Phase A, Phase B,
@@ -423,6 +434,15 @@ DSL: si applica uniformemente a Phase A, Phase B,
 veniva silenziosamente bypassato dalle ultime tre tecniche
 producendo \texttt{hard\_violation}; il nuovo pragma
 risolve l'asimmetria.
+
+\paragraph{Vincolo di feasibility.} Con \texttt{max\_per\_day} = 2
+e $n_t = 3$, le ore settimanali del docente devono stare
+in $|\mathrm{giorni}| - n_t = 3$ giorni di lavoro: 5 ore
+sono ammissibili (2+2+1), 7 ore no (max teorico 6). I
+profili stress evitano la combinazione $n_t = 3$ con cattedre
+oltre le 6 ore. Se l'utente imposta valori incompatibili
+con il monte ore, il solver restituisce
+\texttt{INFEASIBLE} -- nessun fallback silenzioso.
 
 \subsection*{Preferenze SOFT ordinate in priorit\`a}
 
@@ -447,26 +467,46 @@ che contribuisce al costo SOFT con $w_p \cdot
 solver minimizza la somma, quindi tende a onorare prima la
 priorit\`a 1 perch\'e ignorarla costa di pi\`u.
 
-\subsection*{Esempio numerico}
+\subsection*{Esempi numerici per $N \in \{1, 2, 3\}$}
 
-Si consideri un docente con cinque ore settimanali e le
-tre preferenze [Luned\`i pri.1, Marted\`i pri.2, Mercoled\`i
+\paragraph{$N = 1$ (tempo pieno).} Cinque ore settimanali,
+preferenze [Luned\`i pri.1, Marted\`i pri.2, Mercoled\`i
 pri.3]. Il pavimento HARD richiede $\ge 1$ giorno libero.
 Le tre penalty in conflitto sono $30 \cdot \mathbf{1}_{\mathrm{Lun}} + 20 \cdot \mathbf{1}_{\mathrm{Mar}} + 10 \cdot
 \mathbf{1}_{\mathrm{Mer}}$; il solver paga 0 lasciando libero
 Luned\`i, 30 lasciando libero Marted\`i (paga la
 priorit\`a 1), e cos\`i via. La scelta razionale \`e
-quindi Luned\`i, salvo conflitti con altri vincoli HARD
-(p.es. una lezione fissata a Luned\`i da un altro docente
-in compresenza).
+quindi Luned\`i, salvo conflitti con altri vincoli HARD.
+
+\paragraph{$N = 2$ (orario spezzato).} Quattro ore
+settimanali, stesse preferenze. Il pavimento HARD impone
+\emph{due} giorni liberi -- il docente lavora al massimo
+quattro giorni. La distribuzione ottima sotto le tre
+penalty SOFT lascia liberi Luned\`i e Marted\`i (cost = 10:
+solo la priorit\`a 3 paga). Le 4 ore si distribuiscono
+sui 4 giorni rimanenti (Mer..Sab) -- una per giorno.
+
+\paragraph{$N = 3$ (part-time forte).} Cinque ore
+settimanali, stesse preferenze. Il pavimento HARD impone
+\emph{tre} giorni liberi -- il docente lavora al massimo
+tre giorni. Con \texttt{max\_per\_day} = 2 le 5 ore si
+distribuiscono come $2 + 2 + 1$ su tre giorni; il solver
+sceglie i tre giorni che lasciano liberi Luned\`i,
+Marted\`i, Mercoled\`i (cost SOFT = 0). Se invece le ore
+fossero 7, la combinazione $N = 3$ + \texttt{max\_per\_day} = 2
+sarebbe \texttt{INFEASIBLE} (capacit\`a $3 \times 2 = 6 < 7$).
 
 \subsection*{Provalo (SQL)}
 
 Per ispezionare le preferenze del DB:
 \begin{verbatim}
 -- pavimento HARD per docente:
-SELECT t.name, t.required_free_days_count
+SELECT t.name, t.min_free_days
   FROM teachers t ORDER BY t.id;
+
+-- distribuzione stratificata nei profili stress (atteso 70/25/5):
+SELECT min_free_days, COUNT(*)
+  FROM teachers GROUP BY min_free_days;
 
 -- 3 preferenze SOFT priority-ordered:
 SELECT t.name, p.day, p.priority,
