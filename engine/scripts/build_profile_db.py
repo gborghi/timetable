@@ -641,35 +641,51 @@ def _seed_stress_fixtures(profile: str, rng: random.Random,
             counts["teacher_free_day_preference"] = (
                 db.query(models.TeacherFreeDayPreference).count())
 
-        # ---- 2c. Teacher.min_free_days distribution (70/25/5)
+        # ---- 2c. Teacher.min_free_days distribution (~70/25/5)
         # Stratified at-least-N HARD floor so the bench exercises the
         # generic pragma (not just N=1):
-        #   70% teachers -> N=1 (CCNL default)
-        #   25% teachers -> N=2 (part-time CCNL spezzato)
-        #    5% teachers -> N=3 (very part-time)
-        # Deterministic order via the same `rng` used for the rest of
-        # the stress fixtures so the profile rebuild is reproducible.
+        #   ~70% teachers -> N=1 (CCNL default)
+        #   ~25% teachers -> N=2 (part-time CCNL spezzato)
+        #    ~5% teachers -> N=3 (very part-time)
+        # Feasibility cap: a teacher with total weekly hours `H` and
+        # daily cap `MAX_PER_DAY` (5) needs at least
+        # ceil(H / MAX_PER_DAY) working days, so N is capped at
+        # 6 - ceil(H / 5). Teachers whose load exceeds the bucket's
+        # implied capacity are demoted to a smaller N -- the percent
+        # split is best-effort, not an exact ratio. This makes the
+        # generated profile feasible by construction so the bench
+        # techniques don't crash with INFEASIBLE.
         if hasattr(models.Teacher, "min_free_days") and teachers:
+            import math as _math
+            MAX_PER_DAY = 5
+            # Compute weekly hours per teacher from the assignments.
+            assignments = db.query(models.Assignment).all()
+            hours_by_teacher: dict[int, int] = {}
+            for a in assignments:
+                if getattr(a, "is_potenziamento", False):
+                    continue
+                hours_by_teacher[a.teacher_id] = (
+                    hours_by_teacher.get(a.teacher_id, 0)
+                    + int(a.hours or 0))
             n_total = len(teachers)
-            n_two = round(0.25 * n_total)
-            n_three = round(0.05 * n_total)
-            # Cap n_three by feasibility hint: each teacher works on
-            # 6 - N days. With max_hours=18 and 5 hours/day, N=3
-            # means 15 hours over 3 days -- still feasible. We do not
-            # auto-shrink here; if the post-build precheck flags the
-            # profile as infeasible the caller can re-run with
-            # --force-min-free-days-cap.
+            n_two_target = round(0.25 * n_total)
+            n_three_target = round(0.05 * n_total)
             shuffled_ids = [t.id for t in teachers]
             rng.shuffle(shuffled_ids)
-            two_ids = set(shuffled_ids[:n_two])
-            three_ids = set(shuffled_ids[n_two:n_two + n_three])
+            target_n: dict[int, int] = {}
+            for tid in shuffled_ids[:n_three_target]:
+                target_n[tid] = 3
+            for tid in shuffled_ids[
+                    n_three_target:n_three_target + n_two_target]:
+                target_n[tid] = 2
+            # Apply with feasibility cap.
             for t in teachers:
-                if t.id in three_ids:
-                    t.min_free_days = 3
-                elif t.id in two_ids:
-                    t.min_free_days = 2
-                else:
-                    t.min_free_days = 1
+                weekly = int(hours_by_teacher.get(t.id, 0))
+                min_days_needed = max(
+                    1, _math.ceil(weekly / MAX_PER_DAY)) if weekly else 0
+                max_n = max(0, 6 - min_days_needed)
+                desired = target_n.get(t.id, 1)
+                t.min_free_days = min(desired, max_n) if max_n >= 1 else 1
             db.commit()
             from collections import Counter
             counts["min_free_days_distribution"] = dict(Counter(
