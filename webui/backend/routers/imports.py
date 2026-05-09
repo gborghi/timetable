@@ -219,11 +219,12 @@ def _import_teachers(db: Session, rows: Iterable[dict],
                    "punteggio_graduatoria")
         if gs not in (None, ""):
             t.graduatoria_score = _norm_float(gs, t.graduatoria_score or 0.0)
-        rfdc = _pick(r, "required_free_days_count",
+        rfdc = _pick(r, "min_free_days",
+                     "required_free_days_count",
                      "giorni_liberi_richiesti")
         if rfdc not in (None, ""):
-            t.required_free_days_count = _norm_int(
-                rfdc, getattr(t, "required_free_days_count", 1) or 1
+            t.min_free_days = _norm_int(
+                rfdc, getattr(t, "min_free_days", 1) or 1
             )
         pfd = _pick(r, "preferred_free_days_json",
                      "preferred_free_days")
@@ -728,7 +729,7 @@ _TEMPLATES: dict[str, list[tuple[str, Any]]] = {
         ("free_day", "Saturday"),
         ("subjects", "Matematica,Fisica"),
         ("graduatoria_score", 0.0),
-        ("required_free_days_count", 1),
+        ("min_free_days", 1),
         ("preferred_free_days_json", ""),
         ("notes", ""),
     ],
@@ -809,8 +810,9 @@ _TEMPLATE_HINTS: dict[str, dict[str, str]] = {
                     "'Matematica,Fisica'.",
         "graduatoria_score": "Float; usato dal modulo supplenze per "
                              "ordinare le candidature.",
-        "required_free_days_count": "HARD: numero esatto di giorni "
-                                     "liberi a settimana (CCNL=1).",
+        "min_free_days": "HARD: numero MINIMO di giorni liberi a "
+                          "settimana. Default 1 (CCNL); 2-3 per "
+                          "part-time. 0 disabilita il vincolo.",
         "preferred_free_days_json": "Opzionale -- JSON [{day:1..6,"
                                      "is_hard:bool,soft_penalty:int}]. "
                                      "Lascia vuoto per default.",

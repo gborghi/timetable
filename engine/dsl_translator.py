@@ -503,7 +503,7 @@ def load_all_dsl_constraints(db,
     first, then ClassUnavailability, then ClassroomUnavailability,
     then TeacherMandatoryFreeDay, then per-teacher
     `teacher_at_least_n_free_days` HARD floor (sourced from
-    Teacher.required_free_days_count), then per-teacher
+    Teacher.min_free_days), then per-teacher
     `teacher_preferred_free_day_penalty` priority preferences
     (sourced from TeacherFreeDayPreference rows), then
     CoteachGroup, then LogicalUnavailability, then
@@ -593,16 +593,18 @@ def load_all_dsl_constraints(db,
         })
 
     # 4b. Per-teacher HARD floor "at least N free days" sourced from
-    # Teacher.required_free_days_count (default 1 = CCNL "almeno un
-    # giorno libero"). Emitted as the canonical
+    # Teacher.min_free_days (default 1 = CCNL "almeno un giorno libero",
+    # but per-teacher overrides support 2 or 3 free days for part-time
+    # contracts and similar). Emitted as the canonical
     # `teacher_at_least_n_free_days(name, n)` pragma so it works in
     # both Phase A and Phase B contexts -- previously this rule was
     # implicit in the Phase A `free_day_choice_3way` pragma, which
     # got bypassed by the cpsat_week / cpsat_day_skip_phase_a /
     # cpsat_day_soft_hint techniques. With the new pragma the floor
-    # is enforced uniformly regardless of solver scope.
+    # is enforced uniformly regardless of solver scope. n=0 is treated
+    # as "no constraint" and skipped.
     for t in db.query(models.Teacher).all():
-        n_floor = int(getattr(t, "required_free_days_count", 1) or 0)
+        n_floor = int(getattr(t, "min_free_days", 1) or 0)
         if n_floor <= 0:
             continue
         out.append({

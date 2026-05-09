@@ -310,7 +310,7 @@ def build_phase_a_pragmas(
         pragmas.append(f'hall_bound_prof_day({p!r})')
     # 3. Free-day pragmas (HARD floor + SOFT priority) are now
     # emitted by ``dsl_translator.load_all_dsl_constraints`` from the
-    # DB rows (Teacher.required_free_days_count for the HARD floor,
+    # DB rows (Teacher.min_free_days for the HARD floor,
     # TeacherFreeDayPreference rows for the SOFT priority weights).
     # The legacy ``free_day_choice_3way`` Phase-A-only pragma was
     # bypassed by the cpsat_week / cpsat_day_skip_phase_a /

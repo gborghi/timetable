@@ -132,7 +132,7 @@
       pref_no_one_weight: TEACHER_DEFAULTS.pref_no_one_weight,
       preferred_days_csv: '',
       preferred_free_days: [],
-      required_free_days_count: 1,
+      min_free_days: 1,
       subjects: [], unavailability: [],
       mandatory_free_days: [], compatible_classes: [],
       classroom_prefs: []
@@ -591,18 +591,19 @@
         </div>
       {/if}
       <div class="field max-w-xs">
-        <label>Giorni liberi totali nella settimana (HARD)
-          <span title="Numero esatto di giornate libere richieste da CCNL o accordo individuale. 0 = lavora tutti i giorni; 1 = un giorno libero (default); fino a 6 (caso teorico).">
-            ℹ️
+        <label>Min giorni liberi/sett. (HARD)
+          <span title="Numero MINIMO di giornate libere a settimana. Default 1 (CCNL). 2-3 per docenti part-time. 0 disabilita il vincolo. Il pragma e' 'teacher_at_least_n_free_days' applicato uniformemente in Phase A, Phase B e tutti i bypass.">
+            &#x2139;
           </span>
         </label>
         <input type="number" min="0" max="6"
-               value={editing.required_free_days_count ?? 1}
+               data-test="min-free-days"
+               value={editing.min_free_days ?? 1}
                on:input={(e) => editing = { ...editing,
-                 required_free_days_count: Math.max(0, Math.min(6, Number(e.target.value) || 0)) }}/>
+                 min_free_days: Math.max(0, Math.min(6, Number(e.target.value) || 0)) }}/>
         <div class="text-xs text-ink-500">
-          Default 1 (italian CCNL). 0 = lavora tutti i 6 giorni; 6 =
-          mai (teorico).
+          Default 1 (CCNL italiano). 2-3 per part-time o accordi
+          individuali. 0 disabilita il vincolo. Massimo 6 (teorico).
         </div>
       </div>
     </div>

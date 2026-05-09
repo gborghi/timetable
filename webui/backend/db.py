@@ -284,12 +284,24 @@ def _apply_lightweight_migrations() -> None:
                 "ALTER TABLE teachers ADD COLUMN "
                 "preferred_free_days_json TEXT"
             ))
-        if insp.has_table("teachers") and not has_column(
-                "teachers", "required_free_days_count"):
-            conn.execute(text(
-                "ALTER TABLE teachers ADD COLUMN "
-                "required_free_days_count INTEGER NOT NULL DEFAULT 1"
-            ))
+        # Teacher floor of "min free days per week" (HARD). The column
+        # was previously named ``required_free_days_count``; alembic
+        # revision b2c3d4e5f6a7 renames it to ``min_free_days``. This
+        # lightweight migration adds the new column on dev DBs and
+        # backfills from the legacy column when present.
+        if insp.has_table("teachers"):
+            has_new = has_column("teachers", "min_free_days")
+            has_old = has_column("teachers", "required_free_days_count")
+            if not has_new:
+                conn.execute(text(
+                    "ALTER TABLE teachers ADD COLUMN "
+                    "min_free_days INTEGER NOT NULL DEFAULT 1"
+                ))
+                if has_old:
+                    conn.execute(text(
+                        "UPDATE teachers SET min_free_days = "
+                        "COALESCE(required_free_days_count, 1)"
+                    ))
         # Same fields on SchoolClass + max_hours_per_day. Default 0
         # for the count (classes work all 6 days normally) and 5 for
         # the per-day cap (was previously hardcoded in the engine).

@@ -172,8 +172,8 @@ def _to_out(t: models.Teacher, db=None) -> schemas.TeacherOut:
         graduatoria_score=t.graduatoria_score,
         free_day=t.free_day,
         preferred_free_days=pfd_list,
-        required_free_days_count=int(
-            getattr(t, "required_free_days_count", 1) or 1
+        min_free_days=int(
+            getattr(t, "min_free_days", 1) or 1
         ),
         max_consecutive=t.max_consecutive,
         notes=t.notes,
@@ -278,11 +278,11 @@ def _apply_payload(t: models.Teacher, p: schemas.TeacherIn,
                               if it.soft_penalty is not None else None),
         })
     t.preferred_free_days_json = _json.dumps(pfd) if pfd else None
-    # Required free days per week (HARD).
-    rc = int(p.required_free_days_count if p.required_free_days_count is not None
+    # Min free days per week (HARD floor). Default 1, range 0..6.
+    rc = int(p.min_free_days if p.min_free_days is not None
              else 1)
     rc = max(0, min(6, rc))
-    t.required_free_days_count = rc
+    t.min_free_days = rc
     # Replace subject set
     if t.id is not None:
         db.query(models.TeacherSubject).filter(

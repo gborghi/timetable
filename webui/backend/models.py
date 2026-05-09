@@ -141,12 +141,14 @@ class Teacher(TenantMixin, TimestampMixin, Base):
                 "{day: 1..6, is_hard: bool, soft_penalty: int|None}. "
                 "Day numbering 1=Lun .. 6=Sab."
     )
-    # Exact number of free days per week (HARD). Default 1 (italian
+    # Minimum number of free days per week (HARD). Default 1 (italian
     # CCNL norm). 0 = teacher works every day, 6 = teacher never
-    # teaches (theoretical).
-    required_free_days_count: Mapped[int] = mapped_column(
-        Integer, default=1,
-        comment="HARD: numero esatto di giorni liberi a settimana."
+    # teaches (theoretical). The translator emits
+    # ``teacher_at_least_n_free_days(name, min_free_days)`` per teacher.
+    min_free_days: Mapped[int] = mapped_column(
+        Integer, default=1, server_default="1", nullable=False,
+        comment="HARD: numero minimo di giorni liberi a settimana "
+                "(>=N). Default 1 = CCNL italiano."
     )
     max_consecutive: Mapped[int] = mapped_column(Integer, default=5,
                                                  comment="HARD: max ore "

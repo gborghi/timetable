@@ -173,7 +173,7 @@ def test_shared_coteach_infeasible_disjoint_free_days():
     3 candidates each, ProfA can pick any of 6,5,4 and ProfB any of
     1,2,3 -- they CAN coexist. To force infeasibility we make the
     glibero choices forbid common days entirely AND force the
-    coteach into a tight spot. Using `required_free_days_count`
+    coteach into a tight spot. Using `min_free_days`
     semantics is out of scope for this unit test; instead we use a
     n_hours that can't be satisfied: n_hours=5 of Chimica with each
     teacher having only 4 weekly hours -> Phase A INFEASIBLE."""

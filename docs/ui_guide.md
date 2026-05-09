@@ -147,7 +147,7 @@ Campi di import gia' integrati con le feature recenti:
 
 - `tags` su `students` e `classrooms` (lista comma-separata,
   i tag sconosciuti vengono creati al volo)
-- `graduatoria_score`, `required_free_days_count`,
+- `graduatoria_score`, `min_free_days`,
   `preferred_free_days_json` su `teachers`
 - `max_hours_per_day`, `required_free_days_count`,
   `preferred_free_days_json` su `classes`

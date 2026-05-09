@@ -860,7 +860,7 @@ def test_build_phase_a_pragmas_emits_canonical_set():
     Mat/Ita pair (only for subjects with >= 2 hours) + Motorie
     (only when present). Free-day pragmas are no longer emitted
     here -- they are sourced from the DB (TeacherFreeDayPreference
-    + Teacher.required_free_days_count) by load_all_dsl_constraints
+    + Teacher.min_free_days) by load_all_dsl_constraints
     so they apply uniformly across Phase A and Phase B contexts."""
     import cpsat_v2_timetable as cv2
     profs = {

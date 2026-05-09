@@ -146,8 +146,9 @@ class TeacherBase(BaseModel):
     free_day: str | None = None
     # New: structured up-to-3 ordered free-day preferences.
     preferred_free_days: list[FreeDayPref] = Field(default_factory=list)
-    # New: HARD count of free days per week. Default 1 (italian CCNL).
-    required_free_days_count: int = 1
+    # HARD floor on the number of free days per week (>= N).
+    # Default 1 (italian CCNL). Per-teacher overrides support 2 or 3.
+    min_free_days: int = 1
     max_consecutive: int = 5
     notes: str | None = None
     pref_no_buchi_weight: float = 10.0
