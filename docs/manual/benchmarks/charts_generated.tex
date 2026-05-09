@@ -14,9 +14,9 @@ Profilo & best-cost & best-cost (s) & best-time & best-time (cost) & ok & not-ok
 small & \texttt{bp\_teacher-class} & 37.9 & \texttt{bp\_curriculum} & 1110 & 40 & 10 \\
 medium & \texttt{bp\_teacher} & 166.2 & \texttt{decomp\_curriculum} & 6010 & 35 & 15 \\
 big & \texttt{bp\_teacher-class-subject} & 241.2 & \texttt{decomp\_temporal} & 4930 & 40 & 10 \\
-huge & \texttt{bp\_teacher} & 272.2 & \texttt{decomp\_temporal} & 7420 & 21 & 4 \\
-superhuge & -- & -- & -- & -- & 0 & 0 \\
-mega & -- & -- & -- & -- & 0 & 0 \\
+huge & \texttt{bp\_teacher} & 272.2 & \texttt{decomp\_temporal} & 7420 & 42 & 8 \\
+superhuge & \texttt{bp\_curriculum} & 364.0 & \texttt{bp\_teacher-class-subject} & 13050 & 42 & 8 \\
+mega & \texttt{bp\_teacher-class} & 425.5 & \texttt{bp\_teacher-subject} & 17740 & 21 & 4 \\
 \bottomrule
 \end{tabular}
 \caption{Per ciascun profilo: tecnica con il minor costo soft, tempo totale di quella tecnica; tecnica con il minor tempo, costo soft di quella tecnica; numero di celle riuscite vs. non-riuscite (unwired+timeout+infeasible+exception).}
@@ -34,9 +34,9 @@ Profilo & greedy & cpsat & decomp & cg & bp & meta \\
 small & -- & 36.3 & 32.8 & 35.9 & 35.3 & 55.9 \\
 medium & -- & 79.7 & 73.9 & 155.9 & 162.4 & 118.2 \\
 big & -- & 152.5 & 192.3 & 239.0 & 240.5 & 222.9 \\
-huge & -- & 201.9 & 252.3 & 271.9 & 272.5 & 318.9 \\
-superhuge & -- & -- & -- & -- & -- & -- \\
-mega & -- & -- & -- & -- & -- & -- \\
+huge & -- & 202.1 & 254.2 & 272.4 & 272.7 & 317.6 \\
+superhuge & -- & 373.4 & 494.0 & 364.2 & 361.1 & 552.7 \\
+mega & -- & 495.0 & 671.6 & 426.1 & 426.8 & 740.0 \\
 \bottomrule
 \end{tabular}
 \caption{Tempo medio (s) di celle riuscite per famiglia $\times$ profilo. Una famiglia senza celle riuscite per quel profilo \`e marcata \texttt{--}.}
@@ -55,8 +55,8 @@ small & 38.4 & 1.49\,$\times$ (\texttt{decomp\_curriculum}) & -5.1\% \\
 medium & 80.1 & 1.40\,$\times$ (\texttt{decomp\_curriculum}) & +38.8\% \\
 big & 152.7 & 1.01\,$\times$ (\texttt{decomp\_temporal}) & +8.7\% \\
 huge & 201.9 & 1.01\,$\times$ (\texttt{decomp\_temporal}) & -6.1\% \\
-superhuge & -- & -- & -- \\
-mega & -- & -- & -- \\
+superhuge & 370.4 & 1.07\,$\times$ (\texttt{bp\_teacher-class-subject}) & +19.3\% \\
+mega & 495.0 & 1.17\,$\times$ (\texttt{bp\_teacher-subject}) & -1.9\% \\
 \bottomrule
 \end{tabular}
 \caption{Per ciascun profilo: tempo della pipeline baseline \texttt{cpsat\_day} (Phase A + Phase B per giorno), tecnica con il maggiore speedup rispetto al baseline e gap percentuale del suo costo soft. Valori positivi del gap indicano un costo peggiore della baseline; negativi un costo migliore.}
@@ -78,15 +78,15 @@ mega & -- & -- & -- \\
   ymajorgrids=true, grid style=dashed,
   every axis plot/.append style={fill opacity=0.7},
 ]
-\addplot+[fill=cIndaco, draw=cIndaco!50!black] coordinates {(small,36.3) (medium,79.7) (big,152.5) (huge,201.9)};
+\addplot+[fill=cIndaco, draw=cIndaco!50!black] coordinates {(small,36.3) (medium,79.7) (big,152.5) (huge,202.1) (superhuge,373.4) (mega,495.0)};
 \addlegendentry{cpsat}
-\addplot+[fill=cSiena, draw=cSiena!50!black] coordinates {(small,32.8) (medium,73.9) (big,192.3) (huge,252.3)};
+\addplot+[fill=cSiena, draw=cSiena!50!black] coordinates {(small,32.8) (medium,73.9) (big,192.3) (huge,254.2) (superhuge,494.0) (mega,671.6)};
 \addlegendentry{decomp}
-\addplot+[fill=cOro, draw=cOro!50!black] coordinates {(small,35.9) (medium,155.9) (big,239.0) (huge,271.9)};
+\addplot+[fill=cOro, draw=cOro!50!black] coordinates {(small,35.9) (medium,155.9) (big,239.0) (huge,272.4) (superhuge,364.2) (mega,426.1)};
 \addlegendentry{cg}
-\addplot+[fill=cEnf, draw=cEnf!50!black] coordinates {(small,35.3) (medium,162.4) (big,240.5) (huge,272.5)};
+\addplot+[fill=cEnf, draw=cEnf!50!black] coordinates {(small,35.3) (medium,162.4) (big,240.5) (huge,272.7) (superhuge,361.1) (mega,426.8)};
 \addlegendentry{bp}
-\addplot+[fill=cSoft, draw=cSoft!50!black] coordinates {(small,55.9) (medium,118.2) (big,222.9) (huge,318.9)};
+\addplot+[fill=cSoft, draw=cSoft!50!black] coordinates {(small,55.9) (medium,118.2) (big,222.9) (huge,317.6) (superhuge,552.7) (mega,740.0)};
 \addlegendentry{meta}
 \end{axis}
 \end{tikzpicture}
@@ -141,6 +141,7 @@ Profilo & Tecnica & cost (pickle) & cost (sqlite) & $\Delta$\,\% \\
 \texttt{small} & \texttt{decomp\_temporal} & 1020 & 1360 & +33.3\% \\
 \texttt{small} & \texttt{bp\_teacher-day} & 900 & 1180 & +31.1\% \\
 \texttt{medium} & \texttt{bp\_class-day} & 3740 & 4890 & +30.7\% \\
+\texttt{superhuge} & \texttt{decomp\_temporal} & 15450 & 10930 & -29.3\% \\
 \texttt{medium} & \texttt{bp\_curriculum} & 4030 & 5130 & +27.3\% \\
 \texttt{big} & \texttt{meta\_alns} & 4060 & 5140 & +26.6\% \\
 \texttt{big} & \texttt{meta\_lagrangian} & 4060 & 5140 & +26.6\% \\
@@ -148,6 +149,7 @@ Profilo & Tecnica & cost (pickle) & cost (sqlite) & $\Delta$\,\% \\
 \texttt{big} & \texttt{meta\_tabu} & 4060 & 5140 & +26.6\% \\
 \texttt{big} & \texttt{meta\_vns} & 4060 & 5140 & +26.6\% \\
 \texttt{big} & \texttt{meta\_lns} & 4050 & 5120 & +26.4\% \\
+\texttt{superhuge} & \texttt{cpsat\_day} & 14670 & 10940 & -25.4\% \\
 \texttt{big} & \texttt{decomp\_spectral\_v2} & 4580 & 5730 & +25.1\% \\
 \texttt{medium} & \texttt{meta\_alns} & 3910 & 4860 & +24.3\% \\
 \texttt{medium} & \texttt{meta\_lagrangian} & 3930 & 4860 & +23.7\% \\
@@ -155,10 +157,23 @@ Profilo & Tecnica & cost (pickle) & cost (sqlite) & $\Delta$\,\% \\
 \texttt{medium} & \texttt{meta\_tabu} & 3930 & 4860 & +23.7\% \\
 \texttt{medium} & \texttt{meta\_vns} & 3930 & 4860 & +23.7\% \\
 \texttt{medium} & \texttt{meta\_lns} & 3910 & 4810 & +23.0\% \\
+\texttt{superhuge} & \texttt{decomp\_spectral\_v2} & 13940 & 10830 & -22.3\% \\
 \texttt{big} & \texttt{bp\_teacher} & 4670 & 5710 & +22.3\% \\
+\texttt{huge} & \texttt{bp\_curriculum} & 7620 & 9240 & +21.3\% \\
+\texttt{superhuge} & \texttt{bp\_class-day} & 11330 & 13510 & +19.2\% \\
+\texttt{superhuge} & \texttt{bp\_curriculum} & 11660 & 9670 & -17.1\% \\
 \texttt{big} & \texttt{decomp\_temporal} & 4930 & 5760 & +16.8\% \\
+\texttt{superhuge} & \texttt{decomp\_curriculum} & 12850 & 10710 & -16.7\% \\
+\texttt{huge} & \texttt{bp\_teacher} & 8510 & 7100 & -16.6\% \\
+\texttt{superhuge} & \texttt{cg\_iterative\_diversified} & 11840 & 9910 & -16.3\% \\
 \texttt{big} & \texttt{bp\_teacher-day} & 4690 & 5430 & +15.8\% \\
+\texttt{superhuge} & \texttt{meta\_lns} & 12450 & 10570 & -15.1\% \\
 \texttt{big} & \texttt{bp\_teacher-subject} & 4960 & 5670 & +14.3\% \\
+\texttt{superhuge} & \texttt{meta\_alns} & 12450 & 10670 & -14.3\% \\
+\texttt{superhuge} & \texttt{meta\_lagrangian} & 12450 & 10670 & -14.3\% \\
+\texttt{superhuge} & \texttt{meta\_sa} & 12450 & 10670 & -14.3\% \\
+\texttt{superhuge} & \texttt{meta\_tabu} & 12450 & 10670 & -14.3\% \\
+\texttt{superhuge} & \texttt{meta\_vns} & 12450 & 10670 & -14.3\% \\
 \texttt{medium} & \texttt{decomp\_spectral\_v2} & 4340 & 4950 & +14.1\% \\
 \texttt{small} & \texttt{meta\_alns} & 1080 & 1230 & +13.9\% \\
 \texttt{small} & \texttt{meta\_lagrangian} & 1080 & 1230 & +13.9\% \\
@@ -167,18 +182,45 @@ Profilo & Tecnica & cost (pickle) & cost (sqlite) & $\Delta$\,\% \\
 \texttt{small} & \texttt{meta\_tabu} & 1080 & 1230 & +13.9\% \\
 \texttt{small} & \texttt{meta\_vns} & 1080 & 1230 & +13.9\% \\
 \texttt{small} & \texttt{cpsat\_day} & 1040 & 1180 & +13.5\% \\
+\texttt{superhuge} & \texttt{bp\_teacher} & 11450 & 9940 & -13.2\% \\
+\texttt{huge} & \texttt{bp\_day} & 8640 & 7530 & -12.8\% \\
+\texttt{superhuge} & \texttt{decomp\_metis} & 13090 & 11460 & -12.5\% \\
+\texttt{huge} & \texttt{bp\_teacher-day} & 8100 & 7110 & -12.2\% \\
 \texttt{small} & \texttt{cg\_iterative\_diversified} & 1100 & 970 & -11.8\% \\
 \texttt{medium} & \texttt{cg\_iterative\_diversified} & 4210 & 4700 & +11.6\% \\
 \texttt{big} & \texttt{cg\_iterative\_diversified} & 4980 & 5550 & +11.4\% \\
+\texttt{huge} & \texttt{bp\_teacher-subject} & 9130 & 8140 & -10.8\% \\
+\texttt{huge} & \texttt{bp\_teacher-class} & 8360 & 7480 & -10.5\% \\
 \texttt{small} & \texttt{bp\_class} & 1090 & 1200 & +10.1\% \\
 \texttt{big} & \texttt{bp\_class} & 4630 & 5090 & +9.9\% \\
+\texttt{huge} & \texttt{bp\_teacher-class-subject} & 7580 & 8330 & +9.9\% \\
+\texttt{superhuge} & \texttt{bp\_teacher-class-subject} & 11920 & 13050 & +9.5\% \\
 \texttt{big} & \texttt{bp\_day} & 4910 & 5350 & +9.0\% \\
+\texttt{huge} & \texttt{meta\_alns} & 8040 & 8630 & +7.3\% \\
+\texttt{huge} & \texttt{cpsat\_day} & 7360 & 7900 & +7.3\% \\
+\texttt{huge} & \texttt{meta\_lagrangian} & 8050 & 8630 & +7.2\% \\
+\texttt{huge} & \texttt{meta\_sa} & 8050 & 8630 & +7.2\% \\
+\texttt{huge} & \texttt{meta\_tabu} & 8050 & 8630 & +7.2\% \\
+\texttt{huge} & \texttt{meta\_vns} & 8050 & 8630 & +7.2\% \\
+\texttt{huge} & \texttt{decomp\_temporal} & 7960 & 7420 & -6.8\% \\
+\texttt{superhuge} & \texttt{bp\_teacher-subject} & 11370 & 12140 & +6.8\% \\
+\texttt{huge} & \texttt{decomp\_metis} & 7540 & 8050 & +6.8\% \\
+\texttt{superhuge} & \texttt{bp\_day} & 11610 & 10850 & -6.5\% \\
+\texttt{huge} & \texttt{meta\_lns} & 8050 & 8560 & +6.3\% \\
 \texttt{small} & \texttt{bp\_curriculum} & 1110 & 1180 & +6.3\% \\
 \texttt{medium} & \texttt{cpsat\_day} & 4090 & 4330 & +5.9\% \\
+\texttt{huge} & \texttt{decomp\_curriculum} & 8130 & 7700 & -5.3\% \\
+\texttt{superhuge} & \texttt{bp\_class} & 12880 & 12310 & -4.4\% \\
+\texttt{huge} & \texttt{bp\_class} & 9040 & 8650 & -4.3\% \\
 \texttt{small} & \texttt{bp\_day} & 1230 & 1180 & -4.1\% \\
+\texttt{huge} & \texttt{bp\_class-day} & 8730 & 8440 & -3.3\% \\
 \texttt{medium} & \texttt{bp\_teacher-class} & 4320 & 4460 & +3.2\% \\
+\texttt{superhuge} & \texttt{bp\_teacher-day} & 11990 & 11640 & -2.9\% \\
 \texttt{big} & \texttt{cpsat\_day} & 5450 & 5300 & -2.8\% \\
 \texttt{small} & \texttt{bp\_teacher-class-subject} & 1220 & 1250 & +2.5\% \\
+\texttt{superhuge} & \texttt{bp\_teacher-class} & 11130 & 11400 & +2.4\% \\
+\texttt{huge} & \texttt{decomp\_spectral\_v2} & 7370 & 7500 & +1.8\% \\
+\texttt{huge} & \texttt{cg\_iterative\_diversified} & 7620 & 7690 & +0.9\% \\
 \bottomrule
 \end{tabular}
 \caption{Delta percentuale del costo soft fra il dataset \texttt{pickle} (zero vincoli stratificati) e il dataset \texttt{sqlite} (14 tabelle di vincolo popolate). Valori positivi indicano che lo SQLite paga il costo dei vincoli aggiuntivi; valori negativi (rari) indicano che la stratificazione ha guidato il solver verso una soluzione complessivamente migliore.}
@@ -207,11 +249,11 @@ Profilo & Tecnica & cost (pickle) & cost (sqlite) & $\Delta$\,\% \\
 \toprule
 \# & Profilo & Tecnica & Famiglia & cost & $t$\,total (s) \\
 \midrule
-1 & \texttt{huge} & \texttt{bp\_curriculum} & bp & 9240 & 273.2 \\
-2 & \texttt{huge} & \texttt{bp\_class} & bp & 8650 & 272.2 \\
-3 & \texttt{huge} & \texttt{meta\_vns} & meta & 8630 & 504.0 \\
-4 & \texttt{huge} & \texttt{meta\_tabu} & meta & 8630 & 307.1 \\
-5 & \texttt{huge} & \texttt{meta\_sa} & meta & 8630 & 294.3 \\
+1 & \texttt{mega} & \texttt{bp\_curriculum} & bp & 19380 & 429.6 \\
+2 & \texttt{mega} & \texttt{meta\_vns} & meta & 18740 & 924.3 \\
+3 & \texttt{mega} & \texttt{meta\_tabu} & meta & 18740 & 786.1 \\
+4 & \texttt{mega} & \texttt{meta\_sa} & meta & 18740 & 740.5 \\
+5 & \texttt{mega} & \texttt{meta\_lns} & meta & 18740 & 747.6 \\
 \bottomrule
 \end{tabular}
 
@@ -379,6 +421,31 @@ Profilo & DS & Tecnica & Famiglia & $t$\,total (s) & cost & hard & status & note
 \texttt{big} & \texttt{sqlite} & \texttt{meta\_sa} & meta & 214.5 & 5140 & True & \texttt{ok} &  \\
 \texttt{big} & \texttt{sqlite} & \texttt{meta\_tabu} & meta & 219.8 & 5140 & True & \texttt{ok} &  \\
 \texttt{big} & \texttt{sqlite} & \texttt{meta\_vns} & meta & 384.6 & 5140 & True & \texttt{ok} &  \\
+\texttt{huge} & \texttt{pickle} & \texttt{bp\_class} & bp & 273.0 & 9040 & True & \texttt{ok} &  \\
+\texttt{huge} & \texttt{pickle} & \texttt{bp\_class-day} & bp & 272.9 & 8730 & True & \texttt{ok} &  \\
+\texttt{huge} & \texttt{pickle} & \texttt{bp\_curriculum} & bp & 272.7 & 7620 & True & \texttt{ok} &  \\
+\texttt{huge} & \texttt{pickle} & \texttt{bp\_day} & bp & 272.6 & 8640 & True & \texttt{ok} &  \\
+\texttt{huge} & \texttt{pickle} & \texttt{bp\_teacher} & bp & 272.6 & 8510 & True & \texttt{ok} &  \\
+\texttt{huge} & \texttt{pickle} & \texttt{bp\_teacher-class} & bp & 273.2 & 8360 & True & \texttt{ok} &  \\
+\texttt{huge} & \texttt{pickle} & \texttt{bp\_teacher-class-subject} & bp & 273.4 & 7580 & True & \texttt{ok} &  \\
+\texttt{huge} & \texttt{pickle} & \texttt{bp\_teacher-day} & bp & 273.3 & 8100 & True & \texttt{ok} &  \\
+\texttt{huge} & \texttt{pickle} & \texttt{bp\_teacher-subject} & bp & 273.7 & 9130 & True & \texttt{ok} &  \\
+\texttt{huge} & \texttt{pickle} & \texttt{cg\_iterative\_diversified} & cg & 272.8 & 7620 & True & \texttt{ok} &  \\
+\texttt{huge} & \texttt{pickle} & \texttt{cpsat\_day} & cpsat & 202.2 & 7360 & True & \texttt{ok} &  \\
+\texttt{huge} & \texttt{pickle} & \texttt{cpsat\_day\_skip\_phase\_a} & cpsat & 147.5 & 9310 & False & \texttt{hard\_violation} & week+skip, mono\_budget=t\_b*6=108.0s, sta \\
+\texttt{huge} & \texttt{pickle} & \texttt{cpsat\_day\_soft\_hint} & cpsat & 239.1 & 8750 & False & \texttt{hard\_violation} & week+soft\_hint, 1430 hints, status=FEASI \\
+\texttt{huge} & \texttt{pickle} & \texttt{cpsat\_week} & cpsat & 644.5 & 2890 & False & \texttt{hard\_violation} & week+skip, 20412 slot vars, status=FEASI \\
+\texttt{huge} & \texttt{pickle} & \texttt{decomp\_curriculum} & decomp & 418.9 & 8130 & True & \texttt{ok} &  \\
+\texttt{huge} & \texttt{pickle} & \texttt{decomp\_metis} & decomp & 207.3 & 7540 & True & \texttt{ok} &  \\
+\texttt{huge} & \texttt{pickle} & \texttt{decomp\_spectral\_v2} & decomp & 199.2 & 7370 & True & \texttt{ok} & spectral\_v2 entry = monolithic fallback \\
+\texttt{huge} & \texttt{pickle} & \texttt{decomp\_temporal} & decomp & 199.2 & 7960 & True & \texttt{ok} &  \\
+\texttt{huge} & \texttt{pickle} & \texttt{greedy\_pure} & greedy & 0.0 & -- &  & \texttt{unwired} & no standalone greedy Phase A in codebase \\
+\texttt{huge} & \texttt{pickle} & \texttt{meta\_alns} & meta & 298.8 & 8040 & True & \texttt{ok} &  \\
+\texttt{huge} & \texttt{pickle} & \texttt{meta\_lagrangian} & meta & 203.1 & 8050 & True & \texttt{ok} &  \\
+\texttt{huge} & \texttt{pickle} & \texttt{meta\_lns} & meta & 299.7 & 8050 & True & \texttt{ok} &  \\
+\texttt{huge} & \texttt{pickle} & \texttt{meta\_sa} & meta & 295.9 & 8050 & True & \texttt{ok} &  \\
+\texttt{huge} & \texttt{pickle} & \texttt{meta\_tabu} & meta & 318.4 & 8050 & True & \texttt{ok} &  \\
+\texttt{huge} & \texttt{pickle} & \texttt{meta\_vns} & meta & 481.6 & 8050 & True & \texttt{ok} &  \\
 \texttt{huge} & \texttt{sqlite} & \texttt{bp\_class} & bp & 272.2 & 8650 & True & \texttt{ok} &  \\
 \texttt{huge} & \texttt{sqlite} & \texttt{bp\_class-day} & bp & 272.3 & 8440 & True & \texttt{ok} &  \\
 \texttt{huge} & \texttt{sqlite} & \texttt{bp\_curriculum} & bp & 273.2 & 9240 & True & \texttt{ok} &  \\
@@ -404,5 +471,80 @@ Profilo & DS & Tecnica & Famiglia & $t$\,total (s) & cost & hard & status & note
 \texttt{huge} & \texttt{sqlite} & \texttt{meta\_sa} & meta & 294.3 & 8630 & True & \texttt{ok} &  \\
 \texttt{huge} & \texttt{sqlite} & \texttt{meta\_tabu} & meta & 307.1 & 8630 & True & \texttt{ok} &  \\
 \texttt{huge} & \texttt{sqlite} & \texttt{meta\_vns} & meta & 504.0 & 8630 & True & \texttt{ok} &  \\
+\texttt{superhuge} & \texttt{pickle} & \texttt{bp\_class} & bp & 363.8 & 12880 & True & \texttt{ok} &  \\
+\texttt{superhuge} & \texttt{pickle} & \texttt{bp\_class-day} & bp & 363.6 & 11330 & True & \texttt{ok} &  \\
+\texttt{superhuge} & \texttt{pickle} & \texttt{bp\_curriculum} & bp & 363.7 & 11660 & True & \texttt{ok} &  \\
+\texttt{superhuge} & \texttt{pickle} & \texttt{bp\_day} & bp & 364.1 & 11610 & True & \texttt{ok} &  \\
+\texttt{superhuge} & \texttt{pickle} & \texttt{bp\_teacher} & bp & 364.0 & 11450 & True & \texttt{ok} &  \\
+\texttt{superhuge} & \texttt{pickle} & \texttt{bp\_teacher-class} & bp & 363.4 & 11130 & True & \texttt{ok} &  \\
+\texttt{superhuge} & \texttt{pickle} & \texttt{bp\_teacher-class-subject} & bp & 364.3 & 11920 & True & \texttt{ok} &  \\
+\texttt{superhuge} & \texttt{pickle} & \texttt{bp\_teacher-day} & bp & 363.7 & 11990 & True & \texttt{ok} &  \\
+\texttt{superhuge} & \texttt{pickle} & \texttt{bp\_teacher-subject} & bp & 364.1 & 11370 & True & \texttt{ok} &  \\
+\texttt{superhuge} & \texttt{pickle} & \texttt{cg\_iterative\_diversified} & cg & 364.2 & 11840 & True & \texttt{ok} &  \\
+\texttt{superhuge} & \texttt{pickle} & \texttt{cpsat\_day} & cpsat & 376.4 & 14670 & True & \texttt{ok} &  \\
+\texttt{superhuge} & \texttt{pickle} & \texttt{cpsat\_day\_skip\_phase\_a} & cpsat & 302.2 & 18060 & False & \texttt{hard\_violation} & week+skip, mono\_budget=t\_b*6=180.0s, sta \\
+\texttt{superhuge} & \texttt{pickle} & \texttt{cpsat\_day\_soft\_hint} & cpsat & 476.1 & 16820 & False & \texttt{hard\_violation} & week+soft\_hint, 2320 hints, status=FEASI \\
+\texttt{superhuge} & \texttt{pickle} & \texttt{cpsat\_week} & cpsat & 1300.7 & 5730 & False & \texttt{hard\_violation} & week+skip, 32796 slot vars, status=FEASI \\
+\texttt{superhuge} & \texttt{pickle} & \texttt{decomp\_curriculum} & decomp & 734.8 & 12850 & True & \texttt{ok} &  \\
+\texttt{superhuge} & \texttt{pickle} & \texttt{decomp\_metis} & decomp & 563.3 & 13090 & True & \texttt{ok} &  \\
+\texttt{superhuge} & \texttt{pickle} & \texttt{decomp\_spectral\_v2} & decomp & 363.0 & 13940 & True & \texttt{ok} & spectral\_v2 entry = monolithic fallback \\
+\texttt{superhuge} & \texttt{pickle} & \texttt{decomp\_temporal} & decomp & 363.0 & 15450 & True & \texttt{ok} &  \\
+\texttt{superhuge} & \texttt{pickle} & \texttt{greedy\_pure} & greedy & 0.0 & -- &  & \texttt{unwired} & no standalone greedy Phase A in codebase \\
+\texttt{superhuge} & \texttt{pickle} & \texttt{meta\_alns} & meta & 557.1 & 12450 & True & \texttt{ok} &  \\
+\texttt{superhuge} & \texttt{pickle} & \texttt{meta\_lagrangian} & meta & 368.6 & 12450 & True & \texttt{ok} &  \\
+\texttt{superhuge} & \texttt{pickle} & \texttt{meta\_lns} & meta & 556.5 & 12450 & True & \texttt{ok} &  \\
+\texttt{superhuge} & \texttt{pickle} & \texttt{meta\_sa} & meta & 550.9 & 12450 & True & \texttt{ok} &  \\
+\texttt{superhuge} & \texttt{pickle} & \texttt{meta\_tabu} & meta & 559.1 & 12450 & True & \texttt{ok} &  \\
+\texttt{superhuge} & \texttt{pickle} & \texttt{meta\_vns} & meta & 834.7 & 12450 & True & \texttt{ok} &  \\
+\texttt{superhuge} & \texttt{sqlite} & \texttt{bp\_class} & bp & 352.7 & 12310 & True & \texttt{ok} &  \\
+\texttt{superhuge} & \texttt{sqlite} & \texttt{bp\_class-day} & bp & 351.0 & 13510 & True & \texttt{ok} &  \\
+\texttt{superhuge} & \texttt{sqlite} & \texttt{bp\_curriculum} & bp & 364.0 & 9670 & True & \texttt{ok} &  \\
+\texttt{superhuge} & \texttt{sqlite} & \texttt{bp\_day} & bp & 366.5 & 10850 & True & \texttt{ok} &  \\
+\texttt{superhuge} & \texttt{sqlite} & \texttt{bp\_teacher} & bp & 364.4 & 9940 & True & \texttt{ok} &  \\
+\texttt{superhuge} & \texttt{sqlite} & \texttt{bp\_teacher-class} & bp & 365.6 & 11400 & True & \texttt{ok} &  \\
+\texttt{superhuge} & \texttt{sqlite} & \texttt{bp\_teacher-class-subject} & bp & 346.9 & 13050 & True & \texttt{ok} &  \\
+\texttt{superhuge} & \texttt{sqlite} & \texttt{bp\_teacher-day} & bp & 347.1 & 11640 & True & \texttt{ok} &  \\
+\texttt{superhuge} & \texttt{sqlite} & \texttt{bp\_teacher-subject} & bp & 367.0 & 12140 & True & \texttt{ok} &  \\
+\texttt{superhuge} & \texttt{sqlite} & \texttt{cg\_iterative\_diversified} & cg & 364.2 & 9910 & True & \texttt{ok} &  \\
+\texttt{superhuge} & \texttt{sqlite} & \texttt{cpsat\_day} & cpsat & 370.4 & 10940 & True & \texttt{ok} &  \\
+\texttt{superhuge} & \texttt{sqlite} & \texttt{cpsat\_day\_skip\_phase\_a} & cpsat & 288.3 & 16210 & False & \texttt{hard\_violation} & week+skip, mono\_budget=t\_b*6=180.0s, sta \\
+\texttt{superhuge} & \texttt{sqlite} & \texttt{cpsat\_day\_soft\_hint} & cpsat & 478.3 & 15330 & False & \texttt{hard\_violation} & week+soft\_hint, 2346 hints, status=FEASI \\
+\texttt{superhuge} & \texttt{sqlite} & \texttt{cpsat\_week} & cpsat & 1313.2 & 7690 & False & \texttt{hard\_violation} & week+skip, 32796 slot vars, status=FEASI \\
+\texttt{superhuge} & \texttt{sqlite} & \texttt{decomp\_curriculum} & decomp & 589.3 & 10710 & True & \texttt{ok} &  \\
+\texttt{superhuge} & \texttt{sqlite} & \texttt{decomp\_metis} & decomp & 613.6 & 11460 & True & \texttt{ok} &  \\
+\texttt{superhuge} & \texttt{sqlite} & \texttt{decomp\_spectral\_v2} & decomp & 362.2 & 10830 & True & \texttt{ok} & spectral\_v2 entry = monolithic fallback \\
+\texttt{superhuge} & \texttt{sqlite} & \texttt{decomp\_temporal} & decomp & 362.4 & 10930 & True & \texttt{ok} &  \\
+\texttt{superhuge} & \texttt{sqlite} & \texttt{greedy\_pure} & greedy & 0.0 & -- &  & \texttt{unwired} & no standalone greedy Phase A in codebase \\
+\texttt{superhuge} & \texttt{sqlite} & \texttt{meta\_alns} & meta & 550.7 & 10670 & True & \texttt{ok} &  \\
+\texttt{superhuge} & \texttt{sqlite} & \texttt{meta\_lagrangian} & meta & 366.8 & 10670 & True & \texttt{ok} &  \\
+\texttt{superhuge} & \texttt{sqlite} & \texttt{meta\_lns} & meta & 557.7 & 10570 & True & \texttt{ok} &  \\
+\texttt{superhuge} & \texttt{sqlite} & \texttt{meta\_sa} & meta & 548.9 & 10670 & True & \texttt{ok} &  \\
+\texttt{superhuge} & \texttt{sqlite} & \texttt{meta\_tabu} & meta & 553.0 & 10670 & True & \texttt{ok} &  \\
+\texttt{superhuge} & \texttt{sqlite} & \texttt{meta\_vns} & meta & 628.1 & 10670 & True & \texttt{ok} &  \\
+\texttt{mega} & \texttt{pickle} & \texttt{bp\_class} & bp & 426.2 & 17200 & True & \texttt{ok} &  \\
+\texttt{mega} & \texttt{pickle} & \texttt{bp\_class-day} & bp & 429.3 & 17700 & True & \texttt{ok} &  \\
+\texttt{mega} & \texttt{pickle} & \texttt{bp\_curriculum} & bp & 429.6 & 19380 & True & \texttt{ok} &  \\
+\texttt{mega} & \texttt{pickle} & \texttt{bp\_day} & bp & 429.0 & 18290 & True & \texttt{ok} &  \\
+\texttt{mega} & \texttt{pickle} & \texttt{bp\_teacher} & bp & 425.0 & 18500 & True & \texttt{ok} &  \\
+\texttt{mega} & \texttt{pickle} & \texttt{bp\_teacher-class} & bp & 425.5 & 16130 & True & \texttt{ok} &  \\
+\texttt{mega} & \texttt{pickle} & \texttt{bp\_teacher-class-subject} & bp & 426.1 & 17880 & True & \texttt{ok} &  \\
+\texttt{mega} & \texttt{pickle} & \texttt{bp\_teacher-day} & bp & 425.4 & 17470 & True & \texttt{ok} &  \\
+\texttt{mega} & \texttt{pickle} & \texttt{bp\_teacher-subject} & bp & 424.8 & 17740 & True & \texttt{ok} &  \\
+\texttt{mega} & \texttt{pickle} & \texttt{cg\_iterative\_diversified} & cg & 426.1 & 16710 & True & \texttt{ok} &  \\
+\texttt{mega} & \texttt{pickle} & \texttt{cpsat\_day} & cpsat & 495.0 & 18090 & True & \texttt{ok} &  \\
+\texttt{mega} & \texttt{pickle} & \texttt{cpsat\_day\_skip\_phase\_a} & cpsat & 369.9 & 14930 & False & \texttt{hard\_violation} & week+skip, mono\_budget=t\_b*6=240.0s, sta \\
+\texttt{mega} & \texttt{pickle} & \texttt{cpsat\_day\_soft\_hint} & cpsat & 585.3 & 16150 & False & \texttt{hard\_violation} & week+soft\_hint, 2926 hints, status=FEASI \\
+\texttt{mega} & \texttt{pickle} & \texttt{cpsat\_week} & cpsat & 1959.6 & 5670 & False & \texttt{hard\_violation} & week+skip, 40824 slot vars, status=FEASI \\
+\texttt{mega} & \texttt{pickle} & \texttt{decomp\_curriculum} & decomp & 975.2 & 16610 & True & \texttt{ok} &  \\
+\texttt{mega} & \texttt{pickle} & \texttt{decomp\_metis} & decomp & 746.2 & 16140 & True & \texttt{ok} &  \\
+\texttt{mega} & \texttt{pickle} & \texttt{decomp\_spectral\_v2} & decomp & 482.6 & 16960 & True & \texttt{ok} & spectral\_v2 entry = monolithic fallback \\
+\texttt{mega} & \texttt{pickle} & \texttt{decomp\_temporal} & decomp & 482.6 & 17210 & True & \texttt{ok} &  \\
+\texttt{mega} & \texttt{pickle} & \texttt{greedy\_pure} & greedy & 0.0 & -- &  & \texttt{unwired} & no standalone greedy Phase A in codebase \\
+\texttt{mega} & \texttt{pickle} & \texttt{meta\_alns} & meta & 741.4 & 18700 & True & \texttt{ok} &  \\
+\texttt{mega} & \texttt{pickle} & \texttt{meta\_lagrangian} & meta & 500.3 & 18740 & True & \texttt{ok} &  \\
+\texttt{mega} & \texttt{pickle} & \texttt{meta\_lns} & meta & 747.6 & 18740 & True & \texttt{ok} &  \\
+\texttt{mega} & \texttt{pickle} & \texttt{meta\_sa} & meta & 740.5 & 18740 & True & \texttt{ok} &  \\
+\texttt{mega} & \texttt{pickle} & \texttt{meta\_tabu} & meta & 786.1 & 18740 & True & \texttt{ok} &  \\
+\texttt{mega} & \texttt{pickle} & \texttt{meta\_vns} & meta & 924.3 & 18740 & True & \texttt{ok} &  \\
 \end{longtable}
 
