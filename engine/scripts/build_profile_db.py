@@ -641,6 +641,41 @@ def _seed_stress_fixtures(profile: str, rng: random.Random,
             counts["teacher_free_day_preference"] = (
                 db.query(models.TeacherFreeDayPreference).count())
 
+        # ---- 2c. Teacher.min_free_days distribution (70/25/5)
+        # Stratified at-least-N HARD floor so the bench exercises the
+        # generic pragma (not just N=1):
+        #   70% teachers -> N=1 (CCNL default)
+        #   25% teachers -> N=2 (part-time CCNL spezzato)
+        #    5% teachers -> N=3 (very part-time)
+        # Deterministic order via the same `rng` used for the rest of
+        # the stress fixtures so the profile rebuild is reproducible.
+        if hasattr(models.Teacher, "min_free_days") and teachers:
+            n_total = len(teachers)
+            n_two = round(0.25 * n_total)
+            n_three = round(0.05 * n_total)
+            # Cap n_three by feasibility hint: each teacher works on
+            # 6 - N days. With max_hours=18 and 5 hours/day, N=3
+            # means 15 hours over 3 days -- still feasible. We do not
+            # auto-shrink here; if the post-build precheck flags the
+            # profile as infeasible the caller can re-run with
+            # --force-min-free-days-cap.
+            shuffled_ids = [t.id for t in teachers]
+            rng.shuffle(shuffled_ids)
+            two_ids = set(shuffled_ids[:n_two])
+            three_ids = set(shuffled_ids[n_two:n_two + n_three])
+            for t in teachers:
+                if t.id in three_ids:
+                    t.min_free_days = 3
+                elif t.id in two_ids:
+                    t.min_free_days = 2
+                else:
+                    t.min_free_days = 1
+            db.commit()
+            from collections import Counter
+            counts["min_free_days_distribution"] = dict(Counter(
+                int(t.min_free_days)
+                for t in db.query(models.Teacher).all()))
+
         # ---- 3. ClassUnavailability ----
         # Few classes blocked at the last slot of Monday. Dedup on
         # (class_id, day, hour) via a set so the unique index never
