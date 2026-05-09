@@ -214,7 +214,7 @@ def profs_dict_from_db(db: Session) -> dict[str, Any]:
             continue
         node = out.setdefault(t.name, {"classi": {}, "glibero": []})
         node["classi"].setdefault(cl.name, {})[a.subject] = {"ore": a.hours}
-    # glibero
+    # glibero + min_free_days HARD floor
     for tname, info in out.items():
         t = next((x for x in teachers.values() if x.name == tname), None)
         if t is None:
@@ -223,6 +223,12 @@ def profs_dict_from_db(db: Session) -> dict[str, Any]:
         rest = [d for d in days if d != primary]
         rng.shuffle(rest)
         info["glibero"] = [primary, rest[0], rest[1]]
+        # Per-teacher >=N free-days floor. Solvers that don't preload
+        # the DSL stream from a DB session (e.g. the benchmark harness)
+        # read this off the profs dict so the stratified profile
+        # distribution still reaches the model.
+        info["min_free_days"] = int(
+            getattr(t, "min_free_days", 1) or 1)
     return out
 
 

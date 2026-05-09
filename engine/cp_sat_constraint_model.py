@@ -1544,10 +1544,19 @@ class MonolithicSolver(ConstraintModel):
         for t in sorted(self.profs):
             qt = '"' + str(t).replace('\\', '\\\\').replace('"', '\\"') + '"'
             # ``teacher_at_least_n_free_days``: every teacher has at
-            # least one weekday with zero lessons (CCNL minimum).
-            self.add_dsl_constraint(
-                f'teacher_at_least_n_free_days({qt}, 1)',
-                level="phase_b")
+            # least N weekdays with zero lessons. The per-teacher
+            # floor is read from ``profs[t]["min_free_days"]`` when
+            # present (populated by ``engine_io.profs_dict_from_db``
+            # for DB-driven callers and by the bench loaders for
+            # SQLite stress profiles); falls back to the CCNL default
+            # of 1 otherwise. n=0 is treated as "no constraint" and
+            # skipped.
+            n_floor = int(
+                self.profs.get(t, {}).get("min_free_days", 1) or 0)
+            if n_floor > 0:
+                self.add_dsl_constraint(
+                    f'teacher_at_least_n_free_days({qt}, {n_floor})',
+                    level="phase_b")
             # ``teacher_max_per_day``: cap daily teacher load at 5
             # hours so the legacy HC ("no 6-consecutive-hour bands")
             # rule is enforced. Mirrors MAX_PROF_HOURS_PER_DAY=5 in
