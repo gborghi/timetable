@@ -341,4 +341,27 @@ ore). Reimporta il profilo e riprova.
 \texttt{in}, \texttt{exists}, \texttt{count} vanno minuscole.
 Gli identificatori (Borghi, Matematica, ecc.) sono valori
 letterali, senza virgolette.
+
+\textbf{``La porta 5173 \`e gi\`a in uso''}. Significa che un
+altro processo di SvelteKit \`e gi\`a partito (forse da una
+sessione precedente non chiusa). Su Linux/macOS:
+\texttt{./webui/stop.sh} ferma tutto pulitamente. Su Windows:
+chiudi la finestra cmd lasciata aperta o termina il processo
+\texttt{node.exe} dal Task Manager.
+
+\textbf{``Il browser si apre ma vedo solo una pagina bianca''}.
+Apri la console del browser (\texttt{F12}): tipicamente il
+problema \`e che il backend non risponde. Verifica
+\texttt{http://localhost:8000/api/health} nel browser: deve
+restituire un piccolo JSON \texttt{\{"status":"ok"\}}.
+
+\textbf{``Pipeline completata ma orario vuoto''}. Controlla
+sul Dashboard che il numero di lezioni sia positivo. Se \`e
+zero, probabilmente la pipeline \`e fallita silenziosamente:
+guarda i messaggi rossi nel pannello di log (Phase B).
+
+\textbf{``Cambio matrice indisponibilit\`a ma non vedo
+effetto''}. Le modifiche entrano in gioco al successivo lancio
+di pipeline. Una matrice editata non muove lezioni gi\`a
+piazzate: rilancia da \emph{Workflow}.
 \end{erroricomunibox}

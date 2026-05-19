@@ -1,315 +1,856 @@
-\chapter{Guida UI}
+\chapter{Guida visuale all'interfaccia}
+\label{ch:guida_ui}
+\index{Interfaccia utente}\index{UI!guida}\index{Tab!mappa}
 
-\section{Funzionalit\`a trasversali}
+\epigraph{``L'usabilit\`a non si vede, si sente. Quando l'utente
+non si chiede mai \emph{dove sono?}, l'interfaccia ha fatto il
+suo lavoro.''}{Riadattamento di \textsc{Donald A. Norman}, \emph{The
+Design of Everyday Things}, 1988}
 
-\subsection{Query DSL e sort multi-livello}
+\lettrine[lines=3]{Q}{uesto} capitolo accompagna l'utente,
+schermata per schermata, lungo le sedici tab dell'interfaccia
+web. L'obiettivo non \`e elencare campi e bottoni in modo
+esaustivo (questo lo fa il \emph{reference} in appendice), ma
+spiegare a cosa serve ciascuna pagina, in che ordine si visitano
+durante una sessione tipica, e quali sono i piccoli accorgimenti
+che fanno risparmiare tempo. Le persone che leggono per la prima
+volta possono saltare le sottosezioni marcate come
+\emph{approfondimento}: contengono dettagli utili in seconda
+battuta.
 
-Ogni pagina lista ha:
+\section{Mappa delle sedici tab}
+\label{sec:mappa_tab}
+
+L'interfaccia raggruppa le sedici tab in cinque famiglie. La
+prima volta che apri il sistema il dato non c'\`e: si parte dal
+Dashboard, si caricano i dati, si configurano i vincoli, si
+lancia il calcolo, si osservano i risultati. Il
+diagramma~\ref{fig:mappa_tab} riassume la sequenza naturale.
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[node distance=0.55cm and 0.65cm,
+  fam/.style={draw, rounded corners=3pt, very thick,
+              minimum width=3.0cm, minimum height=0.9cm,
+              align=center, font=\small\sffamily, fill=cBox!40},
+  tab/.style={draw, rounded corners=2pt, thin,
+              minimum width=2.4cm, minimum height=0.55cm,
+              align=center, font=\scriptsize\sffamily, fill=cAvorio!70},
+  arr/.style={-{Stealth[length=2.2mm]}, thick, cIndaco}]
+  \node[fam, fill=cOro!25] (A) {1. Inizio\\\scriptsize Dashboard};
+  \node[fam, right=of A] (B) {2. Anagrafica\\\scriptsize Plessi, Docenti, Classi\dots};
+  \node[fam, right=of B] (C) {3. Vincoli\\\scriptsize Ore, Vincoli};
+  \node[fam, right=of C] (D) {4. Calcolo\\\scriptsize Workflow, Runs};
+  \node[fam, right=of D] (E) {5. Risultato\\\scriptsize Orario, Monitor\dots};
+  \draw[arr] (A) -- (B); \draw[arr] (B) -- (C);
+  \draw[arr] (C) -- (D); \draw[arr] (D) -- (E);
+
+  \node[tab, below=of A] (a1) {Dashboard};
+  \node[tab, below=0.4cm of a1] (a2) {Import bulk};
+
+  \node[tab, below=of B] (b1) {Plessi};
+  \node[tab, below=0.18cm of b1] (b2) {Docenti};
+  \node[tab, below=0.18cm of b2] (b3) {Classi};
+  \node[tab, below=0.18cm of b3] (b4) {Indirizzi};
+  \node[tab, below=0.18cm of b4] (b5) {Studenti};
+  \node[tab, below=0.18cm of b5] (b6) {Gruppi};
+  \node[tab, below=0.18cm of b6] (b7) {Materie};
+  \node[tab, below=0.18cm of b7] (b8) {Aule};
+  \node[tab, below=0.18cm of b8] (b9) {Cattedre};
+  \node[tab, below=0.18cm of b9] (bA) {Compresenze};
+
+  \node[tab, below=of C] (c1) {Ore};
+  \node[tab, below=0.18cm of c1] (c2) {Vincoli};
+
+  \node[tab, below=of D] (d1) {Workflow};
+  \node[tab, below=0.18cm of d1] (d2) {Runs};
+  \node[tab, below=0.18cm of d2] (d3) {Diagnostica};
+
+  \node[tab, below=of E] (e1) {Orario};
+  \node[tab, below=0.18cm of e1] (e2) {Monitor};
+  \node[tab, below=0.18cm of e2] (e3) {Assenze};
+\end{tikzpicture}
+\caption{La sequenza naturale di visita delle sedici tab. Le
+frecce indicano l'ordine in cui un coordinatore alle prime
+armi le incontra; durante l'uso quotidiano il giro \`e
+ovviamente meno lineare.}
+\label{fig:mappa_tab}
+\end{figure}
+
+\sidenote{La barra di navigazione \`e sempre visibile in cima
+alla pagina, identica su ogni tab. Una piccola icona accanto
+al nome della tab Orario indica se la soluzione corrente \`e
+fresca (cerchio pieno) oppure se la base dati \`e cambiata
+dopo l'ultimo calcolo (cerchio bordato, da rilanciare).}
+
+\section{Convenzioni che si ripetono ovunque}
+\label{sec:convenzioni_ui}
+
+Prima di addentrarci nelle singole pagine, conviene impadronirsi
+di sei convenzioni che si trovano identiche dappertutto. Una
+volta capite, ogni nuova tab risulter\`a familiare.
+
+\subsection{Barra Query: cercare scrivendo}
+
+In cima a ogni lista (Docenti, Classi, Aule\dots) c'\`e una
+barra di ricerca. Non \`e una semplice ``cerca per nome'': accetta
+un piccolo linguaggio di interrogazione, qui chiamato \emph{DSL
+di query}. Esempi:
+
 \begin{itemize}
-  \item barra Query (DSL: \texttt{=, !=, <, <=, >, >=, contains,
-        startswith, endswith, in [...]}, logica
-        \texttt{AND / OR}, parentesi);
-  \item sort multi-livello (max 4 livelli);
-  \item pannello Help con la lista dei campi.
+\item \texttt{name contains rossi} -- tutti i record il cui
+  nome contiene la parola \emph{rossi};
+\item \texttt{group == A027} -- tutti i docenti della classe di
+  concorso A027;
+\item \texttt{max\_hours >= 12 AND graduatoria\_score > 100}
+  -- combinazione con AND;
+\item \texttt{kind in [lab\_fisica, lab\_chimica]} (sulla pagina
+  Aule) -- appartenenza a un insieme.
 \end{itemize}
 
-\subsection{Multi-select}
+\begin{esempiobox}[title=Operatori riconosciuti]
+\texttt{=, ==, !=, <, <=, >, >=}, \texttt{contains},
+\texttt{startswith}, \texttt{endswith}, \texttt{in [...]},
+\texttt{has\_tag(nome)}. Si combinano con \texttt{AND}, \texttt{OR}
+e parentesi tonde. Il bottone \emph{Aiuto} accanto alla barra
+mostra l'elenco completo dei campi disponibili.
+\end{esempiobox}
 
-Sulle pagine Docenti / Classi / Aule la lista supporta:
+\subsection{Ordinamento multi-livello}
+
+Cliccando l'intestazione di una colonna si ordina per quel
+campo; cliccando una seconda colonna tenendo premuto \texttt{Shift}
+si aggiunge un livello di ordinamento secondario, e cos\`{\i} via
+fino a quattro livelli. Esempio pratico: sui docenti, ordinare
+prima per classe di concorso e poi per cognome.
+
+\paragraph{Suggerimento.} Il bottone \emph{Reset sort} accanto
+alla barra riporta l'ordinamento al default. \`E utile dopo aver
+fatto esperimenti complicati per tornare alla vista neutra.
+
+\subsection{Multi-select sulle liste}
+
+Nelle pagine Docenti, Classi e Aule si possono selezionare pi\`u
+righe in tre modi:
+
 \begin{itemize}
-  \item click semplice: single-select (replace);
-  \item Ctrl+click: toggle;
-  \item Shift+click: range;
-  \item bottone "Vincolo collettivo" che apre il
-        \emph{BulkApplyModal}.
+\item \textbf{click singolo}: seleziona una riga sola
+  (sostituisce eventuali selezioni precedenti);
+\item \textbf{Ctrl+click}: aggiunge o toglie la riga dalla
+  selezione corrente;
+\item \textbf{Shift+click}: seleziona un intervallo continuo dal
+  primo elemento gi\`a selezionato fino a quello cliccato.
 \end{itemize}
 
-\subsection{Excel/CSV import}
+A selezione fatta compare il bottone \emph{Vincolo collettivo}
+che apre un piccolo modal per applicare lo stesso vincolo (per
+esempio: \emph{tutti questi docenti non lavorano il sabato}) a
+tutte le righe selezionate in un colpo solo.
 
-Ogni pagina lista ha "Importa Excel/CSV" + "Template". Lo stesso
-endpoint \texttt{POST /api/import/\{entity\}} gestisce le 7 entit\`a
-(teachers, subjects, classes, classrooms, curricula, students,
-groups). Modalit\`a: \texttt{upsert} (default), \texttt{append},
-\texttt{replace}. Header alias italiani / inglesi accettati.
+\subsection{Importare da Excel o CSV}
 
-\subsection{Esportazione liste (xlsx / csv)}
+Ogni pagina lista offre due bottoni gemelli, \emph{Importa
+Excel/CSV} e \emph{Template}. Il template scaricato \`e gi\`a
+preformattato con le colonne giuste e contiene un foglio
+\emph{Istruzioni} che spiega ogni campo. Si compila in Excel
+(o in qualunque software compatibile) e si reimporta.
 
-Sopra ogni tabella, accanto a "Reset query" / "Reset sort", trovi
-3 bottoni di esportazione:
+\paragraph{Modalit\`a di import.} Sono tre, sempre disponibili
+tramite il men\`u a tendina del modal di import:
 
 \begin{itemize}
-  \item \textbf{xlsx}: la \emph{vista corrente} (solo le righe
-        filtrate dalla query DSL, nell'ordine determinato dal
-        sort multi-livello) come file \texttt{.xlsx} con header
-        colorato e auto-fit colonne.
-  \item \textbf{csv}: stesso contenuto, formato CSV UTF-8 con BOM
-        (compatibile con Excel italiano).
-  \item \textbf{tutto}: ignora query e sort, esporta tutte le righe
-        dell'entit\`a.
+\item \texttt{upsert} (default) -- crea i record nuovi,
+  aggiorna quelli con lo stesso nome;
+\item \texttt{append} -- aggiunge soltanto i record nuovi e
+  rifiuta quelli esistenti;
+\item \texttt{replace} -- svuota la tabella e ricarica da capo.
 \end{itemize}
 
-Filename: \texttt{<entita>\_<YYYYMMDD>\_<HHMMSS>.<ext>}. I parametri
-\texttt{?format=xlsx|csv} sono accettati da tutti gli endpoint di
-lista, quindi gli stessi export sono disponibili anche via curl.
+\begin{avvertenzabox}
+La modalit\`a \texttt{replace} \`e distruttiva: i record correnti
+vengono cancellati prima dell'import. Conviene usarla soltanto
+dopo aver fatto uno snapshot del database dalla card
+\emph{Import / Export DB} del Dashboard.
+\end{avvertenzabox}
+
+\subsection{Esportare la vista corrente}
+
+Sopra ogni tabella, accanto a \emph{Reset query} e \emph{Reset
+sort}, ci sono tre bottoni di esportazione:
+
+\begin{description}
+\item[\textbf{xlsx}.] Scarica la \emph{vista corrente}, cio\`e
+  solo le righe filtrate dalla query e nell'ordine determinato
+  dal sort, come file Excel. Header in colore, colonne in
+  larghezza automatica.
+\item[\textbf{csv}.] Stesso contenuto, formato CSV in UTF-8 con
+  marcatore BOM (compatibile con Excel italiano che altrimenti
+  sbaglia gli accenti).
+\item[\textbf{tutto}.] Ignora query e sort, esporta l'intera
+  tabella. Comodo come backup rapido.
+\end{description}
+
+I file scaricati hanno un nome parlante,
+\texttt{<entita>\_<YYYYMMDD>\_<HHMMSS>.<ext>}, cos\`{\i} non si
+sovrascrivono mai a vicenda.
 
 \subsection{Viste salvate}
 
-Sopra ogni tabella, accanto ai bottoni di Reset e Export, trovi un
-dropdown "Viste salvate..." e i bottoni "Salva vista" / "x":
+Una volta trovata una combinazione utile di query e sort (per
+esempio: \emph{docenti A027, ordinati per ore residue, in
+ordine decrescente}), la si pu\`o salvare con il bottone
+\emph{Salva vista}. Il sistema chiede un nome (per esempio
+\texttt{a027\_da\_assegnare}) e la memorizza. La vista resta
+disponibile per tutti gli utenti che operano sullo stesso
+database: \`e una scorciatoia condivisa.
 
-\begin{itemize}
-  \item \textbf{Salva vista}: chiede un nome e memorizza la query
-        DSL + il sort multi-livello come \texttt{SavedView(entity,
-        name, dsl\_query, sort\_levels)}. La vista \`e globale.
-  \item \textbf{Dropdown "Viste salvate..."}: applica una vista
-        (sostituisce query + sort + ricarica la lista).
-  \item \textbf{x}: elimina la vista correntemente selezionata.
-\end{itemize}
-
-Endpoint: \texttt{/api/saved-views?entity=<entity>} (GET / POST /
-PUT \{id\} / DELETE \{id\}). Tabella: \texttt{saved\_views}.
+Il dropdown \emph{Viste salvate} accanto al bottone permette di
+applicarne una con un click; la \texttt{x} la elimina dopo
+conferma.
 
 \subsection{Tag (aule e studenti)}
 
-Sistema many-to-many parallelo per aule e studenti.
+Le aule e gli studenti possono portare tag liberi, cio\`e piccole
+etichette colorate. Sulle aule i tag servono per filtrare
+velocemente per famiglia (\texttt{lab}, \texttt{palestra},
+\texttt{informatica}) o per indirizzo (\texttt{scientifico},
+\texttt{linguistico}). Sugli studenti servono per marcare
+particolarit\`a (\texttt{BES}, \texttt{DSA},
+\texttt{studente\_atleta}, \texttt{debito\_matematica\_4}).
 
-\textbf{Tag aule}: tabella \texttt{classroom\_tags} + join
-\texttt{classroom\_tag\_assignments}. UI: multi-select autocomplete
-nella scheda aula, bottone "Gestisci tag" per CRUD globale,
-colonna "Tag" con pill colorate (un colore stabile per nome). Il
-generatore mock tagga automaticamente le aule per kind
-(\texttt{lab\_fisica $\to$ [lab, fisica, scienze]}, palestra
-$\to$ \texttt{[palestra, motorie]}, ecc.) e propaga il curriculum
-dalla home class (\texttt{3B\_scientifico} $\to$ tag
-\texttt{scientifico}).
+I tag si scrivono direttamente nel modal della scheda; tag
+sconosciuti vengono creati al volo. Il bottone \emph{Gestisci
+tag} a fianco della lista apre un mini-CRUD globale per
+rinominare o eliminare.
 
-DSL: \texttt{"matematica" in l.classroom.tags} (vincoli) o
-\texttt{has\_tag(matematica)} (query lista). I tag sconosciuti
-vengono creati al volo al salvataggio.
+\begin{ideabox}
+I tag \emph{non sostituiscono} i gruppi articolati. I gruppi
+sono entit\`a operative dello scheduling (il solver li conta);
+i tag sono metadato passivo, utile per filtrare e per scrivere
+vincoli espressivi (\texttt{"matematica" in l.classroom.tags}).
+\end{ideabox}
 
-\textbf{Tag studenti}: tabella \texttt{student\_tags} + join
-\texttt{student\_tag\_assignments}. Casi d'uso: \texttt{BES},
-\texttt{DSA}, \texttt{debito\_matematica\_4},
-\texttt{pcto\_ditta\_<x>}, \texttt{studente\_atleta}. UI analoga
-a quella delle aule. Pannello "Precompila da tag" nel modal
-\emph{Gruppi} che aggiunge in massa gli studenti che matchano
-\texttt{any\_of} o \texttt{all\_of} su una lista di tag.
+\section{Dashboard: la porta d'ingresso}
+\label{sec:tab_dashboard}
 
-\textbf{Importante}: i tag NON sostituiscono i gruppi. I gruppi
-restano l'unit\`a operativa di scheduling, i tag sono metadato
-passivo per filtrare/raggruppare.
+Il Dashboard \`e la prima schermata che si apre. Contiene tutte
+le operazioni che hanno a che fare con il \emph{database nel suo
+insieme}: importare un profilo gi\`a pronto, generare una scuola
+di test, fare backup, gestire i vincoli in blocco.
 
-\subsection{Import bulk dedicato (\texttt{/import})}
+\subsection{Importa un profilo gi\`a calcolato}
 
-Pagina dedicata raggiungibile dalla nav. Layout a due colonne:
-configurazione (entit\`a, modalit\`a, "Scarica template") +
-file da importare (drop area + selettore file). Il template xlsx
-ha 3 fogli:
+\`E il pulsante con cui un nuovo utente parte. Sei profili di
+test sono spediti col sistema (\texttt{small}, \texttt{medium},
+\texttt{big}, \texttt{huge}, \texttt{superhuge}, \texttt{mega}).
+Ciascuno contiene anagrafica, indirizzi, cattedre e, se la
+casella \emph{Importa lezioni dalla soluzione pre-calcolata} \`e
+spuntata, anche un orario gi\`a risolto.
+
+\paragraph{Quando spuntare quella casella.}
+Spuntala se vuoi vedere subito un orario completo nella tab
+Orario, senza aspettare il calcolo. Toglila se preferisci
+provare la pipeline di ottimizzazione da zero, partendo
+soltanto dalle anagrafiche.
+
+\subsection{Genera una scuola di test (mock)}
+
+Diverso dall'import del profilo: qui il sistema costruisce
+\emph{deterministicamente} una scuola finta con le dimensioni
+scelte. Tre casetti di selezione separati controllano se generare
+anche curricula, aule, studenti. Utile per allenamento o per
+prove di stress.
+
+\subsection{Import / Export DB}
+
+Card prominente in alto a sinistra. Quattro funzioni:
+
+\begin{description}
+\item[Esporta DB completo.] Scarica uno zip che contiene
+  \texttt{database.db} (il file SQLite raw), una cartella
+  \texttt{tables/} con un CSV per tabella e un
+  \texttt{metadata.json} con la versione di schema e lo
+  sha256. \`E il backup ufficiale.
+\item[Solo schema.] Esporta la struttura ma non i dati di
+  scheduling. Va bene come template per inizializzare un'altra
+  scuola.
+\item[Import.] Carica un file zip ricevuto. Prima dello swap, il
+  sistema fa una copia di sicurezza
+  \texttt{timetable.db.pre\_import\_backup}: se qualcosa va
+  storto, si torna indietro.
+\item[Snapshot.] Salvataggi rapidi del database corrente,
+  timestamp incluso. Comodi durante una sessione di
+  esperimenti: prima di una modifica massiva, premi
+  \emph{Salva snapshot}; se rovini qualcosa, premi
+  \emph{Ripristina}.
+\end{description}
+
+\begin{esempiobox}[title=Workflow rapido con snapshot]
+\begin{enumerate}
+\item Premi \emph{Salva snapshot}; il sistema lo elenca con
+  data e ora.
+\item Modifica liberamente vincoli, anagrafica, lancia
+  pipeline.
+\item Se il risultato \`e migliore: continua.
+\item Se peggiore: vai sulla lista degli snapshot, premi
+  \emph{Ripristina} sull'ultimo, e ricomincia.
+\end{enumerate}
+\end{esempiobox}
+
+\subsection{Import / Export vincoli}
+
+Card vicina alla precedente, ma indipendente: tocca \emph{solo}
+le tabelle dei vincoli (logici, matriciali, compresenze,
+preferenze aula). Non tocca anagrafica e cattedre. Quattro
+funzioni:
+
+\begin{description}
+\item[Stress dataset.] Importa profili di vincoli gi\`a
+  preparati nel repository (\texttt{small} \dots\ \texttt{mega})
+  per stressare la diagnostica dell'infeasibility. Il report
+  che compare sotto indica quanti vincoli sono stati creati,
+  divisi per categoria, e quanti erano intenzionalmente
+  conflittuali.
+\item[File custom.] Carica una tua lista di vincoli in JSON o
+  xlsx. Il sistema risolve i nomi dei docenti, valida i DSL e
+  scarta i record errati riportandone l'indice e il motivo.
+\item[Esporta.] Dump completo dei vincoli correnti, in JSON o
+  xlsx, riapribile dallo stesso bottone. Pulito per
+  round-trip: si congela uno stato, si modifica, si torna
+  indietro all'occorrenza.
+\item[Cancella tutti.] Doppia conferma; svuota tutte le tabelle
+  dei vincoli. Utile per ricominciare un esperimento senza
+  toccare l'anagrafica.
+\end{description}
+
+\paragraph{Suggerimento.} La sintassi dei file di import accetta
+una scorciatoia comoda: il giorno senza ora
+(es.\ \texttt{mai sab}) viene espanso automaticamente in
+\texttt{(sab8 OR sab9 OR sab10 OR sab11 OR sab12 OR sab13)}. Si
+scrivono file pi\`u brevi e leggibili.
+
+\subsection{Pannello di stato}
+
+Sotto le card di import compaiono sette card-numero che
+riassumono lo stato attuale del database: docenti, classi,
+aule, cattedre, lezioni, vincoli, run completate. Sono una
+rapida occhiata di sanity-check: se il numero docenti \`e zero
+dopo un import, qualcosa \`e andato storto.
+
+\subsection{RunLogPanel}
+
+In basso a destra una colonna \emph{eventi} riporta in tempo
+reale le operazioni lunghe in corso (import, calcolo, export).
+\`E un \emph{log streaming} via Server-Sent Events: non serve
+ricaricare la pagina, le righe nuove arrivano da sole.
+
+\section{Plessi: dove studiano i tuoi alunni}
+\label{sec:tab_plessi}
+
+La tab Plessi gestisce le sedi fisiche della scuola. Una scuola
+piccola pu\`o avere un solo plesso; le scuole grandi ne hanno
+spesso due o tre (sede centrale, succursale, palestra
+condivisa). Tre sezioni:
 
 \begin{itemize}
-  \item \texttt{Istruzioni}: tabella \texttt{Campo | Hint} con
-        descrizione di ogni colonna + note generali (sinonimi
-        italiani, righe vuote ignorate, etc.);
-  \item \texttt{Esempi}: una riga di esempio pre-popolata;
-  \item \texttt{Dati}: foglio vuoto da compilare. L'importer
-        legge per default questo foglio.
+\item lista dei plessi con nome, indirizzo, capacit\`a
+  massima di aule;
+\item mappa dei collegamenti (quale plesso ospita quali aule);
+\item finestra di transito (minuti necessari per spostarsi tra
+  due plessi); il solver tiene conto di questi minuti per
+  evitare ai docenti di trovarsi tra due classi distanti nello
+  stesso slot consecutivo.
 \end{itemize}
 
-Campi importabili gi\`a integrati con le feature recenti:
-\texttt{tags} su \texttt{students} e \texttt{classrooms},
-\texttt{graduatoria\_score} / \texttt{required\_free\_days\_count}
-/ \texttt{preferred\_free\_days\_json} su \texttt{teachers}, e
-\texttt{max\_hours\_per\_day} su \texttt{classes}.
+\paragraph{Quando configurarli.} Prima dell'import dell'anagrafica
+se la scuola \`e multi-plesso. Le aule e le classi importate
+successivamente verranno assegnate al plesso indicato nel
+template; senza plessi configurati ricadono in un default unico.
 
-\subsection{Import / Export DB (Dashboard)}
+\section{Docenti}
+\label{sec:tab_docenti}
 
-Card prominente nella prima riga della Dashboard. Funzioni:
+\`E la tab pi\`u frequentata. Una lista con una riga per docente e,
+in fondo a destra, una matita per aprire il modal di edit.
+
+\subsection{Campi principali della scheda docente}
+
+\begin{description}
+\item[Nome.] In forma \texttt{Cognome Nome}. Il sistema usa il
+  nome per stampe ed export, conviene la coerenza
+  cognome-prima.
+\item[Classe di concorso.] Es.\ \texttt{A027} per matematica e
+  fisica. Determina su quali materie il docente \`e abilitato.
+\item[Max ore settimanali.] Default 18, modificabile. Il solver
+  non far\`a mai superare questo tetto.
+\item[Punteggio di graduatoria.] Numero che pesa nella scelta
+  delle cattedre (preset \emph{Anzianita} della Phase A): a
+  parit\`a di idoneit\`a, il punteggio pi\`u alto vince.
+\item[Giorni liberi richiesti / preferiti.] Quanti giorni di
+  riposo settimanale sono dovuti (default 1, da contratto) e
+  quali sono i preferiti (es.\ sabato).
+\item[Flag sostegno / potenziamento.] Marcatori funzionali, usati
+  da alcuni vincoli specializzati.
+\end{description}
+
+\subsection{Matrice di indisponibilit\`a}
+
+La parte pi\`u importante della scheda: una griglia
+$6\times 6$ giorni $\times$ ore (o pi\`u, se i giorni
+lavorativi della scuola sono diversi: vedi tab Ore). Ogni
+cella ha cinque stati ciclabili a click:
 
 \begin{itemize}
-  \item \textbf{Esporta DB completo}: scarica un \texttt{.zip}
-        contenente \texttt{database.db} (raw SQLite),
-        \texttt{tables/<t>.csv} per ogni tabella e
-        \texttt{metadata.json} (schema\_version + sha256).
-  \item \textbf{Solo schema}: omette i dati di scheduling --
-        utile come template per inizializzare un'altra scuola.
-  \item \textbf{Import}: selettore file \texttt{.zip} + conferma
-        esplicita. Una copia
-        \texttt{timetable.db.pre\_import\_backup} viene salvata
-        prima dello swap.
-  \item \textbf{Snapshot}: timestampati in
-        \texttt{webui/data/snapshots/}, lista con bottoni
-        Ripristina / Elimina.
+\item \textcolor{cAllow}{verde chiaro} (\textsc{Allowed}) -
+  default, neutro;
+\item \textcolor{cPref}{blu} (\textsc{Preferred}) - lo slot
+  \`e preferito, il solver ne riceve un piccolo bonus per
+  usarlo;
+\item \textcolor{cSoft}{giallo} (\textsc{Soft}) - lo slot
+  costa qualcosa al solver, che lo eviter\`a se ha
+  alternative;
+\item \textcolor{cHard}{rosso} (\textsc{Hard}) -
+  inderogabile, il docente non c'\`e;
+\item \textcolor{cEnf}{verde scuro} (\textsc{Enforced}) - il
+  docente \emph{deve} essere in quello slot.
 \end{itemize}
 
-Endpoint: \texttt{/api/dashboard/export-db},
-\texttt{/api/dashboard/import-db},
-\texttt{/api/dashboard/snapshot/\{create|list|restore/<f>\}},
-\texttt{DELETE /api/dashboard/snapshot/\{f\}}.
+Scorciatoie da tastiera: \texttt{H}, \texttt{P}, \texttt{E},
+\texttt{D} (default), \texttt{A}, \texttt{N} mentre il
+puntatore \`e su una cella ne forzano lo stato.
 
-\subsection{Import / Export vincoli (Dashboard)}
+\begin{erroricomunibox}
+\textbf{``Ho marcato un giorno intero come Hard ma il solver
+me lo riempie.''} La matrice ha effetto solo dopo aver
+rilanciato la pipeline (o dopo un nuovo calcolo da
+\emph{Workflow}). Le modifiche non muovono lezioni gi\`a
+piazzate.
 
-Seconda card della prima riga, indipendente dall'Import / Export
-DB: tocca solo le tabelle dei vincoli (logical, matrix, coteach,
-room preferences) e lascia inalterati docenti, classi, aule e
-cattedre. Concepita per due scenari distinti: caricare
-rapidamente un dataset di stress per provare il pannello di
-infeasibility, oppure importare un set di vincoli proveniente da
-un altro istituto o da un file Excel preparato a mano.
+\textbf{``Vedo solo cinque giorni, mi serve il sabato.''} Vai
+sulla tab Ore e abilita il sabato come \emph{giorno
+lavorativo}. La matrice si aggiorna automaticamente.
+\end{erroricomunibox}
 
-Le quattro funzioni della card:
+\section{Classi}
+\label{sec:tab_classi}
+
+Una riga per classe (\texttt{1A}, \texttt{2B}\dots). Campi
+principali: anno (1\dots 5), sezione, indirizzo (curriculum),
+plesso, numero studenti, max ore al giorno (default 6). Ogni
+classe ha una propria matrice di indisponibilit\`a:
+diversamente dai docenti, le indisponibilit\`a di classe
+servono soprattutto per esigenze logistiche
+(es.\ ``la 5C marted\`{\i} pomeriggio fa stage'').
+
+\section{Indirizzi (curricula)}
+\label{sec:tab_curricula}
+
+L'indirizzo definisce il monte ore per materia: lo Scientifico
+ha cinque ore di matematica, il Linguistico ne ha tre, e cos\`{\i}
+via. Una scuola tipica italiana ha cinque-dieci indirizzi. Il
+sistema usa l'indirizzo della classe per generare
+automaticamente le cattedre richieste, materia per materia.
+
+\paragraph{Suggerimento.} Conviene sempre creare gli indirizzi
+\emph{prima} delle classi. Una classe senza indirizzo \`e
+incompleta: non si possono generare le cattedre.
+
+\section{Studenti}
+\label{sec:tab_studenti}
+
+Riga per studente, con classe di appartenenza e tag
+(\texttt{BES}, \texttt{DSA}, \texttt{studente\_atleta},
+\texttt{debito\_matematica\_4}). I tag sono il modo principale
+per filtrare e per costruire gruppi tematici.
+
+\subsection{Precompila gruppi da tag}
+
+Il modal \emph{Gruppi} ha un pannello \emph{Precompila da tag}
+che, dato un insieme di tag (es.\ \texttt{[BES, DSA]}) e una
+modalit\`a (\texttt{any\_of} oppure \texttt{all\_of}), aggiunge
+in blocco gli studenti che matchano. Un click invece di
+trentacinque.
+
+\section{Gruppi}
+\label{sec:tab_gruppi}
+
+Un gruppo \`e un sottoinsieme stabile di studenti che, per certe
+ore, lascia la classe-madre e si raggruppa con studenti di
+altre classi (alternativa religione, lingua opzionale, gruppi di
+livello). Per ogni gruppo si specificano il nome, le classi
+sorgenti, le materie coinvolte, le ore settimanali.
+
+\paragraph{Tre regole pratiche.} Un gruppo che attinge da pi\`u
+classi deve avere lo \emph{stesso slot orario} per tutti gli
+studenti (i ragazzi non si possono dividere a met\`a). Uno
+studente pu\`o stare in pi\`u gruppi solo se le ore non si
+sovrappongono. Il solver \`e a conoscenza di entrambi i vincoli:
+qualunque violazione la segnala come \emph{Hard}.
+
+\section{Materie}
+\label{sec:tab_materie}
+
+Anagrafica statica delle materie: \texttt{Matematica},
+\texttt{Storia}, \texttt{Religione}, \texttt{Inglese}\dots\
+Ogni materia ha campi descrittivi (nome, codice, gruppo
+disciplinare) e una preferenza facoltativa di aula
+(es.\ Educazione Fisica preferisce la palestra). Le preferenze
+diventano vincoli di tipo \emph{Allowed/Soft/Preferred} sulla
+matrice materia--aula della Phase 4.
+
+\section{Aule}
+\label{sec:tab_aule}
+
+Una riga per aula, con nome, plesso, capacit\`a, tipo
+(\texttt{aula\_standard}, \texttt{lab\_fisica},
+\texttt{lab\_chimica}, \texttt{palestra}, \texttt{auditorium}\dots),
+flag \emph{multi-classe} (per palestre e aule magne) e tag. Ogni
+aula ha una propria matrice di indisponibilit\`a.
+
+\paragraph{Genera aule automaticamente.} Il bottone
+\emph{Genera aule} crea un set proporzionale di aule a partire
+dal numero di classi: il sistema propone un mix di
+standard/laboratori sensato per cominciare. Si rifinisce dopo,
+classe per classe.
+
+\section{Cattedre}
+\label{sec:tab_cattedre}
+
+La tab pi\`u importante della fase di setup: \`e qui che si
+decide \emph{chi insegna che cosa, in quale classe, per quante
+ore}. La presentazione \`e a card: una card per classe, con
+sotto l'elenco di tutte le materie previste dal suo indirizzo e,
+accanto a ciascuna, il docente assegnato (oppure \emph{da
+assegnare} se ancora vuota).
+
+\subsection{Cambiare un assegnamento}
+
+Il bottone \emph{cambia} accanto a una riga apre un modal con un
+dropdown filtrato per materia. Ogni opzione mostra il docente in
+forma:
+
+\begin{lstlisting}
+Cognome Nome - assigned/max [SFORA: +Xh]
+oppure
+Cognome Nome - assigned/max [pieno]
+oppure
+Cognome Nome - assigned/max
+\end{lstlisting}
+
+Il tag \texttt{[SFORA: +Xh]} avverte che assegnando questa
+cattedra si sforerebbe il \texttt{max\_hours} del docente di X
+ore; \texttt{[pieno]} che il docente sarebbe al limite. Le
+opzioni in rosso non sono abilitate alla materia.
+
+\subsection{Warnings cattedre}
+
+Il bottone \emph{Warnings cattedre} (in alto a destra) apre un
+pannello diagnostico con la lista dei docenti in quattro categorie:
 
 \begin{itemize}
-  \item \textbf{Stress dataset}: dropdown con i sei profili
-        (\texttt{small}, \texttt{medium}, \texttt{big},
-        \texttt{huge}, \texttt{superhuge}, \texttt{mega}) e
-        bottone \emph{Importa stress}. Carica i record da
-        \texttt{experiments/stress\_constraints/<profilo>/}, ne
-        risolve gli \texttt{owner\_pattern} (\texttt{first\_teacher},
-        \texttt{first\_lab}, \texttt{gym}, \texttt{main\_room},
-        \texttt{first\_class\_year\_1}, \dots) contro le entit\`a
-        del DB attivo, e crea i vincoli passando per il
-        dispatcher unificato \texttt{POST /api/constraints}. Il
-        report che compare sotto la card riporta quanti record
-        sono stati importati, suddivisi per categoria (teacher /
-        classroom / relational), e quanti tra questi erano
-        \texttt{intentionally\_conflicting}: utile per verificare
-        che il \emph{feasibility-check} li identifichi nei core
-        minimali corrispondenti.
-  \item \textbf{File custom (JSON / xlsx)}: drop area + bottone
-        \emph{Sfoglia}. Accetta una lista di record con campi
-        \texttt{kind}, \texttt{scope}, \texttt{owner\_name}
-        (risolto per nome contro il DB), \texttt{level},
-        \texttt{expression}, \texttt{soft\_penalty} opzionale,
-        \texttt{description} opzionale. Lo stesso schema funziona
-        come xlsx con intestazioni nella prima riga. I record con
-        DSL invalido, \texttt{owner\_name} non risolvibile o
-        scope/kind mancanti vengono scartati e riportati nel
-        report con indice e motivo dell'errore, senza
-        interrompere l'import dei record validi.
-  \item \textbf{Esporta JSON / xlsx}: dump di tutti i vincoli
-        correnti nel formato accettato dall'import (round-trip
-        pulito). \`E pensato come backup, come strumento di
-        condivisione tra istituti che usano il sistema, e come
-        modo per congelare uno stato di vincoli prima di una
-        modifica massiva.
-  \item \textbf{Cancella tutti i vincoli}: doppia conferma;
-        svuota in un colpo solo
-        \texttt{logical\_unavailabilities},
-        \texttt{curriculum\_logical\_constraints}, le tre tabelle
-        di matrix unavailability,
-        \texttt{coteaching\_rules} e le room preferences.
-        Restituisce il conteggio per tabella. Utile per
-        ricominciare da zero un esperimento senza dover passare
-        dallo snapshot DB.
+\item \textbf{SFORA} -- assegnati sopra il max contrattuale;
+\item \textbf{SOTTO} -- assegnati sotto il minimo
+  contrattuale;
+\item \textbf{VUOTI} -- nessuna cattedra (alcune scuole li
+  vogliono in pianta organica come supplenti puri);
+\item \textbf{OK} -- entro contratto.
 \end{itemize}
 
-L'import accetta una scorciatoia di scrittura: un'espressione DSL
-con un giorno senza ora (es.\ \texttt{mai sab}, \texttt{lun OR
-mar}) viene espansa automaticamente nella forma esplicita che il
-parser richiede, cio\`e \texttt{(sab8 OR sab9 OR sab10 OR sab11
-OR sab12 OR sab13)}. La grammatica DSL principale resta cos\`{\i}
-intatta, ma i dataset di stress (e i file custom degli utenti)
-possono essere scritti in maniera pi\`u leggibile.
+\paragraph{Suggerimento.} Conviene rivedere il pannello prima
+di lanciare la pipeline: una cattedra incompleta lascia il
+solver senza copertura.
 
-Endpoint:
-\texttt{/api/dashboard/constraints/import-stress},
-\texttt{/api/dashboard/constraints/import-file},
-\texttt{/api/dashboard/constraints/export?format=json|xlsx},
-\texttt{DELETE /api/dashboard/constraints/all?confirm=true}.
+\section{Compresenze}
+\label{sec:tab_compresenze}
 
-\section{Tab per tab}
+Una compresenza \`e il caso in cui due docenti devono stare in
+classe nello stesso slot (esempio classico: italiano +
+sostegno). La tab elenca le coppie attive con campi:
+materia comune (opzionale), classe, docente principale, docente
+compresente, numero di ore. Il solver, ricevuta la coppia, le
+impone come vincolo Hard nella stessa cella.
 
-\subsection*{Dashboard}
-Importa profilo (5 size) con 3 checkbox per i pool
-(curricula, aule, studenti); genera scuola di test; stato corrente
-con 7 card-numero; \emph{RunLogPanel} streaming.
+\section{Ore: configurare la settimana}
+\label{sec:tab_ore}
 
-\subsection*{Docenti, Classi, Indirizzi, Studenti, Gruppi, Materie, Aule, Compresenze}
-CRUD entit\`a con modal di edit. Vedere
-\texttt{ui\_guide.md} per i campi specifici di ognuna.
+Tab che imposta la \emph{griglia temporale} su cui lavora il
+solver. Default: lun--sab, sei ore al giorno, dalle 8:00 alle
+14:00. Si pu\`o cambiare:
 
-\subsection*{Cattedre}
-Layout a card: una card per classe, lista materie+docente+ore.
-Bottone "cambia": apre modal con dropdown filtrato per materia,
-ogni opzione mostra \texttt{Cognome Nome - assigned/max
-[SFORA: +Xh]} / \texttt{[pieno]}. Bottone "Warnings cattedre":
-pannello con docenti SFORA / sotto / vuoti / ok.
-
-\subsection*{Orario}
-4 viste (per classe, per docente, per aula, per slot), ognuna con
-toggle matrice/lista. Drag-and-drop con preview live, dropdown
-aule colorate (verde libera / rosso occupata).
-
-\subsection*{Assenze e supplenze}
-Vista settimanale 6$\times$6. Click su intestazione giorno: modal
-gestione assenze. Click su cella rossa: modal con classi scoperte
-(sinistra) + docenti disponibili (destra), drag-drop per assegnare
-supplenti.
-
-\subsection*{Monitor}
-Lista \emph{eventi} (uno per Assignment). Espansione lezione-per-lezione
-con bottone Giorno/Ora che apre slot picker matriciale (vedere
-\S5.6). In cima alla pagina un \emph{segmented control} con quattro
-tab per filtrare velocemente:
-\textbf{Tutti}, \textbf{Incompleti} (eventi con
-\texttt{n\_assigned\_hours < n\_expected\_hours}),
-\textbf{Senza orario} (eventi senza alcuna lezione piazzata) e
-\textbf{Lockati} (eventi con almeno una lezione marcata
-\texttt{lesson.locked == true}). Per ogni riga, le azioni
-disponibili sono \emph{Dissocia}, \emph{Blocca/Sblocca} e
-\emph{Piazza} (eseguito singolarmente o in massa via
-multi-selezione + toolbar bulk).
-
-\subsection*{Ore}
-Configura i \emph{giorni lavorativi} della settimana e gli \emph{slot
-orari} per ciascun giorno. Default: lun-sab, 6 slot/giorno,
-8:00-14:00 (allineato ai costanti hardcoded che il motore usava
-storicamente). Il tab espone:
 \begin{itemize}
-  \item lista dei 7 codici ISO (MON\dots SUN) con \texttt{position},
-        \texttt{legacy\_day\_number} e checkbox \emph{Attivo} per
-        attivare/disattivare il giorno;
-  \item per ogni giorno una tabella di slot
-        (\texttt{start\_time}, \texttt{end\_time}, etichetta,
-        \texttt{legacy\_hour\_number}) editabile riga per riga;
-  \item bottone \emph{Reset default} che chiama
-        \texttt{POST /api/working-hours/reset} e ricrea la
-        configurazione canonica;
-  \item anteprima \emph{calendarietto} (componente
-        \texttt{WeeklyCalendarView}) che mostra la griglia
-        settimanale come la vedono le matrici di indisponibilit\`a.
+\item attivare/disattivare singoli giorni della settimana
+  (es.\ scuola senza sabato);
+\item modificare gli orari di inizio e fine di ogni slot;
+\item aggiungere uno slot pomeridiano per il tempo prolungato.
 \end{itemize}
 
-Internamente \texttt{WorkingDay.position} \`e l'indice \texttt{day\_idx}
-0-based usato dal solver e \texttt{WorkingHourSlot.slot\_index}
-l'indice \texttt{hour\_idx}; le coppie \texttt{legacy\_day\_number} /
-\texttt{legacy\_hour\_number} preservano la compatibilit\`a con le
-righe gi\`a presenti in \texttt{teacher\_unavailability},
-\texttt{class\_unavailability} e \texttt{classroom\_unavailability}
-(che usano la convenzione DAYS=[1..6] / HOURS=[8..13]).
+In basso un \emph{calendarietto} di anteprima mostra come si
+vedranno le matrici di indisponibilit\`a dopo la modifica.
 
-Con configurazione di default, il comportamento del motore \`e
-identico al passato. Configurazioni custom (es. lun-ven, slot 9-15)
-vengono lette dal modulo
-\texttt{engine/working\_hours\_config.py} e propagate nei consumer
-che usano \texttt{get\_days()} / \texttt{get\_hours()} /
-\texttt{get\_slot\_label()}.
+\begin{avvertenzabox}
+Cambiare la griglia oraria \emph{dopo} aver inserito molte
+indisponibilit\`a fa perdere il mapping cella-orario per le
+righe della vecchia griglia. Conviene fissare la griglia
+all'inizio del setup e modificarla solo a database vuoto.
+\end{avvertenzabox}
 
-Le matrici di indisponibilit\`a in Docenti / Classi / Aule sono
-state migrate al nuovo componente \texttt{WeeklyCalendarView} che
-legge questa configurazione: stessa palette colore, stesso
-click-cycle e stesse scorciatoie da tastiera (\texttt{H}/\texttt{P}/
-\texttt{E}/\texttt{D}/\texttt{A}/\texttt{N} + click) della vecchia
-\texttt{AvailabilityMatrix}, con le colonne adesso ricavate dai
-giorni lavorativi attivi e gli slot dimensionati sui valori reali
-di \texttt{start\_time}/\texttt{end\_time}.
+\section{Vincoli}
+\label{sec:tab_vincoli}
 
-\subsection*{Vincoli}
-Lista flat di tutti i vincoli editabili con pill colorate per livello.
-Bottone "Cerca conflitti": pannello con conflitti rilevati.
+Tab dedicata ai vincoli non riconducibili a matrici: vincoli
+\emph{logici disgiuntivi} espressi nel DSL del sistema
+(cap.~\ref{ch:metodo_dsl} per la grammatica completa). Esempi:
 
-\subsection*{Workflow}
-Pulsanti per lanciare le 4 fasi separatamente o "Pipeline completa".
-SSE log streaming.
+\begin{itemize}
+\item ``la professoressa Bianchi non lavora il sabato'';
+\item ``la palestra \`e occupata dall'altro istituto il
+  marted\`{\i} mattina'';
+\item ``in 1A l'attivit\`a alternativa di religione \`e una
+  volta al mese al gioved\`{\i}''.
+\end{itemize}
 
-% =========== Cap 6.bis: Tecniche di ottimizzazione ===========
+Ogni vincolo ha un livello (Hard, Soft, Preferred), una
+descrizione e una pill colorata che lo rappresenta. Il bottone
+\emph{+ Nuovo vincolo DSL} apre un editor con autocompletamento
+e validazione live: scrivi, premi \emph{Valida}, vedi l'AST, e
+solo se passa la validazione puoi salvarlo.
+
+\subsection{Cerca conflitti}
+
+Bottone \emph{Cerca conflitti}: il sistema analizza l'insieme
+corrente dei vincoli Hard e segnala i sottoinsiemi minimali che
+si contraddicono (i \emph{core di infeasibility}). \`E un
+controllo statico, non richiede un calcolo CP-SAT: gira in pochi
+secondi anche su scuole grandi.
+
+\begin{esempiobox}[title=Conflitto tipico]
+\emph{``Bianchi non lavora sabato''} + \emph{``tutta la
+matematica della 1A \`e di sabato''} + \emph{``Bianchi insegna
+matematica in 1A''} forma un core di tre elementi. Il pannello
+mostra i tre vincoli evidenziati; basta rilassare uno dei tre
+per sbloccare il problema.
+\end{esempiobox}
+
+\section{Workflow: lanciare la pipeline}
+\label{sec:tab_workflow}
+
+\`E la tab del ``via libera'' al solver. Tre card principali:
+
+\begin{description}
+\item[Phase A (assegnazione).] Decide la distribuzione
+  giornaliera delle ore di ciascuna cattedra. Il dropdown
+  \emph{Criterio} permette di scegliere fra varianti della
+  funzione obiettivo (bilanciato, anzianita, semina-corretta).
+  Il bottone \emph{Mostra DSL attivo} apre un modal che
+  visualizza l'espressione completa.
+\item[Phase B/C/D.] Per chi vuole il dettaglio: ciascuna fase
+  pu\`o essere lanciata separatamente, con la propria card. Il
+  caso comune \`e ignorare le card di dettaglio e premere il
+  bottone \emph{Pipeline completa} in cima, che esegue tutte
+  e quattro le fasi in sequenza.
+\item[Scope del solver CP-SAT.] Card avanzata, normalmente
+  ``Per giorno'' (default). Per scuole piccole con molte
+  compresenze conviene ``Settimana intera + Hint morbido''
+  (vedi cap.~\ref{ch:workflow_di_ottimizzazione}).
+\end{description}
+
+\subsection{Streaming di log}
+
+Sotto le card un pannello scuro mostra in diretta i messaggi del
+solver: avanzamento, soluzione corrente, gap residuo. \`E un
+flusso SSE: non serve aggiornare la pagina. Il bottone
+\emph{Stop} interrompe il calcolo (utile se ti accorgi di un
+errore di setup).
+
+\section{Runs: lo storico delle esecuzioni}
+\label{sec:tab_runs}
+
+Ogni lancio di pipeline crea una \emph{run}. La tab Runs ne
+mostra l'elenco con data, tipo (pipeline completa, singola
+phase, calcolo aule), profilo, stato (in corso, completata,
+fallita) e durata. Cliccando una riga si apre
+\texttt{/runs/<id>} con il dettaglio: log integrale, parametri
+usati, e il bottone \emph{Ripristina questa soluzione} che
+ricarica le lezioni di quella run sull'orario corrente.
+
+\paragraph{A cosa serve in pratica.}
+\begin{itemize}
+\item per confrontare due lanci con parametri diversi e
+  scegliere il migliore;
+\item per ripristinare un orario salvato dopo un'edit manuale
+  andato male;
+\item per analisi post-mortem: perch\'e quella pipeline ha
+  impiegato 14 minuti invece di 3?
+\end{itemize}
+
+\section{Orario: il risultato visualizzato}
+\label{sec:tab_orario}
+
+\`E la tab dove l'orario prende forma visiva. Quattro viste,
+selezionabili in alto:
+
+\begin{description}
+\item[Per classe.] Una riga per classe, una colonna per ogni
+  slot (giorno-ora). In ogni cella la lezione: materia,
+  docente, aula. \`E la vista classica del coordinatore.
+\item[Per docente.] Una riga per docente. Utile per vedere il
+  calendario individuale, calcolare buchi, programmare
+  supplenze.
+\item[Per aula.] Una riga per aula. Utile per la logistica:
+  quale palestra \`e libera marted\`{\i} pomeriggio?
+\item[Per slot.] Una riga per slot (giorno-ora). Vista a 36
+  righe (con default), comoda per vedere l'intera scuola in un
+  colpo solo a un dato istante.
+\end{description}
+
+In ogni vista un toggle in alto a destra cambia la
+rappresentazione fra \emph{matrice} (griglia colorata,
+tipograficamente pi\`u densa) e \emph{lista} (righe lineari, pi\`u
+adatta alla stampa).
+
+\subsection{Drag-and-drop con anteprima live}
+
+Trascinando una lezione da uno slot a un altro, il sistema
+mostra in tempo reale come ogni slot \emph{candidato} cambia
+il punteggio della soluzione:
+
+\begin{itemize}
+\item \textcolor{cAllow}{verde}: mossa che migliora il SOFT
+  (delta $< 0$);
+\item verde chiaro: mossa neutra (delta $= 0$);
+\item \textcolor{cSoft}{giallo}: mossa che peggiora il SOFT
+  (delta $> 0$);
+\item \textcolor{cHard}{rosso}: vincolo Hard violato, mossa
+  rifiutata.
+\end{itemize}
+
+Quando lasci la presa del mouse sopra uno slot valido,
+l'orario si aggiorna istantaneamente e il pannello \emph{Cost}
+in alto riporta il nuovo punteggio. Tutto avviene senza
+rilanciare il solver: \`e una valutazione differenziale.
+
+\subsection{Aula che segue la lezione}
+
+Se sposti una lezione in uno slot dove la sua aula \`e gi\`a
+occupata, il sistema rimuove l'aula e apre un modal con un
+dropdown delle alternative: verdi (libere), rosse (occupate da
+altre lezioni). Scegli, conferma, prosegui.
+
+\subsection{Esporta XLSX}
+
+Bottone in basso a destra: scarica un file Excel impaginato come
+il modulo classico dell'orario settimanale italiano. Per
+classe, per docente, per aula -- a seconda della vista
+corrente. Pronto per la stampa o per l'invio in email.
+
+\section{Monitor: la lente sulle cattedre}
+\label{sec:tab_monitor}
+
+Questa tab espone una vista \emph{per cattedra} (un evento per
+ogni tripletta docente-classe-materia) e permette di operare
+su lezioni singole:
+
+\begin{itemize}
+\item un \emph{segmented control} in alto filtra Tutti /
+  Incompleti / Senza orario / Lockati;
+\item su ciascuna riga: \emph{Dissocia} (rimuove una lezione
+  dall'orario), \emph{Blocca/Sblocca} (la pipeline successiva
+  non potr\`a muoverla), \emph{Piazza}.
+\end{itemize}
+
+Cliccando \emph{Piazza} si apre uno slot picker matriciale: una
+griglia $6\times 6$ in cui ogni cella \`e colorata in base alla
+disponibilit\`a (verde = libero, rosso = docente o classe
+impegnati, ambra = aula occupata, azzurro = slot attuale).
+Click su una cella libera fa un dry-run; se ci sono conflitti
+risolvibili, un secondo modal offre tre opzioni: \emph{Annulla},
+\emph{Disassegna le lezioni in conflitto}, \emph{Disassegna e
+ottimizza dopo}.
+
+\section{Assenze e supplenze}
+\label{sec:tab_assenze_supplenze}
+
+Tab per la gestione operativa quotidiana, una volta che
+l'orario \`e in produzione. Vista settimanale 6$\times$6:
+
+\begin{itemize}
+\item click sull'intestazione di un giorno: apre un modal in
+  cui spuntare i docenti assenti per quel giorno;
+\item le celle dell'orario di un docente assente diventano
+  rosse (classe scoperta);
+\item click su una cella rossa: apre un modal a due colonne --
+  classi scoperte a sinistra, docenti disponibili a destra --
+  con drag-and-drop per assegnare una supplenza;
+\item i docenti disponibili sono ordinati per
+  \texttt{graduatoria\_score}: pi\`u alto = pi\`u indicato come
+  supplente.
+\end{itemize}
+
+\paragraph{Suggerimento.} Una cella verde indica una supplenza
+\emph{coperta}. Una cella ancora rossa al termine della
+sessione segnala una scopertura: tipicamente serve un docente
+fuori graduatoria o una variazione d'orario.
+
+\section{Diagnostica}
+\label{sec:tab_diagnostica}
+
+Pannello statistico e grafico. Tre famiglie di indicatori:
+
+\begin{itemize}
+\item \emph{Hall pre-check}: prima del calcolo, verifica
+  formalmente che le ore richieste siano compatibili con la
+  disponibilit\`a dei docenti. Se fallisce, mostra il
+  sottoinsieme di classi/materie in deficit.
+\item \emph{Distribuzione del carico}: istogrammi giornalieri
+  per classe e per docente, sesto-ore, buchi, ore consecutive.
+\item \emph{Cronologia obiettivo}: la curva del SOFT score
+  durante l'ultima esecuzione (per chi vuole capire come ha
+  iterato il solver).
+\end{itemize}
+
+\section{Import bulk dedicato}
+\label{sec:tab_import_bulk}
+
+Tab a parte (\texttt{/import}) per chi vuole una pagina
+dedicata all'import massivo. Layout a due colonne:
+
+\begin{itemize}
+\item a sinistra: dropdown dell'entit\`a (\texttt{teachers},
+  \texttt{subjects}, \texttt{classes}, \texttt{classrooms},
+  \texttt{curricula}, \texttt{students}, \texttt{groups}),
+  modalit\`a (\texttt{upsert}/\texttt{append}/\texttt{replace}),
+  bottone \emph{Scarica template};
+\item a destra: zona di drop e selettore file.
+\end{itemize}
+
+Il template scaricato \`e un xlsx con tre fogli: \emph{Istruzioni}
+(campo per campo, sinonimi italiani e inglesi accettati),
+\emph{Esempi} (una riga di esempio pre-popolata) e \emph{Dati}
+(foglio vuoto da compilare). L'importer legge per default il
+foglio \emph{Dati}.
+
+\fleuron
+
+\begin{erroricomunibox}
+\textbf{``La pagina lista \`e vuota dopo l'import.''} Controlla
+la barra Query: se contiene un filtro residuo, le righe
+nuove potrebbero essere fuori vista. Premi \emph{Reset query}.
+
+\textbf{``Il bottone Salva non si attiva.''} Tipicamente
+manca un campo obbligatorio (nome, classe di concorso,
+indirizzo). Il modal mette un piccolo bordino rosso sul
+campo da completare; passa con il mouse per vedere il tooltip
+con la spiegazione.
+
+\textbf{``Ho importato Excel ma alcune righe sono state
+ignorate.''} Il pannello-report sotto il bottone di import
+elenca le righe scartate con motivo. Le pi\`u frequenti:
+\emph{owner\_name non risolto} (un nome che non esiste in
+anagrafica), \emph{DSL invalido} (sintassi sbagliata),
+\emph{intestazione mancante}.
+
+\textbf{``Drag-and-drop non funziona.''} Verifica di non
+avere un browser con i tasti del mouse rimappati. Su Firefox
+in modalit\`a privata il drag funziona regolarmente; su Edge
+con politiche aziendali pu\`o essere disabilitato.
+\end{erroricomunibox}

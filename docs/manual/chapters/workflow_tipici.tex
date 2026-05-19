@@ -1,0 +1,305 @@
+\chapter{Procedure tipiche}
+\label{ch:workflow_tipici}
+\index{Workflow!tipico}\index{Procedure}\index{Casi d'uso}
+
+\epigraph{``Per imparare a far bene una cosa nuova, conviene
+ripeterla cinque volte. La prima volta a tentoni, la seconda
+con cautela, la terza con scioltezza, la quarta con grazia,
+la quinta con maestria.''}{Adattato da \textsc{Beatrice
+Bizzarri}, \emph{Quaderno di didattica}, 1923}
+
+\lettrine[lines=3]{Q}{uesto} capitolo raccoglie le sei procedure
+ricorrenti dell'esperienza di un coordinatore d'orario. Ciascuna
+\`e descritta come una sequenza di passi numerati, con la tab
+da aprire, i bottoni da premere, l'effetto atteso. Sono il
+ricettario operativo: per imparare a memoria una scuola di
+trentadue classi in due ore. Le procedure sono indipendenti
+l'una dall'altra: una scuola che apre l'orario ad agosto seguir\`a
+le prime due; una scuola che subentra in corso d'anno con un
+file Excel salter\`a alla terza.
+
+\section{Procedura 1: una scuola da zero}
+\label{sec:wf_da_zero}
+
+Partenza: database vuoto, scuola da configurare per la prima
+volta. Arrivo: orario settimanale completo visualizzato.
+
+\subsection{Passo 1 -- configurare la griglia oraria}
+
+Vai sulla tab \emph{Ore}. Verifica che i giorni lavorativi e
+gli slot orari rispecchino la realt\`a della scuola. Il default
+(lun--sab, 8:00--14:00, sei slot) va bene per la stragrande
+maggioranza delle scuole italiane. Modifica solo se necessario.
+Premi \emph{Salva}.
+
+\paragraph{Attenzione.} Fissa la griglia ora, non dopo.
+Cambiarla in seguito invalida le matrici di indisponibilit\`a
+gi\`a inserite.
+
+\subsection{Passo 2 -- caricare l'anagrafica}
+
+Hai due strade.
+
+\paragraph{Strada A: import da Excel.}
+Vai sulla tab \emph{Import bulk}. Scarica i template dei sette
+fogli (\texttt{teachers}, \texttt{subjects}, \texttt{classes},
+\texttt{classrooms}, \texttt{curricula}, \texttt{students},
+\texttt{groups}). Compila ciascun foglio. Reimporta nello stesso
+ordine, modalit\`a \texttt{upsert}.
+
+\paragraph{Strada B: inserimento manuale.}
+Visita le tab \emph{Indirizzi}, \emph{Materie}, \emph{Docenti},
+\emph{Classi}, \emph{Aule}, \emph{Studenti}, \emph{Gruppi} in
+quest'ordine, e usa il bottone \emph{+ Nuovo} di ciascuna per
+inserire le righe. Pi\`u lungo, ma adatto a scuole piccole o a
+quando manca un foglio Excel di partenza.
+
+\subsection{Passo 3 -- assegnare le cattedre}
+
+Vai sulla tab \emph{Cattedre}. Per ogni classe vedi una card
+con tutte le materie del suo indirizzo. Premi \emph{cambia}
+accanto a ogni materia e scegli il docente. Per la prima
+sessione conviene partire dai docenti pi\`u vincolati (esempio:
+chi ha una sola classe possibile), e finire con quelli
+\emph{jolly}. A configurazione completa, controlla con il
+bottone \emph{Warnings cattedre} che nessun docente sia
+\texttt{SFORA} o \texttt{SOTTO}.
+
+\subsection{Passo 4 -- aggiungere indisponibilit\`a e vincoli}
+
+Per ogni docente apri la scheda dalla tab \emph{Docenti} e
+colora la sua matrice. Usa il rosso (\textsc{Hard}) per le
+indisponibilit\`a vere; il giallo (\textsc{Soft}) per le
+preferenze negative; il blu (\textsc{Preferred}) per i giorni
+preferiti positivi.
+
+Per i vincoli logici (es.\ ``Bianchi non lavora il sabato'',
+``in 5A storia non al venerd\`{\i}'') vai sulla tab
+\emph{Vincoli}, premi \emph{+ Nuovo vincolo DSL}, scrivi
+l'espressione, \emph{Valida}, \emph{Salva}.
+
+\begin{esempiobox}[title={Vincoli ricorrenti, in DSL}]
+\begin{lstlisting}
+# Bianchi non lavora il sabato
+forall l in lessons where l.teacher == Bianchi:
+    l.day != sab
+
+# In 5A storia non al venerdi'
+forall l in lessons where l.class == 5A and l.subject == Storia:
+    l.day != ven
+
+# La palestra e' occupata il martedi' mattina
+forall l in lessons where l.classroom == Palestra:
+    l.day != mar or l.hour > 11
+\end{lstlisting}
+\end{esempiobox}
+
+\subsection{Passo 5 -- snapshot prima del calcolo}
+
+Vai sul \emph{Dashboard}, card \emph{Import / Export DB}, premi
+\emph{Salva snapshot}. Cos\`{\i} hai un ritorno garantito se la
+prima pipeline produce risultati strani.
+
+\subsection{Passo 6 -- pre-check}
+
+Sulla tab \emph{Diagnostica} premi \emph{Hall pre-check}. Il
+sistema verifica che le ore richieste siano formalmente
+servibili dai docenti disponibili. Se il check fallisce, il
+pannello indica il sottoinsieme di classi e materie in deficit:
+non lanciare la pipeline, correggi prima.
+
+\subsection{Passo 7 -- lanciare la pipeline}
+
+Vai sulla tab \emph{Workflow}, premi \emph{Pipeline completa}.
+Il pannello di log inferiore mostra le fasi una dopo l'altra
+(Phase A, Phase B per giorno, metaeuristiche, aule). A
+seconda della dimensione della scuola:
+
+\begin{itemize}
+\item \texttt{small} (8 classi): 30--90 secondi;
+\item \texttt{medium} (15--20 classi): 2--5 minuti;
+\item \texttt{huge} (40+ classi): 8--20 minuti.
+\end{itemize}
+
+Al termine il banner verde \emph{Pipeline completata} ti porta
+direttamente alla tab \emph{Orario}.
+
+\subsection{Passo 8 -- visualizzare e raffinare}
+
+Sulla tab \emph{Orario}, naviga le quattro viste (per classe,
+docente, aula, slot). Se trovi una lezione fuori posto, trascinala
+in un altro slot: il sistema verifica in tempo reale i vincoli
+Hard. Se tutto bene, esporta con il bottone \emph{Esporta XLSX}.
+
+\section{Procedura 2: importare dati da Excel di un'altra scuola}
+\label{sec:wf_import_excel}
+
+Scuola che riceve da un altro istituto, o da un anno precedente,
+i fogli Excel dell'anagrafica.
+
+\paragraph{Premessa.} Non tutti i fogli arrivano nel formato del
+nostro template. Conviene un piccolo lavoro di rinomina prima
+dell'import.
+
+\begin{enumerate}
+\item Apri il template ufficiale dalla tab \emph{Import bulk}
+  (bottone \emph{Scarica template} per \texttt{teachers}). Apri
+  il foglio \emph{Istruzioni}: l\`{\i} sono elencati i nomi
+  canonici e i sinonimi accettati (es.\ \texttt{nome},
+  \texttt{teacher\_name}, \texttt{cognome\_nome} sono tutti
+  accettati per il campo \texttt{name}).
+\item Sul tuo Excel di partenza, rinomina le intestazioni
+  delle colonne con i nomi canonici (o uno qualsiasi degli
+  alias). Le colonne extra vengono ignorate.
+\item Salva il file. Sulla tab \emph{Import bulk} scegli
+  \texttt{teachers}, modalit\`a \texttt{upsert}, trascina il
+  file. Premi \emph{Importa}.
+\item Il pannello-report sotto il bottone elenca le righe
+  importate e quelle scartate. Le scartate riportano l'indice
+  e il motivo dell'errore (campo mancante, valore fuori
+  range, eccetera).
+\item Ripeti per gli altri sei fogli, nello stesso ordine.
+\end{enumerate}
+
+\begin{erroricomunibox}
+\textbf{``Il file ha gli accenti rovinati.''} L'importer
+accetta Excel xlsx (consigliato) o CSV. Se il CSV viene da
+Excel italiano, salvalo in formato \emph{CSV UTF-8 (delimited)};
+altrimenti la lettera \`e diventa una sequenza di simboli e i
+record vengono scartati.
+
+\textbf{``Le classi sono importate ma non hanno indirizzo.''}
+Probabilmente nel file mancava la colonna \texttt{curriculum}
+oppure il valore non corrispondeva a nessun indirizzo del
+database. Sistema l'errore importando prima gli indirizzi e
+poi le classi.
+\end{erroricomunibox}
+
+\section{Procedura 3: rilanciare la pipeline dopo un cambio di vincoli}
+\label{sec:wf_relancia}
+
+Scenario tipico: il collegio dei docenti chiede una modifica
+sostanziale (es.\ ``aggiungiamo una compresenza in tutte le
+prime''). La pipeline va rilanciata.
+
+\begin{enumerate}
+\item Snapshot della soluzione corrente, dal \emph{Dashboard},
+  card \emph{Import / Export DB}, bottone \emph{Salva snapshot}.
+  Lo snapshot serve a confrontare prima/dopo.
+\item Aggiungi i nuovi vincoli (matrice, DSL, compresenze\dots).
+\item Sulla tab \emph{Diagnostica} premi \emph{Hall pre-check}
+  per verificare che la richiesta sia ancora formalmente
+  fattibile.
+\item Vai sulla tab \emph{Workflow}, premi \emph{Pipeline
+  completa}. Se la prima pipeline aveva impiegato N minuti, la
+  seconda impiegher\`a un tempo simile.
+\item Confronta. Sulla tab \emph{Runs} vedrai la run nuova in
+  alto. Cliccala per il dettaglio, confronta il SOFT score con
+  la precedente.
+\item Se la nuova \`e migliore: \`e fatta. Se peggiore: vai
+  sullo snapshot precedente e premi \emph{Ripristina}.
+\end{enumerate}
+
+\section{Procedura 4: editare a mano una singola lezione}
+\label{sec:wf_edit_manuale}
+
+Scenario: l'orario \`e in produzione da una settimana, il
+preside chiede di spostare l'inglese di 2B dal venerd\`{\i} al
+gioved\`{\i}.
+
+\begin{enumerate}
+\item Sulla tab \emph{Orario}, scegli la vista \emph{Per
+  classe}, seleziona 2B.
+\item Trascina la cella di Inglese dal venerd\`{\i} al
+  gioved\`{\i}. Mentre trascini, le celle candidate del
+  gioved\`{\i} si colorano: verdi se accettabili, gialle se
+  peggiorano il SOFT, rosse se violano un Hard.
+\item Lascia la presa sopra uno slot verde. L'orario si
+  aggiorna; il pannello \emph{Cost} in alto cambia.
+\item Se l'aula non era compatibile col nuovo slot, si apre
+  il modal \emph{Aula da scegliere}: seleziona una delle
+  alternative verdi.
+\item Esporta il nuovo orario (XLSX) per distribuirlo.
+\end{enumerate}
+
+\paragraph{Suggerimento.} La modifica manuale non aggiorna
+automaticamente i vincoli salvati. Se la modifica deve
+diventare permanente (\emph{l'inglese di 2B sta sempre al
+gioved\`{\i}}), conviene aggiungere il vincolo corrispondente
+nella tab \emph{Vincoli} cos\`{\i} la prossima pipeline lo
+rispetter\`a senza dover ripetere il drag-and-drop.
+
+\section{Procedura 5: gestire una supplenza giornaliera}
+\label{sec:wf_supplenza}
+
+Scenario quotidiano: tre docenti sono assenti, occorre
+piazzare le supplenze per oggi.
+
+\begin{enumerate}
+\item Apri la tab \emph{Assenze e supplenze}.
+\item Clicca l'intestazione del giorno corrente (esempio:
+  \emph{Marted\`{\i}}). Si apre un modal con la lista dei
+  docenti; spunta gli assenti, conferma.
+\item Le celle dell'orario di quei docenti diventano rosse:
+  classi scoperte.
+\item Per ogni cella rossa, click sulla cella. Si apre un
+  modal a due colonne: \emph{classi scoperte} a sinistra,
+  \emph{docenti disponibili} a destra. I docenti disponibili
+  sono ordinati per \texttt{graduatoria\_score}: i pi\`u
+  indicati appaiono in cima.
+\item Trascina un docente sulla classe scoperta; la cella
+  diventa verde.
+\item Se tutte le celle sono verdi, la giornata \`e coperta.
+  Esporta il bollettino assenze con il bottone in alto a
+  destra; verr\`a stampato e affisso.
+\end{enumerate}
+
+\begin{esempiobox}[title=Caso reale]
+Liceo Galileo, marted\`{\i} ore 7:45. Sono assenti Bianchi
+(matematica, 4 ore), Rossi (storia, 2 ore) e Verdi (inglese,
+3 ore): nove celle scoperte. Il sistema propone in cima alle
+liste tre supplenti coerenti per ciascuna materia, ordinati
+per punteggio. La copertura si chiude in dodici minuti.
+\end{esempiobox}
+
+\section{Procedura 6: esportare e archiviare l'orario}
+\label{sec:wf_export}
+
+A fine anno, o quando si chiude una versione consolidata,
+conviene archiviare tre cose:
+
+\begin{enumerate}
+\item L'\emph{orario in XLSX}. Vai sulla tab \emph{Orario},
+  vista \emph{Per classe}, premi \emph{Esporta XLSX}. Otterrai
+  un file con un foglio per classe, formattato come modulo
+  classico delle scuole italiane. Ripeti per la vista \emph{Per
+  docente} se serve.
+\item Il \emph{database completo}. Vai sul \emph{Dashboard},
+  card \emph{Import / Export DB}, premi \emph{Esporta DB
+  completo}. Otterrai uno zip che contiene il file SQLite raw,
+  i CSV per tabella e i metadati. \`E il backup ufficiale.
+\item I \emph{vincoli}. Sulla stessa card \emph{Import / Export
+  vincoli}, premi \emph{Esporta JSON} (oppure xlsx). Avrai un
+  file con tutti i vincoli logici scritti dall'utente, comodi
+  per il riuso in scuole simili.
+\end{enumerate}
+
+\paragraph{Nota di archiviazione.} Conviene salvare i tre file
+in una cartella nominata \texttt{<nome\_scuola>\_<aa\_scolastico>}
+sul drive condiviso della scuola. Anno per anno, l'archivio
+diventa la base per studi storici (es.\ ``dove abbiamo
+peggiorato/migliorato'') e per ripartire l'anno successivo con
+una struttura nota.
+
+\fleuron
+
+\begin{biblioparvabox}
+Le sei procedure di questo capitolo coprono il novanta per
+cento dei casi d'uso reali. Le situazioni residue
+(diagnostica avanzata, infeasibility profonda, branch-and-price
+per scuole enormi) sono trattate nei capitoli specialistici:
+\cref{ch:diagnostica_statistica} per la diagnostica statistica,
+\cref{ch:tecniche_avanzate} per le tecniche
+avanzate, \cref{ch:lessons_learned} per gli scenari
+problematici incontrati nelle scuole pilota.
+\end{biblioparvabox}
