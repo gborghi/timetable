@@ -232,6 +232,14 @@ i tag sono metadato passivo, utile per filtrare e per scrivere
 vincoli espressivi (\texttt{"matematica" in l.classroom.tags}).
 \end{ideabox}
 
+\grokfig{fig_tab_dashboard_icona}{Pittogramma del tab
+Dashboard: tre indicatori circolari disposti come un volto
+sorridente.}
+
+\grokfig{fig_dashboard_cruscotto}{Il cruscotto auto vintage del
+tab Dashboard: indicatori HARD, SOFT, Coverage e interruttori
+delle fasi.}
+
 \section{Dashboard: la porta d'ingresso}
 \label{sec:tab_dashboard}
 
@@ -345,6 +353,9 @@ In basso a destra una colonna \emph{eventi} riporta in tempo
 reale le operazioni lunghe in corso (import, calcolo, export).
 \`E un \emph{log streaming} via Server-Sent Events: non serve
 ricaricare la pagina, le righe nuove arrivano da sole.
+
+\grokfig{fig_tab_anagrafica_icona}{Pittogramma dell'Anagrafica:
+schedario vintage con cassetti per docenti, classi, aule.}
 
 \section{Plessi: dove studiano i tuoi alunni}
 \label{sec:tab_plessi}
@@ -572,6 +583,10 @@ materia comune (opzionale), classe, docente principale, docente
 compresente, numero di ore. Il solver, ricevuta la coppia, le
 impone come vincolo Hard nella stessa cella.
 
+\grokfig{fig_ore_petali_fiore}{Il fiore delle ore della
+giornata: sei petali in gradiente dall'alba al tramonto, con
+$\pi$Tantum al centro.}
+
 \section{Ore: configurare la settimana}
 \label{sec:tab_ore}
 
@@ -595,6 +610,9 @@ indisponibilit\`a fa perdere il mapping cella-orario per le
 righe della vecchia griglia. Conviene fissare la griglia
 all'inizio del setup e modificarla solo a database vuoto.
 \end{avvertenzabox}
+
+\grokfig{fig_tab_vincoli_icona}{Pittogramma del tab Vincoli:
+una corda annodata in tre punti HARD/PREFERRED/SOFT.}
 
 \section{Vincoli}
 \label{sec:tab_vincoli}
@@ -634,6 +652,10 @@ mostra i tre vincoli evidenziati; basta rilassare uno dei tre
 per sbloccare il problema.
 \end{esempiobox}
 
+\grokfig{fig_tab_workflow_icona}{Pittogramma del tab Workflow:
+tre ingranaggi colorati collegati da cinghie, pulsante
+\texttt{Lancia} a destra.}
+
 \section{Workflow: lanciare la pipeline}
 \label{sec:tab_workflow}
 
@@ -666,6 +688,9 @@ la pagina. Il bottone
 \emph{Stop} interrompe il calcolo (utile se ti accorgi di un
 errore di setup).
 
+\grokfig{fig_tab_runs_icona}{Pittogramma del tab Runs: pila di
+tessere etichettate, con stellina d'oro sulla cima.}
+
 \section{Runs: lo storico delle esecuzioni}
 \label{sec:tab_runs}
 
@@ -686,6 +711,16 @@ ricarica le lezioni di quella run sull'orario corrente.
 \item per analisi post-mortem: perch\'e quella pipeline ha
   impiegato 14 minuti invece di 3?
 \end{itemize}
+
+\grokfig{fig_tab_orario_icona}{Pittogramma del tab Orario:
+griglia isometrica con mano-cursore che trascina una tessera.}
+
+\grokfig{fig_drag_drop_preview}{La griglia 6$\times$6 vista a
+volo d'uccello durante un drag\&drop: 36 celle colorate dal
+verde (ottimo) al rosso (HARD violato).}
+
+\grokfig{fig_conflict_modal}{Le due tessere-lezione che si
+guardano imbarazzate quando finiscono nello stesso slot.}
 
 \section{Orario: il risultato visualizzato}
 \label{sec:tab_orario}
@@ -747,6 +782,10 @@ il modulo classico dell'orario settimanale italiano. Per
 classe, per docente, per aula -- a seconda della vista
 corrente. Pronto per la stampa o per l'invio in email.
 
+\grokfig{fig_tab_monitor_icona}{Pittogramma del tab Monitor:
+piccolo telescopio in ottone puntato verso una griglia di
+lezioni.}
+
 \section{Monitor: la lente sulle cattedre}
 \label{sec:tab_monitor}
 
@@ -795,6 +834,10 @@ l'orario \`e in produzione. Vista settimanale 6$\times$6:
 sessione segnala una scopertura: tipicamente serve un docente
 fuori graduatoria o una variazione d'orario.
 
+\grokfig{fig_tab_diagnostica_icona}{Pittogramma del tab
+Diagnostica: stetoscopio salvia su un grafico con picco anomalo
+in corallo.}
+
 \section{Diagnostica}
 \label{sec:tab_diagnostica}
 
@@ -811,6 +854,9 @@ Pannello statistico e grafico. Tre famiglie di indicatori:
   durante l'ultima esecuzione (per chi vuole capire come ha
   iterato il solver).
 \end{itemize}
+
+\grokfig{fig_export_excel_scoiattolo}{Lo scoiattolo che trasporta
+una pila di file Excel verso la casa-archivio.}
 
 \section{Import bulk dedicato}
 \label{sec:tab_import_bulk}

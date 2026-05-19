@@ -356,6 +356,31 @@
 \setcounter{secnumdepth}{2}
 \renewcommand*{\contentsname}{Contents}
 
+% ---------- Grok figures: placeholder auto-render ----------
+% Usage: \grokfig{filename_without_extension}{Caption.}
+% If figures/<name>.png exists, the figure is included; otherwise silent.
+% See docs/promptgrok.txt for prompt list and filenames.
+\providecommand{\grokfig}[2]{%
+  \IfFileExists{figures/#1.png}{%
+    \begin{figure}[h]%
+    \centering%
+    \includegraphics[width=0.78\linewidth]{figures/#1.png}%
+    \caption{#2}%
+    \label{fig:#1}%
+    \end{figure}%
+  }{}%
+}
+\providecommand{\grokfigv}[2]{%
+  \IfFileExists{figures/#1.png}{%
+    \begin{figure}[h]%
+    \centering%
+    \includegraphics[height=0.45\textheight]{figures/#1.png}%
+    \caption{#2}%
+    \label{fig:#1}%
+    \end{figure}%
+  }{}%
+}
+
 \title{}
 \author{}
 \date{}

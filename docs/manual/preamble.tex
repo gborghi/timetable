@@ -397,6 +397,32 @@
 \setcounter{secnumdepth}{2}
 \renewcommand*{\contentsname}{Indice}
 
+% ---------- Figure Grok: placeholder auto-render ----------
+% Uso: \grokfig{nome_file_senza_estensione}{Didascalia.}
+% Se figures/<nome>.png esiste, viene incluso; altrimenti silenzio.
+% Vedi docs/promptgrok.txt per la lista dei prompt e i filename.
+\providecommand{\grokfig}[2]{%
+  \IfFileExists{figures/#1.png}{%
+    \begin{figure}[h]%
+    \centering%
+    \includegraphics[width=0.78\linewidth]{figures/#1.png}%
+    \caption{#2}%
+    \label{fig:#1}%
+    \end{figure}%
+  }{}%
+}
+% Variante stretta verticale (3:4) per termometri, clessidre, ecc.
+\providecommand{\grokfigv}[2]{%
+  \IfFileExists{figures/#1.png}{%
+    \begin{figure}[h]%
+    \centering%
+    \includegraphics[height=0.45\textheight]{figures/#1.png}%
+    \caption{#2}%
+    \label{fig:#1}%
+    \end{figure}%
+  }{}%
+}
+
 \title{}
 \author{}
 \date{}

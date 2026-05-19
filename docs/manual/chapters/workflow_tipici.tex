@@ -18,6 +18,9 @@ l'una dall'altra: una scuola che apre l'orario ad agosto seguir\`a
 le prime due; una scuola che subentra in corso d'anno con un
 file Excel salter\`a alla terza.
 
+\grokfig{fig_happy_path_aula}{L'aula al primo orario funzionante:
+quindici studenti felici e calendario settimanale alla cattedra.}
+
 \section{Procedura 1: una scuola da zero}
 \label{sec:wf_da_zero}
 
@@ -131,6 +134,9 @@ docente, aula, slot). Se trovi una lezione fuori posto, trascinala
 in un altro slot: il sistema verifica in tempo reale i vincoli
 Hard. Se tutto bene, esporta con il bottone \emph{Esporta XLSX}.
 
+\grokfig{fig_no_solution_ape}{L'ape confusa: cosa fare quando
+non esiste soluzione e bisogna rilassare un vincolo.}
+
 \section{Procedura 2: importare dati da Excel di un'altra scuola}
 \label{sec:wf_import_excel}
 
@@ -174,6 +180,9 @@ oppure il valore non corrispondeva a nessun indirizzo del
 database. Sistema l'errore importando prima gli indirizzi e
 poi le classi.
 \end{erroricomunibox}
+
+\grokfig{fig_merge_rivoletti}{Tre rivoletti d'acqua confluiscono
+nel fiume \texttt{main} a valle del merge.}
 
 \section{Procedura 3: rilanciare la pipeline dopo un cambio di vincoli}
 \label{sec:wf_relancia}
@@ -229,6 +238,9 @@ gioved\`{\i}}), conviene aggiungere il vincolo corrispondente
 nella tab \emph{Vincoli} cos\`{\i} la prossima pipeline lo
 rispetter\`a senza dover ripetere il drag-and-drop.
 
+\grokfig{fig_supplenza_volante}{La docente in supplenza vola
+verso l'aula con la sua cartelletta sotto braccio.}
+
 \section{Procedura 5: gestire una supplenza giornaliera}
 \label{sec:wf_supplenza}
 
@@ -261,6 +273,9 @@ Liceo Galileo, marted\`{\i} ore 7:45. Sono assenti Bianchi
 liste tre supplenti coerenti per ciascuna materia, ordinati
 per punteggio. La copertura si chiude in dodici minuti.
 \end{esempiobox}
+
+\grokfig{fig_backup_snapshot}{La clessidra del backup con le
+istantanee datate al posto della sabbia.}
 
 \section{Procedura 6: esportare e archiviare l'orario}
 \label{sec:wf_export}

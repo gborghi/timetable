@@ -1,0 +1,513 @@
+================================================================================
+PROMPT GROK -- FIGURE DIDATTICHE PER IL MANUALE piTantum
+================================================================================
+
+Stile globale (vale per TUTTI i prompt):
+- Illustrazione vettoriale flat, palette pastello (avorio, indaco scuro, oro,
+  siena, verde salvia) con accenti vivaci (corallo, ciano). NESSUNA foto
+  realistica, nessun rendering 3D.
+- Tono didattico-giocoso, mai infantile. Stile editoriale "vintage tech"
+  riconducibile a un manuale tipografico classico (Bringhurst, Tschichold).
+- Tratto pulito, linee morbide, ombre piatte. Composizione centrata su sfondo
+  avorio o bianco-panna. Margini ampi.
+- Testo dentro le illustrazioni SOLO in italiano (qui sotto fra virgolette
+  basse), tipografia EB Garamond o Lato.
+- Mascotte ricorrente: $\pi$Tantum, un orologio antropomorfo (quadrante con
+  cifre romane, lancette espressive come occhi+sopracciglia, cinturino come
+  braccia, con cappello da maestro o monocolo). Compare in molte ma non tutte
+  le figure.
+
+Filenaming convention: fig_<descrittore>.png. Posizione finale:
+docs/figures/<filename>.png. I manuali (manual.tex + manual_en.tex) hanno gia'
+i placeholder \IfFileExists che le includeranno automaticamente al primo
+rebuild non appena i file appaiono nella cartella.
+
+Ratio: 1:1 quadrata (Q), 16:9 wide (W), 3:4 vertical (V), 4:3 landscape (L).
+
+================================================================================
+1. fig_mascotte_pitantum.png                                                  Q
+================================================================================
+Sezione: Frontespizio / colophon (manual.tex, dopo il titolo).
+Prompt:
+La mascotte $\pi$Tantum: un orologio antropomorfo (quadrante con cifre romane,
+due lancette stilizzate come occhi+sopracciglia che fanno l'occhiolino, due
+braccia uscenti dai lati del quadrante, una mano tiene un calendario
+settimanale aperto, l'altra una piuma da scrittura). Cappello quadrato da
+maestro (mortar board) con la lettera greca $\pi$ in oro al centro. Sfondo
+avorio con cornice ornamentale a quattro foglie (decofour) in indaco.
+Testo in basso: <<$\pi$Tantum>>. Stile vintage editoriale, ratio 1:1.
+
+================================================================================
+2. fig_quickstart_5_passi.png                                                 W
+================================================================================
+Sezione: Capitolo "Getting started" (chapters/getting_started.tex).
+Prompt:
+Cinque pittogrammi in fila orizzontale, collegati da freccette dorate, su
+sfondo avorio. Sopra ciascuno l'etichetta in italiano:
+(1) <<Installa>> -- icona di una scatola che si apre con un pacchetto python;
+(2) <<Avvia>> -- icona di un pulsante play stilizzato dentro un cerchio;
+(3) <<Carica dati>> -- icona di una graffetta che pinza un foglio Excel;
+(4) <<Genera>> -- l'orologio mascotte $\pi$Tantum che gira una manovella;
+(5) <<Stampa>> -- foglio con calendario settimanale piegato che esce da una
+stampante stilizzata. In basso, sotto le icone, un cronometro che marca
+<<~30 min>>. Palette pastello, accenti corallo sulle freccette. Ratio 16:9.
+
+================================================================================
+3. fig_giornata_scolastica.png                                                L
+================================================================================
+Sezione: Capitolo "Orario come oggetto strutturale" (orario_oggetto_strutturale.tex).
+Prompt:
+Una griglia 6x6 stilizzata (6 giorni x 6 ore) come una scacchiera di legno
+chiaro, con dentro tessere colorate di vari materie scolastiche: matematica
+(blu), italiano (oro), storia (verde salvia), scienze (corallo), inglese
+(indaco), motorie (ciano). Ciascuna tessera con icona simbolica (compasso,
+libro, anfora, provetta, bandierina UK, palla). In primo piano la mascotte
+$\pi$Tantum guarda la griglia con espressione soddisfatta. Stile flat, ombre
+piatte. Etichetta in alto: <<Una settimana di scuola>>. Ratio 4:3.
+
+================================================================================
+4. fig_import_csv_tubature.png                                                W
+================================================================================
+Sezione: Capitolo "Formato dati" (formato_dati.tex).
+Prompt:
+Tre file Excel (icona foglio verde con X) e tre file CSV (icona foglio con
+virgola) che entrano in una rete di tubature colorate (stile fumetto plumbing
+ma pulito, palette pastello). Le tubature confluiscono in un imbuto centrale
+e ne escono ordinate righe di tabella in formato DataFrame. Sopra l'imbuto la
+mascotte $\pi$Tantum con il monocolo, controlla un foglio di check con
+spunte verdi. Etichetta: <<Importa, valida, normalizza>>. Stile illustrativo
+pulito. Ratio 16:9.
+
+================================================================================
+5. fig_solver_meditabondo.png                                                 Q
+================================================================================
+Sezione: Capitolo "CP-SAT, il motore" (metodo_cpsat.tex).
+Prompt:
+Un piccolo robot tondeggiante (stile mascotte retro, palette indaco/oro) in
+posa pensierosa (mano al mento) davanti a una scacchiera di posizioni
+parzialmente riempite. Sopra di lui una nuvoletta-pensiero con dentro
+ramificazioni di un albero di decisione (linee sottili in oro). Etichetta in
+basso: <<CP-SAT pensa, propaga, ritratta>>. Sfondo avorio. Stile flat
+illustrativo. Ratio 1:1.
+
+================================================================================
+6. fig_conflict_modal.png                                                     Q
+================================================================================
+Sezione: Capitolo "Guida UI" (guida_ui.tex), sezione Editor manuale.
+Prompt:
+Due tessere-lezione colorate (una blu matematica, una verde storia) si
+guardano negli occhi con espressione lievemente imbarazzata, sopra un fumetto
+con il messaggio <<Stesso slot?>>. In primo piano la mascetta $\pi$Tantum
+osserva con un'aria mediativa, indicando una freccia di swap fra le due.
+Sotto le tessere tre opzioni a tasti stilizzati: <<Annulla>>, <<Disassegna>>,
+<<Riassegna>>. Stile cartoon educato, palette pastello. Ratio 1:1.
+
+================================================================================
+7. fig_dashboard_cruscotto.png                                                L
+================================================================================
+Sezione: Capitolo "Guida UI" (guida_ui.tex), sezione Dashboard.
+Prompt:
+Un cruscotto di automobile vintage (anni '60) reinterpretato come dashboard
+software: tre indicatori circolari analogici al centro -- <<HARD score>>,
+<<SOFT score>>, <<Coverage>> -- con lancette che indicano valori vicini al
+verde. Sotto, tre file di interruttori a levetta etichettati <<Phase A>>,
+<<Phase B>>, <<Phase 4>>. Cornice del cruscotto in legno chiaro. La mascotte
+$\pi$Tantum siede al posto guida, con sciarpa al vento. Stile illustrativo
+retro-tech, palette pastello con accenti oro. Ratio 4:3.
+
+================================================================================
+8. fig_ore_petali_fiore.png                                                   Q
+================================================================================
+Sezione: Capitolo "Guida UI" (guida_ui.tex), sezione tab Ore.
+Prompt:
+Un fiore stilizzato vista frontale, con sei petali a forma di rettangolo
+arrotondato in ordine orario. Ogni petalo e' una <<ora>> della giornata,
+etichettata 1-6 in maiuscoletto, colorata in gradiente dal giallo alba (h1) al
+viola tramonto (h6). Al centro del fiore l'orologio $\pi$Tantum sorride.
+Sotto al fiore l'etichetta <<La giornata e' un fiore>> in italico EB
+Garamond. Palette pastello, accenti corallo sul gambo. Stile illustrativo
+flat. Ratio 1:1.
+
+================================================================================
+9. fig_vincoli_leoni_gattini.png                                              W
+================================================================================
+Sezione: Capitolo "Vincoli" (vincoli.tex).
+Prompt:
+Sul lato sinistro tre leoni stilizzati (criniera oro, espressione decisa,
+posa ferma) etichettati <<HARD>>; sul lato destro tre gattini sornioni
+(palette pastello, espressione dolce, in posizione di gomitolo) etichettati
+<<SOFT>>. In mezzo, l'orologio $\pi$Tantum tiene una bilancia con i due
+gruppi sui due piatti. Sotto: <<I leoni non si negoziano. I gattini si
+ottimizzano.>>. Stile cartoon raffinato, palette pastello. Ratio 16:9.
+
+================================================================================
+10. fig_merge_rivoletti.png                                                   W
+================================================================================
+Sezione: Capitolo "Workflow tipici" (workflow_tipici.tex), proc. merge.
+Prompt:
+Tre rivoletti d'acqua colorati (uno indaco, uno oro, uno verde salvia)
+provenienti da tre sorgenti distinte (etichettate <<feature/A>>,
+<<feature/B>>, <<feature/C>>) confluiscono in un fiume centrale piu' largo,
+etichettato <<main>>. Sulle sponde piccole rocce con etichette <<commit>>.
+La mascotte $\pi$Tantum sta sul ponte centrale con un retino raccoglie-bug.
+Stile illustrativo morbido, palette pastello + accenti ciano. Ratio 16:9.
+
+================================================================================
+11. fig_backup_snapshot.png                                                   Q
+================================================================================
+Sezione: Capitolo "Workflow tipici" (workflow_tipici.tex), proc. archivio.
+Prompt:
+Una clessidra trasparente con dentro non sabbia ma piccole istantanee
+fotografiche etichettate con date (2026-05-19 / 2026-05-12 / 2026-05-05).
+Una freccia circolare gira intorno alla clessidra in senso antiorario,
+indicando il <<rollback>>. Accanto, la mascotte $\pi$Tantum con un album
+fotografico in mano. Palette pastello con accenti oro. Stile flat
+illustrativo. Ratio 1:1.
+
+================================================================================
+12. fig_export_excel_scoiattolo.png                                           L
+================================================================================
+Sezione: Capitolo "Guida UI" (guida_ui.tex), sezione Export/Stampa.
+Prompt:
+Uno scoiattolo simpatico (stile cartoon educato, manto color nocciola)
+trasporta una pila di file Excel verdi sulle spalle, in marcia verso una
+piccola casa-archivio con il tetto a forma di icona-cartella. Le sue zampe
+strette stringono i file con cura. Sotto: <<Export>>. Sullo sfondo,
+lontano, l'orologio $\pi$Tantum saluta con una zampa. Palette pastello,
+toni autunnali. Stile illustrazione per libro per ragazzi sofisticato.
+Ratio 4:3.
+
+================================================================================
+13. fig_profili_solver_alpinisti.png                                          W
+================================================================================
+Sezione: Capitolo "Benchmark" (benchmarks.tex).
+Prompt:
+Tre alpinisti stilizzati che salgono una montagna in tre versanti differenti,
+ciascuno con difficolta' crescente. Da sinistra a destra: (1) <<small>>
+versante dolce con prato fiorito; (2) <<medium>> versante con qualche
+roccia e bandierina; (3) <<huge>> ripida cresta con piccoli ghiaccioli. In
+cima alla montagna un orologio $\pi$Tantum sventola una bandiera che dice
+<<HARD-feasible>>. Stile cartoon affettuoso, palette pastello con accenti
+ciano sui ghiacci. Ratio 16:9.
+
+================================================================================
+14. fig_decomposizione_torta.png                                              Q
+================================================================================
+Sezione: Capitolo "Decomposizione spettrale" (metodo_spettrale.tex).
+Prompt:
+Una torta tonda vista dall'alto, tagliata in quattro fette di colori diversi
+(salvia, oro, indaco, corallo). Ogni fetta ha sopra una piccola etichetta
+<<cluster A>>, <<cluster B>>, <<cluster C>>, <<cluster D>>. Sottilissimi
+collegamenti tratteggiati attraversano i tagli (i <<ponti>>). Dietro alla
+torta la mascotte $\pi$Tantum con un piattino in attesa. Stile food
+illustration sofisticata. Palette pastello caldo. Ratio 1:1.
+
+================================================================================
+15. fig_warm_start_tartaruga.png                                              L
+================================================================================
+Sezione: Capitolo "Tecniche avanzate" (tecniche_di_ottimizzazione_avanzate.tex),
+sezione phase_a_mode=soft_hint.
+Prompt:
+Una tartaruga stilizzata (carapace a esagoni colorati) con sciarpa di lana
+intorno al collo, fa stretching delle zampe davanti a una pista di
+atletica. Sotto: <<Warm start>>. Sullo sfondo, un cronometro alto
+arancione. La mascotte $\pi$Tantum in tuta da allenatore con il
+fischietto. Palette pastello, accenti corallo sulla sciarpa. Stile cartoon
+sportivo. Ratio 4:3.
+
+================================================================================
+16. fig_time_budget_clessidra.png                                             Q
+================================================================================
+Sezione: Capitolo "Workflow di ottimizzazione" (workflow_di_ottimizzazione.tex).
+Prompt:
+Una clessidra elegante in vetro soffiato vista frontalmente, con sabbia di
+tre colori a strati (verde in alto = budget Phase A, oro al centro = budget
+Phase B, ciano in basso = budget metaeuristiche). Lateralmente, tre
+piccole etichette con orari (5min / 15min / 5min). La mascotte $\pi$Tantum
+appoggia un orologio da polso accanto alla clessidra. Sfondo avorio con
+filettatura indaco. Stile illustrativo elegante. Ratio 1:1.
+
+================================================================================
+17. fig_free_day_or_cancello.png                                              L
+================================================================================
+Sezione: Capitolo "Vincoli" (vincoli.tex), sezione free-day HARD-OR.
+Prompt:
+Un cancelletto stilizzato in legno chiaro con due porte separate, ciascuna
+con un cartello sopra: porta sinistra <<Giorno libero>>, porta destra
+<<Mezza giornata>>. Solo una delle due porte e' aperta (a scelta). Davanti
+al cancelletto un docente cartoonesco con valigetta esita fra le due.
+Sopra, una nuvoletta logica con il simbolo <<OR>> esclusivo (a cerchi
+intrecciati). Stile cartoon educato, palette pastello. Ratio 4:3.
+
+================================================================================
+18. fig_monolithic_marmo.png                                                  Q
+================================================================================
+Sezione: Capitolo "Tecniche avanzate", sezione cp_sat_scope=week.
+Prompt:
+Un singolo grande blocco di marmo bianco-grigio venato d'oro, sospeso su un
+piedistallo. Sulle sei facce visibili sono incise (in maiuscoletto romano)
+le sigle dei sei giorni della settimana: LUN, MAR, MER, GIO, VEN, SAB.
+Accanto al blocco la mascotte $\pi$Tantum con scalpello e martelletto da
+scultore, posa pensierosa. Sotto: <<Tutto in un solo modello>>. Stile
+illustrativo classico, palette pastello con accenti oro. Ratio 1:1.
+
+================================================================================
+19. fig_branch_and_price_cavi.png                                             W
+================================================================================
+Sezione: Capitolo "Tecniche avanzate", sezione Branch-and-Price.
+Prompt:
+Un fascio di cavi di rete colorati (indaco, oro, salvia, corallo) che si
+intrecciano in un rack centrale stilizzato, con lucine LED verdi sopra.
+Sull'esterno del rack etichette: <<Master LP>> in alto, <<Pricer CP-SAT>>
+sul lato. Ogni cavo si dirama verso una piccola scheda etichettata con una
+granularita' (teacher, class, day, curriculum, ...). Estetica server room
+ma in stile fumetto pulito, palette pastello. La mascotte $\pi$Tantum con
+casco da elettricista. Ratio 16:9.
+
+================================================================================
+20. fig_cpsat_nodo.png                                                        Q
+================================================================================
+Sezione: Capitolo "CP-SAT" (metodo_cpsat.tex), capitolo metaforico.
+Prompt:
+Un grande nodo di corda intrecciata che pian piano si scioglie da solo,
+mostrando come i fili siano dipanati in modo ordinato. Ogni filo ha un
+colore diverso. Sopra il nodo, una nuvoletta-pensiero contiene la formula
+<<AllDifferent>> in maiuscoletto. La mascotte $\pi$Tantum osserva con un
+mezzo sorriso, le braccia incrociate. Stile illustrativo morbido, palette
+pastello con accenti oro. Ratio 1:1.
+
+================================================================================
+21. fig_soft_podio_peluche.png                                                L
+================================================================================
+Sezione: Capitolo "Vincoli" (vincoli.tex), sezione SOFT priority.
+Prompt:
+Un podio a tre gradini (oro, argento, bronzo) con sopra tre peluche di
+tessuto morbido, ciascuno con una medaglia: oro <<no buchi>>, argento
+<<distribuzione uniforme>>, bronzo <<no sesta ora>>. La mascotte
+$\pi$Tantum in giacca da arbitro stringe la mano al peluche d'oro. Sfondo
+con una bandierina <<SOFT preferences>> appesa in alto. Stile illustrazione
+sportiva, palette pastello con accenti corallo. Ratio 4:3.
+
+================================================================================
+22. fig_import_error_pesce.png                                                Q
+================================================================================
+Sezione: Capitolo "Getting started" (getting_started.tex), sezione errori.
+Prompt:
+Un pesce simpatico (stile cartoon, squame pastello iridescenti) con una
+bolla sopra la testa contenente un grosso punto interrogativo. Davanti al
+pesce un foglio Excel rovesciato con celle vuote evidenziate in corallo.
+Sopra il pesce un'etichetta <<Formato dati incompleto>>. Palette acquatica
+pastello, sfondo avorio con onde stilizzate ai bordi. Stile illustrazione
+per libro educativo. Ratio 1:1.
+
+================================================================================
+23. fig_happy_path_aula.png                                                   W
+================================================================================
+Sezione: Capitolo "Workflow tipici" (workflow_tipici.tex), happy path.
+Prompt:
+Vista frontale di un'aula scolastica con quindici studenti stilizzati ai
+banchi (varie etnie, varie acconciature, stile cartoon educato) tutti
+con espressione attenta o sorridente, libri aperti davanti. Sulla cattedra
+una professoressa che sorride con un calendario settimanale in mano. Sulla
+lavagna scritto in gesso bianco <<Orario perfetto>>. Sopra la finestra, un
+poster con il logo della mascotte $\pi$Tantum che fa l'occhiolino. Palette
+pastello, luminosita' calda. Ratio 16:9.
+
+================================================================================
+24. fig_no_solution_ape.png                                                   Q
+================================================================================
+Sezione: Capitolo "Workflow tipici" (workflow_tipici.tex), error path.
+Prompt:
+Un'ape stilizzata (giallo pastello, ali traslucide) vola in cerchi confusi
+sopra un foglio con una griglia parzialmente colorata. Sopra l'ape, sopra
+la sua testa, tre piccoli punti interrogativi galleggianti. Il foglio
+sotto ha una grande X corallo che lo attraversa. Etichetta in basso:
+<<Nessuna soluzione: rilassa qualche vincolo>>. La mascotte $\pi$Tantum
+osserva da un angolo con espressione comprensiva. Palette pastello, stile
+illustrazione per ragazzi. Ratio 1:1.
+
+================================================================================
+25. fig_tab_anagrafica_icona.png                                              Q
+================================================================================
+Sezione: Capitolo "Guida UI" (guida_ui.tex), tab Anagrafica.
+Prompt:
+Pittogramma circolare: schedario d'epoca in legno chiaro con tre cassetti
+aperti, da ciascuno spunta un cartoncino (uno con icona-docente, uno con
+icona-classe, uno con icona-aula). Sopra il cassetto centrale e' appesa
+una piccola etichetta <<Anagrafica>>. Palette pastello con accenti oro
+sulle maniglie dei cassetti. Stile vintage illustrativo. Ratio 1:1.
+
+================================================================================
+26. fig_tab_workflow_icona.png                                                Q
+================================================================================
+Sezione: Capitolo "Guida UI" (guida_ui.tex), tab Workflow.
+Prompt:
+Pittogramma circolare: una pipeline di tre ingranaggi colorati (verde, oro,
+indaco) collegati da cinghie sottili, con un pulsante <<Lancia>> rosso
+sull'ingranaggio piu' a destra. Sopra, un fascio di linee dati colorate che
+escono dalla pipeline. Etichetta <<Workflow>>. Stile illustrativo
+industrial-vintage, palette pastello. Ratio 1:1.
+
+================================================================================
+27. fig_tab_monitor_icona.png                                                 Q
+================================================================================
+Sezione: Capitolo "Guida UI" (guida_ui.tex), tab Monitor.
+Prompt:
+Pittogramma circolare: un piccolo telescopio antico in ottone su treppiede,
+puntato verso una griglia di lezioni galleggianti in alto a destra. Accanto
+al telescopio un block notes con qualche annotazione manoscritta. Etichetta
+<<Monitor>>. Palette pastello, accenti oro sul telescopio. Stile vintage
+strumentale. Ratio 1:1.
+
+================================================================================
+28. fig_tab_runs_icona.png                                                    Q
+================================================================================
+Sezione: Capitolo "Guida UI" (guida_ui.tex), tab Runs.
+Prompt:
+Pittogramma circolare: una pila di tessere rettangolari etichettate
+<<Run 1>>, <<Run 2>>, <<Run 3>>, ciascuna con sotto un piccolo grafico a
+barre stilizzato. La tessera in cima ha una stellina d'oro. Etichetta
+<<Runs>>. Palette pastello, accenti corallo sul grafico. Stile illustrativo
+report ufficiale. Ratio 1:1.
+
+================================================================================
+29. fig_tab_orario_icona.png                                                  Q
+================================================================================
+Sezione: Capitolo "Guida UI" (guida_ui.tex), tab Orario.
+Prompt:
+Pittogramma circolare: una griglia 6x6 stilizzata vista in prospettiva
+isometrica leggera, con caselle colorate (varie materie). Una mano-cursore
+(stile mouse cartoon) sta trascinando una tessera blu da una cella all'altra.
+Etichetta <<Orario>>. Palette pastello, accenti indaco sulla mano. Stile
+flat illustrativo. Ratio 1:1.
+
+================================================================================
+30. fig_tab_diagnostica_icona.png                                             Q
+================================================================================
+Sezione: Capitolo "Guida UI" (guida_ui.tex), tab Diagnostica.
+Prompt:
+Pittogramma circolare: stetoscopio in metallo color salvia appoggiato su una
+schermata di laptop stilizzato che mostra un grafico a linea con un piccolo
+picco anomalo evidenziato in corallo. Sopra una piccola lente di
+ingrandimento appesa. Etichetta <<Diagnostica>>. Palette pastello,
+illustrativo. Ratio 1:1.
+
+================================================================================
+31. fig_tab_dashboard_icona.png                                               Q
+================================================================================
+Sezione: Capitolo "Guida UI" (guida_ui.tex), tab Dashboard.
+Prompt:
+Pittogramma circolare: tre indicatori circolari analogici (HARD, SOFT,
+Coverage) disposti come un volto sorridente (i due quadranti superiori sono
+gli occhi, il terzo in basso la bocca con la lancetta che fa sorriso).
+Etichetta <<Dashboard>>. Palette pastello con accenti oro sui quadranti.
+Stile retro-tech illustrativo. Ratio 1:1.
+
+================================================================================
+32. fig_tab_vincoli_icona.png                                                 Q
+================================================================================
+Sezione: Capitolo "Guida UI" (guida_ui.tex), tab Vincoli.
+Prompt:
+Pittogramma circolare: una piccola corda annodata in tre punti (tre nodi
+diversi, ciascuno di colore diverso: rosso HARD, oro PREFERRED, verde
+SOFT). Sopra la corda una piccola targhetta <<Vincoli>>. Palette pastello,
+sfondo avorio. Stile illustrativo cordiale. Ratio 1:1.
+
+================================================================================
+33. fig_supplenza_volante.png                                                 L
+================================================================================
+Sezione: Capitolo "Workflow tipici" (workflow_tipici.tex), supplenza.
+Prompt:
+Una docente cartoonesca con cartelletta sotto braccio corre lievemente in
+avanti, con una piccola scia di moto cinetico (linee morbide indaco)
+dietro di lei. Davanti, a destra, un'aula stilizzata con una sedia vuota
+evidenziata in corallo. In alto un orologio mostra <<8:00>> in
+maiuscoletto romano. La mascotte $\pi$Tantum sulla soglia dell'aula tiene
+un campanello suonato. Stile cartoon vivace, palette pastello. Ratio 4:3.
+
+================================================================================
+34. fig_hall_check_serbatoio.png                                              Q
+================================================================================
+Sezione: Capitolo "Pre-check di Hall" (metodo_hall.tex).
+Prompt:
+Un serbatoio di carburante stilizzato (forma di goccia rovesciata, vetro
+trasparente) parzialmente riempito di liquido oro. Sul lato un piccolo
+indicatore con tre zone: verde <<ok>>, gialla <<scarso>>, rossa
+<<deficit>>. L'indicatore punta sul verde. Sopra il serbatoio, una piccola
+etichetta <<Hall check>>. La mascotte $\pi$Tantum verifica il livello con
+una clipboard. Stile illustrativo automotive vintage, palette pastello.
+Ratio 1:1.
+
+================================================================================
+35. fig_metaheuristic_scultore.png                                            L
+================================================================================
+Sezione: Capitolo "Metaeuristiche" (metodo_metaeuristiche.tex).
+Prompt:
+Uno scultore stilizzato (grembiule, beretto) davanti a un blocco di marmo
+gia' lavorato a forma grezza di calendario settimanale. Sul tavolo accanto
+sei scalpelli colorati di dimensioni diverse, ciascuno etichettato con
+nomi di operatori (LNS, ALNS, SA, TS, ILS, VNS). Lo scultore sceglie il
+piu' appropriato. La mascotte $\pi$Tantum porge un panno di pulizia.
+Stile illustrativo classico, palette pastello con accenti oro su
+scalpelli. Ratio 4:3.
+
+================================================================================
+36. fig_tightness_termometro.png                                              V
+================================================================================
+Sezione: Capitolo "Tecniche avanzate", sezione tightness criterion.
+Prompt:
+Un termometro verticale stilizzato (vetro trasparente, scala in maiuscoletto
+romano), con liquido colorato che sale dal verde (0,3 = aria) al giallo
+(0,5 = realistico), all'arancione (0,7 = stretto) al rosso (0,8 =
+infeasible). Sul lato del termometro etichette in italiano. La mascotte
+$\pi$Tantum lo regge come un dottore vintage. Sfondo avorio.
+Stile illustrativo medico-vintage, palette pastello. Ratio 3:4.
+
+================================================================================
+37. fig_pi_tantum_seneca.png                                                  L
+================================================================================
+Sezione: Prologo (prologo.tex), epigrafe di Seneca.
+Prompt:
+La mascotte $\pi$Tantum (orologio antropomorfo) seduta su una colonna
+ionica con una pergamena srotolata sul grembo. Sulla pergamena, in
+maiuscoletto, l'epigrafe <<TEMPUS TANTUM NOSTRUM EST>>. Sopra, un piccolo
+busto di Seneca su uno scaffale, con uno sguardo benevolo. Cornice di
+fronde di alloro stilizzate. Palette indaco/oro/avorio, stile classico
+neoumanistico. Ratio 4:3.
+
+================================================================================
+38. fig_drag_drop_preview.png                                                 W
+================================================================================
+Sezione: Capitolo "Guida UI" (guida_ui.tex), sezione drag&drop.
+Prompt:
+Una griglia 6x6 stilizzata vista a volo d'uccello. Una tessera-lezione
+viene trascinata dalla cella (Lun, h2) verso (Mer, h4). Le 36 celle della
+griglia si colorano in tempo reale secondo un codice: verde scuro
+(ottimo), verde chiaro (ok), giallo (peggiore SOFT), rosso (HARD violato).
+Sopra la tessera trascinata, una nuvoletta <<delta = -3>>. La mascotte
+$\pi$Tantum osserva con espressione approvante. Stile illustrativo
+heatmap pulito. Ratio 16:9.
+
+================================================================================
+39. fig_pi_tantum_buonanotte.png                                              L
+================================================================================
+Sezione: Capitolo "Lessons learned" (lessons_learned.tex).
+Prompt:
+La mascotte $\pi$Tantum a fine giornata, in pigiama a righe e cuffietta da
+notte con il greca $\pi$ ricamata. Tiene in mano una piccola candela. Sotto
+una luna a falce e qualche stella d'oro. Sfondo indaco notturno con
+sottili stelle. Sopra, etichetta <<A domani>>. Stile illustrativo dolce,
+palette notturna calda. Ratio 4:3.
+
+================================================================================
+40. fig_diagnostica_statistica_grafico.png                                    W
+================================================================================
+Sezione: Capitolo "Diagnostica statistica" (diagnostica_statistica.tex).
+Prompt:
+Un istogramma stilizzato (5-6 barre colorate di altezze diverse) su uno
+sfondo a quaderno a quadretti chiari. A destra dell'istogramma una piccola
+distribuzione gaussiana sovrapposta tratteggiata, con la mascotte
+$\pi$Tantum che indica il picco con un puntatore laser. In alto a sinistra,
+piccoli numeri e percentuali stilizzati come grafiche di pubblicazione
+scientifica vintage. Palette pastello, accenti corallo sull'istogramma.
+Stile illustrativo statistico classico. Ratio 16:9.
