@@ -1,8 +1,51 @@
 \chapter{piTantum overview}
 \label{ch:panoramica_pitantum_en}
 
-Three-tier architecture: engine (CP-SAT solver core), backend (FastAPI + SQLite), frontend (SvelteKit). Pipelines exposed as async runs via /api/optimize/*. The 16 UI tabs covering registry, constraints, generation, manual editing, daily operations.
+\textbf{For impatient readers.} piTantum takes the registry of a
+school as input and produces a weekly timetable that satisfies
+every hard constraint and minimises the weighted sum of soft
+violations. The system lives in a sixteen-tab web interface
+backed by a local SQLite database. From bare machine to first
+generated timetable: about thirty minutes.
+
+\textbf{Audience.} Timetable coordinators, deputy headteachers,
+school secretaries. Secondarily, developers who want to extend
+the solver or reuse its logic.
+
+\section*{What the system does}
+
+Given a school's registry (teachers, classes, subjects,
+classrooms, study tracks, articulated groups, students), the
+weekly hour demand per track and per subject, plus preferences
+and unavailabilities, piTantum returns a complete weekly
+timetable satisfying every hard constraint and minimising the
+weighted sum of soft violations. Once produced, the same system
+manages the timetable through the school year: manual edits with
+real-time feasibility checks, daily absence and substitute
+management, and alternative views per teacher, class, classroom,
+slot.
+
+\section*{Three layers in one repository}
+
+\begin{itemize}
+\item \textbf{Solver layer} (\texttt{experiments/}): pure Python,
+  database- and UI-agnostic. Key modules:
+  \texttt{cpsat\_v2\_assignment.py},
+  \texttt{cpsat\_v2\_timetable.py},
+  \texttt{decomposition\_spectral\_v2.py},
+  \texttt{metaheuristics.py}, plus \texttt{alns.py},
+  \texttt{vns.py}, \texttt{hall\_check.py},
+  \texttt{lagrangian.py}, \texttt{column\_generation.py},
+  \texttt{classroom\_assignment.py}.
+\item \textbf{Web UI layer} (\texttt{webui/}): FastAPI backend +
+  SvelteKit frontend. Persistence is a single SQLite file
+  \texttt{webui/data/timetable.db}; migrations are idempotent
+  and run on backend startup.
+\item \textbf{Legacy layer} (\texttt{schedule/}): monolithic
+  prototype scripts. Kept for historical reference and benchmark
+  reproducibility, no longer part of the operational flow.
+\end{itemize}
 
 \medskip
 \noindent
-\textit{This chapter is an English summary of the corresponding Italian chapter. The full text remains in the Italian edition (\texttt{docs/manual/chapters/panoramica\_pitantum.tex}). For the implementation references see the engine modules in \texttt{engine/} and the API documentation at \texttt{docs/api.md}.}
+\textit{This chapter is an English summary of the corresponding Italian chapter. The full narrative remains in the Italian edition (\texttt{docs/manual/chapters/panoramica\_pitantum.tex}); for implementation references see the modules under \texttt{engine/} and the API documentation at \texttt{docs/api.md}.}

@@ -1,136 +1,28 @@
 \chapter{Advanced optimization techniques}
 \label{ch:tecniche_avanzate_en}
 
-In addition to the classic metaheuristics (LNS / SA / TS / ILS),
-$\pi$Tantum integrates four classes of advanced techniques used
-when the standard pipeline is not enough or when targeted
-diagnostic information is needed.
+This chapter goes into the \emph{advanced mathematical depth}
+of selected techniques. The base metaheuristics (LNS, ALNS, SA,
+TS, ILS, VNS), the Hall pre-check, and the general idea of
+Lagrangian relaxation and column generation are already covered
+by their dedicated chapters in the Italian edition: see
+\texttt{metodo\_metaeuristiche.tex} for the six metaheuristics,
+\texttt{metodo\_hall.tex} for the Hall pre-check, and
+\texttt{metodo\_lagrangian.tex} for Lagrangian relaxation and
+basic column generation. The four Phase~B decomposition
+alternatives (spectral, temporal, curriculum, metis) and the
+selection criteria live in \texttt{metodo\_spettrale.tex}; the
+two pipeline switches \texttt{cp\_sat\_scope} and
+\texttt{phase\_a\_mode} are covered in
+\texttt{workflow\_di\_ottimizzazione.tex}.
 
-\section{Hall pre-check}
-
-\texttt{engine/diagnostics/hall\_check.py}. Hall's marriage theorem
-applied to the bipartite (\textit{class}, \textit{subject}) $\to$
-qualified-teachers graph as a fast pre-check (1--100\,ms) before
-launching Phase A. Three violation kinds are reported:
-
-\begin{enumerate}
-\item subject supply vs demand,
-\item subject coverage vs demand,
-\item Hall sampling random-subset with mutually exclusive subsets.
-\end{enumerate}
-Exposed at three UI points: inline button on PhaseACard, row in
-AdvancedTechniquesCard, section of the Statistics tab.
-
-\section{Column Generation and advanced Branch-and-Price}
-
-\texttt{engine/column\_generation.py}. Master LP via
-\texttt{scipy.linprog} HiGHS; nine dedicated CP-SAT pricers at
-distinct granularities (\texttt{teacher}, \texttt{teacher-day},
-\texttt{teacher-class}, \texttt{teacher-class-subject},
-\texttt{teacher-subject}, \texttt{class}, \texttt{class-day},
-\texttt{day}, \texttt{curriculum}); a \texttt{branch-and-price}
-mode equipped with all four scalability techniques required for
-MEGA-size instances:
-
-\begin{itemize}
-\item \textbf{Ryan-Foster recursive tree} with Achterberg pair
-  scoring on fractional class-slot pairs, best-first node
-  exploration with LP-bound pruning, depth cap 20 / 1000 nodes.
-\item \textbf{Box-step dual stabilization}
-  $\pi_{\text{blend}} = (1-\alpha)\pi_{\text{stable}}
-  + \alpha\pi_{\text{raw}}$ with $\alpha = 0.2$, applied to both
-  master variants.
-\item \textbf{Column management}: EWMA of the per-column reduced
-  cost over 20 iterations; when the pool exceeds 10\,000
-  columns, the worst (most positive \texttt{rc\_avg}) entries
-  are purged, while protecting columns currently in the LP basis
-  (\(x > 0\)) and the seed columns from the iterative-diversified
-  primal heuristic.
-\item \textbf{Parallel pricing} via \texttt{ProcessPoolExecutor}
-  (default $\lfloor \texttt{os.cpu\_count()}/2 \rfloor$ workers).
-  CP-SAT is CPU-bound and the GIL is only partially released by
-  the OR-tools binding, so \texttt{ThreadPoolExecutor} would not
-  parallelise the bottleneck; processes do.
-\end{itemize}
-
-\subsection*{The CP-SAT-as-fundamental contract}
-
-For every granularity, the sub-problem CP-SAT is the
-\emph{fundamental} minimisation; greedy serves only as a
-\texttt{model.add\_hint} warm-start (an accelerator). If CP-SAT
-cannot find a feasible solution within the time limit the pricer
-returns \texttt{(None, 0.0)}: the greedy is \emph{never} promoted
-to a column. The unit test
-\texttt{test\_bp\_pricers\_use\_addhint\_warmstart} monkey-patches
-\texttt{CpModel.add\_hint} with a counting wrapper to enforce this
-contract.
-
-\subsection*{Measured numbers (synthetic HUGE / MEGA benchmark)}
-
-See \texttt{tests/benchmarks/test\_bp\_huge\_mega.py}. On a
-synthetic scenario calibrated to match the engine's MEGA profile
-(100 classes, $\sim$174 teachers, 4 subjects, $\sim$400 cattedre)
-the pipeline reaches HARD-feasibility in \textbf{5.95\,s} with
-\texttt{granularity=curriculum} and all scalability techniques
-enabled. On the smaller HUGE scenario (50 classes,
-$\sim$95 teachers, 200 cattedre) the time is \textbf{2.57\,s}.
-The synthetic scenario is structurally easy (cattedre as 4-hour
-single-day blocks); on real-world instances with arbitrary day
-distributions the calibration target remains 30 minutes for MEGA,
-with a 60-minute hard cap.
-
-\section{Branch-and-Price MVP scaffold (Step 4)}
-\label{sec:bp-mvp-scaffold-en}
-
-Step 4 of the multi-day plan introduces an OO-textbook
-\emph{scaffold} of the Branch-and-Price loop that tightens
-three orthogonal pieces inside one module
-(\texttt{engine/column\_generation.py} with
-\texttt{mode="branch-and-price"}):
-
-\begin{enumerate}
-\item \textbf{\texttt{PhaseBDaySolver}} -- OO wrapper around the
-  legacy \texttt{solve\_phase\_b\_for\_day} function. Exposes the
-  object-oriented interface (\texttt{solve()}, scope access,
-  \texttt{via\_dsl} augmentation) but delegates model
-  construction to the proven legacy code path. Benefit: 100+
-  Phase B regression tests keep passing \emph{by construction};
-  with \texttt{via\_dsl=True} the legacy model is augmented
-  with extra DSL constraints (DB-stored rules + extra
-  expressions passed to the constructor).
-\item \textbf{Ryan-Foster pricing-in-nodes} -- at every RF tree
-  node the CP-SAT pricer is re-invoked with the branch
-  decisions (\texttt{together} / \texttt{apart}) already
-  applied to its model. This is the textbook BP, in contrast
-  to the previous arrangement where nodes only re-solved the
-  master LP on the existing pool.
-\item \textbf{Smoke benchmark} --
-  \texttt{tests/benchmarks/test\_bp\_step4\_smoke.py} runs the
-  full loop (Mono $\to$ initial pool $\to$ master DW $\to$ RF
-  tree $\to$ integer recovery $\to$ completion) on a
-  \texttt{small} scenario (10 classes) and a \texttt{medium}
-  one (28 classes), checking HARD-feasibility and that the soft
-  cost does not regress against the iterative-diversified
-  baseline.
-\end{enumerate}
-
-The flag \texttt{mode="branch-and-price"} activates the full
-path. The previous \texttt{iterative-diversified} mode remains
-the default and continues to act as a primal-heuristic seeder
-of the column pool.
-
-\section{Lagrangian relaxation}
-
-\texttt{engine/lagrangian.py}. Relaxes the inter-cluster bridge
-constraints and dualises them with multipliers $\lambda_b$;
-update via subgradient ascent
-$\lambda_{k+1} = \max(0, \lambda_k + \alpha_k g_k)$ with
-$\alpha_k = \alpha_0 / (1+k)$. Per-iteration refinement via
-Simulated Annealing.
-
-% =====================================================================
-% Optimization deep-dives mirroring the IT manual
-% =====================================================================
+What remains here are the three deep dives that have no home
+elsewhere: the formal \texttt{DayCountModel} for Phase~A; the
+internal anatomy of one Branch-and-Price iteration (master LP,
+nine pricer granularities, Ryan-Foster, dual stabilization,
+EWMA column management, parallel pricing, pricing-in-nodes); and
+the \emph{tightness} criterion for deciding how much
+metaheuristic exploration is worth running after Phase~B.
 
 \section{Phase A: the formal \emph{day count} model}
 \label{sec:phase-a-formal-en}
@@ -198,44 +90,19 @@ identical to the legacy \texttt{solve\_phase\_a}
 \label{tab:phase-a-pragmas-en}
 \end{table}
 
-\section{Phase B: four decomposition algorithms compared}
-\label{sec:phase-b-decomp-en}
-\index{Phase B}\index{decomposition!spectral}
+\section{Phase B: the Cheeger bound on bridges}
+\label{sec:phase-b-decomp-bound-en}
+\index{Phase B}\index{Cheeger (bound)}
 
-\begin{table}[h]
-\centering
-\sffamily\small
-\begin{tabular}{p{2.6cm}p{4.4cm}p{4.4cm}}
-\toprule
-Method & Pro & Con \\
-\midrule
-\textbf{spectral} &
-  natural partition of teachers into near-disjoint pools, small
-  bridge set &
-  costs an eigendecomposition ($O(n^3)$ in teachers); K-means
-  randomness \\
-\textbf{temporal} &
-  trivially parallel (one day per worker); predictable times &
-  no inter-day interaction $\Rightarrow$ daily constraints are
-  perfect, weekly ones must be stitched \\
-\textbf{curriculum} &
-  reflects the school's organisational structure
-  (Scientific, Linguistic, \dots) &
-  uneven curricula $\Rightarrow$ manual load balancing, risk of
-  a 50-class cluster \\
-\textbf{metis}~\parencite{karypis1998metis} &
-  balanced clusters by construction (target $\pm 5\%$);
-  globally minimum cuts &
-  depends on \texttt{networkx-metis}; less transparent for
-  debugging \\
-\bottomrule
-\end{tabular}
-\caption{Phase~B decomposition: pros and cons. \emph{spectral}
-is the default; \emph{temporal} is preferred when daily
-constraints dominate (last-minute substitutions); \emph{metis}
-on MEGA when K-means randomness yields imbalanced clusters.}
-\label{tab:decomp-methods-en}
-\end{table}
+The four Phase~B decomposition alternatives (spectral,
+temporal, curriculum, metis) and the operational selection
+criteria are treated in the spectral decomposition chapter
+(Italian edition, \texttt{metodo\_spettrale.tex}, section
+``Three alternatives to spectral decomposition''). What remains
+here is the \emph{quantitative} result that explains
+\emph{why} spectral typically produces fewer bridges than its
+competitors: the link between the second Laplacian eigenvalue
+and the number of inter-cluster edges.
 
 \begin{figure}[h]
 \centering
@@ -258,9 +125,27 @@ Consequence: fewer bridges for the stitch step, less latent
 infeasibility across clusters.
 \end{proposition}
 
-\section{\texttt{cp\_sat\_scope=week}: the monolithic model}
-\label{sec:scope-week-mono-en}
+\begin{proof}
+The classical Cheeger bound~\parencite{chung1997} on the
+normalized cut $h(G) \ge \lambda_2(L_{\mathrm{sym}})/2$ implies
+that, picking clusters as the level sets of an eigenvector
+associated with $\lambda_2$, the number of edges cut is at most
+$O(\sqrt{\lambda_2 \cdot |E|})$. For a school graph
+$\lambda_2$ is typically small (well-separated natural clusters),
+so the number of bridges is reduced. See the Italian
+\texttt{metodo\_spettrale} chapter for the full derivation of
+the Fiedler vector and the bound.
+\end{proof}
+
+\section{\texttt{cp\_sat\_scope=week}: exercise numbers}
+\label{sec:scope-week-numbers-en}
 \index{cp\_sat\_scope}\index{MonolithicSolver}
+
+The \texttt{cp\_sat\_scope=week} mode is described in detail in
+the optimization workflow chapter (\texttt{workflow\_di\_ottimizzazione.tex},
+section ``CP-SAT scope and Phase~A mode''). What stays here are
+the \emph{sizes} observed in production, useful for sizing RAM
+and time budget.
 
 \begin{statsbox}
 \begin{itemize}
@@ -277,6 +162,16 @@ infeasibility across clusters.
 \section{Branch-and-Price: anatomy of one iteration}
 \label{sec:bp-anatomy-en}
 \index{Branch-and-Price}
+
+The basic idea of column generation (master LP + pricer
+generating columns from dual prices) is introduced in the
+Lagrangian chapter (Italian edition,
+\texttt{metodo\_lagrangian.tex}, section ``Column Generation: the
+real-estate catalogue''). What follows is the detail of
+\emph{how} \texttt{piTantum} implements the full version with all
+the scalability techniques required for MEGA instances: the
+master structure, the nine pricer granularities, and the five
+scalability techniques composed around the loop.
 
 \begin{figure}[h]
 \centering
@@ -338,6 +233,12 @@ None dominates the others.}
 \label{tab:bp-granularity-en}
 \end{table}
 
+For every iteration the pricer receives the master duals $\pi$
+and solves a CP-SAT with reduced-cost objective
+$\bar{c}_j = c_j - \pi^\top a_j$. If $\bar{c}_j < 0$, column $j$
+enters the master; when no pricer finds a negative column the
+iteration terminates.
+
 \begin{figure}[h]
 \centering
 \includegraphics[width=\linewidth]{manual/figures/fig_bp_iter_progress}
@@ -349,6 +250,29 @@ change enough. Iter=1 \texttt{no\_improving\_column} runs
 correspond to seed catalogues already optimal.}
 \label{fig:bp-iter-progress-en}
 \end{figure}
+
+\subsection{\texttt{PhaseBDaySolver}: OO wrapper around the legacy}
+\label{sec:bp-mvp-scaffold-en}
+
+A practical difficulty in the Phase~B refactor toward BP is
+that the legacy \texttt{solve\_phase\_b\_for\_day} function is
+covered by 100+ regression tests: a from-scratch rewrite risked
+breaking subtle behaviours that the tests captured by
+construction. Step~4 solves this with an \emph{OO wrapper} that
+exposes the object-oriented interface required by the new BP
+(\texttt{solve()}, scope access, \texttt{via\_dsl} augmentation)
+but delegates model construction to the proven legacy code.
+Consequence: 100+ regression tests keep passing \emph{by
+construction}; with \texttt{via\_dsl=True} the legacy model is
+augmented with extra DSL constraints (DB-stored rules + extra
+expressions passed to the constructor). The smoke test
+\texttt{tests/benchmarks/test\_bp\_step4\_smoke.py} runs the
+full loop (Mono $\to$ initial pool $\to$ master DW $\to$ RF
+tree $\to$ integer recovery $\to$ completion) on a
+\texttt{small} scenario (10 classes) and a \texttt{medium}
+one (28 classes), checking HARD-feasibility and that the soft
+cost does not regress against the \emph{iterative-diversified}
+baseline.
 
 \subsection{Ryan-Foster recursive tree}
 
@@ -375,7 +299,7 @@ and \textbf{apart} (must exclude one).
 
 \begin{theorem}[Branch-and-Price termination]
 If CP-SAT pricers always terminate (column found or proved
-absent) and Ryan-Foster has finite depth cap, the BP loop
+absent) and Ryan-Foster has a finite depth cap, the BP loop
 terminates in finite time with an integer solution optimal for
 the cover relaxation.
 \end{theorem}
@@ -386,7 +310,9 @@ Master duals oscillate between iterations (degeneracy). The
 box-step scheme keeps a smoothed
 $\pi_{\text{stable}}$ and feeds the pricers
 $\pi_{\text{blend}} = (1-\alpha)\pi_{\text{stable}} +
-\alpha \pi_{\text{raw}}$ with $\alpha = 0.2$.
+\alpha \pi_{\text{raw}}$ with $\alpha = 0.2$. Enough to reduce
+by $40$--$60\%$ the number of iterations in which the pricer
+returns a false-positive ``no improving column''.
 
 \subsection{EWMA column management}
 
@@ -401,7 +327,11 @@ Steady-state pool size: $\sim 8\,000$ columns.
 
 CP-SAT pricers across granularities are independent: the BP
 loop runs them in parallel via \texttt{ProcessPoolExecutor}
-with \texttt{workers = $\lfloor$cpu\_count() / 2$\rfloor$}.
+with \texttt{workers = $\lfloor$cpu\_count() / 2$\rfloor$}. The
+\texttt{cpu/2} split is empirical: leaving half the CPU to the
+master LP reduces context switching. \texttt{ThreadPoolExecutor}
+is not an option here: the OR-tools binding releases the GIL
+only partially, and CP-SAT pricing is CPU-bound.
 
 \begin{figure}[h]
 \centering
@@ -421,8 +351,26 @@ CP-SAT model. The benefit: search space at each depth shrinks
 \emph{structurally}, and the quality of generated columns
 grows.
 
+\subsection{Measured numbers}
+
 \begin{statsbox}
-Synthetic numbers from MEGA real (1493\,s total):
+Synthetic MEGA benchmark
+(\texttt{tests/benchmarks/test\_bp\_huge\_mega.py}):
+\begin{itemize}
+\item MEGA scenario (100 classes, $\sim$174 teachers, 4
+  subjects, $\sim$400 cattedre): HARD-feasibility in
+  \textbf{5.95\,s} with \texttt{granularity=curriculum} and all
+  scalability techniques enabled.
+\item HUGE scenario (50 classes, $\sim$95 teachers, 200
+  cattedre): \textbf{2.57\,s}.
+\item The synthetic scenario is structurally easy (cattedre as
+  4-hour single-day blocks); on real instances with arbitrary
+  day distributions the calibration target stays at 30 minutes
+  for MEGA, with a 60-minute hard cap.
+\end{itemize}
+
+MEGA real (100 classes, 178 teachers, 2653 cattedra-day; total
+wall 1493\,s):
 \begin{itemize}
 \item Phase~A: 301\,s (20\%)
 \item BP loop (5 iterations): 1192\,s (80\%)
@@ -441,42 +389,23 @@ breakdown of total wall-clock 1493\,s into Phase~A
 \label{fig:mega-real-breakdown-en}
 \end{figure}
 
-\section{Metaheuristics: a decision matrix}
-\label{sec:meta-decision-matrix-en}
-\index{metaheuristics}\index{ALNS}
+\section{The tightness criterion: how much metaheuristic exploration is worth running}
+\label{sec:meta-tightness-en}
+\index{tightness}\index{metaheuristics}
 
-\texttt{piTantum}'s metaheuristics are post-processing: take a
-HARD-feasible solution and polish the SOFT. All respect
-\texttt{is\_hard\_feasible} and delegate micro-fix to
-\texttt{PhaseBDaySolver(\_cp\_repair)}.
+The six metaheuristics (LNS, ALNS, SA, TS, ILS, VNS) and their
+typical contexts are described in the Italian
+\texttt{metodo\_metaeuristiche.tex} chapter. What remains here
+is the quantitative criterion for deciding, before launching,
+\emph{how much} metaheuristic budget is worth spending on an
+instance. \texttt{piTantum}'s answer is the
+\emph{tightness score}.
 
 The canonical treatment of ALNS is Pisinger and
 Ropke~\parencite{pisinger2010,ropke2006_orig}; the surveys of
 Burke and Petrovic~\parencite{burke2002} and
 Pillay~\parencite{pillay2014} are the standard references for
 educational timetabling at large.
-
-\begin{table}[h]
-\centering
-\sffamily\small
-\begin{tabular}{p{2.0cm}p{4.0cm}p{4.6cm}}
-\toprule
-Method & Neighbourhood & When \\
-\midrule
-\textbf{LNS}        & destroy random window + CP-SAT repair       & default; window $\sim 30\%$ of lessons \\
-\textbf{ALNS}       & 6 destroys + 3 repairs, roulette wheel      & default for medium/large schools \\
-\textbf{SA}         & single-swap, Metropolis acceptance          & final smoothing; fast \\
-\textbf{TS}         & best-improvement with tabu list             & breaks plateaus when SOFT stabilises \\
-\textbf{ILS}        & TS + perturbative kicks (4-opt)             & escape good local optima \\
-\textbf{VNS}        & 1/2/3-swap + gradual k-opt                  & robust, slow; rarely in production \\
-\textbf{Lagrangian} & relax bridges + subgradient ascent          & only for multi-plesso schools with dense bridges \\
-\bottomrule
-\end{tabular}
-\caption{Seven metaheuristics, all selectable from the
-Workflow tab via the ``Post-Phase~B'' dropdown. The default
-cascade is LNS \texttt{->} ALNS \texttt{->} SA.}
-\label{tab:meta-decision-matrix-en}
-\end{table}
 
 \begin{figure}[h]
 \centering
@@ -487,8 +416,6 @@ The ivory band is the metaheuristic spread, growing with
 tightness.}
 \label{fig:tightness-band-en}
 \end{figure}
-
-\subsection{The tightness criterion}
 
 \texttt{piTantum} computes a \emph{tightness score} that
 measures how tight the available slots are versus demand:

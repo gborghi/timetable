@@ -1,47 +1,55 @@
 \chapter{UI guide}
 \label{ch:guida_ui_en}
 
-Tour of the SvelteKit tabs: dashboard, anagrafica (teachers /
-classes / students / classrooms / \emph{ore}), assignments, monitor,
-optimize (with iterative-diversified and branch-and-price modes),
-diagnostics, runs.
+Didactic tour of the sixteen tabs of the web interface, grouped
+in five families:
 
-\section*{Working hours configuration (Tab Ore)}
+\begin{enumerate}
+  \item \textbf{Start}: Dashboard, Bulk import.
+  \item \textbf{Registry}: Plessi, Teachers, Classes, Tracks,
+    Students, Groups, Subjects, Classrooms, Cattedre.
+  \item \textbf{Constraints}: Working hours, Constraints (HARD /
+    PREFERRED / ENFORCED / SOFT / ALLOWED matrices).
+  \item \textbf{Computation}: Workflow (Phase A / Phase B /
+    metaheuristics / classroom assignment), Runs.
+  \item \textbf{Result}: Timetable, Monitor, Diagnostics, Quality.
+\end{enumerate}
 
-The \texttt{/ore} tab lets the school administrator configure the
-working week:
-\begin{itemize}
-  \item which days are active (default: Mon-Sat);
-  \item how many timetable slots each day has and at what times
-        (default: 6 slots, 08:00-14:00).
-\end{itemize}
+Modes supported by the Workflow tab: \texttt{iterative-diversified}
+(default) and \texttt{branch-and-price}. Each tab section in the
+Italian edition lists the fields, the buttons, common
+suggestions (\emph{suggerimenti}), warnings (\emph{attenzioni}),
+and frequent errors.
 
-Slots are stored as 0-based indices internally
+\section*{Working hours configuration (Ore tab)}
+
+The \texttt{/ore} tab lets the administrator configure the
+working week: which days are active (default Mon--Sat), how
+many slots per day, and the start/end times (default 6 slots,
+08:00--14:00). Slots are stored as 0-based indices internally
 (\texttt{WorkingHourSlot.slot\_index}), with explicit
-\texttt{start\_time}/\texttt{end\_time} (HH:MM strings) used only
-for display in the weekly calendar view and reports. Days carry a
-\texttt{position} that the engine consumes as \texttt{day\_idx}, plus
-a \texttt{legacy\_day\_number} (1..7) that keeps backward
-compatibility with the existing \texttt{teacher\_unavailability} /
-\texttt{class\_unavailability} / \texttt{classroom\_unavailability}
-rows keyed on the historical DAYS=[1..6] / HOURS=[8..13]
-convention.
+\texttt{start\_time} / \texttt{end\_time} (HH:MM strings) used
+only for display. Days carry a \texttt{position} consumed as
+\texttt{day\_idx}, plus a \texttt{legacy\_day\_number} (1..7)
+that keeps backward compatibility with the historical
+\texttt{teacher\_unavailability} / \texttt{class\_unavailability}
+/ \texttt{classroom\_unavailability} rows keyed on DAYS=[1..6] /
+HOURS=[8..13].
 
 The engine reads this configuration through
-\texttt{engine/working\_hours\_config.py}, which falls back to the
-legacy hardcoded defaults whenever the \texttt{working\_days} table
-is missing or empty so old DBs keep working unchanged.
-
-The unavailability matrices on the Teachers / Classes / Classrooms
-tabs were migrated to a new reusable
+\texttt{engine/working\_hours\_config.py}, which falls back to
+the legacy hardcoded defaults whenever the \texttt{working\_days}
+table is missing or empty so old DBs keep working unchanged.
+The unavailability matrices on the Teachers / Classes /
+Classrooms tabs were migrated to a reusable
 \texttt{<WeeklyCalendarView />} component that consumes the same
-configuration: identical color palette, click-cycle and keyboard
-shortcuts (\texttt{H}/\texttt{P}/\texttt{E}/\texttt{D}/\texttt{A}/
-\texttt{N} + click for HARD/PREFERRED/ENFORCED/SOFT/ALLOWED/RESET)
-as the previous \texttt{AvailabilityMatrix}, but with columns
-driven by the active working days and slot times rendered from
-the configuration.
+configuration: same colour palette, same click-cycle, same
+keyboard shortcuts
+(\texttt{H} / \texttt{P} / \texttt{E} / \texttt{D} / \texttt{A} /
+\texttt{N} + click for HARD / PREFERRED / ENFORCED / SOFT /
+ALLOWED / RESET), but with columns driven by the active working
+days and slot times rendered from the configuration.
 
 \medskip
 \noindent
-\textit{This chapter is an English summary of the corresponding Italian chapter. The full text remains in the Italian edition (\texttt{docs/manual/chapters/guida\_ui.tex}). For the implementation references see the engine modules in \texttt{engine/} and the API documentation at \texttt{docs/api.md}.}
+\textit{This chapter is an English summary of the corresponding Italian chapter. The full per-tab walkthrough remains in the Italian edition (\texttt{docs/manual/chapters/guida\_ui.tex}); for the typical step-by-step procedures see also \texttt{docs/manual/chapters/workflow\_tipici.tex}.}

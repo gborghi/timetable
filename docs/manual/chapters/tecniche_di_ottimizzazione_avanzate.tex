@@ -4,14 +4,29 @@
 \epigraph{``In theory, there is no difference between theory
 and practice. In practice, there is.''}{Yogi Berra (attribuito)}
 
-\lettrine[lines=3]{O}{ltre} alle metaeuristiche classiche (LNS /
-SA / TS / ILS) il progetto include cinque tecniche aggiuntive.
-Vedere \texttt{docs/optimization\_strategies.md} per la
-specifica completa. Questo capitolo entra nel merito
-\emph{matematico} di ciascuna: la formulazione del problema
-risolto, l'algoritmo di base, gli iperparametri tipici, i
-criteri di convergenza, e -- importante per una scelta
-informata -- quando una tecnica brilla rispetto alle altre.
+\lettrine[lines=3]{Q}{uesto} capitolo entra nel merito
+\emph{matematico avanzato} di alcune tecniche del sistema. Le
+metaeuristiche base (LNS, ALNS, SA, TS, ILS, VNS), il
+pre-controllo di Hall e l'idea generale del rilassamento
+lagrangiano e della column generation sono gi\`a spiegati nei
+rispettivi capitoli dedicati: il cap.~\ref{ch:metodo_metaeuristiche}
+copre i sei metaeuristici; il cap.~\ref{ch:metodo_hall} il
+pre-check di Hall; il cap.~\ref{ch:metodo_lagrangian} il
+rilassamento lagrangiano e la column generation di base. Le
+quattro alternative di decomposizione di Phase~B (spectral,
+temporal, curriculum, metis) e il criterio di scelta sono
+descritti nel cap.~\ref{ch:metodo_spettrale}; le due modalit\`a
+\texttt{cp\_sat\_scope} e \texttt{phase\_a\_mode} sono trattate
+nel cap.~\ref{ch:workflow_di_ottimizzazione}.
+
+Qui restano i tre approfondimenti che non hanno casa altrove:
+la formulazione formale del modello \texttt{DayCountModel} di
+Phase~A, il dettaglio interno di un'iterazione di
+Branch-and-Price (master LP, pricer su nove granularit\`a,
+Ryan-Foster, stabilizzazione duale, column management EWMA,
+parallel pricing, pricing-in-nodes), e il criterio della
+\emph{tightness} per decidere quanta esplorazione metaeuristica
+serve dopo Phase~B.
 
 \begin{figure}[h]
 \centering
@@ -25,127 +40,6 @@ B in un unico master Dantzig-Wolfe con loop di pricing
 CP-SAT.}
 \label{fig:pipeline-fasi}
 \end{figure}
-
-\section{Adaptive Large Neighborhood Search (ALNS)}
-
-\texttt{experiments/alns.py}. Sei destroy operator
-(random\_window, day\_cluster, worst\_fit\_day, teacher\_day,
-classroom\_day, single\_class\_week) e tre repair operator
-(cp\_sat\_window, greedy\_by\_soft, bfs\_fill\_back) selezionati
-con roulette wheel sopra exponentially-decayed scores;
-acceptance SA-like.
-
-\section{Variable Neighborhood Search (VNS)}
-
-\texttt{experiments/vns.py}. Cicla quattro vicinati di dimensione
-crescente (1-swap, 2-swap, 3-chain, k-opt con $k\in[4,6]$). Ad
-ogni miglioramento riparte dal vicinato 1; termina quando
-un'intera passata 1$\to$4 non trova nulla.
-
-\section{Hall's theorem pre-check}
-
-\texttt{experiments/diagnostics/hall\_check.py}. Diagnostico
-sincrono pre-Phase-A. Tre controlli:
-\begin{enumerate}
-  \item per (class, subject) coverage,
-  \item subject supply vs demand,
-  \item Hall sampling random-subset con sottoinsiemi esclusivi.
-\end{enumerate}
-Esposto in \emph{tre} punti UI: bottone inline in PhaseACard,
-riga in AdvancedTechniquesCard, sezione del tab Statistiche.
-
-\section{Column Generation e Branch-and-Price avanzato}
-
-\texttt{engine/column\_generation.py}. Master LP via
-\texttt{scipy.linprog} HiGHS; otto pricer CP-SAT dedicati a
-granularit\`a diverse (\texttt{teacher}, \texttt{teacher-day},
-\texttt{teacher-class}, \texttt{teacher-class-subject},
-\texttt{teacher-subject}, \texttt{class}, \texttt{class-day},
-\texttt{day}, \texttt{curriculum}); modalit\`a
-\texttt{branch-and-price} con tutte le quattro tecniche di
-scalabilit\`a per istanze MEGA:
-
-\begin{itemize}
-\item \textbf{Ryan-Foster recursive tree} con scoring di
-   Achterberg sui pair frazionari, best-first search con prune
-   sul lower bound, cap a profondit\`a 20 / 1000 nodi.
-\item \textbf{Box-step dual stabilization}
-   $\pi_{\text{blend}} = (1-\alpha)\pi_{\text{stable}}
-   + \alpha\pi_{\text{raw}}$ con $\alpha=0{,}2$.
-\item \textbf{Column management}: EWMA del reduced cost per
-   colonna su 20 iter, purge delle peggiori quando il pool
-   eccede 10\,000 colonne (preservando le seed e quelle in
-   basis).
-\item \textbf{Parallel pricing} via
-   \texttt{ProcessPoolExecutor} (default $\lfloor
-   \texttt{os.cpu\_count()}/2 \rfloor$ worker).
-\end{itemize}
-
-\subsection*{Numeri misurati (benchmark sintetico MEGA)}
-
-Vedi \texttt{tests/benchmarks/test\_bp\_mega.py}. Su uno
-scenario sintetico mega\_100 (100 classi, 100 docenti,
-4 materie, $\sim$400 cattedre) la pipeline raggiunge
-HARD-feasibility in \textbf{5{,}22 s} con
-\texttt{granularity=curriculum} e tutte le tecniche di
-scalabilit\`a abilitate. Su uno scenario mega\_50 (50 classi,
-48 docenti, 200 cattedre) il tempo \`e \textbf{1{,}93 s}. Lo
-scenario sintetico e' strutturalmente facile (cattedre come
-blocchi di 4 ore in singoli giorni); su istanze reali con
-distribuzione giornaliera meno regolare l'obiettivo di
-calibrazione \`e 30 minuti per il MEGA, hard cap 60 minuti.
-
-\section{Lagrangian Relaxation}
-
-\texttt{experiments/lagrangian.py}. Rilassa i ponti
-inter-cluster e li dualizza con multipliers $\lambda_b$;
-aggiornamento via subgradient ascent
-$\lambda_{k+1} = \max(0, \lambda_k + \alpha_k g_k)$ con
-$\alpha_k = \alpha_0 / (1+k)$. Per-iteration refinement via SA.
-
-\section{Branch-and-Price MVP scaffold (Step 4)}
-\label{sec:bp-mvp-scaffold}
-
-Step 4 del piano multi-day introduce uno \emph{scaffold} OO
-testuale per il loop di Branch-and-Price che, in un singolo
-modulo (\texttt{engine/column\_generation.py} con flag
-\texttt{mode="branch-and-price"}), tiene insieme tre componenti
-ortogonali:
-
-\begin{enumerate}
-\item \textbf{\texttt{PhaseBDaySolver}} -- wrapper OO sulla
-  funzione legacy \texttt{solve\_phase\_b\_for\_day}. Espone
-  l'interfaccia object-oriented (\texttt{solve()}, scope
-  d'azione, augmentation via DSL) ma delega la costruzione del
-  modello al codice provato. Vantaggio: 100+ test di regressione
-  Phase B continuano a passare \emph{by construction}; quando
-  \texttt{via\_dsl=True}, il modello legacy viene esteso con
-  vincoli DSL aggiuntivi (le regole DB e le espressioni extra
-  passate al costruttore).
-\item \textbf{Ryan-Foster pricing-in-nodes} -- ad ogni nodo
-  dell'albero RF si rilancia il pricer CP-SAT con i vincoli
-  ramo (\texttt{together}/\texttt{apart}) gi\`a applicati;
-  questo \`e il textbook BP, contrapposto al precedente che
-  esplorava i nodi solo via re-solve del master sul pool
-  esistente.
-\item \textbf{Smoke benchmark} --
-  \texttt{tests/benchmarks/test\_bp\_step4\_smoke.py} esegue il
-  loop completo (Mono $\to$ pool inziale $\to$ master DW $\to$
-  RF tree $\to$ integer recovery $\to$ completion) su uno
-  scenario \texttt{small} (10 classi) e su uno \texttt{medium}
-  (28 classi), verificando HARD-feasibility e che il soft cost
-  non aumenti rispetto alla pipeline iterative-diversified.
-\end{enumerate}
-
-Il flag \texttt{mode="branch-and-price"} attiva il path
-completo. La modalit\`a precedente
-(\texttt{iterative-diversified}) resta il default e continua a
-funzionare come pre-passo di seeding del pool.
-
-% =====================================================================
-% Approfondimenti aggiunti -- Phase A formulazione, Phase B decomp.,
-% BP textbook, metaheuristics decision matrix
-% =====================================================================
 
 \section{Phase A: il modello matematico del \emph{day count}}
 \label{sec:phase-a-formal}
@@ -230,54 +124,18 @@ identico (zero-drift) al solver legacy
 \label{tab:phase-a-pragmas}
 \end{table}
 
-\section{Phase B: quattro algoritmi di decomposizione a confronto}
-\label{sec:phase-b-decomp}
-\index{Phase B}\index{decomposizione!spectral}\index{decomposizione!metis}
+\section{Phase B: il bound di Cheeger sui ponti}
+\label{sec:phase-b-decomp-bound}
+\index{Phase B}\index{Cheeger (bound)}
 
-Quando l'istanza supera le 30 classi il solver CP-SAT integrale
-(\texttt{cp\_sat\_scope=week} senza decomposizione) fatica:
-i workers spendono il loro tempo a cercare nei rami sbagliati
-dello spazio di ricerca. La pipeline standard usa allora una
-decomposizione che spezza il problema in sotto-problemi
-parzialmente indipendenti.
-
-\begin{table}[h]
-\centering
-\sffamily\small
-\begin{tabular}{p{2.6cm}p{4.4cm}p{4.4cm}}
-\toprule
-Metodo & Pro & Contro \\
-\midrule
-\textbf{spectral} &
-  partizione naturale dei docenti in pool quasi-disgiunti,
-  bridges piccoli &
-  costa una eigendecomp. ($O(n^3)$ rispetto al numero di
-  docenti); randomness del K-means \\
-\textbf{temporal} &
-  trivialmente parallelo (un giorno per worker); tempi
-  prevedibili &
-  nessuna interazione fra giorni $\Rightarrow$ vincoli
-  giornalieri perfetti, vincoli settimanali ricuciti
-  manualmente \\
-\textbf{curriculum} &
-  riflette la struttura organizzativa della scuola
-  (Scientifico, Linguistico, ...) &
-  curriculi di taglia disomogenea $\Rightarrow$ load balancing
-  manuale, risk di un cluster da 50 classi \\
-\textbf{metis} &
-  cluster bilanciati per costruzione (target $\pm 5\%$);
-  cuts globalmente minimi &
-  dipendenza da \texttt{networkx-metis}; meno trasparente per
-  il debugging \\
-\bottomrule
-\end{tabular}
-\caption{Decomposizione di Phase~B: pro e contro. \emph{spectral}
-\`e il default di \texttt{piTantum}; \emph{temporal} \`e
-preferito per scuole con vincoli giornalieri forti (sostituzioni
-dell'ultim'ora); \emph{metis} per istanze MEGA quando la
-randomness di K-means produce cluster troppo squilibrati.}
-\label{tab:decomp-methods}
-\end{table}
+Le quattro alternative di decomposizione di Phase~B (spectral,
+temporal, curriculum, metis) e i criteri operativi di scelta
+sono trattati nel cap.~\ref{ch:metodo_spettrale}, sezione
+``Tre alternative alla decomposizione spettrale''. Qui resta il
+risultato \emph{quantitativo} che spiega \emph{perch\'e} lo
+spettrale produca tipicamente meno ponti dei suoi concorrenti:
+il legame fra il secondo autovalore del Laplaciano e il numero
+di archi inter-cluster.
 
 \begin{figure}[h]
 \centering
@@ -311,40 +169,19 @@ $\lambda_2$, il numero di archi tagliati \`e al pi\`u
 $O(\sqrt{\lambda_2 \cdot |E|})$. Per il grafo della scuola
 $\lambda_2$ \`e tipicamente piccolo (cluster naturali
 ben separati), e quindi il numero di bridge \`e ridotto. Vedere
-sez.~\ref{ch:metodo_spettrale} per la dimostrazione completa.
+cap.~\ref{ch:metodo_spettrale} per la derivazione completa del
+vettore di Fiedler e del bound.
 \end{proof}
 
-\subsection{Quando scegliere quale metodo}
-
-\begin{itemize}
-\item \texttt{spectral}: prima scelta. Default di
-  \texttt{piTantum}, robusto su 90\,\% delle istanze reali.
-\item \texttt{temporal}: quando i vincoli giornalieri dominano
-  (es.\ scuola con molte sostituzioni o calendario perpetuo
-  ribaltato in corso d'anno) e la stitchatura settimanale \`e
-  marginale.
-\item \texttt{curriculum}: quando la scuola \`e fortemente
-  segmentata in indirizzi disgiunti (es.\ liceo classico +
-  scientifico + linguistico in plessi separati) e
-  \texttt{spectral} riproduce comunque quel taglio.
-\item \texttt{metis}~\parencite{karypis1998metis}: scelta per
-  scenari MEGA quando \texttt{spectral} produce un cluster
-  sproporzionato
-  (verifica con \texttt{n\_classes\_per\_cluster} dispari). Il
-  controllo automatico \texttt{spectral\_balance\_check}
-  suggerisce \texttt{metis} se la deviazione standard supera il
-  20\,\% della media.
-\end{itemize}
-
-\section{\texttt{cp\_sat\_scope=week}: il modello monolitico}
-\label{sec:scope-week-mono}
+\section{\texttt{cp\_sat\_scope=week}: i numeri di esercizio}
+\label{sec:scope-week-numbers}
 \index{cp\_sat\_scope}\index{MonolithicSolver}
 
-La modalit\`a \texttt{cp\_sat\_scope=week} bypassa la
-decomposizione: il \texttt{MonolithicSolver(scope=None)} costruisce
-\emph{un solo} modello CP-SAT con tutti i 6 giorni $\times$ 6 ore
-$\times$ $|T|$ $\times$ $|C|$ $\times$ $|S|$ slot, e lo affida
-ai workers OR-Tools.
+La modalit\`a \texttt{cp\_sat\_scope=week} \`e descritta in
+dettaglio nel cap.~\ref{ch:workflow_di_ottimizzazione}, sezione
+``Scope del solver CP-SAT''. Qui si riporta soltanto la
+\emph{taglia} osservata in produzione, utile per dimensionare
+RAM e time budget.
 
 \begin{statsbox}
 \begin{itemize}
@@ -363,6 +200,16 @@ ai workers OR-Tools.
 \section{Branch-and-Price: anatomia di una iterazione}
 \label{sec:bp-anatomia}
 \index{Branch-and-Price}\index{Dantzig-Wolfe!decomposizione}
+
+L'idea di base della column generation (master LP + pricer che
+genera colonne in base ai duali) \`e introdotta nel
+cap.~\ref{ch:metodo_lagrangian}, sezione ``Column Generation: il
+catalogo immobiliare''. Qui si entra nel dettaglio di
+\emph{come} \texttt{piTantum} implementa la versione completa
+con tutte le tecniche di scalabilit\`a per istanze MEGA: la
+struttura del master, le nove granularit\`a del pricer
+CP-SAT, e le cinque tecniche di scalabilit\`a composte attorno
+al loop.
 
 La formulazione moderna di Branch-and-Price unifica
 \emph{column generation} e \emph{branch-and-bound} sotto un
@@ -428,7 +275,7 @@ Granularit\`a & Codifica colonna & Quando usarla \\
   pattern = orario settimanale di una cattedra (t,c) &
   copertura singolarmente decisa \\
 \texttt{teacher-class-subject} &
-  pattern = orario di un \emph{slot di cattedra} (t,c,s) &
+  pattern = orario di uno \emph{slot di cattedra} (t,c,s) &
   scuole medie con vincoli sostegno-curricolo intersecati \\
 \texttt{teacher-subject} &
   pattern = orario settimanale di una (t,s) &
@@ -437,7 +284,7 @@ Granularit\`a & Codifica colonna & Quando usarla \\
   pattern = orario settimanale di una classe &
   vincoli classe forti, p.\ es.\ niente buchi \\
 \texttt{class-day} &
-  pattern = orario di un (classe, giorno) &
+  pattern = orario di una (classe, giorno) &
   vincoli giornalieri di classe (h3 a 11) \\
 \texttt{day} &
   pattern = orario completo di un giorno &
@@ -473,6 +320,28 @@ abbastanza per migliorare. Le iterazioni terminate con
 catalogs gi\`a ottimi sul rispettivo cover.}
 \label{fig:bp-iter-progress}
 \end{figure}
+
+\subsection{\texttt{PhaseBDaySolver}: wrapper OO sulla legacy}
+\label{sec:bp-mvp-scaffold}
+
+Una difficolt\`a pratica del refactor di Phase~B verso BP \`e
+che il codice legacy \texttt{solve\_phase\_b\_for\_day} \`e
+coperto da 100+ test di regressione: riscriverlo da zero
+significava rischiare di rompere comportamenti sottili che i
+test catturavano per costruzione. Lo Step 4 risolve la cosa
+con un \emph{wrapper OO} che espone l'interfaccia
+orientata-agli-oggetti del nuovo BP (\texttt{solve()}, scope
+d'azione, augmentation via DSL) ma delega la costruzione del
+modello al codice legacy. Conseguenza: 100+ test continuano a
+passare \emph{by construction}; quando \texttt{via\_dsl=True},
+il modello legacy viene esteso con vincoli DSL aggiuntivi (le
+regole DB e le espressioni extra passate al costruttore). Lo
+smoke test \texttt{tests/benchmarks/test\_bp\_step4\_smoke.py}
+esegue il loop completo (Mono $\to$ pool iniziale $\to$ master
+DW $\to$ RF tree $\to$ integer recovery $\to$ completion) su
+uno scenario \texttt{small} (10 classi) e su uno \texttt{medium}
+(28 classi), verificando HARD-feasibility e che il soft cost
+non aumenti rispetto alla pipeline \emph{iterative-diversified}.
 
 \subsection{Ryan-Foster recursive tree}
 
@@ -536,7 +405,9 @@ loop BP li lancia in parallelo via
 \texttt{ProcessPoolExecutor} con
 \texttt{workers = $\lfloor$cpu\_count() / 2$\rfloor$}. La
 divisione \texttt{cpu/2} \`e empirica: lasciare met\`a CPU al
-master LP riduce il context switching.
+master LP riduce il context switching. Non si pu\`o usare
+\texttt{ThreadPoolExecutor}: il binding OR-tools rilascia il GIL
+solo in parte, e il pricing CP-SAT \`e CPU-bound.
 
 \begin{figure}[h]
 \centering
@@ -561,11 +432,28 @@ beneficio: lo spazio di ricerca esplorato dal pricer si riduce
 \emph{strutturalmente} a ogni livello di profondit\`a, e la
 qualit\`a delle colonne generate cresce.
 
+\subsection{Numeri misurati}
+
 \begin{statsbox}
-Numeri sintetici dello scenario MEGA reale (1493 s totali):
+Benchmark sintetico MEGA (\texttt{tests/benchmarks/test\_bp\_mega.py}):
 \begin{itemize}
-\item Phase~A: 301 s (20\,\%)
-\item BP loop (5 iterazioni): 1192 s (80\,\%)
+\item mega\_100 (100 classi, 100 docenti, 4 materie, $\sim$400
+  cattedre): HARD-feasibility in \textbf{5{,}22\,s} con
+  \texttt{granularity=curriculum} e tutte le tecniche di
+  scalabilit\`a attive.
+\item mega\_50 (50 classi, 48 docenti, 200 cattedre):
+  \textbf{1{,}93\,s}.
+\item Lo scenario sintetico e' strutturalmente facile (cattedre
+  come blocchi di 4 ore in singoli giorni); su istanze reali con
+  distribuzione giornaliera meno regolare l'obiettivo di
+  calibrazione \`e 30 minuti per il MEGA, hard cap 60 minuti.
+\end{itemize}
+
+MEGA reale (100 classi, 178 docenti, 2653 cattedra-day; wall
+totale 1493\,s):
+\begin{itemize}
+\item Phase~A: 301\,s (20\,\%)
+\item BP loop (5 iterazioni): 1192\,s (80\,\%)
 \item Soft cost finale: 530
 \item Colonne finali nel pool: 2075
 \end{itemize}
@@ -582,51 +470,23 @@ perch\'e BP produce gi\`a una soluzione integer e HARD-feasible.}
 \label{fig:mega-real-breakdown}
 \end{figure}
 
-\section{Metaeuristiche: una matrice di scelta}
-\label{sec:meta-decision-matrix}
-\index{metaeuristiche}\index{ALNS}\index{LNS}
+\section{Il criterio della tightness: quanta esplorazione metaeuristica serve}
+\label{sec:meta-tightness}
+\index{tightness}\index{metaeuristiche}
+
+I sei metaeuristici (LNS, ALNS, SA, TS, ILS, VNS) e i loro
+contesti tipici sono descritti nel
+cap.~\ref{ch:metodo_metaeuristiche}. Quello che resta da
+chiarire \`e il criterio quantitativo per decidere, prima di
+lanciare, \emph{quanto} budget metaeuristico vale la pena
+spendere su un'istanza. La risposta in \texttt{piTantum} \`e il
+\emph{tightness score}.
 
 La trattazione canonica di ALNS \`e dovuta a Pisinger e
 Ropke~\parencite{pisinger2010,ropke2006_orig}; il survey di
 Burke e Petrovic~\parencite{burke2002} e quello di
 Pillay~\parencite{pillay2014} restano i riferimenti per
 l'\emph{educational timetabling} in senso ampio.
-
-Le metaeuristiche di \texttt{piTantum} sono pensate come
-\emph{post-processing}: prendono una soluzione HARD-feasible e
-limano il SOFT. Tutte rispettano \texttt{is\_hard\_feasible} (=
-una mossa che genererebbe violazione HARD viene rifiutata) e
-delegano la riparazione di micro-rotture a
-\texttt{PhaseBDaySolver(\_cp\_repair)}.
-
-\begin{table}[h]
-\centering
-\sffamily\small
-\begin{tabular}{p{2.0cm}p{4.0cm}p{4.6cm}}
-\toprule
-Metodo & Tipo di vicinato & Quando \\
-\midrule
-\textbf{LNS} & destroy random window + CP-SAT repair & Default; finestra
-$\sim 30\,\%$ delle lezioni \\
-\textbf{ALNS} & 6 destroy + 3 repair, roulette wheel & Default per scuole
-medie/grandi (\texttt{huge}+) \\
-\textbf{SA} & single-swap fra slot, Metropolis & Smoothing finale; veloce \\
-\textbf{TS} & best-improvement con tabu list & Quando il SOFT si
-stabilizza: TS rompe il plateau \\
-\textbf{ILS} & TS + kick perturbativi (4-opt) & Quando esiste un buon
-locale ma serve esplorare fuori \\
-\textbf{VNS} & 1/2/3-swap + k-opt graduale & Robusto, lento; raro in
-prod \\
-\textbf{Lagrangian} & rilassa bridges + subgrad. ascent & Solo per scuole
-con plessi multipli e bridges densi \\
-\bottomrule
-\end{tabular}
-\caption{Sette metaeuristiche, tutte attivabili dal tab Workflow
-con il dropdown ``Post-Phase~B''. La cascata di default attiva
-LNS \texttt{->} ALNS \texttt{->} SA. Lagrangian e VNS sono
-tecniche di nicchia, raramente attivate.}
-\label{tab:meta-decision-matrix}
-\end{table}
 
 \begin{figure}[h]
 \centering
@@ -638,8 +498,6 @@ con la tightness, segno che gli scenari pi\`u stretti
 beneficiano di pi\`u esplorazione.}
 \label{fig:tightness-band}
 \end{figure}
-
-\subsection{Il criterio della tightness}
 
 \texttt{piTantum} include un \emph{tightness score} (in
 \texttt{tests/benchmarks/run\_benchmarks.py}) che misura quanto
