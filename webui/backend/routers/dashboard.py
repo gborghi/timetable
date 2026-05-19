@@ -35,6 +35,18 @@ DATA_DIR = db_mod.DATA_DIR
 SNAPSHOTS_DIR = os.path.join(DATA_DIR, "snapshots")
 os.makedirs(SNAPSHOTS_DIR, exist_ok=True)
 
+# Hard cap on uploaded DB-restore zip size. 256 MiB is well above the
+# size of a fully-populated mega-profile snapshot (typical export is
+# under 30 MiB) and bounds the damage of zip-bomb / accidental large
+# upload (the file is buffered fully into RAM before validation).
+_IMPORT_DB_MAX_BYTES = 256 * 1024 * 1024
+
+# After uncompressing, refuse archives whose total inflated payload
+# exceeds this multiplier of the compressed input (zip-bomb mitigation).
+# Real-world ratio for our SQLite snapshots is ~3-4x; 50x leaves
+# plenty of headroom for pathological-but-legitimate data.
+_IMPORT_DB_MAX_RATIO = 50
+
 
 def _safe_filename(name: str) -> str:
     """Strip any path component and reject anything outside [A-Za-z0-9._-]."""
@@ -290,10 +302,33 @@ async def import_db(file: UploadFile = File(...)):
     """Upload a zip previously produced by /api/dashboard/export-db
     and replace the running DB with it. SQLite-only path: writes a
     .pre_import_backup file next to the live DB before the swap.
+
+    Enforces a hard size limit and a zip-inflation ratio cap so a
+    malicious zip-bomb (or accidentally large file) cannot exhaust
+    server memory / disk.
     """
     blob = await file.read()
     if not blob:
         raise HTTPException(400, "file vuoto")
+    if len(blob) > _IMPORT_DB_MAX_BYTES:
+        raise HTTPException(
+            413,
+            f"File troppo grande ({len(blob)} bytes); "
+            f"max {_IMPORT_DB_MAX_BYTES} bytes.",
+        )
+    # Cheap zip-bomb pre-check: sum of declared uncompressed sizes.
+    try:
+        with zipfile.ZipFile(io.BytesIO(blob)) as zf:
+            total_uncompressed = sum(zi.file_size for zi in zf.infolist())
+    except zipfile.BadZipFile as exc:
+        raise HTTPException(400, f"Archivio zip non valido: {exc}") from exc
+    if total_uncompressed > len(blob) * _IMPORT_DB_MAX_RATIO:
+        raise HTTPException(
+            413,
+            f"Rapporto di compressione sospetto "
+            f"({total_uncompressed} / {len(blob)} > "
+            f"{_IMPORT_DB_MAX_RATIO}x). Importazione rifiutata.",
+        )
     return _restore_zip(blob)
 
 

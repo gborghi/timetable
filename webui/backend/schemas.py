@@ -3,9 +3,42 @@ just expose the SQLAlchemy field set without further nesting."""
 from __future__ import annotations
 
 import datetime as dt
+import re
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+
+# Whitelist of accepted profile identifiers across import / dataset
+# endpoints. Hardcoded set keeps user-supplied values from reaching
+# filesystem path joins or pickle.load() calls (Section: audit C2 path
+# traversal). New profiles must be added here explicitly.
+ALLOWED_PROFILE_NAMES: frozenset[str] = frozenset({
+    "small", "medium", "big", "huge", "superhuge", "mega", "custom",
+})
+
+_PROFILE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$")
+
+
+def _validate_profile(value: str) -> str:
+    """Reject path-traversal payloads on the `profile` field.
+
+    Accepts only known names plus the documented `custom` escape hatch
+    used by the mock-generation flow. Anything else (`..`, `/`, `\`,
+    NUL bytes, leading dot, oversize) is rejected at the schema layer
+    so neither `_resolve_profile_pkl` nor `_stress_dir` get a chance
+    to interpolate it into a path.
+    """
+    if not isinstance(value, str):
+        raise ValueError("profile must be a string")
+    v = value.strip()
+    if v in ALLOWED_PROFILE_NAMES:
+        return v
+    if not _PROFILE_RE.match(v):
+        raise ValueError(
+            "profile name not allowed: must match [A-Za-z0-9][A-Za-z0-9_-]{0,31}",
+        )
+    return v
 
 
 # ---------- Error response (Section 2.3 P2) ----------
@@ -317,6 +350,11 @@ class MockGenIn(BaseModel):
     """If profile == 'custom', custom_curricula must be a mapping
     curriculum-name -> n_sections; one class per (year 1..5, section)
     will be generated."""
+
+    @field_validator("profile")
+    @classmethod
+    def _check_profile(cls, v: str) -> str:
+        return _validate_profile(v)
 
 
 # ---------- Optimization run requests ----------
@@ -763,6 +801,11 @@ class ImportPickleIn(BaseModel):
     `n_students` on each class."""
     students_seed: int = 42
     """Random seed for the student generator (deterministic output)."""
+
+    @field_validator("profile")
+    @classmethod
+    def _check_profile(cls, v: str) -> str:
+        return _validate_profile(v)
 
 
 # ---------- Schedule view filters ----------
