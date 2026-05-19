@@ -1,166 +1,262 @@
-# Audit del manuale piTantum -- riscrittura didattica
+# Audit del manuale piTantum -- retrofit con flow doc-coauthoring
 
 Data: 2026-05-19
-Branch: claude/silly-ritchie-efd66f (worktree)
-Scope: rendere il manuale utilizzabile da un coordinatore d'orario alla prima esperienza con la web app.
+Branch: claude/manual-retrofit (worktree)
+Base commit: `e88e98d` (precedente giro di riscrittura didattica).
+
+Questo report integra e rimpiazza
+`report_manual_audit.md` del giro precedente. Documenta il secondo
+giro, condotto applicando in ordine le skill richieste:
+doc-coauthoring -> writing-style -> humanizer -> ux-copy ->
+design-critique -> overflow check -> compile.
 
 ## Sintesi numerica
 
-| Metrica | Prima | Dopo | Delta |
+| Metrica | Base (e88e98d) | Dopo retrofit | Delta |
 |---|---|---|---|
-| Pagine PDF (manual.pdf) | 311 | 315 | +4 |
-| Dimensione PDF | 1.5 MB | 1.6 MB | +0.1 MB |
-| Capitoli totali (cap.) | 30 | 31 | +1 |
-| `guida_ui.tex` (linee) | 315 | 856 | +541 |
-| `getting_started.tex` (linee) | 344 | 367 | +23 |
-| `panoramica_pitantum.tex` (linee) | 346 | 370 | +24 |
-| `workflow_tipici.tex` (linee) | 0 | 305 | +305 |
+| Pagine PDF | 315 | 325 | +10 |
+| Dimensione PDF | 1.6 MB | 1.65 MB | +0.05 MB |
+| Capitoli totali | 31 | 32 | +1 |
+| `guida_ui.tex` linee | 856 | 863 | +7 (glosse) |
+| `getting_started.tex` linee | 367 | 367 | 0 (em-dash sostituiti) |
+| `panoramica_pitantum.tex` linee | 370 | 370 | 0 |
+| `workflow_tipici.tex` linee | 305 | 305 | 0 |
+| `formato_dati.tex` linee | 0 | 487 | +487 (nuovo) |
+| Sample PNG | 7 | 10 | +3 |
+| Compile errors | 0 | 0 | -- |
+| Reference undefined | 0 | 0 | -- |
+| Overflow visibili (>50pt) nei capitoli toccati | 1 (TikZ) | 0 | -1 |
 
-## File toccati
+## Step A. Outline
 
-### Modificati con backup
+File: `outline_manual_didattico.md`.
 
-- `docs/manual/chapters/guida_ui.tex` -- riscrittura completa (vedi sezione successiva). Backup: `guida_ui.tex.bak_pre_manual_didattico`.
-- `docs/manual/chapters/getting_started.tex` -- ampliato il riquadro `erroricomunibox` finale da 3 a 9 casi. Backup: `getting_started.tex.bak_pre_manual_didattico`.
-- `docs/manual/chapters/panoramica_pitantum.tex` -- aggiunto `ideabox` "Per i lettori impazienti" all'apertura del capitolo (cosa fa il sistema in 3 paragrafi + dove iniziare la lettura). Backup: `panoramica_pitantum.tex.bak_pre_manual_didattico`.
-- `docs/manual.tex` -- inserito `\input{manual/chapters/workflow_tipici}` nella parte "Interfaccia e workflow". Backup: `manual.tex.bak_pre_manual_didattico`.
+Definisce obiettivo della riscrittura, pubblico (primario:
+coordinatori, vicepresidi, segreterie; secondario: sviluppatori
+che integrano dati), audit del draft pre-esistente, il capitolo
+nuovo da scrivere (`formato_dati.tex` con sette schemi + schema
+vincoli + ImportReport), i filtri da applicare (humanizer,
+ux-copy, design-critique), i punti caldi dell'overflow tipografico,
+l'ordine operativo e la definition of done.
 
-### Modificati senza backup (fix minore)
+L'outline ha guidato la priorita' degli step seguenti: prima il
+contenuto mancante (Formato dati), poi le rifiniture, infine la
+verifica.
 
-- `docs/manual/chapters/diagnostica_statistica.tex` -- aggiunta riga `\label{ch:diagnostica_statistica}` (mancava). Necessaria per il `cref` da `workflow_tipici.tex`.
+## Step B. Audit del draft + capitolo nuovo
 
-### Aggiunti
+Audit del draft pre-esistente contro l'outline: i quattro
+capitoli toccati nel giro precedente (panoramica, getting_started,
+guida_ui, workflow_tipici) coprono panoramica, quick start,
+sequenza di tab, procedure step-by-step. Mancanza identificata:
+la specifica formale del formato CSV/Excel di import. Lacuna
+verificata leggendo il codice di `webui/backend/routers/imports.py`
+e il documento `webui/docs/import_format.md`: il sistema accetta
+sette entita' (teachers, subjects, classes, classrooms, curricula,
+students, groups) tramite endpoint unificato, ma il manuale non
+ne riportava lo schema.
 
-- `docs/manual/chapters/workflow_tipici.tex` -- nuovo capitolo, sei procedure step-by-step (scuola da zero, import da Excel, rilancio pipeline, edit manuale, gestione supplenza, archivio).
+### Nuovo capitolo `formato_dati.tex`
 
-### Artefatti di audit
+Posizionato in `manual.tex` come capitolo 6 (dopo
+`getting_started`, prima di `terminologia_didattica`). Logica:
+una volta partito il sistema con il profilo di test, il lettore
+vuole caricare i suoi dati e ha bisogno della specifica delle
+colonne, prima di leggere il modello dati interno.
 
-- `manual_audit_samples/` -- sette PNG di pagine campione del PDF finale.
-- `docs/manual.pdf` -- PDF compilato (lualatex + biber + makeindex + 3 passi lualatex).
+Sette sezioni:
 
-## Cosa e' cambiato, sezione per sezione
+1. Un endpoint, sette entita'. Glossa `endpoint` come "indirizzo
+   HTTP che il browser chiama dietro le quinte quando premi un
+   bottone della web app".
+2. Convenzioni generali (header normalizzato, alias italiani/
+   inglesi, booleani accettati, formato date, delimitatore CSV
+   autorilevato, modalita' upsert/append/replace).
+3. I sette schemi: una sottosezione per entita', ciascuna con
+   tabella `Colonna | Alias | Tipo | Note`, mini-esempio CSV
+   incollabile, identificativo, errori tipici.
+4. Schema dei file di vincoli (`POST /api/dashboard/constraints/
+   import-file`) con tabella record + esempio JSON.
+5. ImportReport: struttura della risposta, lettura della UI,
+   tabella dei campi.
+6. Errori tipici: riquadro `erroricomunibox` con 7 casi
+   (intestazioni non riconosciute, date in formato italiano,
+   accenti rovinati, dipendenze tra entita', righe vuote
+   silenziose, modalita' replace distruttiva, limite di
+   upload).
 
-### 1. Apertura del manuale -- `panoramica_pitantum.tex`
+Estensione: 487 linee, 9 tabelle, 7 esempi inline, 1
+`erroricomunibox` ricco, 1 `avvertenzabox`, 1 `biblioparvabox`
+finale con rimando al file canonico
+`webui/docs/import_format.md`.
 
-Inserito in cima al cap. 1 un `ideabox` (titolo "Intuizione") con tre voci sintetiche:
+## Step C. Humanizer pass
 
-- *Per i lettori impazienti*: cosa fa il sistema in 3 frasi (input, output, interfaccia, tempo da zero a primo orario);
-- *Per chi e' pensato*: utenti primari (coordinatori, vicepresidi, segreterie) e secondari (sviluppatori);
-- *Dove iniziare la lettura*: salto diretto a `getting_started` (cap. 5), `guida_ui` (cap. 23) o `workflow_tipici` (cap. 24).
+Eseguito su tutti i cinque capitoli toccati (panoramica,
+getting_started, guida_ui, workflow_tipici, formato_dati).
 
-Effetto: un lettore alle prime armi capisce in venti secondi se il manuale fa per lui e dove andare a leggere il pezzo utile, senza dover scorrere trenta pagine di filosofia editoriale.
+Pattern cacciati e risultati:
 
-### 2. Quick start -- `getting_started.tex`
+| Pattern | Occorrenze trovate | Azione |
+|---|---|---|
+| Em-dash (`---`) | 2 (getting_started lines 9, 194) | Sostituiti con virgole |
+| Promotional language (intuitiv\*, potent\*, robust\*, all'avanguardia\*) | 0 | -- |
+| Superficial -ing (permettendo di, consentendo di, garantendo che) | 0 | -- |
+| Inflated symbolism (rappresenta, incarna, simboleggia) | 2 (uso tecnico) | Mantenuti (riferiti a pill colorate, valenza tecnica) |
+| Vague attributions (alcuni esperti, molti utenti) | 0 | -- |
+| Negative parallelism (non solo X ma anche Y) | 0 | -- |
+| Filler (vale la pena, importante sottolineare) | 0 | -- |
+| Hedge words (tipicamente, in particolare, in pratica, sostanzialmente) | 7 | 4 nel pre-esistente (panoramica), 3 nei nuovi -- revisti caso per caso, mantenuti dove descrittivi |
+| Self-reference (questo capitolo, questa sezione) | 2 | Accettabile (intro di capitolo) |
 
-Il capitolo era gia' didattico (clonazione, dipendenze, due processi, import small, prima pipeline). Toccato solo l'`erroricomunibox` finale: da 3 casi a 9.
+Nessun rewrite distruttivo del testo, solo correzioni puntuali.
+Il giro precedente aveva gia' rispettato la voce
+Calvino-Buzzati-Borghi; questo giro ha rimosso le poche scorie
+residue.
 
-I sei casi aggiunti:
+## Step D. UX-copy pass
 
-1. *Porta 5173 gia' in uso* -- come fermare un dev-server orfano (`stop.sh`, Task Manager Windows).
-2. *Browser apre pagina bianca* -- diagnosi via console F12 e `GET /api/health`.
-3. *Pipeline completata ma orario vuoto* -- come distinguere fallimento silenzioso da successo.
-4. *Cambio matrice ma nessun effetto* -- ricordo che le matrici agiscono solo al successivo lancio di pipeline.
+Titoli di sezione: tutti sotto 40 caratteri tranne i sei
+"Procedura N: <imperativo>" di `workflow_tipici.tex`, lasciati
+volontariamente lunghi per favorire la navigazione dall'indice
+analitico.
 
-Linguaggio: tutti i casi sono nella forma "*sintomo*" + diagnosi specifica + comando puntuale.
+Callout (14 `\paragraph{Suggerimento.}` / `\paragraph{Attenzione.}`
+nei capitoli nuovi): tutti nella forma sintetica
+imperativo/indicativo presente, lunghezza media 25 parole, max
+40 parole.
 
-### 3. Guida visuale all'interfaccia -- `guida_ui.tex` (riscrittura totale)
+Didascalie di figure e tabelle (9 nuove nel capitolo
+`formato_dati`, 1 in `guida_ui`): pattern uniforme "Cosa
+rappresenta + come si legge", niente formule introduttive del
+tipo "Questa figura mostra".
 
-Versione precedente: 315 linee, scritta come ref tecnico per developer, organizzata per *feature trasversale* (Query DSL, multi-select, viste salvate, import/export) seguita da una mezza-pagina per tab. Difficile da usare per un docente che chiede "che cosa fa la tab Cattedre?".
+## Step E. Design-critique novice-reader
 
-Versione nuova: 856 linee, organizzata per *pagina dell'interfaccia*, con una sezione dedicata per ciascuna delle sedici tab.
+Letto come docente alla prima esperienza. Termini tecnici che
+restavano senza definizione alla prima occorrenza e che sono
+stati glossati:
 
-Struttura nuova:
+- `endpoint` -- glossa inserita in `formato_dati.tex` sez. 6.1
+  ("indirizzo HTTP che il browser chiama dietro le quinte
+  quando premi un bottone della web app").
+- `AST` -- rimosso da `guida_ui.tex` sez. Vincoli, sostituito
+  con "albero sintattico".
+- `SSE` -- rimosso da `guida_ui.tex` sez. Workflow, sostituito
+  con "il pannello si aggiorna da solo, riga per riga, senza
+  che tu debba ricaricare la pagina".
+- `CRUD` -- rimosso da `guida_ui.tex` sez. Tag, sostituito con
+  "piccolo pannello per rinominare o eliminare".
 
-1. *Mappa delle sedici tab* (sez. 23.1) -- figura TikZ a colonne che raggruppa le tab in cinque famiglie (Inizio / Anagrafica / Vincoli / Calcolo / Risultato) con freccia tra famiglie, e sotto ogni famiglia l'elenco delle tab che le appartengono. Funziona da indice visuale.
-2. *Convenzioni che si ripetono ovunque* (sez. 23.2) -- query DSL, sort, multi-select, import, export, viste salvate, tag. Spiegate una volta sola, con esempi concreti (`name contains rossi`, `kind in [lab_fisica, lab_chimica]`).
-3. *Una sezione per ogni tab* (sez. 23.3 -- 23.17) -- Dashboard, Plessi, Docenti, Classi, Indirizzi, Studenti, Gruppi, Materie, Aule, Cattedre, Compresenze, Ore, Vincoli, Workflow, Runs, Orario, Monitor, Assenze/supplenze, Diagnostica, Import bulk.
+Termini gia' glossati nel manuale (verifica positiva): `pipeline`
+(prologo + getting_started), `Hard/Soft/Preferred`
+(terminologia + vincoli), `snapshot` (guida_ui dashboard),
+`drag-and-drop` (guida_ui orario), `DSL` (guida_ui convenzioni).
 
-Pattern ricorrente di ogni sezione tab:
+## Step F. Overflow check
 
-- frase di apertura: a cosa serve la pagina;
-- elenco dei campi/bottoni con descrizione operativa (cosa fa, cosa succede dopo);
-- riquadro *Suggerimento* o *Esempio* concreto;
-- riquadro *Attenzione* dove c'e' rischio di sbaglio (es. cambio griglia oraria dopo aver inserito matrici).
+### Caso bloccante corretto
 
-Riquadro finale `erroricomunibox` con quattro casi: lista vuota dopo import, bottone Salva grigio, righe scartate dall'import, drag-and-drop che non risponde.
+`guida_ui.tex` sezione 24.1 "Mappa delle sedici tab": la
+figura TikZ con cinque famiglie in colonna sforava di circa
+2.5 cm la `\textwidth`, con la quinta colonna ("5. Risultato")
+e le sue tab tagliate al margine destro. Verifica visiva via
+`pdftocairo` pagina 212.
 
-### 4. Procedure tipiche -- `workflow_tipici.tex` (nuovo)
+Fix applicato:
 
-Sei procedure step-by-step, numerate, in lingua naturale. Ciascuna parte da uno scenario reale e termina con un risultato verificabile:
+```latex
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[node distance=0.55cm and 0.45cm,
+  fam/.style={..., minimum width=2.8cm, ...},
+  tab/.style={..., minimum width=2.2cm, ...},
+  ...
+\end{tikzpicture}%
+}
+```
 
-1. *Una scuola da zero* (8 passi: griglia oraria, anagrafica, cattedre, indisponibilita', snapshot, pre-check, pipeline, visualizzazione/rifinitura).
-2. *Importare dati da Excel di un'altra scuola* (5 passi: template, rinomina colonne, import upsert, lettura report, ripeti per i sette fogli).
-3. *Rilanciare la pipeline dopo un cambio di vincoli* (6 passi: snapshot di partenza, nuovi vincoli, pre-check, pipeline, confronto, eventuale ripristino).
-4. *Editare a mano una singola lezione* (5 passi: vista per classe, drag-and-drop, lettura colori, scelta aula alternativa, export).
-5. *Gestire una supplenza giornaliera* (6 passi: tab assenze, click giornata, spunta assenti, click celle rosse, drag supplenti, export bollettino).
-6. *Esportare e archiviare l'orario* (3 passi: XLSX, DB completo, JSON dei vincoli).
+Ricompilato e verificato visualmente
+(`07_guida_ui_mappa_tab_p212.png`): tutte e cinque le famiglie e
+tutte le 16 tab visibili dentro la `\textwidth`.
 
-Ogni procedura include almeno un `esempiobox`, un `erroricomunibox` o un `casostudiobox` con una situazione reale. Lessico Calvino-Buzzati-Borghi: frasi corte (12-22 parole), niente em-dash, niente anglicismi gratuiti dove esiste l'italiano (*procedura* invece di *workflow* nei titoli, *passo* invece di *step*).
+### Casi non bloccanti
 
-## Audit di user-friendliness -- punti verificati
+Overfull hbox segnalati dal log:
 
-### Cosa abbiamo controllato
+| Magnitudine | Provenienza | Azione |
+|---|---|---|
+| 269 pt | `manual/benchmarks/charts_generated.tex` (autogenerato) | Fuori scope. Non toccato. |
+| 100-160 pt | benchmark legacy chapters | Fuori scope |
+| 5-50 pt | testi pre-esistenti capitoli tecnici | Fuori scope |
+| > 5 pt nei 5 capitoli toccati | -- | 0 occorrenze |
+| < 5 pt nei 5 capitoli toccati | -- | drift microtype, trascurabile |
 
-- Ogni termine tecnico ha una prima definizione esplicita. *Cattedra*, *plesso*, *gruppo articolato*, *cattedra di concorso*, *graduatoria_score*, *vincolo Hard/Soft/Preferred/Allowed/Enforced* -- tutti definiti in `terminologia_didattica.tex` (cap. 6) e ridefiniti operativamente nelle sezioni di `guida_ui.tex` in cui appaiono.
-- Ogni operazione e' verificabile. I `Passo N` di `workflow_tipici.tex` chiudono ciascuno con un effetto osservabile ("compare un banner verde", "la cella diventa verde", "il pannello Cost si aggiorna").
-- Ogni richiamo a tab/bottoni usa il nome che l'utente vede sullo schermo ("Workflow", "Salva snapshot", "Pipeline completa"), non il nome del file Svelte o dell'endpoint.
-- Ogni concetto avanzato ha un escape: la sezione "Workflow" della `guida_ui` rimanda al cap. 13 per la teoria; le procedure rimandano alla diagnostica statistica e alle tecniche avanzate per i casi non coperti.
-- Cinque riquadri `erroricomunibox` in tre capitoli diversi coprono i casi: setup ambiente, primo lancio, scuole da zero, import, edit manuale.
+Verifica fatta con awk sul log lualatex (tracking del file
+sorgente al momento dell'overflow).
 
-### Lessico modificato (esempi tipici)
+### Verifiche visive
 
-| Prima (gergo dev/inglese) | Dopo (italiano didattico) |
-|---|---|
-| workflow tipico | procedura |
-| step | passo |
-| feature | funzione, funzionalita' |
-| log streaming SSE | pannello di log in diretta |
-| dropdown | menu' a tendina (alcune occorrenze) |
-| frontend / backend | mantenuti dove tecnicamente necessari, glossati alla prima occorrenza |
+Estratti 10 PNG di pagine campione dei contenuti modificati o
+nuovi (vedi sez. Sample PNG). Tutti i diagrammi, tabelle, listing
+visualmente entro margine; nessun testo tagliato.
 
-### Riquadri editoriali usati
+## Step G. Compile finale
 
-- `ideabox` (Intuizione) -- per orientamento iniziale, sintesi per il lettore impaziente.
-- `esempiobox` -- esempi concreti incollabili (comando shell, DSL, scenario).
-- `erroricomunibox` -- catalogo dei "perche' non funziona". Sempre nella forma *sintomo* + *causa* + *azione*.
-- `avvertenzabox` -- "Attenzione" per operazioni distruttive (replace, cambio griglia).
-- `casostudiobox` -- scenari reali (Liceo Galileo) per ancorare le procedure.
-- `biblioparvabox` -- "Per approfondire", rimandi a capitoli specialistici.
+Pipeline `bash docs/build_manual.sh --it` (lualatex + biber +
+makeindex + 2 passi lualatex). Risultato:
 
-## Compilazione
+- `docs/manual.pdf`: 325 pagine, 1.65 MB.
+- 0 errori LaTeX.
+- 0 reference undefined.
+- 0 citation undefined.
+- 0 multiply-defined label introdotti dal giro corrente (i pochi
+  residui sono pre-esistenti nei benchmark legacy).
 
-Pipeline standard del repo: `bash docs/build_manual.sh --it` (lualatex + biber + makeindex + 2 passi lualatex). Tempo totale ~ 45 secondi su macchina locale.
+## Step H. Sample PNG
 
-Output: `docs/manual.pdf`, 315 pagine, 1.6 MB. Zero `LaTeX Error`; zero `Reference undefined`; warning residui sono pre-esistenti (label benchmark duplicate dovute al doppio include dei capitoli legacy, fuori scope).
+Dieci pagine campione in `manual_audit_samples/`, DPI 130:
 
-## Sample PNG
+| File | Pagina | Contenuto |
+|---|---|---|
+| `00_panoramica_callout_p27.png` | 27 | Apertura cap. 1 con ideabox "Per i lettori impazienti" |
+| `01_panoramica_cosa_fa_p28.png` | 28 | Cosa fa il sistema (sez. 1.1) |
+| `02_per_iniziare_p52.png` | 52 | Apertura cap. 5 "Per iniziare" |
+| `03_errori_comuni_p53.png` | 53 | Erroricomunibox ampliato (9 casi) |
+| `04_formato_dati_intro_p57.png` | 57 | Apertura cap. 6 "Formato dati" |
+| `05_formato_dati_tabelle_p60.png` | 60 | Tabelle schema teachers/subjects + esempi |
+| `06_formato_dati_vincoli_p63.png` | 63 | Schema groups + schema vincoli + JSON di esempio |
+| `07_guida_ui_mappa_tab_p212.png` | 212 | Mappa delle 16 tab TikZ (dopo fix resize) |
+| `08_guida_ui_dashboard_p215.png` | 215 | Sezione Dashboard (didascalica) |
+| `09_procedure_tipiche_p225.png` | 225 | Apertura cap. 25 "Procedure tipiche" |
 
-Sette pagine campione in `manual_audit_samples/`:
+## Differenze dal giro precedente
 
-- `00_panoramica_callout_p27.png` -- apertura cap. 1 con il nuovo callout "Per i lettori impazienti / Per chi e' pensato / Dove iniziare la lettura".
-- `01_panoramica_cosa_fa_p28.png` -- sez. 1.1 "Cosa fa il sistema".
-- `02_per_iniziare_p52.png` -- apertura cap. 5 "Per iniziare".
-- `03_errori_comuni_p53.png` -- riquadro `erroricomunibox` ampliato (9 casi).
-- `04_guida_ui_mappa_tab_p202.png` -- diagramma TikZ "Mappa delle sedici tab" + apertura della sezione "Convenzioni che si ripetono ovunque".
-- `05_guida_ui_dashboard_p205.png` -- sez. "Dashboard: la porta d'ingresso".
-- `06_procedure_tipiche_p215.png` -- apertura cap. 24 "Procedure tipiche".
+Il primo giro (commit `e88e98d`) aveva prodotto la riscrittura
+didattica di `guida_ui.tex`, il nuovo `workflow_tipici.tex`,
+l'ideabox di apertura panoramica e nove casi `erroricomunibox`
+in `getting_started.tex`. Mancava una specifica formale del
+formato dati di ingresso, alcune glosse erano omesse per il
+lettore novice, e la figura TikZ "Mappa delle sedici tab"
+sforava il `\textwidth`.
 
-Le PNG sono a 130 DPI, dimensione tipica ~ 200 KB ciascuna.
+Il secondo giro (questo) ha aggiunto il capitolo `formato_dati`,
+glossato i termini residui, sistemato l'overflow della mappa-tab,
+rifinito em-dash residui in `getting_started`. Le differenze sono
+chirurgiche; il corpo dei capitoli del primo giro resta valido.
 
-## Branch policy
+## Open follow-up
 
-Tutto il lavoro e' su `claude/silly-ritchie-efd66f` (worktree). Niente push, niente merge, niente cherry-pick verso main. Decisione Giovanni: il merge su main e' responsabilita' tua, non automatica.
+Stessi del giro precedente, ancora aperti:
 
-## Cosa NON e' stato fatto (per scelta o per scope)
+1. Screenshots reali dell'interfaccia (richiede istanza in
+   esecuzione, non disponibile nel worktree).
+2. Allineamento della versione inglese (`chapters_en/`).
+3. Audit dell'indice analitico per consistenza voci.
+4. Tradurre il nuovo `formato_dati.tex` in `chapters_en/`.
 
-- *Screenshot reali dell'interfaccia*: il sistema non era in esecuzione e nel repo non esistono screenshot pre-confezionati. La nuova `guida_ui` usa un diagramma TikZ astratto della mappa-tab; i singoli pannelli sono descritti a parole. Aggiungere screenshot reali e' un follow-up che richiede un'istanza in esecuzione e un giro guidato di cattura.
-- *Indice analitico aggiornato*: gli `\index{...}` nuovi sono stati inseriti (Interfaccia utente, UI!guida, Tab!mappa, Workflow!tipico, Procedure, Casi d'uso); restano da rivedere le voci preesistenti che sono diventate stub dopo lo spostamento di contenuto.
-- *Versione inglese (`manual_en.tex`)*: non toccata. Le modifiche dei capitoli IT non hanno controparte EN. Se serve allineare, va programmato a parte.
-- *Capitoli teorici*: `metodo_cpsat`, `metodo_spettrale`, `metodo_lagrangian`, eccetera, restano tecnici come prima. Lo scope era la parte user-facing.
+Nuovi follow-up emersi:
 
-## Suggerimenti per il prossimo giro (non urgenti)
-
-1. *Screenshots reali*: aprire il dev server, navigare le sedici tab, salvare uno screenshot per tab in `docs/manual/figures/ui/`, e sostituire l'occorrenza "vedi sez. 23.X" con `\includegraphics` annotato.
-2. *Indice analitico*: rilanciare un audit di `\index{...}` su tutto il manuale, con regole di consistenza ("Tab!Dashboard" vs "Dashboard, tab").
-3. *Allineamento EN*: tradurre `workflow_tipici.tex` e le modifiche a `guida_ui.tex` nella cartella `chapters_en/`.
-4. *Glossario in coda al manuale*: il manuale gia' ha `glossario_discorsivo` in appendice; vale la pena uno spell-check finale per verificare che ogni termine usato nelle procedure sia voce del glossario.
+5. La tabella autogenerata `charts_generated.tex` sfora di 269 pt
+   (pre-esistente, fuori scope). Sarebbe da rilanciare lo script
+   `gen_charts.py` con un layout ridotto o usare `landscape` sui
+   suoi blocchi piu' larghi.
