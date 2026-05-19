@@ -51,11 +51,23 @@ def _two_teacher_dc():
     return dc
 
 
+# Legacy 6-day x 6-hour grid passed explicitly to every ConstraintModel
+# instantiation in this file. Default DAYS/HOURS in cp_sat_constraint_model
+# come from working_hours_config which reads the live SQLite DB at
+# webui/data/timetable.db. That file is shared across dev sessions and
+# test runs, so a user who customised slot counts there (e.g. Wed=9 slots
+# instead of 6) makes the engine see a different grid and breaks slot-count
+# assertions below. Pinning explicitly here keeps the unit tests
+# self-contained.
+_GRID_DAYS = [1, 2, 3, 4, 5, 6]
+_GRID_HOURS = [8, 9, 10, 11, 12, 13]
+
+
 def test_base_constraint_model_builds_slot_vars_for_global_scope():
     from cp_sat_constraint_model import ConstraintModel
     profs = _two_teacher_profs()
     dc = _two_teacher_dc()
-    cm = ConstraintModel(profs, dc)
+    cm = ConstraintModel(profs, dc, days=_GRID_DAYS, hours=_GRID_HOURS)
     # 4 cattedre x 4 days x 6 hours = 96 slots
     assert len(cm.slot) == 96
     assert sorted(cm.teachers_in_scope()) == ["Bianchi", "Rossi"]
@@ -65,7 +77,8 @@ def test_base_filters_to_one_teacher_when_scope_is_teacher():
     from cp_sat_constraint_model import ConstraintModel
     profs = _two_teacher_profs()
     dc = _two_teacher_dc()
-    cm = ConstraintModel(profs, dc, scope=("teacher", "Rossi"))
+    cm = ConstraintModel(profs, dc, scope=("teacher", "Rossi"),
+                         days=_GRID_DAYS, hours=_GRID_HOURS)
     assert cm.teachers_in_scope() == ["Rossi"]
     # 2 cattedre x 4 days x 6 hours = 48
     assert len(cm.slot) == 48
