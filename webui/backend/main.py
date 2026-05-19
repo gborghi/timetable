@@ -214,7 +214,6 @@ async def health_async():
     """Async smoke endpoint exercising the AsyncSession path. Returns
     OK + the connected dialect when the async layer is available, or
     raises 503 with a helpful hint otherwise (Section 2.5 P2)."""
-    from fastapi import Depends
     # Inline import + manual call to avoid forcing the dependency on
     # routes that don't need it.
     from .async_db import get_async_db

@@ -42,8 +42,11 @@ RUN apt-get update \
 COPY webui/backend/requirements.txt ./requirements.txt
 
 # Install into a private prefix that we'll copy into the runtime stage.
+# `gunicorn` is included for production multi-worker deploys (see CMD
+# override in the docstring at the top of this file); it stays in the
+# image even when uvicorn is the default runner.
 RUN pip install --prefix=/install -r requirements.txt \
- && pip install --prefix=/install 'gunicorn>=21.2'
+ && pip install --prefix=/install 'gunicorn>=21.2,<24.0'
 
 
 # ---------- Stage 2: runtime ----------

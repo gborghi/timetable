@@ -3,24 +3,57 @@ into a ring buffer + DB, and exposes async iterators for SSE log streaming.
 
 The engine module functions are CPU-bound (ortools / numpy) so threads
 don't give true parallelism. They DO let us cancel work cooperatively and
-read live output without blocking the event loop."""
+read live output without blocking the event loop.
+
+Reliability notes (audit round 4):
+  * `_BUFFERS` / `_THREADS` used to grow without bound. Each finished
+    run leaves a buffer pinned forever, and the dict was never pruned.
+    We now schedule deferred eviction in a daemon "reaper" thread that
+    drops buffers older than _BUFFER_TTL_S since `mark_finished`.
+  * `_emit_line()` opened a fresh `SessionLocal` for every log line AND
+    ran `COUNT(*)` against `run_logs` per line to compute `seq`. On
+    runs that print thousands of lines this collapsed the DB. We now:
+      - keep `seq` as an in-memory counter on `_RunBuffer`;
+      - flush log lines in batches via a single background "log-writer"
+        daemon thread per run, using `bulk_save_objects`;
+      - guarantee a final flush on `mark_finished`.
+"""
 from __future__ import annotations
 
 import asyncio
 import datetime as dt
 import io
 import json
+import logging
+import queue
 import sys
 import threading
-import time
 import traceback
-from collections import defaultdict
+import time
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any, Callable, Iterable, Optional
 
 from . import models
 from .db import SessionLocal
+
+log = logging.getLogger("pitantum.run_manager")
+
+
+# Tunables -----------------------------------------------------------------
+
+# Maximum interval (seconds) between log-line batch flushes to the DB.
+# At higher rates we batch up to _LOG_BATCH_MAX lines per round trip.
+_LOG_FLUSH_INTERVAL_S = 0.5
+_LOG_BATCH_MAX = 200
+
+# How long to keep a finished run's buffer in memory before eviction.
+# 5 minutes is enough for the UI to replay the log once the user opens
+# the run details page; older logs can be replayed from the DB.
+_BUFFER_TTL_S = 5 * 60
+
+# How often the reaper sweeps the buffer dict.
+_REAPER_INTERVAL_S = 60
 
 
 @dataclass
@@ -31,19 +64,60 @@ class _RunBuffer:
     lock: threading.Lock = field(default_factory=threading.Lock)
     cond: threading.Condition = field(init=False)
     finished: bool = False
+    # Monotonic sequence counter persisted on the matching RunLog row.
+    # Held in-memory (instead of COUNT(*) per line) so log writes stay
+    # O(1) on the DB side, not O(N).
+    next_seq: int = 0
+    # Background writer thread + work queue. Started lazily on the
+    # first log line of the run, joined on `mark_finished`.
+    _writer: Optional[threading.Thread] = None
+    _writer_q: "queue.Queue[Optional[tuple[int, str]]]" = field(
+        default_factory=queue.Queue,
+    )
+    finished_at: Optional[float] = None
 
     def __post_init__(self):
         self.cond = threading.Condition(self.lock)
 
-    def append(self, text: str):
+    def _ensure_writer(self, run_id: int) -> None:
+        # Caller must hold `self.lock`.
+        if self._writer is not None and self._writer.is_alive():
+            return
+        self._writer = threading.Thread(
+            target=_log_writer_loop, args=(run_id, self), daemon=True,
+        )
+        self._writer.start()
+
+    def append(self, text: str, run_id: int):
         with self.cond:
             self.lines.append(text)
+            self._ensure_writer(run_id)
+            seq = self.next_seq
+            self.next_seq += 1
+            try:
+                self._writer_q.put_nowait((seq, text))
+            except queue.Full:
+                # Writer queue is unbounded; this is unreachable but
+                # we keep the try/except for forward-compat.
+                pass
             self.cond.notify_all()
 
     def mark_finished(self):
         with self.cond:
-            self.finished = True
+            if not self.finished:
+                self.finished = True
+                self.finished_at = time.monotonic()
+                # Sentinel tells the writer thread to flush + exit.
+                try:
+                    self._writer_q.put_nowait(None)
+                except queue.Full:
+                    pass
             self.cond.notify_all()
+        # Join the writer thread (outside the lock) so callers don't
+        # observe a finished buffer that still has pending log writes.
+        w = self._writer
+        if w is not None and w.is_alive():
+            w.join(timeout=10.0)
 
     def snapshot(self) -> tuple[list[str], bool]:
         with self.cond:
@@ -55,6 +129,72 @@ class _RunBuffer:
                 lambda: self.finished or len(self.lines) > since,
                 timeout=timeout,
             )
+
+
+def _log_writer_loop(run_id: int, buf: _RunBuffer) -> None:
+    """Background thread: drain `buf._writer_q` and bulk-insert RunLog
+    rows in batches. Exits on sentinel `None` after one final flush.
+
+    A single DB session is reused across the whole run so we don't pay
+    the SessionLocal() construction cost per batch. On commit error we
+    rollback and keep going -- losing a log line is preferable to
+    crashing the run.
+    """
+    pending: list[tuple[int, str]] = []
+
+    def _flush(db) -> None:
+        if not pending:
+            return
+        try:
+            db.bulk_save_objects([
+                models.RunLog(run_id=run_id, seq=seq, text=line[:4096])
+                for seq, line in pending
+            ])
+            db.commit()
+        except Exception:
+            log.exception("run_manager: log batch flush failed run_id=%d", run_id)
+            try:
+                db.rollback()
+            except Exception:
+                pass
+        pending.clear()
+
+    try:
+        with SessionLocal() as db:
+            last_flush = time.monotonic()
+            while True:
+                # Block up to the flush interval for the next item, then
+                # try to drain whatever else is queued without blocking.
+                try:
+                    item = buf._writer_q.get(timeout=_LOG_FLUSH_INTERVAL_S)
+                except queue.Empty:
+                    item = "_TIMEOUT"
+
+                if item is None:
+                    # Sentinel -> flush + exit.
+                    _flush(db)
+                    return
+                if item != "_TIMEOUT":
+                    pending.append(item)
+                # Best-effort drain so a burst doesn't trickle one at a time.
+                while len(pending) < _LOG_BATCH_MAX:
+                    try:
+                        nxt = buf._writer_q.get_nowait()
+                    except queue.Empty:
+                        break
+                    if nxt is None:
+                        _flush(db)
+                        return
+                    pending.append(nxt)
+                now = time.monotonic()
+                if (
+                    len(pending) >= _LOG_BATCH_MAX
+                    or now - last_flush >= _LOG_FLUSH_INTERVAL_S
+                ):
+                    _flush(db)
+                    last_flush = now
+    except Exception:
+        log.exception("run_manager: log-writer thread crashed run_id=%d", run_id)
 
 
 # Top-level singleton state ---------------------------------------------
@@ -70,6 +210,45 @@ _THREADS: dict[int, threading.Thread] = {}
 # UI stops showing it as active even if the thread takes its time.
 _CANCELLED_RUNS: set[int] = set()
 _CANCELLED_LOCK = threading.Lock()
+
+
+def _start_reaper_once() -> None:
+    """Start the background buffer reaper exactly once per process."""
+    with _BUFFERS_LOCK:
+        if getattr(_start_reaper_once, "_started", False):
+            return
+        _start_reaper_once._started = True  # type: ignore[attr-defined]
+        threading.Thread(
+            target=_reaper_loop, name="run_manager.reaper", daemon=True,
+        ).start()
+
+
+def _reaper_loop() -> None:
+    """Sweep `_BUFFERS` / `_THREADS` and drop entries whose run has been
+    finished for more than `_BUFFER_TTL_S`. Prevents the slow leak that
+    used to grow the dicts every time a run completed.
+    """
+    while True:
+        try:
+            time.sleep(_REAPER_INTERVAL_S)
+            cutoff = time.monotonic() - _BUFFER_TTL_S
+            to_drop: list[int] = []
+            with _BUFFERS_LOCK:
+                for rid, buf in _BUFFERS.items():
+                    fin_at = buf.finished_at
+                    if buf.finished and fin_at is not None and fin_at < cutoff:
+                        to_drop.append(rid)
+                for rid in to_drop:
+                    _BUFFERS.pop(rid, None)
+                    _THREADS.pop(rid, None)
+            with _CANCELLED_LOCK:
+                for rid in to_drop:
+                    _CANCELLED_RUNS.discard(rid)
+            if to_drop:
+                log.info("run_manager: reaped %d finished run buffers",
+                         len(to_drop))
+        except Exception:
+            log.exception("run_manager: reaper iteration failed")
 
 
 def request_cancel(run_id: int) -> bool:
@@ -93,7 +272,8 @@ def request_cancel(run_id: int) -> bool:
         _emit_line(run_id, "[cancel] richiesto dall'utente")
         buf.mark_finished()
     except Exception:
-        pass
+        log.exception("request_cancel: failed to mark buffer finished "
+                      "run_id=%d", run_id)
     return True
 
 
@@ -144,18 +324,14 @@ class _TeeWriter(io.TextIOBase):
 
 
 def _emit_line(run_id: int, line: str):
+    """Enqueue one log line for SSE delivery + batched DB persistence.
+
+    Constant-time: no SessionLocal()/COUNT(*) per call (the sequence is
+    tracked on the buffer; persistence is done in batches by a single
+    background writer thread per run).
+    """
     buf = get_buffer(run_id)
-    buf.append(line)
-    # Persist asynchronously: open a short-lived session.
-    try:
-        with SessionLocal() as db:
-            seq = db.query(models.RunLog).filter(
-                models.RunLog.run_id == run_id
-            ).count()
-            db.add(models.RunLog(run_id=run_id, seq=seq, text=line[:4096]))
-            db.commit()
-    except Exception:
-        pass
+    buf.append(line, run_id)
 
 
 @contextmanager
@@ -212,8 +388,10 @@ def update_run(run_id: int, **kw: Any) -> None:
 
 
 def start_thread(run_id: int, target: Callable[[int], None]) -> None:
+    _start_reaper_once()
     t = threading.Thread(target=_runner, args=(run_id, target), daemon=True)
-    _THREADS[run_id] = t
+    with _BUFFERS_LOCK:
+        _THREADS[run_id] = t
     t.start()
 
 
@@ -250,7 +428,9 @@ def _runner(run_id: int, target: Callable[[int], None]) -> None:
             from .utils.ttl_cache import bump_mutation
             bump_mutation()
         except Exception:
-            pass
+            log.exception(
+                "run_manager: bump_mutation failed run_id=%d", run_id,
+            )
         buf.mark_finished()
 
 

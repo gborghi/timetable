@@ -11,7 +11,6 @@ from sqlalchemy.orm import Session
 from .. import models, schemas, optimization, engine_io
 from ..db import get_db
 from ..services.dataset_state import compute_state
-from ..utils.ttl_cache import cached as ttl_cached
 
 router = APIRouter(prefix="/api/dataset", tags=["dataset"])
 
