@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Any, Callable
 
 from .query_parser import (
-    QueryError,
+    QueryError,  # noqa: F401 -- re-exported for routers/classes.py & friends
     evaluate,
     parse_query,
     parse_sort,

@@ -1,32 +1,48 @@
-fastapi>=0.110
-uvicorn[standard]>=0.27
-pydantic>=2.5
-sqlalchemy>=2.0
-sse-starlette>=2.0
-python-multipart>=0.0.9
-openpyxl>=3.1
-reportlab>=4.0
-ortools>=9.7
-numpy>=1.24
-scikit-learn>=1.3
-faker>=24.0
-# Diagnostics + analytics (new tab Statistiche e diagnostica)
-networkx>=3.0           # bipartite graph metrics
-statsmodels>=0.14       # regressions + p-values (correlations module)
-pandas>=2.0             # tabular helpers for diagnostics
+# Runtime dependencies for the FastAPI backend.
+#
+# Versions are constrained with `>=,<` ranges instead of bare `>=` so
+# upstream breaking changes don't silently drift into every fresh
+# install. For fully reproducible builds, generate a lockfile with
+# `pip-compile requirements.txt -o requirements.lock` and pin from
+# the lock in containers / production.
+#
+# Dev + test tooling is in `requirements-dev.txt` -- install both for
+# local development:
+#
+#   pip install -r requirements.txt -r requirements-dev.txt
 
-# Migration tool (Section 2.7 P1).
-alembic>=1.13
+# Web framework
+fastapi>=0.110,<1.0
+uvicorn[standard]>=0.27,<1.0
+pydantic>=2.5,<3.0
+sse-starlette>=2.0,<3.0
+python-multipart>=0.0.9,<1.0
 
-# Optional Postgres driver (Section 2.5 P2). Default DB is SQLite; install
-# this only when switching to Postgres via PITANTUM_DB_URL.
-# psycopg[binary]>=3.1
+# Database
+sqlalchemy>=2.0,<3.0
+alembic>=1.13,<2.0
 
-# Optional async DB drivers (Section 2.5 P2 async). Required only for
-# the AsyncSession layer wired in services/async_session.py.
-# aiosqlite>=0.19      # for sqlite+aiosqlite:// URLs
-# asyncpg>=0.29         # for postgresql+asyncpg:// URLs
+# Document / spreadsheet export
+openpyxl>=3.1,<4.0
+reportlab>=4.0,<5.0
 
-# Dev / test extras (optional but pulled by `pip install -r requirements.txt`)
-pytest>=8.0
-httpx>=0.27
+# Optimisation engine
+ortools>=9.7,<10.0
+
+# Numerical stack
+numpy>=1.24,<3.0
+scikit-learn>=1.3,<2.0
+networkx>=3.0,<4.0
+statsmodels>=0.14,<1.0
+pandas>=2.0,<3.0
+faker>=24.0,<40.0
+
+# Optional Postgres driver (uncomment when switching off SQLite via
+# PITANTUM_DB_URL). Kept commented so a default `pip install -r ...`
+# stays SQLite-only and doesn't require libpq.
+# psycopg[binary]>=3.1,<4.0
+
+# Optional async DB drivers (required only when wiring up the
+# AsyncSession layer in services/async_session.py).
+# aiosqlite>=0.19,<1.0
+# asyncpg>=0.29,<1.0

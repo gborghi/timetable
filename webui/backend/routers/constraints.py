@@ -763,7 +763,6 @@ def list_general(scope: str | None = None,
 def create_general(payload: schemas.GeneralConstraintIn,
                     db: Session = Depends(get_db)):
     from ..utils.general_dsl import parse, validate, DSLError
-    import json as _json
     try:
         tree = parse(payload.expression)
     except DSLError as e:
@@ -800,7 +799,7 @@ def create_general(payload: schemas.GeneralConstraintIn,
 @router.put("/general/{cid}", response_model=schemas.GeneralConstraintOut)
 def update_general(cid: int, payload: schemas.GeneralConstraintIn,
                     db: Session = Depends(get_db)):
-    from ..utils.general_dsl import parse, validate, DSLError
+    from ..utils.general_dsl import parse, DSLError
     row = db.get(models.GeneralConstraint, cid)
     if row is None:
         raise HTTPException(404, "constraint non trovato")

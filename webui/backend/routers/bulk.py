@@ -34,7 +34,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from .. import models, schemas
+from .. import models
 from ..db import get_db
 from ..utils.logic_parser import LogicError, parse_to_dnf
 

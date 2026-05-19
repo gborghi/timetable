@@ -1328,7 +1328,7 @@ def delete_constraint(kind: str, cid: int, db: Session = Depends(get_db)):
     return {"ok": True}
 
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class ConstraintPatchIn(BaseModel):

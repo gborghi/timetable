@@ -13,7 +13,6 @@ None and `get_async_db()` raises a 503 explaining how to enable async.
 """
 from __future__ import annotations
 
-import os
 
 from .db import DB_URL
 
