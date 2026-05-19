@@ -118,7 +118,9 @@ for (const r of ROUTES) {
     const probe = attach(page);
     const resp = await page.goto(r.path, { waitUntil: 'domcontentloaded' });
     expect(resp?.status() ?? 0, `${r.path} HTTP`).toBeLessThan(500);
-    await page.waitForLoadState('networkidle').catch(() => { /* allow SSE/long-poll pages */ });
+    // Short timeout: /optimize fires a heavy recommendation fetch on
+    // mount (~25s); we don't want to block tests on that.
+    await page.waitForLoadState('networkidle', { timeout: 3000 }).catch(() => { /* allow slow/SSE pages */ });
     await snap(page, r.slug);
     const errors = page.locator('.error-banner, [data-error]');
     const errCount = await errors.count();
@@ -187,7 +189,7 @@ test('free-now api works', async ({ request }) => {
 test('optimize page lists workflow', async ({ page }) => {
   const probe = attach(page);
   await page.goto('/optimize');
-  await page.waitForLoadState('networkidle').catch(() => {});
+  await page.waitForLoadState('networkidle', { timeout: 3000 }).catch(() => {});
   await snap(page, '60-optimize');
   const body = await page.locator('body').innerText();
   expect(body.length).toBeGreaterThan(50);
