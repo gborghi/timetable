@@ -1,0 +1,9 @@
+node_modules
+build
+.svelte-kit
+package-lock.json
+cypress/screenshots
+cypress/videos
+playwright-report
+test-results
+static
