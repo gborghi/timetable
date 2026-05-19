@@ -11,6 +11,18 @@ export const DAY_NAMES_EN: readonly string[] = [
   "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday",
 ];
 
+/** Italian label for each English day name. The backend persists
+ * teacher.free_day in English (e.g. "Saturday"); use this map to
+ * render the value in the UI without changing the wire format. */
+export const DAY_NAMES_EN_TO_IT: Record<string, string> = {
+  Monday:    "Lunedi",
+  Tuesday:   "Martedi",
+  Wednesday: "Mercoledi",
+  Thursday:  "Giovedi",
+  Friday:    "Venerdi",
+  Saturday:  "Sabato",
+};
+
 export interface RoomKindOption {
   value: RoomKind;
   label: string;

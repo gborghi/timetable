@@ -45,6 +45,7 @@ services:
     build:
       context: .
       dockerfile: webui/frontend/Dockerfile
+      target: dev
     image: pitantum-frontend:test
     container_name: pitantum-frontend-test
     environment:

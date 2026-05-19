@@ -6,11 +6,9 @@ managed by run_manager."""
 from __future__ import annotations
 
 import contextlib
-import datetime as dt
 import json
 import os
 import pickle
-import random
 import sys
 import threading
 import time
@@ -26,10 +24,8 @@ from . import engine_io, models
 from .db import SessionLocal
 from .run_manager import (
     create_run,
-    get_buffer,
     start_thread,
     update_run,
-    capture_stdout,
 )
 
 DAYS = list(range(1, 7))
@@ -1906,7 +1902,7 @@ def run_full_pipeline(profile: str,
                     import decomposition_temporal as dec_t  # type: ignore
                     # Persist profs to a temp pickle so the
                     # ProcessPoolExecutor workers can read it.
-                    import tempfile, pickle as _pk
+                    import pickle as _pk
                     ws = _run_workspace(rid)
                     profs_pkl = os.path.join(ws, "profs_decomp.pkl")
                     with open(profs_pkl, "wb") as f:
@@ -3841,8 +3837,8 @@ def run_decomposition_temporal(*, time_a: float = 60.0,
                     full_solution = refined
                     v0, m0 = v1, m1
                 else:
-                    print(f"[temporal] ALNS dropped (no improvement or "
-                          f"infeasible)")
+                    print("[temporal] ALNS dropped (no improvement or "
+                          "infeasible)")
             except Exception as e:
                 print(f"[temporal] ALNS stage failed: {e}")
 

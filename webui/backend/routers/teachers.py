@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..db import get_db
-from ..utils.list_query import filter_and_sort, parse_query, QueryError
+from ..utils.list_query import filter_and_sort, QueryError
 from ..utils.pagination import paginated_or_list
 
 router = APIRouter(prefix="/api/teachers", tags=["teachers"])

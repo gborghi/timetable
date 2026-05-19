@@ -1,7 +1,7 @@
 <script>
   import { api } from '$lib/api';
   import { flash, refreshDataset } from '$lib/stores';
-  import { DAY_NAMES_EN, TEACHER_DEFAULTS } from '$lib/constants';
+  import { DAY_NAMES_EN, DAY_NAMES_EN_TO_IT, TEACHER_DEFAULTS } from '$lib/constants';
   import { teachers } from '$lib/services';
   import {
     subjectsQuery, classroomsQuery, classesQuery, curriculaQuery
@@ -494,7 +494,7 @@
         <label>Giorno libero (alias di "riga rossa nella matrice")</label>
         <select value={editing.free_day || ''} on:change={onFreeDaySelect}>
           <option value="">(nessuno)</option>
-          {#each DAY_NAMES_EN as d}<option value={d}>{d}</option>{/each}
+          {#each DAY_NAMES_EN as d}<option value={d}>{DAY_NAMES_EN_TO_IT[d] || d}</option>{/each}
         </select>
       </div>
       <div class="field"><label>Max ore consecutive</label><input type="number" bind:value={editing.max_consecutive}/></div>

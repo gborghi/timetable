@@ -58,12 +58,20 @@ interface RequestOpts extends Omit<RequestInit, "method" | "headers"> {
   method?: Method;
   retry?: boolean;
   headers?: Record<string, string>;
+  /** Pass an AbortController.signal to cancel the request in flight
+   * (e.g. on route navigation). Aborted requests do NOT count as
+   * retryable failures and surface as an ApiError with status=0 and
+   * networkError=true so callers can ignore them. */
+  signal?: AbortSignal;
 }
 
 export interface ApiError extends Error {
   status: number;
   body?: unknown;
   networkError?: boolean;
+  /** True when the request was cancelled via AbortSignal (route nav,
+   * manual abort). Useful for callers to ignore the error silently. */
+  aborted?: boolean;
 }
 
 function isRetryable(method: Method, errOrResp: Response | Error | null): boolean {
@@ -85,8 +93,33 @@ async function doFetch(path: string, opts: RequestOpts): Promise<Response> {
   return await fetch(BASE + path, init);
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  // Sleep that respects an AbortSignal so retries between attempts
+  // don't ignore a mid-flight cancellation (route navigation, etc).
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException("Aborted", "AbortError"));
+      return;
+    }
+    const t = setTimeout(resolve, ms);
+    if (signal) {
+      signal.addEventListener("abort", () => {
+        clearTimeout(t);
+        reject(new DOMException("Aborted", "AbortError"));
+      }, { once: true });
+    }
+  });
+}
+
+function isAbortError(err: unknown): boolean {
+  return err instanceof DOMException && err.name === "AbortError";
+}
+
+// Add jitter so retry storms from many tabs don't synchronise (thundering
+// herd). Range: backoff +/- 50%.
+function jitteredBackoffMs(attempt: number): number {
+  const base = 200 * Math.pow(2, attempt - 1);
+  return Math.floor(base * (0.5 + Math.random()));
 }
 
 async function request<T = unknown>(
@@ -105,9 +138,28 @@ async function request<T = unknown>(
     try {
       res = await doFetch(path, opts);
     } catch (netErr) {
+      // Caller-driven cancellation (route nav, manual abort) -- surface
+      // as an ApiError with status=0+networkError=true but DON'T retry
+      // and DON'T try to reconnect; the caller already knows.
+      if (isAbortError(netErr) || opts.signal?.aborted) {
+        const aborted: ApiError = Object.assign(
+          new Error("Richiesta annullata."),
+          { status: 0, networkError: true, aborted: true },
+        ) as ApiError;
+        throw aborted;
+      }
       lastErr = netErr as Error;
       if (attempt < maxAttempts && isRetryable(method, lastErr)) {
-        await sleep(200 * Math.pow(2, attempt - 1));
+        try {
+          await sleep(jitteredBackoffMs(attempt), opts.signal);
+        } catch {
+          // Sleep aborted = caller cancelled mid-retry. Re-throw.
+          const aborted: ApiError = Object.assign(
+            new Error("Richiesta annullata."),
+            { status: 0, networkError: true, aborted: true },
+          ) as ApiError;
+          throw aborted;
+        }
         continue;
       }
       const err: ApiError = Object.assign(
@@ -133,7 +185,15 @@ async function request<T = unknown>(
     }
     if (attempt < maxAttempts && isRetryable(method, res)) {
       lastErr = res;
-      await sleep(200 * Math.pow(2, attempt - 1));
+      try {
+        await sleep(jitteredBackoffMs(attempt), opts.signal);
+      } catch {
+        const aborted: ApiError = Object.assign(
+          new Error("Richiesta annullata."),
+          { status: 0, networkError: true, aborted: true },
+        ) as ApiError;
+        throw aborted;
+      }
       continue;
     }
     const msg = formatApiError(body, res.status, res.statusText);

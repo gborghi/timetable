@@ -1,0 +1,90 @@
+# Repo-wide Python tooling config.
+#
+# The project doesn't ship as a pip package -- both backend and engine
+# are loaded by-path -- so we use this file only for tool configuration
+# (ruff, pytest discovery, coverage). No [project] metadata.
+
+[tool.ruff]
+# Match the Python version we run in CI.
+target-version = "py311"
+line-length = 100
+
+# CI only lints webui/; the engine/ + schedule/ legacy science code
+# has its own style (numpy-flavoured, star-imports, ALL_CAPS module
+# constants) that we won't refactor right now. `extend-exclude` here
+# keeps an editor's ruff invocation in line with CI.
+extend-exclude = [
+    "engine",
+    "schedule",
+    "proposals",
+    "tests",
+    "webui/frontend",
+    "webui/backend/alembic/versions",
+    "**/__pycache__",
+]
+
+[tool.ruff.lint]
+# Phase 1 ruleset: bug-catching (`F` pyflakes) + security (`S` bandit).
+# Style + bugbear + isort + pyupgrade are kept commented because the
+# legacy webui code triggers ~380 nitpick findings (stray `l` names,
+# zip(strict=), inline-if statements, unsorted imports) that would
+# block CI and are best fixed in a dedicated style-only PR.
+#
+# Phase 2 plan (separate PR):
+#   select = ["F", "E", "W", "B", "I", "S", "UP"]
+#   then run `ruff check --fix --unsafe-fixes webui/` and resolve
+#   the residual flag-by-flag.
+select = [
+    "F",   # pyflakes (undefined names, unused imports, dead code)
+    "S",   # flake8-bandit (security smells)
+]
+# Project-specific carve-outs:
+#   * S101 (assert) -- pytest relies on plain asserts.
+#   * S301/S403 (pickle imports/use) -- gated behind env flag now;
+#     module-level imports stay legitimate.
+#   * S603/S607 (subprocess) -- audited call sites are intentional.
+ignore = [
+    "S101",
+    "S301",
+    "S403",
+    "S603",
+    "S607",
+    # S110/S112: bare try-except-pass. Stylistic finding, not a real
+    # vulnerability. We will narrow these as part of the run-manager
+    # refactor (audit round 4) but they shouldn't gate CI in the
+    # meantime.
+    "S110",
+    "S112",
+    # S311: `random.*` is used for mock student/data generation, not
+    # cryptographic purposes. False positive across the codebase.
+    "S311",
+    # S608: f-string SQL detection. The hits in db.py, engine_io.py,
+    # routers/dashboard.py interpolate identifiers from a hardcoded
+    # whitelist (_PROFILE_TABLES) or `inspect(engine).get_table_names()`,
+    # not user input. Verified manually during the audit; never trigger
+    # SQL injection.
+    "S608",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests use plain asserts + occasionally write fixtures that look
+# unsafe (e.g. fake pickle payloads for the security tests).
+"webui/backend/tests/**" = ["S", "B", "F841"]
+# Legacy monoliths flagged by the audit for future extraction.
+# F841 (unused locals) is mostly debugging-leftover code that needs
+# a careful read before deletion; do NOT block CI on it for now.
+"webui/backend/optimization.py" = ["F841"]
+"webui/backend/engine_io.py" = ["F841"]
+"webui/backend/routers/monitor.py" = ["F841"]
+"webui/backend/routers/subjects.py" = ["F841"]
+
+[tool.pytest.ini_options]
+# Mirrors webui/backend/pytest.ini so `pytest` at repo root finds the
+# webui tests too. The `-m "not slow"` default keeps the dev loop fast;
+# CI overrides via -m.
+testpaths = ["webui/backend/tests"]
+addopts = "-ra --maxfail=10"
+python_files = "test_*.py"
+markers = [
+    "slow: full CP-SAT pipeline tests; opt-in via -m slow.",
+]

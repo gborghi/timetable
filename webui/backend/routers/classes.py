@@ -238,7 +238,7 @@ def patch_class(class_id: int, payload: dict,
             iv = int(v)
             if iv < 0 or iv > 6:
                 raise HTTPException(422,
-                    f"required_free_days_count must be in [0, 6]")
+                    "required_free_days_count must be in [0, 6]")
             c.required_free_days_count = iv
         elif k == "soft_minimize_sixth_weight":
             c.soft_minimize_sixth_weight = float(v)

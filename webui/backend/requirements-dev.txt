@@ -1,0 +1,19 @@
+# Dev + test tooling. Installed alongside requirements.txt for local
+# development; production / container builds skip this file.
+#
+# Usage:
+#   pip install -r requirements.txt -r requirements-dev.txt
+
+-r requirements.txt
+
+# Test runner + HTTP client used by FastAPI's TestClient.
+pytest>=8.0,<9.0
+httpx>=0.27,<1.0
+
+# Linter / formatter. Pinned to a 0.x range -- ruff still occasionally
+# tightens existing rules in minor releases.
+ruff>=0.5,<1.0
+
+# Production WSGI/ASGI runner; useful locally too for `docker run`
+# parity with the multi-worker prod command.
+gunicorn>=21.2,<24.0

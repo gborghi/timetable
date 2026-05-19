@@ -214,7 +214,7 @@
       </span>
       <span class="italic">Tempus tantum nostrum est</span>
       <span>v{APP_VERSION}</span>
-      <span class="ml-auto">Backend: localhost:8000 &middot; Frontend: localhost:5173 &middot; Engine: ortools</span>
+      <span class="ml-auto">Engine: ortools</span>
     </div>
   </footer>
 </div>

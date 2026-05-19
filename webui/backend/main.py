@@ -61,17 +61,42 @@ configure_logging()
 log = get_logger("pitantum.main")
 
 
+def _is_production() -> bool:
+    """True when PITANTUM_ENV is set to a production-like value.
+
+    Used to gate fail-fast checks (CORS wildcard, missing API key) that
+    are acceptable in local dev but must block startup in prod.
+    """
+    val = os.environ.get("PITANTUM_ENV", "").strip().lower()
+    return val in ("prod", "production")
+
+
 def _cors_allow_origins() -> list[str]:
     """CORS allow_origins. Defaults to localhost dev (127.0.0.1:5173 +
     localhost:5173). Override via env var `PITANTUM_CORS_ORIGINS` as a
-    comma-separated list, or set to '*' to keep the legacy wildcard.
+    comma-separated list.
 
-    Section 2.6 P1 of docs/improvements.md: restringere CORS al dev
-    frontend invece di '*'.
+    Wildcard '*' is REFUSED when PITANTUM_ENV indicates production --
+    combined with allow_credentials=False the wildcard was technically
+    safe, but it widens the attack surface (any origin can issue
+    requests to /api/optimize, /api/dataset/clear, etc.) for no good
+    reason in a production deploy.
     """
     env = os.environ.get("PITANTUM_CORS_ORIGINS")
     if env:
-        return [s.strip() for s in env.split(",") if s.strip()]
+        items = [s.strip() for s in env.split(",") if s.strip()]
+        if "*" in items:
+            if _is_production():
+                raise RuntimeError(
+                    "CORS wildcard '*' rifiutato in produzione. "
+                    "Settare PITANTUM_CORS_ORIGINS con l'elenco "
+                    "esplicito dei front-end ammessi."
+                )
+            log.warning(
+                "CORS allow_origins contiene '*' -- accettato solo "
+                "in dev/test; in produzione verra' rifiutato."
+            )
+        return items
     return [
         "http://127.0.0.1:5173",
         "http://localhost:5173",
@@ -80,9 +105,38 @@ def _cors_allow_origins() -> list[str]:
     ]
 
 
+def _check_production_security() -> None:
+    """Fail-fast checks at startup when PITANTUM_ENV=production.
+
+    Refuse to boot if obvious production-security misconfigurations are
+    present (no API key, debug-only flags enabled). Keeps the dev
+    workflow untouched while preventing accidental deploy of an
+    unauthenticated backend.
+    """
+    if not _is_production():
+        return
+    if not os.environ.get("PITANTUM_API_KEY", "").strip():
+        raise RuntimeError(
+            "PITANTUM_ENV=production ma PITANTUM_API_KEY non e' "
+            "impostata. Rifiuto di avviare un backend senza "
+            "autenticazione in produzione."
+        )
+    if os.environ.get("PITANTUM_ALLOW_PICKLE_UPLOAD", "").strip().lower() in (
+        "1", "true", "yes", "on",
+    ):
+        # Warn loudly but don't block: an admin who really wants to
+        # accept pickles in prod has to keep both flags set.
+        log.warning(
+            "PITANTUM_ALLOW_PICKLE_UPLOAD attivo in produzione. "
+            "Questo endpoint esegue pickle.loads su input utente "
+            "-- vulnerabilita RCE se non strettamente controllato."
+        )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     log.info("backend startup -- init_db()")
+    _check_production_security()
     init_db()
     log.info("backend ready")
     yield
@@ -160,7 +214,6 @@ async def health_async():
     """Async smoke endpoint exercising the AsyncSession path. Returns
     OK + the connected dialect when the async layer is available, or
     raises 503 with a helpful hint otherwise (Section 2.5 P2)."""
-    from fastapi import Depends
     # Inline import + manual call to avoid forcing the dependency on
     # routes that don't need it.
     from .async_db import get_async_db
@@ -253,22 +306,44 @@ async def validation_exception_handler(
     )
 
 
+_INTEGRITY_HINTS: tuple[tuple[str, str], ...] = (
+    ("unique", "Valore gia' esistente: viola un vincolo di unicita'."),
+    ("foreign key", "Riferimento mancante o ancora in uso (FK)."),
+    ("not null", "Campo obbligatorio mancante."),
+    ("check", "Valore fuori dai limiti consentiti."),
+)
+
+
+def _safe_integrity_hint(exc: IntegrityError) -> str:
+    """Map a raw SQLAlchemy IntegrityError to a generic, user-facing
+    hint. Never returns the raw `exc.orig` text -- that leaks schema
+    details (table/column names, dialect, sometimes values in conflict)
+    to the client.
+    """
+    raw = str(getattr(exc, "orig", "")).lower()
+    for needle, hint in _INTEGRITY_HINTS:
+        if needle in raw:
+            return hint
+    return "Vincolo di integrita' violato."
+
+
 @app.exception_handler(IntegrityError)
 async def integrity_exception_handler(
     request: Request, exc: IntegrityError
 ):
-    """SQLAlchemy IntegrityError -> 409 Conflict with a friendly
-    summary. The most common cases are unique-constraint violations
-    and foreign-key violations on delete.
+    """SQLAlchemy IntegrityError -> 409 Conflict. The raw exception is
+    logged server-side (with full schema details) for debugging; the
+    client receives only a generic hint mapped from the error
+    category, never the underlying SQL or column names.
     """
-    msg = str(getattr(exc, "orig", exc)) or "Vincolo di integrita' violato."
+    raw = str(getattr(exc, "orig", exc)) or "integrity error"
     log.warning("integrity_error path=%s err=%s",
-                request.url.path, msg)
+                request.url.path, raw)
     return _err(
         request, 409,
         "Operazione rifiutata: vincolo di integrita' violato.",
         "integrity_error",
-        hint=msg,
+        hint=_safe_integrity_hint(exc),
     )
 
 
