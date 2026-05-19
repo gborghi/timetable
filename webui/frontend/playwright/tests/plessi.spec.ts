@@ -37,6 +37,10 @@ test('create a plesso via /plessi', async ({ page }) => {
   await page.locator('.field input').nth(1).fill(TEST_NAME);
   await page.getByRole('button', { name: 'Salva', exact: true })
     .click();
-  await expect(page.getByText(TEST_CODE)).toBeVisible();
-  await expect(page.getByText(TEST_NAME)).toBeVisible();
+  await expect(
+    page.getByRole('cell', { name: TEST_CODE, exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('cell', { name: TEST_NAME, exact: true }),
+  ).toBeVisible();
 });

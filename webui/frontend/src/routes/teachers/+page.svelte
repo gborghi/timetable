@@ -17,6 +17,11 @@
   import EntityPreferenceGrid from '$lib/components/EntityPreferenceGrid.svelte';
   import { cloneRow } from '$lib/utils';
 
+  function hasDuplicateFreeDayPriorities(arr) {
+    const d = (arr ?? []).filter((x) => x);
+    return new Set(d).size !== d.length;
+  }
+
   let editing = null;
   let listRef = null;
   let selectedIds = [];
@@ -643,8 +648,7 @@
           </div>
         {/each}
       </div>
-      {@const _fdpDays = editingFreeDayPriorities.filter((d) => d)}
-      {#if new Set(_fdpDays).size !== _fdpDays.length}
+      {#if hasDuplicateFreeDayPriorities(editingFreeDayPriorities)}
         <div class="text-xs text-red-600"
              data-test="free-day-priority-error">
           ⚠️ I tre giorni delle priorita' devono essere distinti.
