@@ -78,12 +78,23 @@ def _config(**kw):
 
 def test_week_solver_skip_phase_a_feasible():
     """``MonolithicSolver(dc_value=None, scope=None)`` solves the
-    full week from scratch and returns a HARD-feasible solution."""
+    full week from scratch and returns a HARD-feasible solution.
+
+    Passes ``days`` / ``hours`` explicitly so the test is isolated
+    from any non-default working_hours config stored in the live
+    ``webui/data/timetable.db`` (which is shared between tests and
+    can have been customised by a previous dev session). The
+    expected slot count below assumes the legacy 6 days x 6 hours
+    grid.
+    """
     from cp_sat_constraint_model import MonolithicSolver
 
     profs = _profs_3_classes()
     cfg = _config()
-    ms = MonolithicSolver(profs, dc_value=None, config=cfg, scope=None)
+    ms = MonolithicSolver(
+        profs, dc_value=None, config=cfg, scope=None,
+        days=[1, 2, 3, 4, 5, 6], hours=[8, 9, 10, 11, 12, 13],
+    )
     assert ms.weekly_mode is True
     # Each cattedra: 6 days * 6 hours = 36 slot vars per cattedra, 9
     # cattedre -> 324 slot vars total.
