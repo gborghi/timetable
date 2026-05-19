@@ -1,0 +1,65 @@
+# Repo-wide .dockerignore: keep build contexts tiny so `docker build`
+# layers stay deterministic and `COPY .` doesn't haul in venvs,
+# node_modules, datasets, PDFs, or the .git tree.
+
+# Version control + IDE
+.git
+.gitattributes
+.gitignore
+.githooks
+.idea
+.vscode
+.claude
+.devcontainer
+
+# Python build artefacts
+**/__pycache__
+**/*.py[cod]
+**/*.egg-info
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/.tox
+**/.venv
+**/venv
+**/env
+
+# JS build artefacts
+**/node_modules
+**/.svelte-kit
+**/dist
+**/build
+**/.vite
+
+# Local data + test artefacts
+webui/data
+webui/logs
+**/runs
+**/output
+**/cypress/screenshots
+**/cypress/videos
+**/playwright-report
+**/test-results
+
+# Large assets we don't ship in containers
+*.pdf
+*.pkl
+*.sqlite
+*.sqlite-*
+*.db
+*.db-wal
+*.db-shm
+*.zip
+*.xlsx
+*.csv
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Docs / config that don't belong inside images
+docs
+proposals
+branding
+*.md
+!webui/README.md
