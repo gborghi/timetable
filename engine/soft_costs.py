@@ -116,18 +116,25 @@ def sixth_class_busy_pairs(model, busy_indicator_fn, classes, days, *,
     return pairs, aux_vars
 
 
-def _buchi_daydist_vars(model, slot, teachers, days, hours, *,
-                         include_five_one, fixed_load=None):
-    """Shared builder for the per-(teacher, day) gap (buchi) and weekly
-    day-distribution (five/one) auxiliary variables.
+def _buchi_daydist_vars_acc(model, vars_at, teachers, days, hours, *,
+                            include_five_one, fixed_load=None):
+    """Accessor-based shared builder for the per-(teacher, day) gap
+    (buchi) and weekly day-distribution (five/one) auxiliary variables.
 
-    Single source of truth for the gap/day-count modeling. Both
-    :func:`buchi_and_daydist_terms` (which forms ``weight*var`` products
-    for ``ConstraintModel.compute_soft_cost_expr``) and the pair-shaped
-    wrappers :func:`buchi_pairs` / :func:`five_one_pairs` (which yield
-    ``(weight, var)`` tuples for the pragma layer) consume this helper,
-    so the encoding -- and the EXACT order in which aux vars are created
-    -- exists once.
+    Identical encoding to :func:`_buchi_daydist_vars` except the per-hour
+    CP-SAT var access is delegated to the ``vars_at(t, d, h) -> list``
+    callback instead of comprehending a flat slot dict. This lets BOTH
+    the slot-based callers (via :func:`_buchi_daydist_vars`, which builds
+    a slot-filtering accessor) AND column generation (which already has a
+    ``(t, d, h) -> [vars]`` dict and can pass ``cg_dict.get`` directly)
+    share ONE implementation.
+
+    Single source of truth for the gap/day-count modeling. The slot-based
+    public wrappers :func:`buchi_and_daydist_terms` / :func:`buchi_pairs`
+    / :func:`five_one_pairs` reach this via :func:`_buchi_daydist_vars`;
+    the accessor-based public entry :func:`buchi_daydist_terms_from_accessor`
+    calls it directly, so the encoding -- and the EXACT order in which aux
+    vars are created -- exists once.
 
     For each (teacher, day) with at least one decision variable or a
     non-zero fixed-load contribution it builds:
@@ -145,6 +152,9 @@ def _buchi_daydist_vars(model, slot, teachers, days, hours, *,
       idle interior hours).
     * ``is_five`` / ``is_one`` -- reified ``count_d == 5`` / ``count_d
       == 1`` day-distribution indicators, only when ``include_five_one``.
+
+    ``vars_at(t, d, h)`` must return the list of CP-SAT slot vars at that
+    cell (it is wrapped in ``list(...)`` here, so any iterable is fine).
 
     Returns ``(records, aux_vars)`` where ``records`` is a list of
     per-(teacher, day) dicts ``{"buchi": IntVar, "is_five": BoolVar |
@@ -165,9 +175,7 @@ def _buchi_daydist_vars(model, slot, teachers, days, hours, *,
             cpsat_at_h: dict = {}
             base_at_h: dict = {}
             for h in hours:
-                cpsat_at_h[h] = [
-                    v for (tt, _c, _s, dd, hh), v in slot.items()
-                    if tt == t and dd == d and hh == h]
+                cpsat_at_h[h] = list(vars_at(t, d, h))
                 base_at_h[h] = int(fixed_load.get((t, d, h), 0))
             base_count = sum(base_at_h.values())
             cpsat_all = [v for h in hours for v in cpsat_at_h[h]]
@@ -240,6 +248,29 @@ def _buchi_daydist_vars(model, slot, teachers, days, hours, *,
                 rec["is_one"] = is_one
             records.append(rec)
     return records, aux_vars
+
+
+def _buchi_daydist_vars(model, slot, teachers, days, hours, *,
+                        include_five_one, fixed_load=None):
+    """Slot-based shim over :func:`_buchi_daydist_vars_acc`.
+
+    Wraps the flat ``slot`` dict (keyed by ``(teacher, class, subject,
+    day, hour)``) in a ``vars_at(t, d, h)`` accessor that filters the dict
+    for that cell, then delegates. Behaviour is byte-identical to the old
+    inline slot comprehension; the slot-based public wrappers
+    (:func:`buchi_and_daydist_terms` / :func:`buchi_pairs` /
+    :func:`five_one_pairs`) call this unchanged.
+
+    Returns the same ``(records, aux_vars)`` shape as
+    :func:`_buchi_daydist_vars_acc`.
+    """
+    return _buchi_daydist_vars_acc(
+        model,
+        lambda t, d, h: [
+            v for (tt, _c, _s, dd, hh), v in slot.items()
+            if tt == t and dd == d and hh == h],
+        teachers, days, hours,
+        include_five_one=include_five_one, fixed_load=fixed_load)
 
 
 def buchi_and_daydist_terms(model, slot, teachers, days, hours, *,
@@ -339,3 +370,45 @@ def five_one_pairs(model, slot, teachers, days, hours, *,
         if one_weight is not None:
             pairs.append((one_weight, rec["is_one"]))
     return pairs, aux_vars
+
+
+def buchi_daydist_terms_from_accessor(model, vars_at, teachers, days, hours, *,
+                                      buchi_weight, five_weight, one_weight,
+                                      include_five_one, fixed_load=None):
+    """Accessor-based public entry for the full buchi + five/one soft cost.
+
+    Twin of :func:`buchi_and_daydist_terms` that takes a
+    ``vars_at(t, d, h) -> list`` ACCESSOR callback instead of a flat slot
+    dict, so column generation -- which already holds a
+    ``(t, d, h) -> [vars]`` dict -- can feed ``cg_dict.get`` (or a thin
+    wrapper) directly and share the ONE buchi/five/one encoding in
+    :func:`_buchi_daydist_vars_acc`.
+
+    ``vars_at(t, d, h)`` must return the list of CP-SAT slot vars at that
+    cell (any iterable; it is ``list(...)``-wrapped internally). Empty ->
+    that cell contributes nothing. ``fixed_load`` (defaulting to an empty
+    dict) maps ``(teacher, day, hour) -> int`` greedy-base load out of
+    CP-SAT scope, contributing a constant to the per-cell count -- exactly
+    as the slot-based wrappers.
+
+    OBJ-TERM ORDER CONTRACT: per in-scope (teacher, day) record the
+    returned ``obj_terms`` append ``five_weight*is_five``, then
+    ``one_weight*is_one``, then ``buchi_weight*buchi`` (only the five/one
+    pair when ``include_five_one``). This is the SAME order as
+    ``column_generation._add_full_soft_cost_terms``
+    (``_PENALTY_FIVE*is_five, _PENALTY_ONE*is_one, _PENALTY_BUCHI*buchi``),
+    so that caller can swap to this entry without reordering its objective.
+
+    Returns ``(obj_terms, aux_vars)`` -- finished ``weight * var`` products
+    and every auxiliary BoolVar/IntVar introduced (in creation order).
+    """
+    records, aux_vars = _buchi_daydist_vars_acc(
+        model, vars_at, teachers, days, hours,
+        include_five_one=include_five_one, fixed_load=fixed_load)
+    obj_terms: list = []
+    for rec in records:
+        if include_five_one:
+            obj_terms.append(five_weight * rec["is_five"])
+            obj_terms.append(one_weight * rec["is_one"])
+        obj_terms.append(buchi_weight * rec["buchi"])
+    return obj_terms, aux_vars
