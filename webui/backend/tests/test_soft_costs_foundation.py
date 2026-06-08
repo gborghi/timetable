@@ -29,9 +29,13 @@ def test_sixth_slot_terms_one_per_slot_at_h13():
 
 
 def test_compute_soft_cost_expr_sixth_unchanged_after_delegation():
-    """Zero-drift: a MonolithicSolver's solved objective is identical
-    whether the sixth term comes from the inline body or the extracted
-    soft_costs function. Both modes."""
+    """Smoke test (mode='default' only): after compute_soft_cost_expr was
+    refactored to delegate its sixth-hour block to soft_costs, a
+    MonolithicSolver built with mode='default' still produces a solvable
+    model when its soft terms are minimized. This does NOT assert an
+    objective-equality and does NOT exercise the phase_b_per_day path --
+    the per-day path (sixth_class_busy_terms) is covered directly by
+    test_sixth_class_busy_terms_aggregates_per_class_day below."""
     from cp_sat_constraint_model import MonolithicSolver, ConstraintConfig
     profs = {"T1": {"classi": {"1A": {"Mat": {"ore": 6}}}, "max_hours": 18}}
     dc = {("T1", "1A", "Mat", 1): 6}
@@ -42,3 +46,36 @@ def test_compute_soft_cost_expr_sixth_unchanged_after_delegation():
     solver.parameters.max_time_in_seconds = 5.0
     status = solver.Solve(ms.model)
     assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+
+
+def test_sixth_class_busy_terms_aggregates_per_class_day():
+    """Direct unit coverage for the extracted per-day encoder
+    (mode='phase_b_per_day'), without the full solver. Pins the
+    three-branch aggregation contract by calling the function with a
+    fake busy_indicator_fn over real BoolVars:
+      - empty busy list for a (class, day) -> skipped (no term, no aux)
+      - exactly one indicator       -> used directly (no new aux var)
+      - two+ indicators             -> one OR'd aux BoolVar + one term
+    """
+    import soft_costs
+    model = cp_model.CpModel()
+    i1 = model.NewBoolVar("i1")
+    i2 = model.NewBoolVar("i2")
+    busy = {
+        ("1A", 1): [i1],        # single -> used directly, no aux
+        ("1B", 1): [i1, i2],    # two -> one aux var
+        ("1C", 1): [],          # empty -> skipped
+    }
+    classes = ["1A", "1B", "1C"]
+    days = [1]
+    terms, aux = soft_costs.sixth_class_busy_terms(
+        model, lambda cl, d, h: busy[(cl, d)], classes, days,
+        weight=5, sixth_hour=13)
+    # 1A + 1B contribute a term; 1C (empty) is skipped.
+    assert len(terms) == 2
+    # Only the 2-indicator case (1B) created an OR aux BoolVar.
+    assert len(aux) == 1
+    # The single-indicator case reuses i1 directly (no fresh aux var),
+    # so the lone aux var is distinct from both raw indicators.
+    assert aux[0] is not i1
+    assert aux[0] is not i2
