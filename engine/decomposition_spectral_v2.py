@@ -37,6 +37,11 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import cpsat_v2_timetable as cv2  # noqa: E402
 
+try:  # package vs flat-module import (mirrors engine idiom)
+    from . import soft_costs as sc  # type: ignore
+except ImportError:  # pragma: no cover - flat sys.path injection path
+    import soft_costs as sc  # type: ignore
+
 DAYS = cv2.DAYS
 HOURS = cv2.HOURS
 
@@ -175,39 +180,37 @@ def compute_cl_day_load(triples, dc_value, day):
 
 
 def add_buchi_soft(model, triples_active, slot, day, prefix):
-    """Aggiunge variabili "buchi del prof" e ritorna la lista di gap."""
-    gap_terms = []
-    profs_active = sorted({pp for (pp, _, _, _) in triples_active})
-    for p in profs_active:
-        present_p = []
-        for h in HOURS:
-            keys = [
-                slot[(p, cl, s, h)]
-                for (pp, cl, s, _) in triples_active if pp == p
-                and (p, cl, s, h) in slot
-            ]
-            if keys:
-                pp_var = model.NewBoolVar(f"{prefix}_pp_{p}_{day}_{h}")
-                model.AddMaxEquality(pp_var, keys)
-            else:
-                pp_var = model.NewConstant(0)
-            present_p.append(pp_var)
-        for hi in range(1, len(HOURS) - 1):
-            earlier = present_p[:hi]
-            later = present_p[hi + 1:]
-            hb = model.NewBoolVar(f"{prefix}_hb_{p}_{day}_{hi}")
-            model.AddMaxEquality(hb, earlier)
-            ha = model.NewBoolVar(f"{prefix}_ha_{p}_{day}_{hi}")
-            model.AddMaxEquality(ha, later)
-            gap = model.NewBoolVar(f"{prefix}_gap_{p}_{day}_{hi}")
-            model.AddBoolAnd(
-                [present_p[hi].Not(), hb, ha]
-            ).OnlyEnforceIf(gap)
-            model.AddBoolOr(
-                [present_p[hi], hb.Not(), ha.Not()]
-            ).OnlyEnforceIf(gap.Not())
-            gap_terms.append(gap)
-    return gap_terms
+    r"""Aggiunge variabili "buchi del prof" e ritorna la lista di gap.
+
+    Delega l'encoding dei buchi (ore interne vuote per prof/giorno) a
+    :func:`soft_costs.buchi_pairs`, l'unica fonte di verita\` per i
+    soft-cost CP-SAT. Restituisce la lista delle variabili-buchi (una
+    per (prof, giorno), ciascuna pari al numero di ore-buco interne di
+    quel prof in quel giorno): i tre call-site fanno
+    ``model.Minimize(sum(...))``, quindi la somma -- e dunque il valore
+    di obiettivo -- coincide col vecchio encoding per-slot a peso 1.
+
+    `prefix` e\` mantenuto per compatibilita\` di firma ma non e\`
+    piu\` usato per i nomi delle variabili (``buchi_pairs`` battezza le
+    proprie ausiliarie internamente)."""
+    # Solo i prof presenti nei triple passati (replica l'aggregazione
+    # per-prof del vecchio `present_p`: A=bridges, B=internals del
+    # cluster, C=`free_triples`).
+    teachers = sorted({pp for (pp, _, _, _) in triples_active})
+    if not teachers:
+        return []
+    # Vista 5-tupla `(prof, classe, materia, giorno, ora)` ristretta
+    # ai (prof, classe, materia) dei triple attivi: cosi\` un prof con
+    # un triple FISSO (Stage C) non vede quelle ore tra i buchi.
+    active_keys = {(p, cl, subj) for (p, cl, subj, _) in triples_active}
+    slot5 = {
+        (p, cl, subj, day, h): v
+        for (p, cl, subj, h), v in slot.items()
+        if (p, cl, subj) in active_keys
+    }
+    pairs, _aux = sc.buchi_pairs(
+        model, slot5, teachers, [day], list(HOURS), weight=1)
+    return [v for (_w, v) in pairs]
 
 
 # ============================================================
