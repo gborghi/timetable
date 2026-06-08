@@ -29,13 +29,12 @@ diagramma~\ref{fig:mappa_tab} riassume la sequenza naturale.
 
 \begin{figure}[h]
 \centering
-\resizebox{\textwidth}{!}{%
-\begin{tikzpicture}[node distance=0.55cm and 0.45cm,
+\begin{tikzpicture}[node distance=0.55cm and 0.65cm,
   fam/.style={draw, rounded corners=3pt, very thick,
-              minimum width=2.8cm, minimum height=0.9cm,
+              minimum width=3.0cm, minimum height=0.9cm,
               align=center, font=\small\sffamily, fill=cBox!40},
   tab/.style={draw, rounded corners=2pt, thin,
-              minimum width=2.2cm, minimum height=0.55cm,
+              minimum width=2.4cm, minimum height=0.55cm,
               align=center, font=\scriptsize\sffamily, fill=cAvorio!70},
   arr/.style={-{Stealth[length=2.2mm]}, thick, cIndaco}]
   \node[fam, fill=cOro!25] (A) {1. Inizio\\\scriptsize Dashboard};
@@ -70,8 +69,7 @@ diagramma~\ref{fig:mappa_tab} riassume la sequenza naturale.
   \node[tab, below=of E] (e1) {Orario};
   \node[tab, below=0.18cm of e1] (e2) {Monitor};
   \node[tab, below=0.18cm of e2] (e3) {Assenze};
-\end{tikzpicture}%
-}
+\end{tikzpicture}
 \caption{La sequenza naturale di visita delle sedici tab. Le
 frecce indicano l'ordine in cui un coordinatore alle prime
 armi le incontra; durante l'uso quotidiano il giro \`e
@@ -222,8 +220,8 @@ particolarit\`a (\texttt{BES}, \texttt{DSA},
 
 I tag si scrivono direttamente nel modal della scheda; tag
 sconosciuti vengono creati al volo. Il bottone \emph{Gestisci
-tag} a fianco della lista apre un piccolo pannello per
-rinominare o eliminare i tag esistenti.
+tag} a fianco della lista apre un mini-CRUD globale per
+rinominare o eliminare.
 
 \begin{ideabox}
 I tag \emph{non sostituiscono} i gruppi articolati. I gruppi
@@ -632,9 +630,8 @@ Tab dedicata ai vincoli non riconducibili a matrici: vincoli
 Ogni vincolo ha un livello (Hard, Soft, Preferred), una
 descrizione e una pill colorata che lo rappresenta. Il bottone
 \emph{+ Nuovo vincolo DSL} apre un editor con autocompletamento
-e validazione live: scrivi, premi \emph{Valida}, vedi il vincolo
-tradotto in albero sintattico, e solo se passa la validazione
-puoi salvarlo.
+e validazione live: scrivi, premi \emph{Valida}, vedi l'AST, e
+solo se passa la validazione puoi salvarlo.
 
 \subsection{Cerca conflitti}
 
@@ -682,9 +679,8 @@ tre ingranaggi colorati collegati da cinghie, pulsante
 \subsection{Streaming di log}
 
 Sotto le card un pannello scuro mostra in diretta i messaggi del
-solver: avanzamento, soluzione corrente, gap residuo. Il pannello
-si aggiorna da solo, riga per riga, senza che tu debba ricaricare
-la pagina. Il bottone
+solver: avanzamento, soluzione corrente, gap residuo. \`E un
+flusso SSE: non serve aggiornare la pagina. Il bottone
 \emph{Stop} interrompe il calcolo (utile se ti accorgi di un
 errore di setup).
 

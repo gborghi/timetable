@@ -43,7 +43,7 @@ Per ogni tabella di vincoli:
 | teacher_unavailability | 54 |
 | teacher_mandatory_free_day | 4 |
 | teacher_free_day_preference | 144 |
-| min_free_days_distribution | {2: 12, 1: 34, 3: 2} |
+| min_free_days_distribution | {2: 13, 1: 34, 3: 1} |
 | class_unavailability | 2 |
 | classroom_unavailability | 4 |
 | coteach_group | 3 |
