@@ -1270,6 +1270,18 @@ class DSLConstraintCompiler:
     def _hours_in_scope(self) -> list:
         return sorted({k[4] for k in self.slot})
 
+    def _slot_scope(self) -> tuple:
+        """Return ``(teachers, days, hours)`` derived from ``self.slot``.
+
+        Shared by the slot-derived soft pragmas (buchi / five / one) so
+        the scope derivation lives in one place. Teachers are the sorted
+        set of slot-key teachers; days/hours come from the existing
+        ``_days_in_scope`` / ``_hours_in_scope`` helpers.
+        """
+        return (sorted({k[0] for k in self.slot}),
+                self._days_in_scope(),
+                self._hours_in_scope())
+
     def _class_busy_indicators(self, cl: str, d: int, h: int,
                                   *, name_suffix: str) -> list:
         """Return class-busy indicators for ``(cl, d, h)``.
@@ -1436,9 +1448,7 @@ class DSLConstraintCompiler:
             from . import soft_costs as sc  # type: ignore
         except ImportError:
             import soft_costs as sc  # type: ignore
-        teachers = sorted({k[0] for k in self.slot})
-        days = self._days_in_scope()
-        hours = self._hours_in_scope()
+        teachers, days, hours = self._slot_scope()
         pairs, _aux = sc.buchi_pairs(
             self.model, self.slot, teachers, days, hours,
             weight=weight)
@@ -1453,28 +1463,21 @@ class DSLConstraintCompiler:
         the SAME shared encoder ``ConstraintModel.compute_soft_cost_expr``
         uses -- so the ``is_five`` reification is byte-consistent with
         the ConstraintModel's own ``count_d`` (which is also slot-derived
-        + fixed_load, NOT a separate day_count var). This is a ``phase_a``
-        level pragma, so it mirrors the Phase-A guard convention: when
-        ``self.day_count`` is absent (the input that signals a genuine
-        Phase-A context) it appends a diagnostic and returns. The count
-        itself is still slot-derived for consistency with the
-        ConstraintModel semantics."""
-        if not self.day_count:
-            self.diagnostics.append(
-                "teacher_five_penalty: day_count empty; "
-                "did you forget to pass day_count= to the compiler?")
-            return
+        + fixed_load, NOT a separate day_count var). Despite the
+        ``phase_a`` level, the count is derived entirely from
+        ``self.slot`` -- it never reads ``self.day_count`` -- so the guard
+        checks ``self.slot`` (the input actually consumed), mirroring
+        ``_compile_teacher_buchi_penalty``."""
         if not self.slot:
             self.diagnostics.append(
-                "teacher_five_penalty: slot empty; no day-count vars built")
+                "teacher_five_penalty: slot empty; "
+                "no slots in scope to penalize")
             return
         try:
             from . import soft_costs as sc  # type: ignore
         except ImportError:
             import soft_costs as sc  # type: ignore
-        teachers = sorted({k[0] for k in self.slot})
-        days = self._days_in_scope()
-        hours = self._hours_in_scope()
+        teachers, days, hours = self._slot_scope()
         pairs, _aux = sc.five_one_pairs(
             self.model, self.slot, teachers, days, hours,
             five_weight=weight)
@@ -1485,24 +1488,18 @@ class DSLConstraintCompiler:
         (teacher, day) on which the teacher works EXACTLY 1 hour.
 
         Twin of :meth:`_compile_teacher_five_penalty` for the ``is_one``
-        indicator; same slot-derived ``count_d`` encoding and same
-        Phase-A ``day_count`` guard convention."""
-        if not self.day_count:
-            self.diagnostics.append(
-                "teacher_one_penalty: day_count empty; "
-                "did you forget to pass day_count= to the compiler?")
-            return
+        indicator; same slot-derived ``count_d`` encoding and the same
+        ``self.slot`` guard (the count never reads ``self.day_count``)."""
         if not self.slot:
             self.diagnostics.append(
-                "teacher_one_penalty: slot empty; no day-count vars built")
+                "teacher_one_penalty: slot empty; "
+                "no slots in scope to penalize")
             return
         try:
             from . import soft_costs as sc  # type: ignore
         except ImportError:
             import soft_costs as sc  # type: ignore
-        teachers = sorted({k[0] for k in self.slot})
-        days = self._days_in_scope()
-        hours = self._hours_in_scope()
+        teachers, days, hours = self._slot_scope()
         pairs, _aux = sc.five_one_pairs(
             self.model, self.slot, teachers, days, hours,
             one_weight=weight)

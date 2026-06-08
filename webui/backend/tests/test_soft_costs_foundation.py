@@ -130,3 +130,22 @@ def test_teacher_buchi_penalty_pragma_steers_against_gaps():
     assert solver.Solve(model) in (cp_model.OPTIMAL, cp_model.FEASIBLE)
     busy = sorted(h for h in hours if solver.Value(slot[("T1", "1A", "Mat", 1, h)]))
     assert busy[1] == busy[0] + 1, f"buchi penalty should pack hours: {busy}"
+
+
+def test_five_one_pragma_empty_slot_degrades_gracefully():
+    """A five/one pragma on a compiler with an EMPTY slot scope degrades
+    gracefully: it records a slot-scope diagnostic, adds no soft terms,
+    and never raises. The guard checks the input actually consumed
+    (self.slot), not the irrelevant self.day_count."""
+    import dsl_to_cpsat as d2c
+    from ortools.sat.python import cp_model
+    for pragma, label in (("teacher_five_penalty", "teacher_five_penalty"),
+                          ("teacher_one_penalty", "teacher_one_penalty")):
+        model = cp_model.CpModel()
+        c = d2c.DSLConstraintCompiler(model, {}, level="phase_a")
+        c.compile(f"{pragma}(10)")
+        assert c.soft_cost_terms == [], f"{pragma} should add no terms on empty slot"
+        assert any("slot empty" in d for d in c.diagnostics), c.diagnostics
+        # The honest diagnostic names the pragma and the empty slot scope,
+        # and must NOT mention day_count (the debugging trap we removed).
+        assert any(label in d and "day_count" not in d for d in c.diagnostics)
