@@ -1415,10 +1415,12 @@ class DSLConstraintCompiler:
     def _compile_class_sixth_penalty(self, weight: int, mode: str):
         """SOFT sixth-hour penalty. ``slot`` mode delegates to
         ``soft_costs.sixth_slot_pairs`` (one ``(weight, var)`` pair per
-        slot var at the sixth hour) and extends ``soft_cost_terms`` with
-        the pairs verbatim. ``class_busy`` mode is out of scope for the
-        foundation; non-``slot`` modes record a diagnostic and add no
-        terms."""
+        slot var at the sixth hour). ``class_busy`` mode delegates to
+        ``soft_costs.sixth_class_busy_pairs`` (one ``(weight, var)`` pair
+        per class busy at the sixth hour, aggregating multiple teachers /
+        slots on the same class into ONE indicator). Both extend
+        ``soft_cost_terms`` with the pairs verbatim; any other mode
+        records a diagnostic and adds no terms."""
         try:
             from . import soft_costs as sc  # type: ignore
         except ImportError:
@@ -1427,10 +1429,20 @@ class DSLConstraintCompiler:
             pairs, _ = sc.sixth_slot_pairs(
                 self.model, self.slot, weight=weight, sixth_hour=13)
             self.soft_cost_terms.extend(pairs)
+        elif mode == "class_busy":
+            classes = sorted({k[1] for k in self.slot})
+            days = self._days_in_scope()
+            busy_indicator_fn = lambda cl, d, h: [
+                v for (t, cc, s, dd, hh), v in self.slot.items()
+                if cc == cl and dd == d and hh == h]
+            pairs, _aux = sc.sixth_class_busy_pairs(
+                self.model, busy_indicator_fn, classes, days,
+                weight=weight, sixth_hour=13)
+            self.soft_cost_terms.extend(pairs)
         else:
             self.diagnostics.append(
-                f"class_sixth_penalty: mode {mode!r} not supported in "
-                f"the foundation; use 'slot'")
+                f"class_sixth_penalty: mode {mode!r} not supported; "
+                f"use 'slot' or 'class_busy'")
 
     def _compile_teacher_buchi_penalty(self, weight: int):
         """SOFT per-(teacher, day) gap (buchi) penalty. Delegates to

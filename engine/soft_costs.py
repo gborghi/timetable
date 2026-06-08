@@ -23,6 +23,46 @@ def sixth_slot_pairs(model, slot, *, weight, sixth_hour=13):
     return pairs, []
 
 
+def _sixth_class_busy_indicators(model, busy_indicator_fn, classes, days, *,
+                                 sixth_hour=13, name_prefix="sx"):
+    """Shared builder for the per-(class, day) sixth-hour busy indicator.
+
+    Single source of truth for the class-busy aggregation consumed by
+    both :func:`sixth_class_busy_terms` (which forms ``weight*ind``
+    products for ``ConstraintModel.compute_soft_cost_expr``) and
+    :func:`sixth_class_busy_pairs` (which yields ``(weight, ind)`` tuples
+    for the pragma layer) -- so the encoding, the empty-skip, the
+    len==1 shortcut, and the ``AddMaxEquality`` aggregation (plus the
+    EXACT order in which aux vars are created) exist once.
+
+    ``busy_indicator_fn(cl, d, sixth_hour)`` must return the list of
+    class-busy indicators at that cell (already de-duplicated per busy
+    key by the caller). When the list has 0 entries the (cl, d) pair is
+    skipped; with exactly 1 the lone indicator is used directly; with
+    >1 a fresh ``NewBoolVar`` is OR'd over them via ``AddMaxEquality``
+    (and recorded in ``aux_vars``).
+
+    Returns ``(indicators, aux_vars)`` where ``indicators`` is the list
+    of per-(class, day) busy indicator vars in iteration order; callers
+    attach weights.
+    """
+    indicators = []
+    aux_vars = []
+    for cl in classes:
+        for d in days:
+            busy = busy_indicator_fn(cl, d, sixth_hour)
+            if not busy:
+                continue
+            if len(busy) == 1:
+                ind = busy[0]
+            else:
+                ind = model.NewBoolVar(f"{name_prefix}_{cl}_{d}")
+                model.AddMaxEquality(ind, busy)
+                aux_vars.append(ind)
+            indicators.append(ind)
+    return indicators, aux_vars
+
+
 def sixth_class_busy_terms(model, busy_indicator_fn, classes, days, *,
                             weight, sixth_hour=13, name_prefix="sx"):
     """Per-day sixth-hour penalty (mode='phase_b_per_day'): one
@@ -48,21 +88,32 @@ def sixth_class_busy_terms(model, busy_indicator_fn, classes, days, *,
     objective directly, so this returns finished products, not pairs).
     Mirrors compute_soft_cost_expr mode='phase_b_per_day' sixth block.
     """
-    obj_terms = []
-    aux_vars = []
-    for cl in classes:
-        for d in days:
-            busy = busy_indicator_fn(cl, d, sixth_hour)
-            if not busy:
-                continue
-            if len(busy) == 1:
-                ind = busy[0]
-            else:
-                ind = model.NewBoolVar(f"{name_prefix}_{cl}_{d}")
-                model.AddMaxEquality(ind, busy)
-                aux_vars.append(ind)
-            obj_terms.append(weight * ind)
+    indicators, aux_vars = _sixth_class_busy_indicators(
+        model, busy_indicator_fn, classes, days,
+        sixth_hour=sixth_hour, name_prefix=name_prefix)
+    obj_terms = [weight * ind for ind in indicators]
     return obj_terms, aux_vars
+
+
+def sixth_class_busy_pairs(model, busy_indicator_fn, classes, days, *,
+                           weight, sixth_hour=13, name_prefix="sx"):
+    """Pair-shaped sibling of :func:`sixth_class_busy_terms`: one
+    ``(weight, indicator)`` tuple per (class, day) class-busy occupation
+    at ``hour == sixth_hour``.
+
+    Consumes the SAME :func:`_sixth_class_busy_indicators` helper as
+    :func:`sixth_class_busy_terms` (identical aggregation, aux-var order,
+    empty-skip + len==1 shortcut), but returns ``(weight, ind)`` pairs
+    -- the shape ``DSLConstraintCompiler.soft_cost_terms`` stores -- so
+    the pragma layer can ``extend`` directly.
+
+    Returns ``(pairs, aux_vars)``.
+    """
+    indicators, aux_vars = _sixth_class_busy_indicators(
+        model, busy_indicator_fn, classes, days,
+        sixth_hour=sixth_hour, name_prefix=name_prefix)
+    pairs = [(weight, ind) for ind in indicators]
+    return pairs, aux_vars
 
 
 def _buchi_daydist_vars(model, slot, teachers, days, hours, *,
