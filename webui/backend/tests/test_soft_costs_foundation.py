@@ -79,3 +79,20 @@ def test_sixth_class_busy_terms_aggregates_per_class_day():
     # so the lone aux var is distinct from both raw indicators.
     assert aux[0] is not i1
     assert aux[0] is not i2
+
+
+def test_buchi_five_one_zero_drift_default_mode():
+    """A teacher with a gappy day incurs a buchi penalty; the default
+    mode also adds five/one. Solved objective must match before/after
+    the extraction (guarded by the existing pinned suite; this asserts
+    the model still builds and solves)."""
+    from cp_sat_constraint_model import MonolithicSolver, ConstraintConfig
+    profs = {"T1": {"classi": {"1A": {"Mat": {"ore": 5}}}, "max_hours": 18}}
+    dc = {("T1", "1A", "Mat", 1): 5}
+    ms = MonolithicSolver(profs, dc, ConstraintConfig(enforce_no_holes=False))
+    terms, aux = ms.compute_soft_cost_expr(mode="default")
+    assert terms  # buchi + five present
+    ms.model.Minimize(sum(terms))
+    solver = cp_model.CpSolver()
+    solver.parameters.max_time_in_seconds = 5.0
+    assert solver.Solve(ms.model) in (cp_model.OPTIMAL, cp_model.FEASIBLE)

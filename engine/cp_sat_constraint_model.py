@@ -998,7 +998,6 @@ class ConstraintModel:
         aux_vars: list = []
         if not self.hours:
             return obj_terms, aux_vars
-        h_min, h_max = min(self.hours), max(self.hours)
         # ----- Sixth-hour penalty -----
         if mode == "default":
             # Per-slot at SIXTH_HOUR -- matches _cost_of_pattern's
@@ -1027,93 +1026,22 @@ class ConstraintModel:
                 obj_terms.extend(sx_terms)
                 aux_vars.extend(sx_aux)
         # ----- Per-(teacher, day) buchi (and five/one in default) -----
-        buchi_weight = (PENALTY_BUCHI if mode == "default"
-                         else PENALTY_BUCHI_PD)
-        teachers = self.teachers_in_scope()
-        for t in teachers:
-            for d in self.days:
-                cpsat_at_h: dict = {}
-                base_at_h: dict = {}
-                for h in self.hours:
-                    cpsat_at_h[h] = self.slots_for_teacher_day_hour(
-                        t, d, h)
-                    base_at_h[h] = int(self.fixed_load.get(
-                        (t, d, h), 0))
-                base_count = sum(base_at_h.values())
-                cpsat_all = [v for h in self.hours
-                              for v in cpsat_at_h[h]]
-                if not cpsat_all and base_count == 0:
-                    continue
-                # any_at_h indicators
-                any_at_h: dict = {}
-                for h in self.hours:
-                    if base_at_h[h] >= 1:
-                        any_at_h[h] = self.model.NewConstant(1)
-                    elif not cpsat_at_h[h]:
-                        any_at_h[h] = self.model.NewConstant(0)
-                    else:
-                        b = self.model.NewBoolVar(
-                            f"any_{t}_{d}_{h}")
-                        for v in cpsat_at_h[h]:
-                            self.model.Add(b >= v)
-                        self.model.Add(b <= sum(cpsat_at_h[h]))
-                        aux_vars.append(b)
-                        any_at_h[h] = b
-                # day_count
-                count_d = self.model.NewIntVar(
-                    base_count, base_count + len(cpsat_all),
-                    f"cnt_{t}_{d}")
-                aux_vars.append(count_d)
-                if cpsat_all:
-                    self.model.Add(
-                        count_d == base_count + sum(cpsat_all))
-                else:
-                    self.model.Add(count_d == base_count)
-                # first_h, last_h via min/max over auxiliaries
-                first_h = self.model.NewIntVar(
-                    h_min, h_max + 1, f"fh_{t}_{d}")
-                last_h = self.model.NewIntVar(
-                    h_min - 1, h_max, f"lh_{t}_{d}")
-                aux_vars.extend([first_h, last_h])
-                hf_aux: list = []
-                hl_aux: list = []
-                for h in self.hours:
-                    hf = self.model.NewIntVar(
-                        h_min, h_max + 1, f"hf_{t}_{d}_{h}")
-                    hl = self.model.NewIntVar(
-                        h_min - 1, h_max, f"hl_{t}_{d}_{h}")
-                    self.model.Add(hf == h).OnlyEnforceIf(any_at_h[h])
-                    self.model.Add(hf == h_max + 1).OnlyEnforceIf(
-                        any_at_h[h].Not())
-                    self.model.Add(hl == h).OnlyEnforceIf(any_at_h[h])
-                    self.model.Add(hl == h_min - 1).OnlyEnforceIf(
-                        any_at_h[h].Not())
-                    hf_aux.append(hf)
-                    hl_aux.append(hl)
-                self.model.AddMinEquality(first_h, hf_aux)
-                self.model.AddMaxEquality(last_h, hl_aux)
-                # buchi
-                max_buchi = h_max - h_min
-                buchi = self.model.NewIntVar(
-                    0, max_buchi, f"bch_{t}_{d}")
-                aux_vars.append(buchi)
-                self.model.Add(buchi >= last_h - first_h + 1 - count_d)
-                obj_terms.append(buchi_weight * buchi)
-                if mode == "default":
-                    # is_five, is_one reified -- weekly day-distribution
-                    # penalties; not emitted in the per-day mode since
-                    # the per-day model cannot see the rest of the week.
-                    is_five = self.model.NewBoolVar(f"5_{t}_{d}")
-                    self.model.Add(count_d == 5).OnlyEnforceIf(is_five)
-                    self.model.Add(count_d != 5).OnlyEnforceIf(
-                        is_five.Not())
-                    is_one = self.model.NewBoolVar(f"1_{t}_{d}")
-                    self.model.Add(count_d == 1).OnlyEnforceIf(is_one)
-                    self.model.Add(count_d != 1).OnlyEnforceIf(
-                        is_one.Not())
-                    aux_vars.extend([is_five, is_one])
-                    obj_terms.append(PENALTY_FIVE * is_five)
-                    obj_terms.append(PENALTY_ONE * is_one)
+        # Delegated to ``soft_costs.buchi_and_daydist_terms`` (single
+        # source of truth). Teacher scope = ``teachers_in_scope()``
+        # (slot-derived); slot access inside the encoder is the exact
+        # inline equivalent of ``slots_for_teacher_day_hour``; the
+        # greedy-base ``self.fixed_load`` is threaded through; five/one
+        # are gated to mode='default'.
+        bt, ba = soft_costs.buchi_and_daydist_terms(
+            self.model, self.slot, self.teachers_in_scope(), self.days,
+            self.hours,
+            buchi_weight=(PENALTY_BUCHI if mode == "default"
+                          else PENALTY_BUCHI_PD),
+            five_weight=PENALTY_FIVE, one_weight=PENALTY_ONE,
+            include_five_one=(mode == "default"),
+            fixed_load=self.fixed_load)
+        obj_terms.extend(bt)
+        aux_vars.extend(ba)
         return obj_terms, aux_vars
 
     def add_subject_pair_constraint(
