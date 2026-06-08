@@ -74,6 +74,7 @@ TASK*_REPORT.md
 docs/*.aux
 docs/*.toc
 docs/*.lof
+docs/*.lot
 docs/*.out
 docs/*.fls
 docs/*.fdb_latexmk
@@ -102,4 +103,12 @@ webui/frontend/cypress/videos/
 webui/frontend/cypress/downloads/
 webui/frontend/playwright-report/
 webui/frontend/test-results/
+webui/frontend/playwright/artifacts/
 tests/benchmarks/results/*.pkl
+# Raw benchmark sweep dumps (regenerable). Curated results live in
+# tests/benchmarks/results/bp_scalability.json and
+# docs/manual/benchmarks/results.csv, which are force-added when needed.
+tests/benchmarks/results/*.csv
+
+# Stray LaTeX log at repo root (the real build lives under docs/)
+/manual.log
