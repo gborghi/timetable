@@ -627,7 +627,16 @@ class DSLConstraintCompiler:
     def compile(self, source: str | Any) -> None:
         """Parse (if str) and compile the given DSL expression."""
         if isinstance(source, str):
-            from webui.backend.utils import general_dsl as gd  # type: ignore
+            try:
+                from webui.backend.utils import general_dsl as gd  # type: ignore
+            except ImportError:
+                import os as _os
+                import sys as _sys
+                _root = _os.path.dirname(
+                    _os.path.dirname(_os.path.abspath(__file__)))
+                if _root not in _sys.path:
+                    _sys.path.insert(0, _root)
+                from webui.backend.utils import general_dsl as gd  # type: ignore
             tree = gd.parse(source)
         else:
             tree = source
