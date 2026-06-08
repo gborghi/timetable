@@ -33,7 +33,8 @@ HOURS = meta.HOURS
 def _n1_one_swap(sol, profs, dc_value, rng, budget_iter: int,
                  best_val: float, locks=None,
                  *, group_assignments=None,
-                 dsl_hard_expressions=None):
+                 dsl_hard_expressions=None,
+                 soft_rules=None):
     """Try up to `budget_iter` 1-swaps of the same prof. Returns the
     first strictly-improving feasible neighbour, else None."""
     for _ in range(budget_iter):
@@ -43,7 +44,7 @@ def _n1_one_swap(sol, profs, dc_value, rng, budget_iter: int,
             dsl_hard_expressions=dsl_hard_expressions)
         if new_sol is None:
             continue
-        v, _ = meta.compute_soft(new_sol, profs)
+        v, _ = meta.compute_soft(new_sol, profs, soft_rules=soft_rules)
         if v < best_val:
             return new_sol, v
     return None, best_val
@@ -54,7 +55,8 @@ def _n1_one_swap(sol, profs, dc_value, rng, budget_iter: int,
 def _n2_two_swaps(sol, profs, dc_value, rng, budget_iter: int,
                   best_val: float, locks=None,
                   *, group_assignments=None,
-                  dsl_hard_expressions=None):
+                  dsl_hard_expressions=None,
+                  soft_rules=None):
     for _ in range(budget_iter):
         s1 = meta._swap_two_lessons_same_prof(
             sol, profs, dc_value, rng, locks=locks,
@@ -67,7 +69,7 @@ def _n2_two_swaps(sol, profs, dc_value, rng, budget_iter: int,
             group_assignments=group_assignments,
             dsl_hard_expressions=dsl_hard_expressions)
         candidate = s2 if s2 is not None else s1
-        v, _ = meta.compute_soft(candidate, profs)
+        v, _ = meta.compute_soft(candidate, profs, soft_rules=soft_rules)
         if v < best_val:
             return candidate, v
     return None, best_val
@@ -78,7 +80,8 @@ def _n2_two_swaps(sol, profs, dc_value, rng, budget_iter: int,
 def _n3_three_chain(sol, profs, dc_value, rng, budget_iter: int,
                     best_val: float, locks=None,
                     *, group_assignments=None,
-                    dsl_hard_expressions=None):
+                    dsl_hard_expressions=None,
+                    soft_rules=None):
     """Compose 3 atomic moves; accept if the chain end is strictly
     better. The intermediate states need NOT be improving."""
     for _ in range(budget_iter):
@@ -99,7 +102,7 @@ def _n3_three_chain(sol, profs, dc_value, rng, budget_iter: int,
             group_assignments=group_assignments,
             dsl_hard_expressions=dsl_hard_expressions)
         candidate = c if c is not None else b
-        v, _ = meta.compute_soft(candidate, profs)
+        v, _ = meta.compute_soft(candidate, profs, soft_rules=soft_rules)
         if v < best_val:
             return candidate, v
     return None, best_val
@@ -111,7 +114,8 @@ def _nk_kopt(sol, profs, dc_value, rng, budget_iter: int,
              best_val: float, k_min: int = 4, k_max: int = 6,
              locks=None,
              *, group_assignments=None,
-             dsl_hard_expressions=None):
+             dsl_hard_expressions=None,
+             soft_rules=None):
     """k-opt is a chain of k atomic moves with k randomly chosen in
     [k_min, k_max]. Exposed-budget-bounded; very expensive per
     iteration so the budget is small."""
@@ -135,7 +139,7 @@ def _nk_kopt(sol, profs, dc_value, rng, budget_iter: int,
             cur = nxt
         if not ok:
             continue
-        v, _ = meta.compute_soft(cur, profs)
+        v, _ = meta.compute_soft(cur, profs, soft_rules=soft_rules)
         if v < best_val:
             return cur, v
     return None, best_val
@@ -162,6 +166,7 @@ def run_vns(sol, profs, dc_value, time_budget_s,
             group_assignments=None,
             db=None,
             dsl_hard_expressions=None,
+            soft_rules=None,
             ) -> tuple[dict, list]:
     """Variable Neighbourhood Search.
 
@@ -177,7 +182,7 @@ def run_vns(sol, profs, dc_value, time_budget_s,
     """
     rng = random.Random(rng_seed)
     best = meta.deepcopy_sol(sol)
-    best_val, _ = meta.compute_soft(best, profs)
+    best_val, _ = meta.compute_soft(best, profs, soft_rules=soft_rules)
     init_val = best_val
     history = [dict(stage="initial", val=init_val)]
 
@@ -200,7 +205,8 @@ def run_vns(sol, profs, dc_value, time_budget_s,
                                    budget_iter, best_val,
                                    locks=locks,
                                    group_assignments=group_assignments,
-                                   dsl_hard_expressions=dsl_hard_expressions)
+                                   dsl_hard_expressions=dsl_hard_expressions,
+                                   soft_rules=soft_rules)
             if new_sol is not None and new_val < best_val:
                 if not meta.is_hard_feasible(
                         new_sol, profs, verbose=False,

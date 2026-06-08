@@ -277,7 +277,8 @@ def run_alns(sol, profs, dc_value, time_budget_s,
              db=None,
              via_dsl: bool = False,
              extra_dsl_expressions=None,
-             dsl_hard_expressions=None) -> tuple[dict, list]:
+             dsl_hard_expressions=None,
+             soft_rules=None) -> tuple[dict, list]:
     """Adaptive Large Neighborhood Search with SA acceptance.
 
     Args:
@@ -304,7 +305,7 @@ def run_alns(sol, profs, dc_value, time_budget_s,
     rng = random.Random(123)
     best = meta.deepcopy_sol(sol)
     cur = meta.deepcopy_sol(sol)
-    best_val, _ = meta.compute_soft(best, profs)
+    best_val, _ = meta.compute_soft(best, profs, soft_rules=soft_rules)
     cur_val = best_val
     init_val = best_val
 
@@ -377,7 +378,7 @@ def run_alns(sol, profs, dc_value, time_budget_s,
             T *= alpha
             continue
 
-        new_val, _ = meta.compute_soft(new_sol, profs)
+        new_val, _ = meta.compute_soft(new_sol, profs, soft_rules=soft_rules)
         delta = new_val - cur_val
         accepted = _accept_sa(rng, delta, T)
 

@@ -79,7 +79,8 @@ def run_lagrangian(sol: dict, profs: dict, dc_value: dict,
                    parallel_groups=None,
                    group_assignments=None,
                    db=None,
-                   dsl_hard_expressions=None) -> tuple[dict, dict]:
+                   dsl_hard_expressions=None,
+                   soft_rules=None) -> tuple[dict, dict]:
     """Lagrangian relaxation skeleton.
 
     The skeleton runs `max_iter` subgradient steps but does NOT
@@ -118,7 +119,7 @@ def run_lagrangian(sol: dict, profs: dict, dc_value: dict,
     lam = {b: 0.0 for b in bridges}
 
     best_sol = meta.deepcopy_sol(sol)
-    best_val, _ = meta.compute_soft(best_sol, profs)
+    best_val, _ = meta.compute_soft(best_sol, profs, soft_rules=soft_rules)
 
     # FU-5: when locks are active, the locked slots are IMMOVABLE.
     # The subgradient counts violations the local search could
@@ -174,10 +175,11 @@ def run_lagrangian(sol: dict, profs: dict, dc_value: dict,
                 group_assignments=group_assignments,
                 db=db,
                 dsl_hard_expressions=dsl_hard_expressions,
+                soft_rules=soft_rules,
             )
         except Exception:
             refined = best_sol
-        v, _ = meta.compute_soft(refined, profs)
+        v, _ = meta.compute_soft(refined, profs, soft_rules=soft_rules)
         if v < best_val and meta.is_hard_feasible(
                 refined, profs, verbose=False,
                 coteach_groups=coteach_groups,

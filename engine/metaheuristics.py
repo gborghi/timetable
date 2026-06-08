@@ -791,7 +791,8 @@ def run_lns(sol, profs, dc_value, time_budget_s,
             group_assignments=None,
             db=None,
             via_dsl=False,
-            extra_dsl_expressions=None):
+            extra_dsl_expressions=None,
+            soft_rules=None):
     """Esegui Large Neighborhood Search per `time_budget_s` secondi.
 
     Se `adaptive=True` (default), gli operator non sono scelti uniformi
@@ -808,7 +809,7 @@ def run_lns(sol, profs, dc_value, time_budget_s,
     """
     rng = random.Random(42)
     best = deepcopy_sol(sol)
-    best_val, _ = compute_soft(best, profs)
+    best_val, _ = compute_soft(best, profs, soft_rules=soft_rules)
     init_val = best_val
     profs_list = sorted(profs.keys())
     classes_list = sorted({c for p in profs.values() for c in p["classi"]})
@@ -882,7 +883,7 @@ def run_lns(sol, profs, dc_value, time_budget_s,
                 (iter_count, op, "infeasible", best_val, best_val)
             )
             continue
-        new_val, _ = compute_soft(new_sol, profs)
+        new_val, _ = compute_soft(new_sol, profs, soft_rules=soft_rules)
         if new_val < best_val:
             op_stats[op]["total_delta"] += (best_val - new_val)
             log_entries.append(
@@ -1030,11 +1031,12 @@ def run_sa(sol, profs, dc_value, time_budget_s,
            parallel_groups=None,
            group_assignments=None,
            db=None,
-           dsl_hard_expressions=None):
+           dsl_hard_expressions=None,
+           soft_rules=None):
     rng = random.Random(123)
     best = dict(sol)
     cur = dict(sol)
-    best_val, _ = compute_soft(best, profs)
+    best_val, _ = compute_soft(best, profs, soft_rules=soft_rules)
     cur_val = best_val
     init_val = best_val
     T = T0
@@ -1051,7 +1053,7 @@ def run_sa(sol, profs, dc_value, time_budget_s,
         if new_sol is None:
             T *= alpha
             continue
-        new_val, _ = compute_soft(new_sol, profs)
+        new_val, _ = compute_soft(new_sol, profs, soft_rules=soft_rules)
         delta = new_val - cur_val
         if delta < 0 or rng.random() < math.exp(-delta / max(T, 0.01)):
             cur = new_sol
@@ -1081,11 +1083,12 @@ def run_tabu(sol, profs, dc_value, time_budget_s,
              parallel_groups=None,
              group_assignments=None,
              db=None,
-             dsl_hard_expressions=None):
+             dsl_hard_expressions=None,
+             soft_rules=None):
     rng = random.Random(456)
     best = dict(sol)
     cur = dict(sol)
-    best_val, _ = compute_soft(best, profs)
+    best_val, _ = compute_soft(best, profs, soft_rules=soft_rules)
     cur_val = best_val
     init_val = best_val
     tabu = []                                  # FIFO ring buffer di hash
@@ -1104,7 +1107,7 @@ def run_tabu(sol, profs, dc_value, time_budget_s,
                               dsl_hard_expressions=dsl_hard_expressions)
             if new_sol is None:
                 continue
-            new_val, _ = compute_soft(new_sol, profs)
+            new_val, _ = compute_soft(new_sol, profs, soft_rules=soft_rules)
             # Hash (semplice) della soluzione
             h = hash(frozenset(
                 k for k, v in new_sol.items() if v == 1
@@ -1194,7 +1197,8 @@ def run_ils(sol, profs, dc_value, time_budget_s,
             db=None,
             via_dsl=False,
             extra_dsl_expressions=None,
-            dsl_hard_expressions=None):
+            dsl_hard_expressions=None,
+            soft_rules=None):
     """Iterated Local Search.
 
     Sequenza per ogni ciclo:
@@ -1209,7 +1213,7 @@ def run_ils(sol, profs, dc_value, time_budget_s,
     """
     rng = random.Random(789)
     best = dict(sol)
-    best_val, _ = compute_soft(best, profs)
+    best_val, _ = compute_soft(best, profs, soft_rules=soft_rules)
     init_val = best_val
     cur = dict(sol)
     t_start = time.time()
@@ -1227,8 +1231,9 @@ def run_ils(sol, profs, dc_value, time_budget_s,
                        parallel_groups=parallel_groups,
                        group_assignments=group_assignments,
                        db=db,
-                       dsl_hard_expressions=dsl_hard_expressions)
-        cur_val, _ = compute_soft(cur, profs)
+                       dsl_hard_expressions=dsl_hard_expressions,
+                       soft_rules=soft_rules)
+        cur_val, _ = compute_soft(cur, profs, soft_rules=soft_rules)
         if cur_val < best_val:
             best = dict(cur)
             best_val = cur_val
@@ -1253,6 +1258,7 @@ def run_ils(sol, profs, dc_value, time_budget_s,
                 group_assignments=group_assignments,
                 db=db, via_dsl=via_dsl,
                 extra_dsl_expressions=extra_dsl_expressions,
+                soft_rules=soft_rules,
             )
         else:
             if log:

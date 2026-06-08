@@ -1144,6 +1144,23 @@ def run_meta(stage: str, budget_s: float, workers: int, log: bool,
                 raise RuntimeError("Nessuna soluzione attiva; esegui prima "
                                    "Phase B o importa un pickle.")
             sol = engine_io.lessons_to_solution_dict(db, active.id)
+            # Subproject D: pre-parse DSL SOFT rules ONCE while the DB
+            # session is open. The trees MUST be produced by
+            # metaheuristics' own general_dsl import (via
+            # meta.parse_soft_rules) so compute_soft evaluates them
+            # against the SAME AST node classes; parsing with a
+            # separately-imported general_dsl alias would silently make
+            # every rule read VIOLATED (dual-module AST hazard).
+            soft_rules = None
+            try:
+                try:
+                    from engine import dsl_translator as _dt  # type: ignore
+                except ImportError:
+                    import dsl_translator as _dt  # type: ignore
+                _all = _dt.load_all_dsl_constraints(db, include_soft=True)
+                soft_rules = meta.parse_soft_rules(_all) or None
+            except Exception:
+                soft_rules = None
         # Native locks for the meta stage: the locked lesson keys
         # are passed to every algorithm via `locks=` so atomic
         # moves never disturb them.
@@ -1194,6 +1211,7 @@ def run_meta(stage: str, budget_s: float, workers: int, log: bool,
                 support_assignments=support_assignments_meta or None,
                 parallel_groups=parallel_groups_meta or None,
                 group_assignments=group_assignments_meta or None,
+                soft_rules=soft_rules,
             )
             if stage == "lns":
                 new_sol, _hist = meta.run_lns(
