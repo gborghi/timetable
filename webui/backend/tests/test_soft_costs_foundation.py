@@ -149,3 +149,25 @@ def test_five_one_pragma_empty_slot_degrades_gracefully():
         # The honest diagnostic names the pragma and the empty slot scope,
         # and must NOT mention day_count (the debugging trap we removed).
         assert any(label in d and "day_count" not in d for d in c.diagnostics)
+
+
+def test_build_soft_pragmas_default_mode_includes_sixth_buchi_five_one():
+    import dsl_translator
+    profs = {"T1": {"classi": {"1A": {"Mat": {"ore": 5}}}, "max_hours": 18}}
+    classes = ["1A"]
+    stream = dsl_translator.build_soft_pragmas(profs, classes, scale_mode="default")
+    joined = " ".join(stream)
+    assert "class_sixth_penalty(" in joined
+    assert "teacher_buchi_penalty(" in joined
+    assert "teacher_five_penalty(" in joined
+    assert "teacher_one_penalty(" in joined
+
+
+def test_build_soft_pragmas_per_day_mode_excludes_five_one():
+    import dsl_translator
+    profs = {"T1": {"classi": {"1A": {"Mat": {"ore": 5}}}, "max_hours": 18}}
+    stream = dsl_translator.build_soft_pragmas(profs, ["1A"], scale_mode="phase_b_per_day")
+    joined = " ".join(stream)
+    assert "teacher_five_penalty(" not in joined
+    assert "teacher_one_penalty(" not in joined
+    assert "class_sixth_penalty(" in joined

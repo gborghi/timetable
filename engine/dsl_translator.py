@@ -478,6 +478,42 @@ def seed_implicit_hardcoded(
     return out
 
 
+def build_soft_pragmas(profs, classes, *, scale_mode="default", level=None):
+    """Return the structural soft-pragma DSL stream for a pipeline.
+
+    ``scale_mode`` selects the weights + which penalties apply:
+      - ``'default'``: per-slot sixth (``PENALTY_SIXTH``), buchi
+        (``PENALTY_BUCHI``), five (``PENALTY_FIVE``), one
+        (``PENALTY_ONE``).
+      - ``'phase_b_per_day'``: per-class-busy sixth (``PENALTY_SIXTH_PD``),
+        buchi (``PENALTY_BUCHI_PD``); five/one are excluded because the
+        per-day decomposition has no weekly day-count to penalize.
+
+    Weights are imported from ``cp_sat_constraint_model`` so the numbers
+    are read from today's constants, not retyped. This emitter is unused
+    by any pipeline here; sub-project B feeds the returned stream into
+    each pipeline's ``DSLConstraintCompiler``. The ``profs`` / ``classes``
+    / ``level`` params are part of the stable sub-project-B-facing
+    signature even though the structural pragmas do not need them yet.
+    """
+    try:
+        from engine import cp_sat_constraint_model as csm  # type: ignore
+    except ImportError:
+        import cp_sat_constraint_model as csm  # type: ignore
+    out: list[str] = []
+    if scale_mode == "default":
+        out.append(f'class_sixth_penalty({csm.PENALTY_SIXTH}, "slot")')
+        out.append(f'teacher_buchi_penalty({csm.PENALTY_BUCHI})')
+        out.append(f'teacher_five_penalty({csm.PENALTY_FIVE})')
+        out.append(f'teacher_one_penalty({csm.PENALTY_ONE})')
+    elif scale_mode == "phase_b_per_day":
+        out.append(f'class_sixth_penalty({csm.PENALTY_SIXTH_PD}, "class_busy")')
+        out.append(f'teacher_buchi_penalty({csm.PENALTY_BUCHI_PD})')
+    else:
+        raise ValueError(f"unknown scale_mode {scale_mode!r}")
+    return out
+
+
 # ---------------------------------------------------------------------
 # Loader
 # ---------------------------------------------------------------------
