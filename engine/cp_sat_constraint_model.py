@@ -56,9 +56,11 @@ from ortools.sat.python import cp_model
 try:
     from . import metaheuristics as meta  # type: ignore
     from . import cpsat_v2_timetable as _cv2  # type: ignore
+    from . import soft_costs  # type: ignore
 except ImportError:  # direct script import (no package context)
     import metaheuristics as meta  # type: ignore
     import cpsat_v2_timetable as _cv2  # type: ignore
+    import soft_costs  # type: ignore
 
 
 DAYS = meta.DAYS
@@ -1000,29 +1002,30 @@ class ConstraintModel:
         # ----- Sixth-hour penalty -----
         if mode == "default":
             # Per-slot at SIXTH_HOUR -- matches _cost_of_pattern's
-            # per-slot accounting in meta.compute_soft.
-            for (_t, _cl, _s, _d, h), v in self.slot.items():
-                if h == SIXTH_HOUR:
-                    obj_terms.append(PENALTY_SIXTH * v)
+            # per-slot accounting in meta.compute_soft. Delegated to
+            # ``soft_costs.sixth_slot_pairs`` (single source of truth);
+            # the pairs are adapted to ``w*v`` products here.
+            pairs, _ = soft_costs.sixth_slot_pairs(
+                self.model, self.slot,
+                weight=PENALTY_SIXTH, sixth_hour=SIXTH_HOUR)
+            obj_terms.extend(w * v for w, v in pairs)
         else:  # phase_b_per_day
             # Per-class-busy at SIXTH_HOUR -- matches the legacy
             # ``sixth_terms = [present_per_class[cl][h13_idx] for cl
-            # in cls_in_day]`` formulation.
+            # in cls_in_day]`` formulation. Delegated to
+            # ``soft_costs.sixth_class_busy_terms``; the per-class
+            # exclusion + aggregation rules live in the callback
+            # ``_build_class_busy_indicators`` (name_suffix="sixth").
             if SIXTH_HOUR in self.hours:
-                for cl in self._classes_with_busy_aggregation():
-                    for d in self.days:
-                        busy = self._build_class_busy_indicators(
-                            cl, d, SIXTH_HOUR, name_suffix="sixth")
-                        if not busy:
-                            continue
-                        if len(busy) == 1:
-                            ind = busy[0]
-                        else:
-                            ind = self.model.NewBoolVar(
-                                f"sx_{cl}_{d}")
-                            self.model.AddMaxEquality(ind, busy)
-                            aux_vars.append(ind)
-                        obj_terms.append(PENALTY_SIXTH_PD * ind)
+                sx_terms, sx_aux = soft_costs.sixth_class_busy_terms(
+                    self.model,
+                    lambda cl, d, h: self._build_class_busy_indicators(
+                        cl, d, h, name_suffix="sixth"),
+                    self._classes_with_busy_aggregation(),
+                    self.days,
+                    weight=PENALTY_SIXTH_PD, sixth_hour=SIXTH_HOUR)
+                obj_terms.extend(sx_terms)
+                aux_vars.extend(sx_aux)
         # ----- Per-(teacher, day) buchi (and five/one in default) -----
         buchi_weight = (PENALTY_BUCHI if mode == "default"
                          else PENALTY_BUCHI_PD)
