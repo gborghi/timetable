@@ -29,16 +29,28 @@ generality mandate. Maintained autonomously (user set a no-supervision goal
 - **A — DONE** (commits `3b30d42`..`3da2e07`). `soft_costs.py` single source;
   `compute_soft_cost_expr` delegates; 4 soft pragmas + `build_soft_pragmas`
   emitter (unwired). Carry-forwards recorded in spec §8.
-- **B1** — zero-drift: per-day Phase-B (`solve_phase_b_for_day`) sources
-  sixth+buchi from the pragma stream via its compiler (implements the
-  `class_busy` compile branch = carry-forward #1; default `level="both"` =
-  #2). Structural-only; loader stays `include_soft=False` (no free-day
-  double-count). `sixth_hour` parameterized through `build_soft_pragmas`
-  (default legacy) for B-gen forward-compat. Gate: `test_phase_b_per_day_soft_cost`.
-- **B2** — free-day single-owner: remove Phase-A hardcoded `glib_pen`, make
-  the loader (`teacher_preferred_free_day_penalty`) the sole source; flip
-  per-day loader `include_soft=True` → enables dormant table soft on per-day.
-  Atomic, zero-drift on objective value.
+- **B1 — DONE** (commits `f891204` class_busy branch, `16f4e74` per-day
+  migration; pushed). `solve_phase_b_for_day` now sources sixth+buchi from
+  `build_soft_pragmas(scale_mode="phase_b_per_day")` via one
+  `DSLConstraintCompiler` (reused for the `via_dsl` hard block); inline
+  `W_SIXTH_B`/`W_GAP`/`gap_terms`/`sixth_terms` deleted. Added
+  `soft_costs.sixth_class_busy_pairs` + `_sixth_class_busy_indicators` helper.
+  Added `return_objective=` kwarg (3-tuple) for value tests; default 2-tuple
+  contract preserved (all callers verified). Buchi encoding changed
+  (`gap_*`→`bch_*`) — same objective value. Functional + value tests green;
+  200 DSL-path + 11 slow integration green. Loader still `include_soft=False`.
+- **B2** — REFRAMED after investigation: there is NO live double-count.
+  `build_phase_a_pragmas` emits only HARD pragmas, so `glib_pen` is ALWAYS 0
+  in the functional `solve_phase_a`; per-day Phase-B uses `include_soft=False`.
+  → free-day is fully DORMANT on per-day; only mono-week (loader
+  `include_soft=True`) applies it. B2 job: flip per-day Phase-B loader to
+  `include_soft=True` (single owner = loader; Phase-A glib already 0, so no
+  double-count) → lights up free-day + ALL dormant table soft (soft
+  unavailability, soft general/logical/coteach) on per-day. Clean the dead
+  `glib_pen` scaffolding in `solve_phase_a`. Functional gate: a soft free-day
+  / soft-unavailability rule actually steers a per-day solve. NOTE: cross-day
+  prefs (free-day) are inherently weakly handled by per-day decomposition
+  (each day solved independently) — flag via the solver-compat system later.
 - **B-gen** — general grid-relative time-threshold soft family:
   `slot_after_hour_penalty(weight, threshold)` ("avoid afternoons"),
   `teacher_max_hours_after(weight, threshold, cap)` ("max 1h after 15:00"),
