@@ -96,3 +96,19 @@ def test_buchi_five_one_zero_drift_default_mode():
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = 5.0
     assert solver.Solve(ms.model) in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+
+
+def test_class_sixth_penalty_pragma_records_soft_terms():
+    """The class_sixth_penalty(weight) pragma (slot mode) appends one
+    soft term per slot at h13."""
+    import dsl_to_cpsat as d2c
+    from ortools.sat.python import cp_model
+    model = cp_model.CpModel()
+    slot = {
+        ("T1", "1A", "Mat", 1, 13): model.NewBoolVar("a"),
+        ("T1", "1A", "Mat", 1, 12): model.NewBoolVar("b"),
+    }
+    c = d2c.DSLConstraintCompiler(model, slot, level="phase_b")
+    c.compile('class_sixth_penalty(50, "slot")')
+    assert len(c.soft_cost_terms) == 1
+    assert c.soft_cost_terms[0][0] == 50

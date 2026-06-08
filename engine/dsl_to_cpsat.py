@@ -463,6 +463,7 @@ PRAGMA_LEVEL: dict[str, str] = {
     "subject_pair_exists": "phase_b",
     "class_day_load_in": "phase_b",
     "classroom_capacity_ok": "phase_b",
+    "class_sixth_penalty": "phase_b",
     # Phase A (day_count IntVar) pragmas
     "class_day_load_in_day_count": "phase_a",
     "hall_bound_prof_day": "phase_a",
@@ -1075,6 +1076,16 @@ class DSLConstraintCompiler:
             n = int(arg_values[1])
             self._compile_teacher_max_consecutive(t, n)
             return True
+        if name == "class_sixth_penalty":
+            if len(arg_values) != 2:
+                self.diagnostics.append(
+                    f"class_sixth_penalty expects (weight, mode), got "
+                    f"{len(arg_values)}")
+                return True
+            weight = int(arg_values[0])
+            mode = str(arg_values[1])
+            self._compile_class_sixth_penalty(weight, mode)
+            return True
         if name == "cattedra_max_per_day":
             if len(arg_values) != 4:
                 self.diagnostics.append(
@@ -1361,6 +1372,26 @@ class DSLConstraintCompiler:
                       if tt == t and dd == d and hh in window]
                 if vs:
                     self.model.Add(sum(vs) <= n)
+
+    def _compile_class_sixth_penalty(self, weight: int, mode: str):
+        """SOFT sixth-hour penalty. ``slot`` mode delegates to
+        ``soft_costs.sixth_slot_pairs`` (one ``(weight, var)`` pair per
+        slot var at the sixth hour) and extends ``soft_cost_terms`` with
+        the pairs verbatim. ``class_busy`` mode is out of scope for the
+        foundation; non-``slot`` modes record a diagnostic and add no
+        terms."""
+        try:
+            from . import soft_costs as sc  # type: ignore
+        except ImportError:
+            import soft_costs as sc  # type: ignore
+        if mode == "slot":
+            pairs, _ = sc.sixth_slot_pairs(
+                self.model, self.slot, weight=weight, sixth_hour=13)
+            self.soft_cost_terms.extend(pairs)
+        else:
+            self.diagnostics.append(
+                f"class_sixth_penalty: mode {mode!r} not supported in "
+                f"the foundation; use 'slot'")
 
     def _compile_cattedra_max_per_day(self, t: str, cl: str,
                                         subj: str, n: int):
