@@ -221,8 +221,59 @@ REMAINING (generality mandate — the "then" of the goal):
   a constraint dropped by per-day CP may be honored by a metaheuristic pass.
   That asymmetry drives the "suggestion" (e.g. "run a metaheuristic post-pass").
 
+## User directives (2026-06-09) — universal solver + max compliance
+- **At least ONE solver must accept ANY DSL constraint.** ANSWER: the
+  metaheuristic post-hoc path already evaluates the FULL grammar
+  (`general_dsl.evaluate`). D wired `compute_soft(soft_rules=)` (any soft).
+  Need the symmetric HARD wiring: `run_meta` must load + pass
+  `dsl_hard_expressions` (all HARD DSL rules) to the runners so they reject
+  moves violating ANY hard DSL → metaheuristic = the completely-general solver.
+- **All solvers maximally DSL-compliant within intrinsic capability.** CP
+  compilers model what they can (per-slot reif, nested-forall-static, pragmas);
+  intrinsic limits (dynamic/cross-entity at compile time) → warned + delegated
+  to the meta pass via the warning system. Improve CP coverage where tractable.
+- **Build the shorthand pragma** `no_same_class_consecutive_days(cl)` (the
+  capability exists via nested forall; add the convenience form in BOTH the
+  evaluator builtins and the CP compiler).
+
+## GEN-warn progress
+- **Task 1 — DONE** (commit `689f51f`, pushed). `engine/constraint_compat.py`
+  (pure, webui-free): `ConstraintWarning` + `classify_diagnostic` + `suggest` +
+  `summarize`. `solve_phase_b_for_day(diagnostics_sink=None)` exposes its
+  collected diagnostics (default None = unchanged 2/3-tuple return). Verified a
+  real diagnostic (`forall over 'teachers' not yet supported`) → structured
+  warning w/ suggestion. 5+6 tests green.
+
+## User directive REFINEMENT (2026-06-09) — full DSL compliance everywhere
+- NOT just one general solver. The MONOLITHIC WEEKLY CP-SAT must be COMPLETELY
+  DSL compliant. ALL remaining methods (per-day, decomposition, column-
+  generation, branch-and-price) must be made as DSL-compliant as possible
+  within their intrinsic capabilities. Where a method CANNOT accept all DSL,
+  WRITE THE MOTIVATIONS. Then mark the goal complete.
+- MECHANISM (general): CP solver compiles every rule `DSLConstraintCompiler`
+  can model natively (broad fragment), THEN post-solve VERIFIES all hard DSL
+  via the post-hoc evaluator and adds NO-GOOD CUTS + re-solves (bounded) for
+  anything the compiler couldn't express → final solution honors everything
+  checkable. Intrinsic gaps (BP per-column pricers can't see global/cross-
+  column constraints) → documented motivation + enforce at final assembly.
+- DELIVERABLES: (1) `engine/dsl_cp_gate.py` verify+refine helper; (2) wire it
+  into MonolithicSolver (completely compliant); (3) per-day/decomp use it on
+  the assembled week or document per-day-scope limits; (4) CG/BP post-assembly
+  verification + motivation; (5) `docs/dsl_compliance.md` compliance matrix +
+  motivations; (6) `no_same_class_consecutive_days(cl)` pragma; (7) GEN-warn
+  Task 2 surfacing.
+
 ## Remaining roadmap (post A→D)
-- **GEN-warn** (NEXT, headline ask): `engine/constraint_compat.py` —
+- **MetaGeneral — DONE** (commit `7dc46de`, pushed). All 7 meta runners accept
+  + enforce `dsl_hard_expressions`; `run_meta` loads HARD rule strings once and
+  threads them (+ `run_lns` CP-repair gets a post-repair `is_hard_feasible`
+  gate). Strings cross the boundary (re-parsed in metaheuristics — dual-module
+  safe). Metaheuristic = completely-general DSL solver. 4 new + 91 meta green.
+- **consec-days pragma**: `no_same_class_consecutive_days(cl)` in evaluator +
+  compiler.
+- **GEN-warn Task 2**: surface warnings to RunLog (orchestration).
+- **CP coverage**: broaden `DSLConstraintCompiler` where tractable.
+- **GEN-warn** (headline ask): `engine/constraint_compat.py` —
   classify+structure the existing diagnostics into
   `{constraint_label, pipeline, reason, suggestion, severity}`; thread a
   `diagnostics_sink` out of `solve_phase_b_for_day`; orchestration surfaces them
