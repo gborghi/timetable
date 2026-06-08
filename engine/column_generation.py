@@ -4216,6 +4216,7 @@ def run_column_generation(profs: dict, dc_value: dict,
                           rf_pricing_in_nodes: bool = False,
                           rf_max_depth: int = 20,
                           rf_max_nodes: int = 1000,
+                          dsl_hard_expressions: list | None = None,
                           ) -> tuple[dict | None, dict]:
     """Iterative Column Generation with master LP + diversified
     pattern enrichment + integer recovery + completion fallback.
@@ -4567,6 +4568,57 @@ def run_column_generation(profs: dict, dc_value: dict,
             info["warnings"].append(
                 "completion solver non e' riuscito a chiudere la "
                 "soluzione (resta infeasible)")
+
+    # Step 5b: post-assembly cross-column HARD-DSL verification.
+    #
+    # MOTIVATION: branch-and-price decomposes the problem by COLUMN (a
+    # per-teacher / per-class / per-day pattern). A pricer's CP-SAT
+    # sub-problem only sees its own column's scope, so a HARD DSL rule
+    # that couples MULTIPLE columns (or the whole week) cannot be
+    # modeled inside any single pricer. We therefore VERIFY the
+    # assembled full solution post-hoc against every hard DSL expression
+    # and REPORT any violation as a structured warning (the user can then
+    # run a metaheuristic post-pass, which enforces ANY DSL hard rule via
+    # move-rejection). Native per-column DSL is honored upstream; this
+    # step is purely additive (it never alters `sol`). When
+    # `dsl_hard_expressions` is None/empty the whole block is skipped, so
+    # the default path is byte-identical to the pre-wiring behaviour.
+    if dsl_hard_expressions and sol is not None:
+        try:
+            try:
+                from . import dsl_cp_gate as _gate  # type: ignore
+            except ImportError:
+                import dsl_cp_gate as _gate  # type: ignore
+            try:
+                from . import constraint_compat as _cc  # type: ignore
+            except ImportError:
+                import constraint_compat as _cc  # type: ignore
+            violated = _gate.verify_dsl_hard(
+                sol, profs, list(dsl_hard_expressions))
+            if violated:
+                diags = [
+                    f"compile_failed:{e}:bp:not_modeled_in_pricer"
+                    for e in violated
+                ]
+                warns = _cc.summarize(diags, pipeline="branch_and_price")
+                info["dsl_unsatisfied"] = list(violated)
+                info["dsl_warnings"] = [w.to_dict() for w in warns]
+                for w in warns:
+                    info["warnings"].append(
+                        f"HARD DSL non modellabile nel pricer "
+                        f"(cross-column): {w.constraint} -- "
+                        f"{w.suggestion}")
+                if log:
+                    print(f"[CG] post-assembly DSL gate: "
+                          f"{len(violated)} cross-column HARD rule(s) "
+                          f"violated -> reported (run a metaheuristic "
+                          f"post-pass to enforce)")
+            elif log:
+                print("[CG] post-assembly DSL gate: all "
+                      f"{len(dsl_hard_expressions)} HARD rule(s) satisfied")
+        except Exception as _e:  # noqa: BLE001 - verification is best-effort
+            info["warnings"].append(
+                f"post-assembly DSL verification fallita: {_e}")
 
     info["duration_s"] = time.time() - t0
     if log:

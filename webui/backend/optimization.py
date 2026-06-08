@@ -1712,6 +1712,13 @@ def run_column_generation(*, time_budget_s: float = 60.0,
                                     "Generation richiede una soluzione "
                                     "attiva (Phase A) come baseline.")
             sol = engine_io.lessons_to_solution_dict(db, active.id)
+            # Universal DSL gate (cross-column): load HARD DSL rule
+            # expression STRINGS while the session is open. The engine
+            # cannot model cross-column/global HARD DSL inside a pricer,
+            # so it VERIFIES the assembled solution post-hoc and reports
+            # any violation as a warning (the meta post-pass enforces it).
+            # None => zero-drift (the whole gate block is skipped).
+            cg_dsl_hard = _load_dsl_hard_expressions(db)
         dc_value = _restore_dc_from_solution(sol)
         # Native locks: pattern generation pre-places them, completion
         # solver gets per-day locks, master LP coverage stays valid.
@@ -1746,7 +1753,17 @@ def run_column_generation(*, time_budget_s: float = 60.0,
                 bp_max_iterations=bp_max_iterations,
                 pricer_time_limit=pricer_time_limit,
                 pricer_workers=pricer_workers,
+                dsl_hard_expressions=cg_dsl_hard,
             )
+        # Surface any cross-column HARD DSL the pricers could not model
+        # (reported by the engine's post-assembly verification) to RunLog.
+        # `print` is captured into RunLog by run_manager's stdout SSE pump;
+        # the structured warnings also ride along in `info`/metrics below.
+        for _w in info.get("dsl_warnings", []):
+            print(f"[cg][DSL] {_w.get('severity', 'warning').upper()}: "
+                  f"{_w.get('constraint')} non modellabile nel pricer "
+                  f"(branch-and-price, cross-column) -- "
+                  f"{_w.get('suggestion')}")
         if new_sol is None or not info.get("feasible_after_assembly"):
             update_run(rid_inner, progress=1.0,
                         metrics={**info, "feasible": False},
