@@ -110,3 +110,37 @@ def test_accessor_obj_term_order_is_five_one_buchi():
     # each term is an IntAffine (weight * BoolVar); read its coefficient.
     coeffs = [t.coefficient for t in obj_terms]
     assert coeffs == [3000, 8000, 1000]
+
+
+def test_cg_full_soft_cost_terms_contract():
+    """Characterize column_generation._add_full_soft_cost_terms: with a
+    tiny cpsat_vars_by_t_d_h fixture (one teacher, one day, a gap), the
+    returned list is non-empty, holds exactly 3 terms per active
+    teacher-day, and every coefficient is one of the pricer penalty
+    constants {_PENALTY_FIVE, _PENALTY_ONE, _PENALTY_BUCHI}. This guards
+    the delegation refactor -- it passes against both the old inline body
+    and the soft_costs-delegated body."""
+    import column_generation as cg
+    model = cp_model.CpModel()
+    # T1 / day 1: busy at 8, 9, 12 (10/11 idle -> a real gap).
+    cpsat_vars_by_t_d_h = {
+        ("T1", 1, 8): [model.NewBoolVar("v8")],
+        ("T1", 1, 9): [model.NewBoolVar("v9")],
+        ("T1", 1, 12): [model.NewBoolVar("v12")],
+    }
+    terms = cg._add_full_soft_cost_terms(
+        model,
+        cpsat_vars_by_t_d_h=cpsat_vars_by_t_d_h,
+        teachers=["T1"],
+        days=[1],
+        hours=[8, 9, 10, 11, 12, 13],
+    )
+    assert terms  # (a) non-empty
+    allowed = {cg._PENALTY_FIVE, cg._PENALTY_ONE, cg._PENALTY_BUCHI}
+    coeffs = [t.coefficient for t in terms]
+    # (b) every coefficient is a known penalty constant
+    assert all(c in allowed for c in coeffs)
+    # (c) exactly 3 terms per active teacher-day (one active day here)
+    assert len(terms) == 3
+    # five, one, buchi order is preserved
+    assert coeffs == [cg._PENALTY_FIVE, cg._PENALTY_ONE, cg._PENALTY_BUCHI]

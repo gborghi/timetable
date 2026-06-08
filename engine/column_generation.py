@@ -553,88 +553,32 @@ def _add_full_soft_cost_terms(
     The five/one indicators reify on ``count(t,d) == 5`` / ``== 1``.
     The buchi indicator equals ``max(0, last_h - first_h + 1 - count)``
     per (teacher, day), matching ``meta.compute_soft``.
+
+    DELEGATION: the per-(teacher, day) buchi/five/one encoding now lives
+    once in :func:`soft_costs.buchi_daydist_terms_from_accessor`; this
+    wrapper adapts the pricer's ``(t, d, h) -> [vars]`` dict into the
+    accessor that entry expects and forwards the pricer penalty weights.
+    The returned list and its ``[five, one, buchi]`` per-record ordering
+    are unchanged, so all pricer call sites are untouched. ``var_prefix``
+    is retained for signature compatibility but is no longer used (the
+    shared encoder owns auxiliary-var naming; objective value is
+    unaffected).
     """
+    try:
+        from . import soft_costs as _sc  # type: ignore
+    except ImportError:
+        import soft_costs as _sc  # type: ignore
     fixed = dict(fixed_load_by_t_d_h or {})
-    extra: list = []
-    if not hours:
-        return extra
-    h_min, h_max = min(hours), max(hours)
-    for t in teachers:
-        for d in days:
-            base_at_h: dict = {}
-            cpsat_at_h: dict = {}
-            for h in hours:
-                base_at_h[h] = int(fixed.get((t, d, h), 0))
-                cpsat_at_h[h] = list(cpsat_vars_by_t_d_h.get(
-                    (t, d, h), []))
-            base_count = sum(base_at_h.values())
-            cpsat_all = [v for h in hours for v in cpsat_at_h[h]]
-            # Skip when no possible activity that day.
-            if not cpsat_all and base_count == 0:
-                continue
-            # any_at_h: True iff slot is busy at (t, d, h)
-            any_at_h: dict = {}
-            for h in hours:
-                if base_at_h[h] >= 1:
-                    any_at_h[h] = model.NewConstant(1)
-                elif not cpsat_at_h[h]:
-                    any_at_h[h] = model.NewConstant(0)
-                else:
-                    b = model.NewBoolVar(
-                        f"{var_prefix}_any_{t}_{d}_{h}")
-                    for v in cpsat_at_h[h]:
-                        model.Add(b >= v)
-                    model.Add(b <= sum(cpsat_at_h[h]))
-                    any_at_h[h] = b
-            # count_d = base_count + sum(cpsat_all)
-            count_d = model.NewIntVar(
-                base_count, base_count + len(cpsat_all),
-                f"{var_prefix}_cnt_{t}_{d}")
-            if cpsat_all:
-                model.Add(count_d == base_count + sum(cpsat_all))
-            else:
-                model.Add(count_d == base_count)
-            # first_h, last_h via min/max over hours.
-            first_h_d = model.NewIntVar(
-                h_min, h_max + 1, f"{var_prefix}_fh_{t}_{d}")
-            last_h_d = model.NewIntVar(
-                h_min - 1, h_max, f"{var_prefix}_lh_{t}_{d}")
-            hf_aux: list = []
-            hl_aux: list = []
-            for h in hours:
-                hf = model.NewIntVar(
-                    h_min, h_max + 1, f"{var_prefix}_hf_{t}_{d}_{h}")
-                hl = model.NewIntVar(
-                    h_min - 1, h_max, f"{var_prefix}_hl_{t}_{d}_{h}")
-                model.Add(hf == h).OnlyEnforceIf(any_at_h[h])
-                model.Add(hf == h_max + 1).OnlyEnforceIf(
-                    any_at_h[h].Not())
-                model.Add(hl == h).OnlyEnforceIf(any_at_h[h])
-                model.Add(hl == h_min - 1).OnlyEnforceIf(
-                    any_at_h[h].Not())
-                hf_aux.append(hf)
-                hl_aux.append(hl)
-            model.AddMinEquality(first_h_d, hf_aux)
-            model.AddMaxEquality(last_h_d, hl_aux)
-            # buchi_d >= max(0, last_h - first_h + 1 - count)
-            max_buchi = h_max - h_min  # at most n_hours - 1
-            buchi_d = model.NewIntVar(
-                0, max_buchi, f"{var_prefix}_bch_{t}_{d}")
-            model.Add(buchi_d >= last_h_d - first_h_d + 1 - count_d)
-            # is_five reified on count_d == 5
-            is_five_d = model.NewBoolVar(
-                f"{var_prefix}_5_{t}_{d}")
-            model.Add(count_d == 5).OnlyEnforceIf(is_five_d)
-            model.Add(count_d != 5).OnlyEnforceIf(is_five_d.Not())
-            # is_one reified on count_d == 1
-            is_one_d = model.NewBoolVar(
-                f"{var_prefix}_1_{t}_{d}")
-            model.Add(count_d == 1).OnlyEnforceIf(is_one_d)
-            model.Add(count_d != 1).OnlyEnforceIf(is_one_d.Not())
-            extra.append(_PENALTY_FIVE * is_five_d)
-            extra.append(_PENALTY_ONE * is_one_d)
-            extra.append(_PENALTY_BUCHI * buchi_d)
-    return extra
+
+    def _vars_at(t, d, h):
+        return list(cpsat_vars_by_t_d_h.get((t, d, h), []))
+
+    terms, _aux = _sc.buchi_daydist_terms_from_accessor(
+        model, _vars_at, teachers, days, hours,
+        buchi_weight=_PENALTY_BUCHI, five_weight=_PENALTY_FIVE,
+        one_weight=_PENALTY_ONE, include_five_one=True,
+        fixed_load=fixed)
+    return terms
 
 
 def _greedy_base_pattern(
