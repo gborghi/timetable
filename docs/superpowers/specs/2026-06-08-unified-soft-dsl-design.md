@@ -159,3 +159,45 @@ D last (hardest, separate evaluator).
   `compute_soft` exactly incl. ordering; highest-risk, isolated last.
 - **Blast radius**: ~100 pinned tests. Mitigation: zero-drift + strict
   A→D ordering + migrate-one-pipeline-at-a-time, each its own commit.
+
+## 8. Sub-project A — done (carry-forward to B)
+
+Sub-project A shipped (commits `3b30d42`..`0700984`, base `dfee46f`):
+`engine/soft_costs.py` is now the single source for sixth/buchi/five/one;
+`compute_soft_cost_expr` delegates all of them (zero-drift, pinned suites
+green); the four soft pragmas (`class_sixth_penalty`,
+`teacher_buchi_penalty`, `teacher_five_penalty`, `teacher_one_penalty`)
+and the `build_soft_pragmas` emitter exist but are **intentionally
+unwired**. Final holistic review verdict: **ready-with-notes**. Three
+items B must handle first (none are A-scope defects — they are the
+deferred wiring decisions):
+
+1. **`class_busy` sixth pragma is a no-op today.**
+   `build_soft_pragmas(scale_mode="phase_b_per_day")` emits
+   `class_sixth_penalty(PENALTY_SIXTH_PD, "class_busy")`, but
+   `_compile_class_sixth_penalty` only implements `mode=="slot"` —
+   `class_busy` records a diagnostic and adds **no terms**. Before B
+   relies on the per-day emitter, either implement the `class_busy`
+   compile branch (delegating to `soft_costs.sixth_class_busy_terms`,
+   which needs the per-(class,day) busy-indicator callback the
+   ConstraintModel supplies) **or** wire the per-day pipeline straight
+   to `sixth_class_busy_terms`.
+2. **The `default` stream spans two `PRAGMA_LEVEL`s.** sixth/buchi are
+   `phase_b`; five/one are `phase_a`. The compiler's level gate skips a
+   pragma whose level ≠ the compiler's `level` unless `level="both"`.
+   So feed `build_soft_pragmas(scale_mode="default")` at **`level="both"`**
+   (or split by level). `build_soft_pragmas`' own `level=` param is
+   currently accepted-but-inert — give it meaning when wiring.
+3. **`phase_a` label on slot-derived five/one is a misnomer.** Unlike
+   other phase-A pragmas, five/one derive `count_d` from `self.slot`
+   (byte-identity with the ConstraintModel's slot-derived count), not
+   from `day_count` IntVars; their guard correctly checks `self.slot`.
+   This contradicts §7's earlier assumption that five/one "need
+   `day_count` IntVars" — that assumption is **superseded**. When B
+   migrates pipelines, either relabel these `phase_b`/`both` or document
+   why slot-derived penalties keep a `phase_a` tag.
+
+Also still pending from §4.2: **free-day preference must move to a single
+owner** (loader §4c) and be REMOVED from `build_phase_a_pragmas` — the
+double-count root cause. Untouched in A; do it in B with its own
+zero-drift gate.
