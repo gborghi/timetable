@@ -999,7 +999,8 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
                           group_assignments=None,
                           db=None,
                           via_dsl=False,
-                          extra_dsl_expressions=None):
+                          extra_dsl_expressions=None,
+                          return_objective=False):
     r"""Risolve il sotto-problema di un singolo giorno.
 
     Se enforce_no_holes=True (default) impone ai profili di classe la
@@ -1303,68 +1304,49 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
         model, slot, day, profs, dc_value
     )
 
-    # SOFT (4) gia\` minimizzato in Phase A su `cl_day_load == 6`.
-    # Sotto no-holes hard, il numero di present[h=13]==1 e\` esattamente
-    # determinato da cl_day_load. Aggiungere una penalita\` qui non
-    # cambia il valore (ridondante ma robusto).
-    sixth_terms = []
-    if 13 in HOURS:
-        h13_idx = HOURS.index(13)
-        sixth_terms = [
-            present_per_class[cl][h13_idx] for cl in cls_in_day
-        ]
+    # SOFT objective (B1): the structural soft cost -- SOFT (4) "sixth
+    # hour at h13 (per class busy)" + SOFT (6) "teacher intra-day gaps
+    # (buchi)" -- is now sourced from the DSL pragma stream instead of
+    # being hand-built inline. ``dsl_translator.build_soft_pragmas(...,
+    # scale_mode="phase_b_per_day")`` emits
+    #   class_sixth_penalty(5, "class_busy")   (PENALTY_SIXTH_PD)
+    #   teacher_buchi_penalty(10)              (PENALTY_BUCHI_PD)
+    # and a per-day ``DSLConstraintCompiler`` over the 5-tuple slot view
+    # compiles them into ``soft_cost_terms`` (weight, var) pairs. The
+    # objective is ``sum(w*v)`` over those pairs -- value-identical to the
+    # legacy ``W_SIXTH_B=5`` / ``W_GAP=10`` block it replaces. The loader
+    # stays ``include_soft=False`` (free-day stays single-sourced in
+    # Phase A; sub-project B2 owns the free-day soft migration).
+    try:
+        from . import dsl_to_cpsat as _d2c  # type: ignore
+        from . import cp_sat_constraint_model as _csm  # type: ignore
+        from . import dsl_translator as _dt  # type: ignore
+    except ImportError:
+        import dsl_to_cpsat as _d2c  # type: ignore
+        import cp_sat_constraint_model as _csm  # type: ignore
+        import dsl_translator as _dt  # type: ignore
 
-    # SOFT (6) -- buchi del docente nella giornata, da minimizzare.
-    # Per ogni prof presente in questo giorno, calcoliamo:
-    #   present_p[h] = 1 sse il prof ha lezione nello slot h (qualunque
-    #                  classe/materia)
-    #   gap_p[h]    = 1 sse h e\` slot vuoto fra due slot occupati del
-    #                  prof (= "buco interno" della sua giornata).
-    # Sommiamo i gap su tutti i prof attivi e li mettiamo in objective.
-    profs_in_day = sorted({p for (p, _, _, _) in triples_active})
-    gap_terms = []
-    for p in profs_in_day:
-        # present_p per ora
-        present_p = []
-        for h in HOURS:
-            keys = [
-                slot[(p, cl, s, h)]
-                for (pp, cl, s, _) in triples_active if pp == p
-            ]
-            if not keys:
-                pp_var = model.NewConstant(0)
-            else:
-                pp_var = model.NewBoolVar(f"pp_{p}_{day}_{h}")
-                model.AddMaxEquality(pp_var, keys)
-            present_p.append(pp_var)
-        # gap per slot interno: present_p[h] = 0 AND has_before AND has_after
-        for hi in range(1, len(HOURS) - 1):
-            earlier = present_p[:hi]
-            later = present_p[hi + 1:]
-            has_before = model.NewBoolVar(f"hb_{p}_{day}_{hi}")
-            model.AddMaxEquality(has_before, earlier)
-            has_after = model.NewBoolVar(f"ha_{p}_{day}_{hi}")
-            model.AddMaxEquality(has_after, later)
-            gap = model.NewBoolVar(f"gap_{p}_{day}_{hi}")
-            # gap == NOT present_p[hi] AND has_before AND has_after
-            model.AddBoolAnd(
-                [present_p[hi].Not(), has_before, has_after]
-            ).OnlyEnforceIf(gap)
-            model.AddBoolOr(
-                [present_p[hi], has_before.Not(), has_after.Not()]
-            ).OnlyEnforceIf(gap.Not())
-            gap_terms.append(gap)
+    # 5-tuple slot view the DSL compiler expects (the 4-tuple ``slot``
+    # dict is not mutated). Built unconditionally now -- the same
+    # compiler is reused by the opt-in ``via_dsl`` hard-rule block below.
+    slot_5 = {
+        (p, cl, s, day, h): v
+        for (p, cl, s, h), v in slot.items()
+    }
+    cfg5 = _csm.ConstraintConfig()
+    compiler = _d2c.DSLConstraintCompiler(
+        model, slot_5, config=cfg5,
+        classroom_for_slot=None,
+        plessi_data=None,
+    )
 
-    # Objective Phase B: combinazione lineare di SOFT (4) e SOFT (6).
-    W_SIXTH_B = 5    # coerente con Phase A W_SIXTH=50/scalato
-    W_GAP = 10       # buchi del prof: penalizzati di piu\` per slot
-    obj_terms = []
-    if sixth_terms:
-        obj_terms.append(W_SIXTH_B * sum(sixth_terms))
-    if gap_terms:
-        obj_terms.append(W_GAP * sum(gap_terms))
-    if obj_terms:
-        model.Minimize(sum(obj_terms))
+    _soft_classes = sorted({k[1] for k in slot})
+    for _src in _dt.build_soft_pragmas(
+            profs, _soft_classes, scale_mode="phase_b_per_day"):
+        compiler.compile(_src)
+    soft_obj = [int(w) * v for (w, v) in compiler.soft_cost_terms]
+    if soft_obj:
+        model.Minimize(sum(soft_obj))
 
     # ---- Step 4a: DSL augmentation (opt-in via via_dsl=True) ----
     # When the caller passes ``via_dsl=True`` together with a database
@@ -1381,32 +1363,12 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
     if via_dsl and (db is not None
                      or extra_dsl_expressions):
         try:
-            try:
-                from . import dsl_to_cpsat as _d2c  # type: ignore
-                from . import cp_sat_constraint_model as _csm  # type: ignore
-            except ImportError:
-                import dsl_to_cpsat as _d2c  # type: ignore
-                import cp_sat_constraint_model as _csm  # type: ignore
-
-            # Build the 5-tuple slot view the DSL compiler expects.
-            slot_5 = {
-                (p, cl, s, day, h): v
-                for (p, cl, s, h), v in slot.items()
-            }
-            cfg5 = _csm.ConstraintConfig()
-            compiler = _d2c.DSLConstraintCompiler(
-                model, slot_5, config=cfg5,
-                classroom_for_slot=None,
-                plessi_data=None,
-            )
-
+            # Reuse the SAME ``compiler`` (and ``slot_5``) built above for
+            # the structural soft objective. The objective is already set;
+            # adding HARD DSL rules on top does not touch it.
             # Pull DB-side rules through the unified loader.
             if db is not None:
                 try:
-                    try:
-                        from . import dsl_translator as _dt  # type: ignore
-                    except ImportError:
-                        import dsl_translator as _dt  # type: ignore
                     rules = _dt.load_all_dsl_constraints(
                         db, include_soft=False)
                     for r in rules:
@@ -1452,6 +1414,8 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
         # Se infeasible per via dei "no holes" stretti, segnaliamo
         # (in produzione qui andrebbe un repair che muove un'ora
         # ad altro giorno usando dc_value modificabile).
+        if return_objective:
+            return None, status, None
         return None, status
 
     out = {
@@ -1459,6 +1423,11 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
         for (p, cl, subj, _) in triples_active
         for h in HOURS
     }
+    if return_objective:
+        # Only meaningful when the model has an objective (soft_obj
+        # non-empty). When the model is a pure feasibility problem
+        # ObjectiveValue() is 0.0; expose it as an int for the caller.
+        return out, status, int(round(solver.ObjectiveValue()))
     return out, status
 
 
