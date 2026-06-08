@@ -129,21 +129,16 @@ def teacher_preferred_free_day_penalty_to_dsl(teacher_name: str,
 
 
 def teacher_max_consecutive_to_dsl(teacher_name: str, n: int) -> str:
-    """Teacher cannot exceed n consecutive hours per day. Encoded as:
-    for any window of (n+1) consecutive hours on any day, count of
-    teacher's lessons in that window <= n.
+    """Teacher cannot exceed ``n`` consecutive hours per day.
 
-    Note: the compiler currently doesn't translate window
-    constructions; this function emits the canonical DSL form so the
-    rule is stored uniformly. Diagnostics will indicate when the
-    compiler has to fall back."""
-    # Generic per-window encoding -- valid DSL but not yet supported
-    # by the compiler. Stored to preserve intent.
-    return (f'forall d in days: '
-            f'forall h in hours where h <= 13 - {int(n)}: '
-            f'count l in lessons where l.teacher == {_quote(teacher_name)}'
-            f' and l.day == d and l.hour >= h and l.hour <= h + {int(n)}'
-            f' <= {int(n)}')
+    Emitted as the canonical pragma ``teacher_max_consecutive(name, n)``,
+    which the compiler expands into per-day sliding-window constraints:
+    in any window of (n+1) consecutive hours the teacher occupies at
+    most n of them (no run of n+1). This replaces an earlier generic
+    nested-forall/count form whose dynamic window the compiler could
+    not translate (it was stored but silently skipped)."""
+    return (f'teacher_max_consecutive('
+            f'{_quote(teacher_name)}, {int(n)})')
 
 
 def class_no_holes_to_dsl(class_name: str) -> str:
@@ -626,6 +621,27 @@ def load_all_dsl_constraints(db,
             "label": (f"Docente {t.name} almeno {n_floor} "
                       f"giorn{'o' if n_floor == 1 else 'i'} liber"
                       f"{'o' if n_floor == 1 else 'i'}/sett."),
+        })
+
+    # 4b-bis. Per-teacher "max consecutive hours per day" HARD cap
+    # sourced from Teacher.max_consecutive. Emitted as the canonical
+    # `teacher_max_consecutive(name, n)` pragma (phase_b: it constrains
+    # slot runs). Only emitted when 1 <= n < DAILY_HOURS so the rule
+    # can actually bind: n >= the day length is a guaranteed no-op and
+    # would only flood every pipeline with vacuous constraints. n <= 0
+    # is treated as "unlimited" and skipped.
+    DAILY_HOURS = 6  # canonical 8..13 grid; n >= 6 never binds
+    for t in db.query(models.Teacher).all():
+        n_mc = int(getattr(t, "max_consecutive", 0) or 0)
+        if n_mc < 1 or n_mc >= DAILY_HOURS:
+            continue
+        out.append({
+            "source": "teacher_max_consecutive",
+            "scope_kind": "teacher", "scope_id": t.id,
+            "expression": teacher_max_consecutive_to_dsl(t.name, n_mc),
+            "is_hard": True,
+            "weight": 0,
+            "label": (f"Docente {t.name} max {n_mc} ore consecutive/giorno"),
         })
 
     # 4c. Per-teacher priority-ordered free-day preferences sourced

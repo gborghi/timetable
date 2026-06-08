@@ -457,6 +457,7 @@ PRAGMA_LEVEL: dict[str, str] = {
     "class_present_at_hour": "phase_b",
     "class_present_at_hour_all": "phase_b",
     "teacher_max_per_day": "phase_b",
+    "teacher_max_consecutive": "phase_b",
     "cattedra_max_per_day": "phase_b",
     "subject_pair_must": "phase_b",
     "subject_pair_exists": "phase_b",
@@ -1064,6 +1065,16 @@ class DSLConstraintCompiler:
             n = int(arg_values[1])
             self._compile_teacher_max_per_day(t, n)
             return True
+        if name == "teacher_max_consecutive":
+            if len(arg_values) != 2:
+                self.diagnostics.append(
+                    f"teacher_max_consecutive expects 2 args, got "
+                    f"{len(arg_values)}")
+                return True
+            t = str(arg_values[0])
+            n = int(arg_values[1])
+            self._compile_teacher_max_consecutive(t, n)
+            return True
         if name == "cattedra_max_per_day":
             if len(arg_values) != 4:
                 self.diagnostics.append(
@@ -1328,6 +1339,28 @@ class DSLConstraintCompiler:
                   if tt == t and dd == d]
             if vs:
                 self.model.Add(sum(vs) <= int(n))
+
+    def _compile_teacher_max_consecutive(self, t: str, n: int):
+        """No run of (n+1) consecutive busy hours for teacher ``t``.
+
+        For every day and every window of (n+1) consecutive hours, the
+        sum of the teacher's slot vars in that window is <= n. Because
+        the teacher occupies at most one slot per hour (teacher
+        no-overlap), that sum equals the number of busy hours in the
+        window, so the constraint forbids any run longer than n. A
+        non-positive ``n`` pins every hour of the day to zero (the
+        teacher can never work), matching the literal semantics.
+        """
+        days = self._days_in_scope()
+        hours = sorted(self._hours_in_scope())
+        n = max(int(n), 0)
+        for d in days:
+            for i in range(len(hours) - n):
+                window = set(hours[i:i + n + 1])
+                vs = [v for (tt, _cl, _s, dd, hh), v in self.slot.items()
+                      if tt == t and dd == d and hh in window]
+                if vs:
+                    self.model.Add(sum(vs) <= n)
 
     def _compile_cattedra_max_per_day(self, t: str, cl: str,
                                         subj: str, n: int):
