@@ -879,12 +879,14 @@ def _apply_dsl_rules_to_week_solver(solver, db, *,
     unavailability soft), so these SOFT rows are not otherwise present
     in the objective. Returns the number of rules applied.
 
-    NOTE: only the week-scope path enables SOFT. The per-day /
-    decomposition paths still load with ``include_soft=False`` because
-    (a) their free-day soft is already in the objective via the Phase-A
-    ``glib_pen`` term (enabling here would double-count) and (b) the
-    per-day compiler's ``soft_cost_terms`` are not summed into the
-    per-day objective. See dsl_translator's module docstring.
+    NOTE: this helper wires SOFT onto the week-scope ``MonolithicSolver``.
+    The per-day path enables the same table SOFT independently inside
+    ``cpsat_v2_timetable.solve_phase_b_for_day(via_dsl=True)``, which loads
+    the unified stream with ``include_soft=True``, forwards each rule's
+    ``is_hard``/``weight`` to its shared compiler, and re-minimizes the
+    accumulated ``soft_cost_terms`` (sub-project B2). The dead Phase-A
+    ``glib_pen`` term was removed; free-day soft is loader-owned, applied
+    at Phase B on both paths.
     """
     try:
         from engine import dsl_translator as dt  # type: ignore

@@ -97,6 +97,22 @@ generality mandate. Maintained autonomously (user set a no-supervision goal
 - 2026-06-08 (user directive): may break+rewrite tests as restructuring
   needs; commit + push regularly; implement-agents + review-agents split
   (subagent-driven-development) — already the active pattern.
+- 2026-06-08 (B2 — DONE): per-day Phase-B loader flipped to
+  `include_soft=True` in `solve_phase_b_for_day`'s `via_dsl` block. KEY
+  CORRECTION to the plan premise: the per-day block reuses ONE
+  `DSLConstraintCompiler` whose `is_hard`/`soft_weight` are instance attrs
+  (default `is_hard=True`). Simply flipping `include_soft` would have
+  compiled SOFT rows as HARD (promoting soft→hard, breaking feasibility).
+  Fix: set `compiler.is_hard`/`compiler.soft_weight` per rule (save/restore
+  around the loop, mirroring the week path's `add_dsl_constraint`), then
+  re-`model.Minimize(sum(compiler.soft_cost_terms))` after the loop (CP-SAT
+  Minimize replaces; the term list is a superset of the structural terms, so
+  no double-count). Dead `glib_pen` fold + `glib=` print removed from
+  `solve_phase_a` (always 0; comment now points to the loader as free-day
+  owner). `optimization.py` `_apply_dsl_rules_to_week_solver` NOTE updated.
+  Functional+steering gate `test_b2_per_day_table_soft.py` RED (h12 used
+  under old behavior) → GREEN (h12 avoided). No outcome test broke; 233
+  fast DSL-path + 11 slow integration green.
 
 ## Open questions / problems (resolve or revisit)
 
@@ -122,3 +138,14 @@ generality mandate. Maintained autonomously (user set a no-supervision goal
   rules? (`solve_phase_b_for_day` catches `compile` exceptions into
   `dsl_diagnostics` — that is the seam to turn into structured warnings.)
   Need a uniform "constraint capability matrix" per pipeline.
+  - B2 finding (per-day input for the solver-compat matrix): with
+    `include_soft=True` no soft rule CRASHES the per-day compile — soft
+    unavailability compiles to a weighted slot term and steers correctly.
+    The cross-day free-day preference (`teacher_preferred_free_day_penalty`)
+    does NOT raise either: on a single-day solve it references a `day` not in
+    that day's slot view, so it silently contributes ZERO penalty (graceful,
+    but semantically a no-op per-day). This is the canonical "compiles but
+    is weakly/ not honored on this pipeline" case the solver-compat warning
+    must flag — NOT via `dsl_diagnostics` (no exception is recorded), but via
+    a capability rule: "cross-day soft on per-day decomposition = degraded".
+    So the matrix needs a *capability* signal, not just exception-capture.

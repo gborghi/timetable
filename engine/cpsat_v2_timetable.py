@@ -877,22 +877,18 @@ def solve_phase_a(profs, classes, triples, class_profs,
     else:
         model.Add(uniform_prof_pen == 0)
 
-    # Penalita\` giorno libero non-primo: now contributed by the new
-    # ``teacher_preferred_free_day_penalty`` DSL pragma (weights
-    # 30/20/10 for the 1st/2nd/3rd priority). The compiler stores
-    # ``(weight, busy_indicator)`` tuples on ``soft_cost_terms``;
-    # we reuse the same accumulator. The legacy 1/2-candidate
-    # fallback was removed (see comment above).
-    glib_pen_terms = [int(w) * v for (w, v) in _compiler.soft_cost_terms]
-    glib_pen = model.NewIntVar(0, 100000, "glibpen")
-    if glib_pen_terms:
-        model.Add(glib_pen == sum(glib_pen_terms))
-    else:
-        model.Add(glib_pen == 0)
+    # Free-day soft (giorno libero) is NOT scored here. Phase A's pragma
+    # stream (``build_phase_a_pragmas``) is HARD-only, so
+    # ``_compiler.soft_cost_terms`` is always empty at this point -- the
+    # old ``glib_pen`` fold was dead scaffolding (always 0). The free-day
+    # preference soft (``teacher_preferred_free_day_penalty``, weights
+    # 30/20/10) is owned by the DSL loader and applied at Phase B, on the
+    # per-day path via ``solve_phase_b_for_day(via_dsl=True)`` and on the
+    # week path via ``MonolithicSolver`` -- the single owner. See
+    # sub-project B2.
 
     # Objective unico. Pesi:
     #   - uniform_class_pen / uniform_prof_pen: spalmatura ore.
-    #   - glib_pen: giorno libero non-primo.
     #   - n_sixth_hour: penalita\` sulle 6e ore (richiesta Giovanni,
     #     SOFT (4)). Peso scelto per essere in scala con uniform_class
     #     (somma fra 0 e ~5000 per dataset reali).
@@ -902,7 +898,6 @@ def solve_phase_a(profs, classes, triples, class_profs,
     model.Minimize(
         4 * uniform_class_pen
         + 3 * uniform_prof_pen
-        + 1 * glib_pen
         + W_SIXTH * n_sixth_hour
         + W_FIVE * n_five
         + W_ONE * n_one
@@ -951,7 +946,6 @@ def solve_phase_a(profs, classes, triples, class_profs,
         f"[phaseA] obj={solver.ObjectiveValue():.0f} "
         f"uniform_class={solver.Value(uniform_class_pen)} "
         f"uniform_prof={solver.Value(uniform_prof_pen)} "
-        f"glib={solver.Value(glib_pen)} "
         f"n_sixth_hour={solver.Value(n_sixth_hour)} "
         f"n_five={solver.Value(n_five)} "
         f"n_one={solver.Value(n_one)}"
@@ -1314,9 +1308,12 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
     # and a per-day ``DSLConstraintCompiler`` over the 5-tuple slot view
     # compiles them into ``soft_cost_terms`` (weight, var) pairs. The
     # objective is ``sum(w*v)`` over those pairs -- value-identical to the
-    # legacy ``W_SIXTH_B=5`` / ``W_GAP=10`` block it replaces. The loader
-    # stays ``include_soft=False`` (free-day stays single-sourced in
-    # Phase A; sub-project B2 owns the free-day soft migration).
+    # legacy ``W_SIXTH_B=5`` / ``W_GAP=10`` block it replaces. When
+    # ``via_dsl=True`` the loader below adds table SOFT (free-day prefs,
+    # soft unavailability, soft general/logical/coteach) onto the SAME
+    # compiler with ``include_soft=True`` and re-minimizes the accumulated
+    # ``soft_cost_terms`` -- the loader is the single owner of free-day
+    # soft on the per-day path (sub-project B2).
     try:
         from . import dsl_to_cpsat as _d2c  # type: ignore
         from . import cp_sat_constraint_model as _csm  # type: ignore
@@ -1364,20 +1361,39 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
                      or extra_dsl_expressions):
         try:
             # Reuse the SAME ``compiler`` (and ``slot_5``) built above for
-            # the structural soft objective. The objective is already set;
-            # adding HARD DSL rules on top does not touch it.
+            # the structural soft objective. HARD DSL rules add constraints
+            # only; SOFT rules append weighted terms to
+            # ``compiler.soft_cost_terms`` and the objective is re-minimized
+            # over the full accumulator after the loop (see below).
             # Pull DB-side rules through the unified loader.
             if db is not None:
                 try:
+                    # B2: load SOFT rows too (free-day prefs, soft
+                    # unavailability, soft general/logical/coteach). The
+                    # loader is now the single owner of the free-day soft
+                    # on the per-day path. Each rule carries its own
+                    # ``is_hard``/``weight``; we toggle the shared
+                    # compiler's mode per rule so SOFT rows compile to
+                    # weighted ``soft_cost_terms`` (summed by the objective
+                    # set above) instead of being promoted to HARD.
                     rules = _dt.load_all_dsl_constraints(
-                        db, include_soft=False)
-                    for r in rules:
-                        try:
-                            compiler.compile(r["expression"])
-                        except Exception as exc:  # noqa: BLE001
-                            dsl_diagnostics.append(
-                                f"compile_failed:{r.get('label', '')}:"
-                                f"{type(exc).__name__}:{exc}")
+                        db, include_soft=True)
+                    _saved_hard = compiler.is_hard
+                    _saved_w = compiler.soft_weight
+                    try:
+                        for r in rules:
+                            compiler.is_hard = bool(r.get("is_hard", True))
+                            compiler.soft_weight = int(
+                                r.get("weight", 0) or 0)
+                            try:
+                                compiler.compile(r["expression"])
+                            except Exception as exc:  # noqa: BLE001
+                                dsl_diagnostics.append(
+                                    f"compile_failed:{r.get('label', '')}:"
+                                    f"{type(exc).__name__}:{exc}")
+                    finally:
+                        compiler.is_hard = _saved_hard
+                        compiler.soft_weight = _saved_w
                 except Exception as exc:  # noqa: BLE001
                     dsl_diagnostics.append(
                         f"db_load_failed:{type(exc).__name__}:{exc}")
@@ -1389,6 +1405,18 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
                 except Exception as exc:  # noqa: BLE001
                     dsl_diagnostics.append(
                         f"compile_failed_extra:{type(exc).__name__}:{exc}")
+
+            # B2: SOFT DSL rows (and any soft extras) may have appended new
+            # (weight, var) pairs to ``compiler.soft_cost_terms`` after the
+            # structural-soft objective was set above. CP-SAT's
+            # ``Minimize`` replaces the objective, and the term list is a
+            # superset of the structural terms, so re-minimizing the full
+            # accumulator folds the new SOFT contributions in without
+            # double-counting the structural ones.
+            _soft_now = [int(w) * v
+                         for (w, v) in compiler.soft_cost_terms]
+            if _soft_now:
+                model.Minimize(sum(_soft_now))
 
             dsl_diagnostics.extend(compiler.diagnostics)
             if log and dsl_diagnostics:
