@@ -263,6 +263,19 @@ REMAINING (generality mandate — the "then" of the goal):
   motivations; (6) `no_same_class_consecutive_days(cl)` pragma; (7) GEN-warn
   Task 2 surfacing.
 
+## Full-DSL-compliance progress
+- **Task 1 — DONE** (`3db8d70`): `engine/dsl_cp_gate.py` — `verify_dsl_hard`
+  (post-hoc check), `add_nogood` (forbid exact assignment), refinement loop.
+- **Task 2 — DONE** (`600f5a6`): MonolithicSolver `solve(forbidden_solutions=)`
+  + `solve_dsl_compliant(hard_exprs, profs)` = compile-natively-then-no-good-
+  refine (bounded max_iters=8). Week orchestration (`_solve_phase_b_week`)
+  refactored to a `_build_week_solver(forbidden)` closure driving the
+  refinement when hard DSL present; unsatisfied → `constraint_compat` warnings
+  as `[phaseB.week][WARN]` RunLog lines. Default (no hard DSL) byte-identical.
+  → MONOLITHIC WEEK IS COMPLETELY DSL-COMPLIANT. 231 + slow week green.
+  Note: refinement branch proven by synthetic + empirical convergence tests
+  (the simple forbid-pattern is iter-0-enforced by the CP objective).
+
 ## Remaining roadmap (post A→D)
 - **MetaGeneral — DONE** (commit `7dc46de`, pushed). All 7 meta runners accept
   + enforce `dsl_hard_expressions`; `run_meta` loads HARD rule strings once and
