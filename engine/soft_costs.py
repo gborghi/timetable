@@ -65,15 +65,21 @@ def sixth_class_busy_terms(model, busy_indicator_fn, classes, days, *,
     return obj_terms, aux_vars
 
 
-def buchi_and_daydist_terms(model, slot, teachers, days, hours, *,
-                             buchi_weight, five_weight, one_weight,
-                             include_five_one, fixed_load=None):
-    """Per-(teacher, day) gap (buchi) penalty plus the optional weekly
-    day-distribution five/one penalties.
+def _buchi_daydist_vars(model, slot, teachers, days, hours, *,
+                         include_five_one, fixed_load=None):
+    """Shared builder for the per-(teacher, day) gap (buchi) and weekly
+    day-distribution (five/one) auxiliary variables.
 
-    Single source of truth for the buchi + five/one block of
-    ``ConstraintModel.compute_soft_cost_expr``. For each (teacher, day)
-    in scope it builds:
+    Single source of truth for the gap/day-count modeling. Both
+    :func:`buchi_and_daydist_terms` (which forms ``weight*var`` products
+    for ``ConstraintModel.compute_soft_cost_expr``) and the pair-shaped
+    wrappers :func:`buchi_pairs` / :func:`five_one_pairs` (which yield
+    ``(weight, var)`` tuples for the pragma layer) consume this helper,
+    so the encoding -- and the EXACT order in which aux vars are created
+    -- exists once.
+
+    For each (teacher, day) with at least one decision variable or a
+    non-zero fixed-load contribution it builds:
 
     * ``any_at_h`` -- a per-hour occupation indicator. A cell with
       ``fixed_load >= 1`` is a constant ``1``; an empty CP-SAT cell is a
@@ -83,35 +89,25 @@ def buchi_and_daydist_terms(model, slot, teachers, days, hours, *,
       where ``base_count`` is the fixed-load contribution and
       ``cpsat_all`` the CP-SAT slot vars for the day.
     * ``first_h`` / ``last_h`` -- the earliest / latest occupied hour via
-      ``AddMinEquality`` / ``AddMaxEquality`` over per-hour auxiliaries
-      that take the hour index when occupied and a sentinel
-      (``h_max + 1`` / ``h_min - 1``) otherwise.
+      ``AddMinEquality`` / ``AddMaxEquality`` over per-hour auxiliaries.
     * ``buchi`` -- ``>= last_h - first_h + 1 - count_d`` (the number of
-      idle interior hours), contributed as ``buchi_weight * buchi``.
+      idle interior hours).
+    * ``is_five`` / ``is_one`` -- reified ``count_d == 5`` / ``count_d
+      == 1`` day-distribution indicators, only when ``include_five_one``.
 
-    When ``include_five_one`` is true (mode='default') the reified
-    ``is_five`` (``count_d == 5``) and ``is_one`` (``count_d == 1``)
-    day-distribution indicators are added with ``five_weight`` /
-    ``one_weight``. They are SKIPPED in the per-day mode, which cannot
-    observe the rest of the week.
-
-    Slot access uses an inline comprehension over ``slot`` -- the exact
-    equivalent of ``ConstraintModel.slots_for_teacher_day_hour``.
-    ``fixed_load`` (defaulting to an empty dict) maps
-    ``(teacher, day, hour) -> int`` greedy-base load that is out of
-    CP-SAT scope; it contributes a constant to the per-cell count.
-
-    Returns ``(obj_terms, aux_vars)`` -- finished ``weight * var``
-    products (the caller builds the objective directly) and the
-    auxiliary BoolVars/IntVars introduced.
-    Mirrors compute_soft_cost_expr buchi + five/one block.
+    Returns ``(records, aux_vars)`` where ``records`` is a list of
+    per-(teacher, day) dicts ``{"buchi": IntVar, "is_five": BoolVar |
+    None, "is_one": BoolVar | None}`` (in (teacher, day) iteration
+    order) and ``aux_vars`` is every auxiliary BoolVar/IntVar created,
+    appended in creation order. Callers pick the vars they want and
+    attach weights; this module owns no policy.
     """
     if fixed_load is None:
         fixed_load = {}
-    obj_terms = []
-    aux_vars = []
+    records: list = []
+    aux_vars: list = []
     if not hours:
-        return obj_terms, aux_vars
+        return records, aux_vars
     h_min, h_max = min(hours), max(hours)
     for t in teachers:
         for d in days:
@@ -177,7 +173,7 @@ def buchi_and_daydist_terms(model, slot, teachers, days, hours, *,
             buchi = model.NewIntVar(0, max_buchi, f"bch_{t}_{d}")
             aux_vars.append(buchi)
             model.Add(buchi >= last_h - first_h + 1 - count_d)
-            obj_terms.append(buchi_weight * buchi)
+            rec = {"buchi": buchi, "is_five": None, "is_one": None}
             if include_five_one:
                 # is_five, is_one reified -- weekly day-distribution
                 # penalties; not emitted in the per-day mode since
@@ -189,6 +185,106 @@ def buchi_and_daydist_terms(model, slot, teachers, days, hours, *,
                 model.Add(count_d == 1).OnlyEnforceIf(is_one)
                 model.Add(count_d != 1).OnlyEnforceIf(is_one.Not())
                 aux_vars.extend([is_five, is_one])
-                obj_terms.append(five_weight * is_five)
-                obj_terms.append(one_weight * is_one)
+                rec["is_five"] = is_five
+                rec["is_one"] = is_one
+            records.append(rec)
+    return records, aux_vars
+
+
+def buchi_and_daydist_terms(model, slot, teachers, days, hours, *,
+                             buchi_weight, five_weight, one_weight,
+                             include_five_one, fixed_load=None):
+    """Per-(teacher, day) gap (buchi) penalty plus the optional weekly
+    day-distribution five/one penalties.
+
+    Thin policy wrapper over :func:`_buchi_daydist_vars`: it builds the
+    per-(teacher, day) buchi / is_five / is_one vars via the shared
+    helper and forms ``weight * var`` PRODUCTS (the
+    ``ConstraintModel.compute_soft_cost_expr`` caller builds the
+    objective directly, so this returns finished products, not pairs).
+    The product order is buchi, then is_five, then is_one per record --
+    byte-identical to the historical inline implementation.
+
+    When ``include_five_one`` is true (mode='default') the reified
+    ``is_five`` (``count_d == 5``) and ``is_one`` (``count_d == 1``)
+    day-distribution indicators are added with ``five_weight`` /
+    ``one_weight``. They are SKIPPED in the per-day mode, which cannot
+    observe the rest of the week.
+
+    ``fixed_load`` (defaulting to an empty dict) maps
+    ``(teacher, day, hour) -> int`` greedy-base load that is out of
+    CP-SAT scope; it contributes a constant to the per-cell count.
+
+    Returns ``(obj_terms, aux_vars)`` -- finished ``weight * var``
+    products and the auxiliary BoolVars/IntVars introduced (in creation
+    order). Mirrors compute_soft_cost_expr buchi + five/one block.
+    """
+    records, aux_vars = _buchi_daydist_vars(
+        model, slot, teachers, days, hours,
+        include_five_one=include_five_one, fixed_load=fixed_load)
+    obj_terms: list = []
+    for rec in records:
+        obj_terms.append(buchi_weight * rec["buchi"])
+        if include_five_one:
+            obj_terms.append(five_weight * rec["is_five"])
+            obj_terms.append(one_weight * rec["is_one"])
     return obj_terms, aux_vars
+
+
+def buchi_pairs(model, slot, teachers, days, hours, *,
+                weight, fixed_load=None):
+    """Per-(teacher, day) gap (buchi) penalty as ``(weight, var)`` PAIRS.
+
+    Pair-shaped twin of :func:`buchi_and_daydist_terms` for the
+    ``DSLConstraintCompiler`` soft-pragma layer (which stores
+    ``(weight, var)`` tuples in ``soft_cost_terms``). Consumes the SAME
+    shared :func:`_buchi_daydist_vars` helper as
+    ``buchi_and_daydist_terms`` so the gap modeling exists once;
+    ``include_five_one=False`` since buchi alone needs no weekly
+    day-distribution vars.
+
+    Returns ``(pairs, aux_vars)`` where ``pairs`` is
+    ``[(weight, buchi_var), ...]`` (one per in-scope (teacher, day))
+    and ``aux_vars`` is every auxiliary var created (creation order).
+    """
+    records, aux_vars = _buchi_daydist_vars(
+        model, slot, teachers, days, hours,
+        include_five_one=False, fixed_load=fixed_load)
+    pairs = [(weight, rec["buchi"]) for rec in records]
+    return pairs, aux_vars
+
+
+def five_one_pairs(model, slot, teachers, days, hours, *,
+                   five_weight=None, one_weight=None, fixed_load=None):
+    """Weekly day-distribution five/one penalties as ``(weight, var)``
+    PAIRS.
+
+    Pair-shaped twin of the five/one block of
+    :func:`buchi_and_daydist_terms` for the ``DSLConstraintCompiler``
+    soft-pragma layer. Consumes the SAME shared
+    :func:`_buchi_daydist_vars` helper (with ``include_five_one=True``)
+    so the day-count / is_five / is_one modeling is identical to the
+    ConstraintModel path. The per-(teacher, day) ``count_d`` is derived
+    from slot occupancy (+ ``fixed_load``) exactly as
+    ``buchi_and_daydist_terms``'s own ``count_d`` -- the encoding is
+    therefore consistent with the ConstraintModel semantics.
+
+    Pass ``five_weight`` and/or ``one_weight`` (``None`` -> that penalty
+    is omitted). The pragma layer calls this once for ``is_five`` (with
+    only ``five_weight``) and once for ``is_one`` (with only
+    ``one_weight``); both still build the full record set but emit only
+    the requested pairs.
+
+    Returns ``(pairs, aux_vars)`` -- ``[(weight, var), ...]`` for the
+    requested indicator(s) and every auxiliary var created.
+    """
+    records, aux_vars = _buchi_daydist_vars(
+        model, slot, teachers, days, hours,
+        include_five_one=True, fixed_load=fixed_load)
+    pairs: list = []
+    for rec in records:
+        if five_weight is not None:
+            pairs.append((five_weight, rec["is_five"]))
+        if one_weight is not None:
+            pairs.append((one_weight, rec["is_one"]))
+    return pairs, aux_vars

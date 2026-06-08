@@ -112,3 +112,21 @@ def test_class_sixth_penalty_pragma_records_soft_terms():
     c.compile('class_sixth_penalty(50, "slot")')
     assert len(c.soft_cost_terms) == 1
     assert c.soft_cost_terms[0][0] == 50
+
+
+def test_teacher_buchi_penalty_pragma_steers_against_gaps():
+    """teacher_buchi_penalty(w) as the sole objective makes a teacher's
+    hours pack contiguously (no gap) when avoidable."""
+    import dsl_to_cpsat as d2c
+    from ortools.sat.python import cp_model
+    model = cp_model.CpModel()
+    hours = [8, 9, 10, 11, 12, 13]
+    slot = {("T1", "1A", "Mat", 1, h): model.NewBoolVar(f"s{h}") for h in hours}
+    model.Add(sum(slot.values()) == 2)
+    c = d2c.DSLConstraintCompiler(model, slot, level="phase_b")
+    c.compile('teacher_buchi_penalty(10)')
+    model.Minimize(sum(w * v for w, v in c.soft_cost_terms))
+    solver = cp_model.CpSolver(); solver.parameters.max_time_in_seconds = 5.0
+    assert solver.Solve(model) in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+    busy = sorted(h for h in hours if solver.Value(slot[("T1", "1A", "Mat", 1, h)]))
+    assert busy[1] == busy[0] + 1, f"buchi penalty should pack hours: {busy}"

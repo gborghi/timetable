@@ -464,12 +464,15 @@ PRAGMA_LEVEL: dict[str, str] = {
     "class_day_load_in": "phase_b",
     "classroom_capacity_ok": "phase_b",
     "class_sixth_penalty": "phase_b",
+    "teacher_buchi_penalty": "phase_b",
     # Phase A (day_count IntVar) pragmas
     "class_day_load_in_day_count": "phase_a",
     "hall_bound_prof_day": "phase_a",
     "free_day_choice_3way": "phase_a",
     "subject_day_count_pair": "phase_a",
     "subject_day_count_in": "phase_a",
+    "teacher_five_penalty": "phase_a",
+    "teacher_one_penalty": "phase_a",
     # Free-day pragmas: applicable in BOTH levels so the constraint
     # is honored regardless of whether Phase A is run, skipped, or
     # used only as a soft hint (otherwise the bypass techniques
@@ -1086,6 +1089,30 @@ class DSLConstraintCompiler:
             mode = str(arg_values[1])
             self._compile_class_sixth_penalty(weight, mode)
             return True
+        if name == "teacher_buchi_penalty":
+            if len(arg_values) != 1:
+                self.diagnostics.append(
+                    f"teacher_buchi_penalty expects (weight), got "
+                    f"{len(arg_values)}")
+                return True
+            self._compile_teacher_buchi_penalty(int(arg_values[0]))
+            return True
+        if name == "teacher_five_penalty":
+            if len(arg_values) != 1:
+                self.diagnostics.append(
+                    f"teacher_five_penalty expects (weight), got "
+                    f"{len(arg_values)}")
+                return True
+            self._compile_teacher_five_penalty(int(arg_values[0]))
+            return True
+        if name == "teacher_one_penalty":
+            if len(arg_values) != 1:
+                self.diagnostics.append(
+                    f"teacher_one_penalty expects (weight), got "
+                    f"{len(arg_values)}")
+                return True
+            self._compile_teacher_one_penalty(int(arg_values[0]))
+            return True
         if name == "cattedra_max_per_day":
             if len(arg_values) != 4:
                 self.diagnostics.append(
@@ -1392,6 +1419,94 @@ class DSLConstraintCompiler:
             self.diagnostics.append(
                 f"class_sixth_penalty: mode {mode!r} not supported in "
                 f"the foundation; use 'slot'")
+
+    def _compile_teacher_buchi_penalty(self, weight: int):
+        """SOFT per-(teacher, day) gap (buchi) penalty. Delegates to
+        ``soft_costs.buchi_pairs`` -- the SAME shared encoder used by
+        ``ConstraintModel.compute_soft_cost_expr`` -- so the solver pays
+        ``weight`` for every idle interior hour a teacher leaves in a
+        day. ``phase_b`` level: the per-(teacher, day) ``count_d`` is
+        derived from ``self.slot`` occupancy, so no ``day_count`` is
+        needed. Skips with a diagnostic when there are no slot vars."""
+        if not self.slot:
+            self.diagnostics.append(
+                "teacher_buchi_penalty: slot empty; no gap vars built")
+            return
+        try:
+            from . import soft_costs as sc  # type: ignore
+        except ImportError:
+            import soft_costs as sc  # type: ignore
+        teachers = sorted({k[0] for k in self.slot})
+        days = self._days_in_scope()
+        hours = self._hours_in_scope()
+        pairs, _aux = sc.buchi_pairs(
+            self.model, self.slot, teachers, days, hours,
+            weight=weight)
+        self.soft_cost_terms.extend(pairs)
+
+    def _compile_teacher_five_penalty(self, weight: int):
+        """SOFT weekly day-distribution penalty: pay ``weight`` for each
+        (teacher, day) on which the teacher works EXACTLY 5 hours.
+
+        Encoding decision: the per-(teacher, day) ``count_d`` is derived
+        from ``self.slot`` occupancy via ``soft_costs.five_one_pairs``,
+        the SAME shared encoder ``ConstraintModel.compute_soft_cost_expr``
+        uses -- so the ``is_five`` reification is byte-consistent with
+        the ConstraintModel's own ``count_d`` (which is also slot-derived
+        + fixed_load, NOT a separate day_count var). This is a ``phase_a``
+        level pragma, so it mirrors the Phase-A guard convention: when
+        ``self.day_count`` is absent (the input that signals a genuine
+        Phase-A context) it appends a diagnostic and returns. The count
+        itself is still slot-derived for consistency with the
+        ConstraintModel semantics."""
+        if not self.day_count:
+            self.diagnostics.append(
+                "teacher_five_penalty: day_count empty; "
+                "did you forget to pass day_count= to the compiler?")
+            return
+        if not self.slot:
+            self.diagnostics.append(
+                "teacher_five_penalty: slot empty; no day-count vars built")
+            return
+        try:
+            from . import soft_costs as sc  # type: ignore
+        except ImportError:
+            import soft_costs as sc  # type: ignore
+        teachers = sorted({k[0] for k in self.slot})
+        days = self._days_in_scope()
+        hours = self._hours_in_scope()
+        pairs, _aux = sc.five_one_pairs(
+            self.model, self.slot, teachers, days, hours,
+            five_weight=weight)
+        self.soft_cost_terms.extend(pairs)
+
+    def _compile_teacher_one_penalty(self, weight: int):
+        """SOFT weekly day-distribution penalty: pay ``weight`` for each
+        (teacher, day) on which the teacher works EXACTLY 1 hour.
+
+        Twin of :meth:`_compile_teacher_five_penalty` for the ``is_one``
+        indicator; same slot-derived ``count_d`` encoding and same
+        Phase-A ``day_count`` guard convention."""
+        if not self.day_count:
+            self.diagnostics.append(
+                "teacher_one_penalty: day_count empty; "
+                "did you forget to pass day_count= to the compiler?")
+            return
+        if not self.slot:
+            self.diagnostics.append(
+                "teacher_one_penalty: slot empty; no day-count vars built")
+            return
+        try:
+            from . import soft_costs as sc  # type: ignore
+        except ImportError:
+            import soft_costs as sc  # type: ignore
+        teachers = sorted({k[0] for k in self.slot})
+        days = self._days_in_scope()
+        hours = self._hours_in_scope()
+        pairs, _aux = sc.five_one_pairs(
+            self.model, self.slot, teachers, days, hours,
+            one_weight=weight)
+        self.soft_cost_terms.extend(pairs)
 
     def _compile_cattedra_max_per_day(self, t: str, cl: str,
                                         subj: str, n: int):
