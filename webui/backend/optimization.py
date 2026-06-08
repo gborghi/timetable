@@ -1092,6 +1092,34 @@ def _restore_dc_from_solution(sol: dict) -> dict:
     return dict(out)
 
 
+def _load_dsl_hard_expressions(db) -> list[str] | None:
+    """Load HARD DSL rule expression STRINGS from the DB.
+
+    Symmetric to the SOFT path (``meta.parse_soft_rules`` on the same
+    ``load_all_dsl_constraints`` dump): collects every rule with
+    ``is_hard=True`` and returns its raw ``expression`` string. Returns
+    ``None`` (not an empty list) when there are no HARD DSL rules, so
+    every runner receives the default ``dsl_hard_expressions=None`` and
+    behaves byte-identically to the pre-wiring path (zero-drift).
+
+    IMPORTANT: STRINGS, not parsed trees, cross the module boundary.
+    ``is_hard_feasible`` re-parses them with metaheuristics' OWN
+    ``general_dsl`` import, so there is no dual-module AST hazard (unlike
+    the SOFT trees, which must be produced via ``meta.parse_soft_rules``).
+    """
+    try:
+        try:
+            from engine import dsl_translator as _dt  # type: ignore
+        except ImportError:
+            import dsl_translator as _dt  # type: ignore
+        _all = _dt.load_all_dsl_constraints(db, include_soft=True)
+        exprs = [r["expression"] for r in _all
+                 if r.get("is_hard") and r.get("expression")]
+        return exprs or None
+    except Exception:
+        return None
+
+
 def run_meta(stage: str, budget_s: float, workers: int, log: bool,
              *, n_cycles: int = 3, ts_budget_per_cycle: float = 20.0,
              sa_T0: float = 10.0, sa_alpha: float = 0.995,
@@ -1161,6 +1189,14 @@ def run_meta(stage: str, budget_s: float, workers: int, log: bool,
                 soft_rules = meta.parse_soft_rules(_all) or None
             except Exception:
                 soft_rules = None
+            # Universal DSL solver: load HARD DSL rule expression STRINGS
+            # ONCE while the session is open and thread them into every
+            # runner via `dsl_hard_expressions=`. Each runner re-parses
+            # them inside is_hard_feasible with metaheuristics' own
+            # general_dsl import (strings cross the boundary, not trees),
+            # rejecting any move that violates an arbitrary HARD rule the
+            # per-day CP compiler cannot model. None => zero-drift.
+            dsl_hard_expressions = _load_dsl_hard_expressions(db)
         # Native locks for the meta stage: the locked lesson keys
         # are passed to every algorithm via `locks=` so atomic
         # moves never disturb them.
@@ -1172,7 +1208,9 @@ def run_meta(stage: str, budget_s: float, workers: int, log: bool,
         if locks_set:
             print(f"[{stage}] native lock path: "
                   f"{len(locks_set)} locked keys forbidden to moves")
-        if not meta.is_hard_feasible(sol, profs, verbose=False):
+        if not meta.is_hard_feasible(
+                sol, profs, verbose=False,
+                dsl_hard_expressions=dsl_hard_expressions):
             print("[meta] WARNING: la soluzione iniziale viola gli HARD")
         dc_value = _restore_dc_from_solution(sol)
         # Cluster classi per LNS/ILS
@@ -1212,6 +1250,7 @@ def run_meta(stage: str, budget_s: float, workers: int, log: bool,
                 parallel_groups=parallel_groups_meta or None,
                 group_assignments=group_assignments_meta or None,
                 soft_rules=soft_rules,
+                dsl_hard_expressions=dsl_hard_expressions,
             )
             if stage == "lns":
                 new_sol, _hist = meta.run_lns(
@@ -1282,7 +1321,9 @@ def run_meta(stage: str, budget_s: float, workers: int, log: bool,
                           improvement=float(init_v - final_v))
 
         v, m = meta.compute_soft(new_sol, profs)
-        feasible = meta.is_hard_feasible(new_sol, profs, verbose=False)
+        feasible = meta.is_hard_feasible(
+            new_sol, profs, verbose=False,
+            dsl_hard_expressions=dsl_hard_expressions)
         with SessionLocal() as db:
             sid = engine_io.import_solution_into_db(
                 db, new_sol,

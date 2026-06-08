@@ -792,6 +792,7 @@ def run_lns(sol, profs, dc_value, time_budget_s,
             db=None,
             via_dsl=False,
             extra_dsl_expressions=None,
+            dsl_hard_expressions=None,
             soft_rules=None):
     """Esegui Large Neighborhood Search per `time_budget_s` secondi.
 
@@ -811,6 +812,19 @@ def run_lns(sol, profs, dc_value, time_budget_s,
     best = deepcopy_sol(sol)
     best_val, _ = compute_soft(best, profs, soft_rules=soft_rules)
     init_val = best_val
+    # Universal DSL solver: arbitrary HARD DSL rules are enforced two
+    # ways here, so LNS honours the FULL grammar like the SA-family.
+    #   1. CP layer: they are merged into the repair's
+    #      ``extra_dsl_expressions`` with ``via_dsl=True`` so the per-day
+    #      ``PhaseBDaySolver`` compiles those it can model into the CP.
+    #   2. Post-hoc gate: after every repair the candidate is re-checked
+    #      with ``is_hard_feasible(..., dsl_hard_expressions=...)`` (the
+    #      full post-hoc evaluator), so a rule the CP cannot express is
+    #      still rejected. This makes LNS reject ANY DSL-hard violation.
+    if dsl_hard_expressions:
+        extra_dsl_expressions = list(extra_dsl_expressions or []) + list(
+            dsl_hard_expressions)
+        via_dsl = True
     profs_list = sorted(profs.keys())
     classes_list = sorted({c for p in profs.values() for c in p["classi"]})
     log_entries = []
@@ -881,6 +895,19 @@ def run_lns(sol, profs, dc_value, time_budget_s,
         if not ok:
             log_entries.append(
                 (iter_count, op, "infeasible", best_val, best_val)
+            )
+            continue
+        # Post-hoc DSL-hard gate: reject any repaired candidate that
+        # violates an arbitrary DSL HARD the per-day CP could not model.
+        if dsl_hard_expressions and not is_hard_feasible(
+                new_sol, profs, verbose=False,
+                coteach_groups=coteach_groups,
+                support_assignments=support_assignments,
+                parallel_groups=parallel_groups,
+                group_assignments=group_assignments,
+                dsl_hard_expressions=dsl_hard_expressions):
+            log_entries.append(
+                (iter_count, op, "hard_violation", best_val, best_val)
             )
             continue
         new_val, _ = compute_soft(new_sol, profs, soft_rules=soft_rules)
@@ -1258,6 +1285,7 @@ def run_ils(sol, profs, dc_value, time_budget_s,
                 group_assignments=group_assignments,
                 db=db, via_dsl=via_dsl,
                 extra_dsl_expressions=extra_dsl_expressions,
+                dsl_hard_expressions=dsl_hard_expressions,
                 soft_rules=soft_rules,
             )
         else:
