@@ -110,7 +110,16 @@ def prof_day_hours(sol, profs_set):
             for p in profs_set for d in DAYS}
 
 
-def compute_soft(sol, profs):
+def compute_soft(sol, profs, soft_rules=None):
+    """Structural soft objective, optionally augmented with DSL SOFT rules.
+
+    ``soft_rules`` (Subproject D) is an optional list of pre-parsed
+    ``(tree, weight)`` pairs (see :func:`parse_soft_rules`). For every
+    rule whose DSL expression is VIOLATED against the world derived from
+    ``sol`` (``evaluate_safe`` returns ``ok=False``), ``weight`` is added
+    to the objective. When ``soft_rules`` is falsy the function is
+    byte-identical to the legacy structural-only path (zero-drift).
+    """
     cls_set = sorted({c for p in profs.values() for c in p["classi"]})
     profs_set = sorted(profs.keys())
     cls_h = class_day_hours(sol, cls_set)
@@ -139,7 +148,74 @@ def compute_soft(sol, profs):
         + OBJECTIVE_WEIGHTS["five"] * five
         + OBJECTIVE_WEIGHTS["one"] * one
     )
+    if soft_rules:
+        soft_pen = 0
+        try:
+            try:
+                from webui.backend.utils import (  # type: ignore
+                    general_dsl as _gd)
+            except ImportError:
+                import sys as _sys
+                _here = os.path.dirname(os.path.abspath(__file__))
+                _root = os.path.dirname(_here)
+                if _root not in _sys.path:
+                    _sys.path.insert(0, _root)
+                from webui.backend.utils import (  # type: ignore
+                    general_dsl as _gd)
+        except Exception:  # noqa: BLE001
+            _gd = None
+        if _gd is not None:
+            world = _build_world_from_sol(sol, profs)
+            for tree, weight in soft_rules:
+                try:
+                    ok, _ = _gd.evaluate_safe(tree, world)
+                except Exception:  # noqa: BLE001
+                    continue
+                if not ok:
+                    soft_pen += int(weight)
+        val += soft_pen
+        metrics = dict(metrics, dsl_soft=soft_pen)
     return val, metrics
+
+
+def parse_soft_rules(rules):
+    """Pre-parse DSL SOFT rule dicts into ``(tree, weight)`` pairs.
+
+    ``rules`` is the list of dicts produced by
+    ``dsl_translator.load_all_dsl_constraints`` (keys ``expression``,
+    ``is_hard``, ``weight``, ``label``). HARD rules and rules with
+    ``weight <= 0`` are skipped, as are any whose expression fails to
+    parse. The returned list is consumable by ``compute_soft(...,
+    soft_rules=...)``.
+    """
+    try:
+        from webui.backend.utils import general_dsl as _gd  # type: ignore
+    except ImportError:
+        import sys as _sys
+        _here = os.path.dirname(os.path.abspath(__file__))
+        _root = os.path.dirname(_here)
+        if _root not in _sys.path:
+            _sys.path.insert(0, _root)
+        from webui.backend.utils import general_dsl as _gd  # type: ignore
+    out = []
+    for r in rules or []:
+        if r.get("is_hard"):
+            continue
+        try:
+            weight = int(r.get("weight", 0))
+        except (TypeError, ValueError):
+            continue
+        if weight <= 0:
+            continue
+        expr = r.get("expression")
+        if not expr:
+            continue
+        try:
+            tree = _gd.parse(expr)
+        except Exception:  # noqa: BLE001
+            continue
+        out.append((tree, weight))
+    return out
 
 
 def is_hard_feasible(sol, profs, verbose=False,
