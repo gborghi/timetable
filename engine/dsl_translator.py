@@ -35,9 +35,18 @@ Mapping invariants
   spaces.
 - day codes are 1..6 ints (lun..sab); hour codes are 8..13 ints.
 - ``state == "hard"`` rows produce HARD DSL rules; ``state == "soft"``
-  rows produce SOFT rules with the row's ``soft_penalty`` weight
-  (the compiler currently treats SOFT as TODO and emits a
-  diagnostic; future commits add SOFT-cost integration).
+  rows produce SOFT rules with the row's ``soft_penalty`` weight.
+  SOFT-cost integration HAS landed: ``DSLConstraintCompiler`` reifies
+  each SOFT violation into a BoolVar and appends ``(weight, var)`` to
+  ``compiler.soft_cost_terms``, which the owning model folds into its
+  objective. SOFT rows are emitted only when the loader is called with
+  ``include_soft=True`` -- and every PRODUCTION solver currently passes
+  ``include_soft=False`` (cpsat_v2_timetable, metaheuristics,
+  optimization), so SOFT table rules are wired but DORMANT in
+  production; only ``test_free_day_constraint`` exercises the path.
+  Enabling them needs more than the flag (per-day objective wiring +
+  the week-mono loop must forward ``is_hard``/``soft_weight``) -- see
+  ``ConstraintModel.add_all_dsl_constraints_from_db``.
 """
 from __future__ import annotations
 
