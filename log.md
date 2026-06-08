@@ -56,8 +56,15 @@ generality mandate. Maintained autonomously (user set a no-supervision goal
   `teacher_max_hours_after(weight, threshold, cap)` ("max 1h after 15:00"),
   generalized last/Nth-slot; the fixed sixth-hour penalty becomes a special
   case. Behavior change, own gate. Thresholds are config-driven slot codes.
-- **B3** — decomposition cleanup (`decomposition_spectral_v2.add_buchi_soft`
-  → shared `soft_costs`); confirm temporal/curriculum/metis delegate.
+- **B2 — DONE** (commit `50a6058`, pushed; reviewed/approved). Per-day loader
+  `include_soft=True` via per-rule is_hard/soft_weight toggle + re-Minimize
+  (NOT a bare flip — would have promoted soft→hard). Dead glib removed.
+- **B3 — DONE** (commit `6e3b589`, pushed). `add_buchi_soft` (spectral stages
+  A/B/C) now delegates to `soft_costs.buchi_pairs(weight=1)`; slot5 view
+  restricted to passed triples preserves the old `present_p` fixed-triple
+  exclusion. Return shape kept (list of vars). `solve_monolithic_day` →
+  `solve_phase_b_for_day` already inherits B1/B2. temporal/curriculum/metis
+  delegate to per-day. 5 new + 10 decomp + 38 phase_b + slow loop green.
 - **C** — BP / column generation: route pricers + master through the stream;
   delete `_add_full_soft_cost_terms`. (`column_generation.py` has its own
   `_SIXTH_HOUR=13` + per-teacher buchi calls.)
