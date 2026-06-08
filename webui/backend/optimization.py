@@ -866,6 +866,41 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
     return run_id
 
 
+def _apply_dsl_rules_to_week_solver(solver, db, *,
+                                    level: str = "phase_b") -> int:
+    """Load the unified DSL constraint stream (HARD + SOFT) from the DB
+    and compile it onto a week-scope ``MonolithicSolver``.
+
+    SOFT rows are forwarded with ``is_hard=False`` and their weight so
+    they land on ``solver.dsl_soft_cost_terms`` and -- via
+    ``MonolithicSolver.build`` -- the objective. This is
+    double-count-safe on the week path: ``compute_soft_cost_expr``
+    carries only sixth/buchi/five/one penalties (no free-day or
+    unavailability soft), so these SOFT rows are not otherwise present
+    in the objective. Returns the number of rules applied.
+
+    NOTE: only the week-scope path enables SOFT. The per-day /
+    decomposition paths still load with ``include_soft=False`` because
+    (a) their free-day soft is already in the objective via the Phase-A
+    ``glib_pen`` term (enabling here would double-count) and (b) the
+    per-day compiler's ``soft_cost_terms`` are not summed into the
+    per-day objective. See dsl_translator's module docstring.
+    """
+    try:
+        from engine import dsl_translator as dt  # type: ignore
+    except ImportError:
+        import dsl_translator as dt  # type: ignore
+    rules = dt.load_all_dsl_constraints(db, include_soft=True)
+    for r in rules:
+        solver.add_dsl_constraint(
+            r["expression"],
+            is_hard=bool(r.get("is_hard", True)),
+            soft_weight=int(r.get("weight", 0) or 0),
+            level=level,
+        )
+    return len(rules)
+
+
 def _solve_phase_b_week(*, rid: int, ws: str, profs: dict,
                           classes: list, triples: list,
                           class_profs: dict,
@@ -959,17 +994,12 @@ def _solve_phase_b_week(*, rid: int, ws: str, profs: dict,
     # Wire up DB-driven DSL pragmas at level=phase_b (skip phase_a-only
     # pragmas: their day_count IntVars don't exist on the slot-only
     # week model).
-    try:
-        from engine import dsl_translator as dt  # type: ignore
-    except ImportError:
-        import dsl_translator as dt  # type: ignore
     with SessionLocal() as db:
-        rules = dt.load_all_dsl_constraints(db, include_soft=False)
-    if rules:
-        print(f"[phaseB.week] loading {len(rules)} DSL HARD rules "
-              "(level=phase_b + both)")
-        for r in rules:
-            solver.add_dsl_constraint(r["expression"], level="phase_b")
+        n_rules = _apply_dsl_rules_to_week_solver(
+            solver, db, level="phase_b")
+    if n_rules:
+        print(f"[phaseB.week] loaded {n_rules} DSL rules "
+              "(HARD + SOFT, level=phase_b)")
 
     # Inter-class group slots first so subsequent helpers see them.
     solver.add_parallel_groups_inter_class()
