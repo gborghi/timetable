@@ -142,7 +142,94 @@ functional regressions (per the test policy, perf/outcome tests may shift).
   under old behavior) → GREEN (h12 avoided). No outcome test broke; 233
   fast DSL-path + 11 slow integration green.
 
+## ✅ A→D LIFECYCLE COMPLETE (2026-06-09)
+
+`soft_costs.py` is now the single source of soft-cost encodings consumed by
+EVERY backend: mono-week (`compute_soft_cost_expr`), per-day CP
+(`solve_phase_b_for_day`), decomposition (spectral `add_buchi_soft`),
+column-generation pricers (`_add_full_soft_cost_terms`), and the metaheuristic
+Python scorer (`compute_soft`, which ALSO honors arbitrary DSL soft now).
+Commits: A `3b30d42..3da2e07`; B1 `f891204`,`16f4e74`; B2 `50a6058`; B3
+`6e3b589`; C `07e9e5f`,`2427427`; engine-decouple `2e63b74`; D `252723a`,
+`27bac43`. All pushed.
+
+REMAINING (generality mandate — the "then" of the goal):
+- **B-gen** — general grid-relative time-threshold soft family.
+- **GEN/HARD** — general hard + cross-day predicates (no-same-class-consec-days)
+  + solver-compatibility warning system (the headline user ask).
+- **Q5** — relocate `general_dsl` into the engine (frontend-agnostic).
+- B-gen and GEN are now UNBLOCKED — the single-stream plumbing exists to hang
+  new pragmas + the capability/warning matrix on.
+
+## D progress + findings
+
+- **D — DONE** (Task1 `252723a`, Task2 `27bac43`, both pushed, reviewed).
+  `compute_soft(sol, profs, soft_rules=None)` adds `int(weight)` per VIOLATED
+  DSL soft rule
+  (evaluated via `_build_world_from_sol` + `general_dsl.evaluate_safe`),
+  exposes `metrics["dsl_soft"]`; default path byte-identical. Added
+  `parse_soft_rules(rules)` (pre-parse dicts → `[(tree, weight)]`).
+- **Engine-decoupling fix** (commit `2e63b74`, pushed): `dsl_to_cpsat.py`
+  `compile()` had a bare `from webui.backend.utils import general_dsl` with NO
+  fallback → `ModuleNotFoundError: No module named 'webui'` on the
+  meta→ALNS→CP-repair path (pre-existing, failed `test_run_alns_does_not_free_locked`).
+  Added the repo-root fallback idiom. Aligns with the frontend-agnostic mandate.
+- **CRITICAL constraint for D Task 2 (dual-module hazard):** `general_dsl` is
+  importable as BOTH `webui.backend.utils.general_dsl` AND
+  `backend.utils.general_dsl` — Python treats them as DISTINCT modules with
+  distinct AST node classes. A tree parsed under one alias and evaluated under
+  the other → all `isinstance` checks fail → top node returns None →
+  `bool(None)=False` → EVERY solution reads as VIOLATED. Mitigation: trees MUST
+  be produced by `meta.parse_soft_rules` (same module object as `compute_soft`).
+  ROOT FIX (GEN/HARD phase): move `general_dsl` into the engine or a shared
+  location so there is ONE canonical module — kills the dual-identity hazard
+  AND the webui-coupling. Tracked as Q5.
+
 ## Open questions / problems (resolve or revisit)
+
+- Q5 (GEN/HARD): `general_dsl` lives at `webui/backend/utils/general_dsl.py`
+  but is the ENGINE's parser/evaluator — couples engine→webui + creates the
+  dual-module AST-identity hazard. Consider relocating to `engine/` (or a
+  shared pkg) with a re-export shim at the old path for back-compat. Frontend-
+  agnostic mandate wants the engine to own its DSL.
+
+## GEN findings (investigation, 2026-06-09)
+
+- **Cross-day constraints ALREADY WORK.** "No same class on consecutive days"
+  is expressible (post-hoc: nested `forall l1 ... forall l2 where l2.class ==
+  l1.class and l1 != l2: not consecutive_days(l1.day, l2.day)`) AND compiles to
+  CP-SAT forbid-pair constraints (static-reducible body). Tests:
+  `test_general_dsl.py:244-276`, `test_dsl_to_cpsat.py:333-369`. The DSL grammar
+  is rich: nested quantifiers, `count`/`sum ... op value`, `+`/`-` arithmetic,
+  builtins `consecutive`/`consecutive_days`/`same_day`/`hour`/`day`. Missing:
+  only a convenience pragma `no_same_class_consecutive_days(cl)` (the capability
+  exists via the verbose form). Compiler limitation: nested-forall body must be
+  static-reducible; dynamic 3rd-var bodies fall back to a diagnostic.
+- **Solver-compat = the real deliverable.** ~50 diagnostic-append sites exist
+  (`dsl_to_cpsat.py` per-construct "not yet supported / dynamic; skipped" +
+  pragma-level mismatch; `cpsat_v2_timetable.py:1391/1398/1406/1428`
+  compile_failed/db_load_failed). `solve_phase_b_for_day` collects them in a
+  local `dsl_diagnostics` list but RETURNS `(out, status)` — diagnostics are
+  printed to stdout (if log) and DISCARDED. The week path stores
+  `solver.dsl_diagnostics` but only prints a count. NOTHING reaches RunLog/UI.
+  → constraints ARE silently dropped from the user's view. The warning system
+  must COLLECT (already done) + STRUCTURE + SURFACE (return + RunLog).
+- Per-pipeline backend: CP paths (mono-week, per-day, decomp) validate via
+  `DSLConstraintCompiler` (compile-time, can skip un-modelable constructs);
+  metaheuristics validate via the post-hoc `general_dsl.evaluate` (accepts MORE
+  — e.g. dynamic nested forall). So the capability MATRIX differs by pipeline:
+  a constraint dropped by per-day CP may be honored by a metaheuristic pass.
+  That asymmetry drives the "suggestion" (e.g. "run a metaheuristic post-pass").
+
+## Remaining roadmap (post A→D)
+- **GEN-warn** (NEXT, headline ask): `engine/constraint_compat.py` —
+  classify+structure the existing diagnostics into
+  `{constraint_label, pipeline, reason, suggestion, severity}`; thread a
+  `diagnostics_sink` out of `solve_phase_b_for_day`; orchestration surfaces them
+  to RunLog + the run result. Suggestion uses the pipeline capability asymmetry.
+- **B-gen**: general time-threshold soft pragmas.
+- **consec-days pragma**: `no_same_class_consecutive_days(cl)` shorthand (small).
+- **Q5**: relocate general_dsl into engine.
 
 - Q1 (B1) — RESOLVED: `test_phase_b_per_day_soft_cost.py` pins
   `compute_soft_cost_expr(mode="phase_b_per_day")` (the ConstraintModel
