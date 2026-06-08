@@ -612,12 +612,16 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
     run_id = create_run("phase_b", "Schedulazione orario", None, params)
 
     def target(rid: int):
-        # Read locked Lessons BEFORE running anything. The native-lock
-        # CP-SAT path (monolithic only for now) feeds them to the
-        # solver as constraints; the decomposed path still relies on
-        # snapshot/restore -- see TODO below.
+        # Read locked Lessons BEFORE running anything. Every CP-SAT path
+        # -- monolithic week, monolithic per-day, and the decomposed
+        # spectral stages (A/B/C + ricucitura + day fallback) -- feeds
+        # them to the solver as native hard constraints (slot var == 1
+        # per locked (p,c,s,d,h), plus lock-floors in Phase A). There is
+        # no snapshot/restore; `_read_locked_lessons` only READS the
+        # current locked set, and `_apply_locked_classrooms` below only
+        # re-decorates room metadata onto the lessons the solver placed.
         with SessionLocal() as db:
-            locked_snap = _snapshot_locked_lessons(db)
+            locked_snap = _read_locked_lessons(db)
             profs = engine_io.profs_dict_from_db(db)
             coteach_groups = engine_io.coteach_groups_for_solver(db)
             support_assignments = engine_io.support_assignments_from_db(db)
@@ -627,7 +631,8 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
             group_assignments = engine_io.group_assignments_for_solver(db)
         if locked_snap:
             print(f"[phaseB] {len(locked_snap)} locked lessons "
-                  f"({'native CP-SAT' if not use_decomposition else 'snapshot/restore'} path)")
+                  f"(native CP-SAT path, "
+                  f"{'decomposed' if use_decomposition else 'monolithic'})")
         if coteach_groups:
             print(f"[phaseB] {len(coteach_groups)} coteach groups "
                   f"(shared mode)")
@@ -1093,7 +1098,7 @@ def run_meta(stage: str, budget_s: float, workers: int, log: bool,
         import metaheuristics as meta  # type: ignore
         import decomposition_spectral_v2 as dec  # type: ignore
         with SessionLocal() as db:
-            locked_snap = _snapshot_locked_lessons(db)
+            locked_snap = _read_locked_lessons(db)
             profs = engine_io.profs_dict_from_db(db)
             coteach_groups_meta = engine_io.coteach_groups_for_solver(db)
             support_assignments_meta = (
@@ -1524,7 +1529,7 @@ def run_column_generation(*, time_budget_s: float = 60.0,
         import metaheuristics as meta  # type: ignore
         import column_generation as cg  # type: ignore
         with SessionLocal() as db:
-            locked_snap = _snapshot_locked_lessons(db)
+            locked_snap = _read_locked_lessons(db)
             profs = engine_io.profs_dict_from_db(db)
             coteach_groups = engine_io.coteach_groups_for_solver(db)
             support_assignments = engine_io.support_assignments_from_db(
@@ -2461,7 +2466,7 @@ def _snapshot_and_validate_locks(db: Session) -> list[dict]:
     HTTPException handler maps RuntimeError to a 400 with code
     `engine_error`.
     """
-    snap = _snapshot_locked_lessons(db)
+    snap = _read_locked_lessons(db)
     if snap:
         violations = validate_locks_vs_constraints(snap)
         if violations:
@@ -2761,7 +2766,7 @@ def _preflight_lock_check() -> None:
     (commuting rules + entity policies coherence).
     """
     with SessionLocal() as db:
-        snap = _snapshot_locked_lessons(db)
+        snap = _read_locked_lessons(db)
         cs_violations = validate_coteach_sostegno_potenziamento(db)
         plessi_violations = validate_plessi_rules(db)
     violations = list(cs_violations) + list(plessi_violations)
@@ -2775,7 +2780,7 @@ def _preflight_lock_check() -> None:
         )
 
 
-def _snapshot_locked_lessons(db: Session) -> list[dict]:
+def _read_locked_lessons(db: Session) -> list[dict]:
     """Capture every Lesson belonging to a LOCKED Assignment in the
     active solution, so we can restore them after a Phase B / meta run
     that doesn't natively know about Assignment.locked. Returns a list
@@ -3011,7 +3016,7 @@ def _apply_rooms_to_solution(sid: int, *, time_limit_s: float,
         # Native lock for the classroom step: read the snapshot of
         # locked Lessons that have a classroom_name and force the
         # solver to assign that room to that lesson.
-        locked_snap = _snapshot_locked_lessons(db)
+        locked_snap = _read_locked_lessons(db)
         plessi_data = load_plessi_data(db)
     locked_classrooms = [
         (d["class_name"], d["subject"], int(d["day"]), int(d["hour"]),
@@ -3076,7 +3081,7 @@ def run_classroom_assignment(time_limit_s: float, workers: int, log: bool,
                 )
             lessons = engine_io.lessons_for_classroom_step(db, active.id)
             rooms = engine_io.classrooms_dicts_from_db(db)
-            locked_snap = _snapshot_locked_lessons(db)
+            locked_snap = _read_locked_lessons(db)
             plessi_data = load_plessi_data(db)
         locked_classrooms = [
             (d["class_name"], d["subject"], int(d["day"]), int(d["hour"]),
@@ -3736,7 +3741,7 @@ def run_decomposition_temporal(*, time_a: float = 60.0,
 
     def target(rid: int):
         with SessionLocal() as db:
-            locked_snap = _snapshot_locked_lessons(db)
+            locked_snap = _read_locked_lessons(db)
             profs = engine_io.profs_dict_from_db(db)
         if not profs:
             raise RuntimeError(
@@ -3913,7 +3918,7 @@ def run_decomposition_curriculum(*, time_a: float = 60.0,
 
     def target(rid: int):
         with SessionLocal() as db:
-            locked_snap = _snapshot_locked_lessons(db)
+            locked_snap = _read_locked_lessons(db)
             profs = engine_io.profs_dict_from_db(db)
             cls_to_curr = {}
             for c in db.query(models.SchoolClass).all():
@@ -4064,7 +4069,7 @@ def run_decomposition_metis(*, time_a: float = 60.0,
 
     def target(rid: int):
         with SessionLocal() as db:
-            locked_snap = _snapshot_locked_lessons(db)
+            locked_snap = _read_locked_lessons(db)
             profs = engine_io.profs_dict_from_db(db)
         if not profs:
             raise RuntimeError("Nessun assegnamento prof->classe.")
