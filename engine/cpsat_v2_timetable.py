@@ -994,7 +994,9 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
                           db=None,
                           via_dsl=False,
                           extra_dsl_expressions=None,
-                          return_objective=False):
+                          return_objective=False,
+                          *,
+                          diagnostics_sink=None):
     r"""Risolve il sotto-problema di un singolo giorno.
 
     Se enforce_no_holes=True (default) impone ai profili di classe la
@@ -1442,6 +1444,8 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
         # Se infeasible per via dei "no holes" stretti, segnaliamo
         # (in produzione qui andrebbe un repair che muove un'ora
         # ad altro giorno usando dc_value modificabile).
+        if diagnostics_sink is not None:
+            diagnostics_sink.extend(dsl_diagnostics)
         if return_objective:
             return None, status, None
         return None, status
@@ -1451,6 +1455,8 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
         for (p, cl, subj, _) in triples_active
         for h in HOURS
     }
+    if diagnostics_sink is not None:
+        diagnostics_sink.extend(dsl_diagnostics)
     if return_objective:
         # Only meaningful when the model has an objective (soft_obj
         # non-empty). When the model is a pure feasibility problem
