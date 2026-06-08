@@ -1508,8 +1508,20 @@ class MonolithicSolver(ConstraintModel):
 
     def solve(self, *, time_limit_s: float = 10.0,
               workers: int = 4, log: bool = False,
-              via_dsl: bool = False):
+              via_dsl: bool = False, forbidden_solutions=None):
         self.build(via_dsl=via_dsl)
+        # DSL no-good refinement: forbid each previously-rejected exact
+        # assignment over the FRESHLY-built slot vars. ``build()`` is not
+        # idempotent (it re-creates ``self.slot``), so the no-goods are
+        # re-applied here, on each solve, against the current vars.
+        # Default ``None`` -> zero cuts -> byte-identical to the plain path.
+        if forbidden_solutions:
+            try:
+                from . import dsl_cp_gate as _gate  # type: ignore
+            except ImportError:
+                import dsl_cp_gate as _gate  # type: ignore
+            for fsol in forbidden_solutions:
+                _gate.add_nogood(self.model, self.slot, fsol)
         solver = cp_model.CpSolver()
         solver.parameters.max_time_in_seconds = float(time_limit_s)
         solver.parameters.num_search_workers = int(workers)
@@ -1526,6 +1538,35 @@ class MonolithicSolver(ConstraintModel):
             if solver.Value(v):
                 self.pot_solution[k] = 1
         return out, solver.StatusName(status)
+
+    def solve_dsl_compliant(self, hard_exprs, profs, *,
+                            max_iters: int = 8, time_limit_s: float = 10.0,
+                            workers: int = 8, log: bool = False,
+                            via_dsl: bool = False):
+        """Solve, completely honoring any checkable HARD DSL.
+
+        Runs the verify + no-good refinement loop from ``dsl_cp_gate``:
+        each iteration rebuilds the model (``solve()`` calls ``build()``)
+        with all accumulated forbidden assignments re-applied as no-goods,
+        solves, and verifies the HARD DSL on the result via the post-hoc
+        evaluator. Natively-compiled rules pass on iteration 0 (no extra
+        solve); only genuinely un-compiled violations trigger a refine.
+
+        Returns ``(sol, status, unsatisfied)`` where ``unsatisfied`` is the
+        list of still-violated expression strings (empty = fully compliant).
+        """
+        try:
+            from . import dsl_cp_gate as _gate  # type: ignore
+        except ImportError:
+            import dsl_cp_gate as _gate  # type: ignore
+
+        def _solve_once(forbidden):
+            return self.solve(time_limit_s=time_limit_s, workers=workers,
+                              log=log, via_dsl=via_dsl,
+                              forbidden_solutions=forbidden)
+
+        return _gate.solve_with_dsl_refinement(
+            _solve_once, profs, hard_exprs, max_iters=max_iters)
 
 
 # ============================================================

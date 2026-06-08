@@ -972,79 +972,159 @@ def _solve_phase_b_week(*, rid: int, ws: str, profs: dict,
         # phase_a_mode == "skip"
         update_run(rid, progress=0.10)
 
-    # Build the monolithic week-scope solver. dc_value=None puts the
-    # model in weekly_mode; the slot vars use weekly equality from
-    # profs[..]["ore"] and the day distribution becomes a CP-SAT
-    # decision.
-    cfg = csm.ConstraintConfig(
-        enforce_no_holes=True,
-        enforce_h3_presence_at_11=True,
-        enforce_motorie_pair=True,
-        enforce_math_italian_pair=True,
-        locks=[],  # native locks are added below via add_locks
-        coteach_groups=list(coteach_groups or []),
-        support_assignments=list(support_assignments or []),
-        potenziamento_assignments=list(potenziamento_assignments or []),
-        parallel_groups=list(parallel_groups or []),
-        group_assignments=list(group_assignments or []),
-    )
-    solver = csm.MonolithicSolver(profs, dc_value=None, config=cfg,
-                                    scope=None)
-    print(f"[phaseB.week] slot vars: {len(solver.slot)}, "
-          f"day_count hint vars: {len(solver.day_count_for_hint)}")
-
-    # Wire up DB-driven DSL pragmas at level=phase_b (skip phase_a-only
-    # pragmas: their day_count IntVars don't exist on the slot-only
-    # week model).
-    with SessionLocal() as db:
-        n_rules = _apply_dsl_rules_to_week_solver(
-            solver, db, level="phase_b")
-    if n_rules:
-        print(f"[phaseB.week] loaded {n_rules} DSL rules "
-              "(HARD + SOFT, level=phase_b)")
-
-    # Inter-class group slots first so subsequent helpers see them.
-    solver.add_parallel_groups_inter_class()
-    solver.add_coteach_groups()
-    solver.add_support_assignments()
-    solver.add_potenziamento_assignments()
-    solver.add_parallel_groups_intra_class()
-    solver.add_all_hard_constraints()
-    solver.add_class_no_overlap()
-
     # Native locks: turn the snapshot into 5-tuples (t, cl, s, d, h)
-    # and apply them as slot==1 equalities.
+    # and apply them as slot==1 equalities. Computed once (lock-set is
+    # invariant across refinement iterations).
     locks_5: list = []
     for d, lst in (locked_by_day or {}).items():
         for entry in lst:
             if len(entry) == 4:
                 t, cl, s, h = entry
                 locks_5.append((t, cl, s, d, h))
-    if locks_5:
-        print(f"[phaseB.week] applying {len(locks_5)} native locks")
-        solver.add_locks(locks_5)
 
-    # Soft cost as objective.
-    obj_terms, _ = solver.compute_soft_cost_expr(mode="default")
-    if obj_terms:
-        solver.model.Minimize(sum(obj_terms))
+    # Collect HARD DSL expression strings for the post-solve DSL
+    # compliance gate. ``None`` => no hard DSL => the byte-identical
+    # single-shot path runs (no verify, no refinement, no extra solve).
+    with SessionLocal() as _db_h:
+        hard_exprs = _load_dsl_hard_expressions(_db_h)
 
-    # Phase A as soft hint, if applicable.
-    if dc_value:
-        n_hints = solver.add_phase_a_hint(dc_value)
-        print(f"[phaseB.week] applied {n_hints} Phase A hints "
-              "via AddHint")
+    def _build_week_solver(forbidden):
+        """Build the monolithic week-scope solver from scratch and
+        return ``(solver, cp_solver, status_name)`` after solving.
+
+        ``forbidden`` is a list of previously-rejected assignment dicts
+        applied as DSL no-good cuts over the freshly-built slot vars
+        (empty on the default path => identical model to the legacy
+        single-shot build).
+        """
+        # dc_value=None puts the model in weekly_mode; slot vars use the
+        # weekly equality from profs[..]["ore"] and the day distribution
+        # becomes a CP-SAT decision.
+        cfg = csm.ConstraintConfig(
+            enforce_no_holes=True,
+            enforce_h3_presence_at_11=True,
+            enforce_motorie_pair=True,
+            enforce_math_italian_pair=True,
+            locks=[],  # native locks are added below via add_locks
+            coteach_groups=list(coteach_groups or []),
+            support_assignments=list(support_assignments or []),
+            potenziamento_assignments=list(potenziamento_assignments or []),
+            parallel_groups=list(parallel_groups or []),
+            group_assignments=list(group_assignments or []),
+        )
+        solver = csm.MonolithicSolver(profs, dc_value=None, config=cfg,
+                                        scope=None)
+        print(f"[phaseB.week] slot vars: {len(solver.slot)}, "
+              f"day_count hint vars: {len(solver.day_count_for_hint)}")
+
+        # Wire up DB-driven DSL pragmas at level=phase_b (skip phase_a-only
+        # pragmas: their day_count IntVars don't exist on the slot-only
+        # week model).
+        with SessionLocal() as db:
+            n_rules = _apply_dsl_rules_to_week_solver(
+                solver, db, level="phase_b")
+        if n_rules:
+            print(f"[phaseB.week] loaded {n_rules} DSL rules "
+                  "(HARD + SOFT, level=phase_b)")
+
+        # Inter-class group slots first so subsequent helpers see them.
+        solver.add_parallel_groups_inter_class()
+        solver.add_coteach_groups()
+        solver.add_support_assignments()
+        solver.add_potenziamento_assignments()
+        solver.add_parallel_groups_intra_class()
+        solver.add_all_hard_constraints()
+        solver.add_class_no_overlap()
+
+        if locks_5:
+            print(f"[phaseB.week] applying {len(locks_5)} native locks")
+            solver.add_locks(locks_5)
+
+        # DSL no-good cuts: forbid each previously-rejected exact
+        # assignment over the freshly-built slot vars. Empty on the
+        # default path -> zero cuts -> identical model.
+        if forbidden:
+            try:
+                from engine import dsl_cp_gate as _gate  # type: ignore
+            except ImportError:
+                import dsl_cp_gate as _gate  # type: ignore
+            for fsol in forbidden:
+                _gate.add_nogood(solver.model, solver.slot, fsol)
+
+        # Soft cost as objective.
+        obj_terms, _ = solver.compute_soft_cost_expr(mode="default")
+        if obj_terms:
+            solver.model.Minimize(sum(obj_terms))
+
+        # Phase A as soft hint, if applicable.
+        if dc_value:
+            n_hints = solver.add_phase_a_hint(dc_value)
+            print(f"[phaseB.week] applied {n_hints} Phase A hints "
+                  "via AddHint")
+
+        cp_solver = cp_model.CpSolver()
+        cp_solver.parameters.max_time_in_seconds = float(time_mono)
+        cp_solver.parameters.num_search_workers = int(workers)
+        cp_solver.parameters.log_search_progress = bool(log)
+        print(f"[phaseB.week] solving (time_limit={time_mono}s, "
+              f"workers={workers})")
+        status = cp_solver.Solve(solver.model)
+        status_name = cp_solver.StatusName(status)
+        print(f"[phaseB.week] status={status_name}")
+        return solver, cp_solver, status, status_name
 
     update_run(rid, progress=0.30)
-    cp_solver = cp_model.CpSolver()
-    cp_solver.parameters.max_time_in_seconds = float(time_mono)
-    cp_solver.parameters.num_search_workers = int(workers)
-    cp_solver.parameters.log_search_progress = bool(log)
-    print(f"[phaseB.week] solving (time_limit={time_mono}s, "
-          f"workers={workers})")
-    status = cp_solver.Solve(solver.model)
-    status_name = cp_solver.StatusName(status)
-    print(f"[phaseB.week] status={status_name}")
+
+    def _solve_once(forbidden):
+        """Adapter for ``dsl_cp_gate.solve_with_dsl_refinement``: build +
+        solve, returning ``(sol_or_None, status_name)``."""
+        solver, cp_solver, status, status_name = _build_week_solver(forbidden)
+        if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+            return None, status_name
+        sol = {k: 1 for k, v in solver.slot.items() if cp_solver.Value(v)}
+        return sol, status_name
+
+    if hard_exprs:
+        # DSL-compliant path: refine via no-good accumulation until every
+        # checkable HARD DSL rule holds on the produced week (or budget).
+        try:
+            from engine import dsl_cp_gate as _gate  # type: ignore
+        except ImportError:
+            import dsl_cp_gate as _gate  # type: ignore
+        print(f"[phaseB.week] DSL gate: {len(hard_exprs)} HARD rule(s) "
+              "-> verify + no-good refinement")
+        full_solution, status_name, unsatisfied = (
+            _gate.solve_with_dsl_refinement(
+                _solve_once, profs, hard_exprs, max_iters=8))
+        if full_solution is None:
+            if locks_5:
+                raise RuntimeError(
+                    "Phase B (week scope) INFEASIBLE: i lock correnti "
+                    "sono incompatibili con i vincoli. Rimuovi o adatta "
+                    "i lock e ritenta.")
+            raise RuntimeError(
+                f"Phase B (week scope) returned {status_name}: nessuna "
+                "soluzione settimanale entro il time limit. Aumenta "
+                "time_mono o passa a cp_sat_scope='day'.")
+        if unsatisfied:
+            # Surface the un-enforceable HARD rules as structured warnings
+            # (the honest "couldn't fully comply within budget" signal).
+            try:
+                from engine import constraint_compat as _cc  # type: ignore
+            except ImportError:
+                import constraint_compat as _cc  # type: ignore
+            warns = _cc.summarize(
+                ["compile_failed:" + e + ":refinement:exhausted"
+                 for e in unsatisfied],
+                pipeline="week_cpsat")
+            for w in warns:
+                print(f"[phaseB.week][WARN] DSL hard rule not satisfied "
+                      f"within budget: {getattr(w, 'reason', w)}")
+        return full_solution
+
+    # Default path (no hard DSL): single-shot build + solve, byte-identical
+    # to the legacy behaviour (no verify, no refinement, no extra solve).
+    solver, cp_solver, status, status_name = _build_week_solver([])
     if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         if locks_5:
             raise RuntimeError(
@@ -1058,10 +1138,8 @@ def _solve_phase_b_week(*, rid: int, ws: str, profs: dict,
 
     # Extract the solution dict in the same shape the legacy day-mode
     # produces: {(t, cl, subj, d, h): 1}.
-    full_solution: dict = {}
-    for k, v in solver.slot.items():
-        if cp_solver.Value(v):
-            full_solution[k] = 1
+    full_solution = {
+        k: 1 for k, v in solver.slot.items() if cp_solver.Value(v)}
     return full_solution
 
 

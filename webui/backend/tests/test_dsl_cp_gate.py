@@ -46,3 +46,98 @@ def test_add_nogood_forbids_exact_assignment():
     m.Add(slot[("T1", "1A", "Mat", 1, 9)] == 0)
     s = cp_model.CpSolver()
     assert s.Solve(m) == cp_model.INFEASIBLE
+
+
+def _ms(profs, dc, **cfg):
+    """Build a MonolithicSolver on a tiny in-memory instance."""
+    from cp_sat_constraint_model import MonolithicSolver, ConstraintConfig
+    return MonolithicSolver(profs, dc, ConstraintConfig(**cfg))
+
+
+def test_solve_dsl_compliant_enforces_hard_dsl():
+    """``solve_dsl_compliant`` returns a HARD-feasible solution honoring a
+    hard DSL expr the compiler does not natively guarantee.
+
+    The instance places T1's six Mat hours on day 1 (one full school
+    day). The forbid expr bans T1 from the sixth hour (1, 13). The
+    plain solve would happily fill h8..h13 (the only contiguous-free,
+    no-holes layout); the refinement must drop the (1,13) placement and
+    re-solve until the rule holds -- which, with six hours and six
+    slots, FORCES an empty sixth slot to be unreachable, so it instead
+    spreads the cattedra across more days. We assert HARD feasibility,
+    empty ``unsatisfied``, and that the rule verifies clean on the
+    returned solution.
+    """
+    # T1 teaches 1A Mat for 6 hours across the week. No day-count fixed
+    # (dc=None => weekly mode) so CP-SAT decides the day distribution.
+    profs = {"T1": {"classi": {"1A": {"Mat": {"ore": 6}}},
+                    "max_hours": 18, "min_free_days": 0}}
+    expr = ('forall l in lessons where l.teacher == "T1" '
+            'and l.day == 1 and l.hour == 13: false')
+
+    ms = _ms(profs, None, enforce_no_holes=False)
+    sol, status, unsatisfied = ms.solve_dsl_compliant(
+        [expr], profs, max_iters=8, time_limit_s=10.0, workers=1)
+
+    import dsl_cp_gate as g
+    assert sol is not None, status
+    assert unsatisfied == [], unsatisfied
+    # No placed lesson has T1 at the forbidden (day1, hour13) cell.
+    assert ("T1", "1A", "Mat", 1, 13) not in sol, sol
+    # And the post-hoc evaluator confirms full compliance.
+    assert g.verify_dsl_hard(sol, profs, [expr]) == []
+
+
+def test_refinement_loop_accumulates_nogoods_until_compliant():
+    """Exercise the refinement branch deterministically.
+
+    ``solve_with_dsl_refinement`` must re-solicit ``solve_once`` once per
+    violating solution, accumulating forbidden assignment-dicts, until a
+    compliant solution is produced. We feed a synthetic ``solve_once``
+    that returns a VIOLATING point on the first two calls and a compliant
+    one on the third, asserting the forbidden list grew on each retry
+    (proving the no-good accumulation drives the loop, independent of any
+    CP objective steering the monolithic solver toward compliance on
+    iteration 0).
+    """
+    import dsl_cp_gate as g
+
+    profs = {"T1": {"classi": {"1A": {"Mat": {"ore": 2}}}, "max_hours": 18}}
+    expr = ('forall l in lessons where l.teacher == "T1" '
+            'and l.day == 1 and l.hour == 13: false')
+    bad = {("T1", "1A", "Mat", 1, 13): 1}     # violates expr
+    good = {("T1", "1A", "Mat", 1, 9): 1}      # satisfies expr
+    seq = [bad, bad, good]
+    seen_sizes = []
+
+    def solve_once(forbidden):
+        seen_sizes.append(len(forbidden))
+        return seq[len(seen_sizes) - 1], "FEASIBLE"
+
+    sol, status, unsatisfied = g.solve_with_dsl_refinement(
+        solve_once, profs, [expr], max_iters=8)
+
+    assert sol == good
+    assert unsatisfied == []
+    # forbidden list size on each call: 0 (first), 1, 2 -> accumulation.
+    assert seen_sizes == [0, 1, 2], seen_sizes
+
+
+def test_refinement_reports_unsatisfied_at_budget_exhaustion():
+    """When the violation never clears within ``max_iters``, the helper
+    returns the still-violated expr list (the honest 'couldn't comply'
+    signal) rather than crashing or looping forever."""
+    import dsl_cp_gate as g
+
+    profs = {"T1": {"classi": {"1A": {"Mat": {"ore": 1}}}, "max_hours": 18}}
+    expr = ('forall l in lessons where l.teacher == "T1" '
+            'and l.day == 1 and l.hour == 13: false')
+    bad = {("T1", "1A", "Mat", 1, 13): 1}
+
+    def solve_once(forbidden):
+        return dict(bad), "FEASIBLE"   # always violates
+
+    sol, status, unsatisfied = g.solve_with_dsl_refinement(
+        solve_once, profs, [expr], max_iters=3)
+    assert sol == bad
+    assert unsatisfied == [expr]

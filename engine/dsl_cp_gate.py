@@ -10,11 +10,14 @@ constraint compiler could not model natively, via a post-solve
      compilable fragment) and returns the list of VIOLATED expressions.
   2. ``add_nogood(model, slot, sol)`` forbids the EXACT assignment just
      produced (a no-good cut over the slot BoolVars).
-  3. ``solve_with_dsl_refinement(solver, hard_exprs, profs, ...)`` runs
-     solve -> verify -> no-good -> re-solve, bounded by ``max_iters``.
-     Natively-compiled rules pass verification on iteration 0 (one cheap
-     check, no extra solve); only genuinely un-compiled violations
-     trigger a refinement round.
+  3. ``solve_with_dsl_refinement(solve_once, profs, hard_exprs, ...)``
+     runs solve -> verify -> accumulate-no-good -> re-solve, bounded by
+     ``max_iters``. The ``solve_once(forbidden)`` callback rebuilds a
+     FRESH model each call and re-applies all accumulated forbidden
+     assignments as no-goods -- required because the MonolithicSolver
+     rebuilds its model on every ``solve()``. Natively-compiled rules
+     pass verification on iteration 0 (one cheap check, no extra solve);
+     only genuinely un-compiled violations trigger a refinement round.
 
 This module is **frontend-agnostic** (pure ``engine/``). The only webui
 reference is the lazy ``general_dsl`` import inside ``_gd()``, which
@@ -98,30 +101,39 @@ def add_nogood(model, slot, sol):
         model.AddBoolOr(lits)
 
 
-def solve_with_dsl_refinement(solver, hard_exprs, profs, *,
-                              max_iters=8, time_limit_s=10.0, workers=8):
-    """Solve ``solver`` and refine until all hard DSL holds (or budget out).
+def solve_with_dsl_refinement(solve_once, profs, hard_exprs, *, max_iters=8):
+    """Refine via no-good accumulation over a BUILD-PER-SOLVE solver.
 
-    ``solver`` must be a MonolithicSolver-like object exposing
-    ``.model`` (a ``CpModel``), ``.slot`` (a ``{(p,c,s,d,h): BoolVar}``
-    dict) and a ``solve(*, time_limit_s, workers)`` method returning
-    ``(sol | None, status)``.
+    ``solve_once(forbidden) -> (sol | None, status)`` MUST build a
+    *fresh* model, apply each assignment-dict in ``forbidden`` as a
+    no-good cut over the freshly-built slot vars, solve, and return
+    ``(sol_or_None, status)``. This callback form is required because
+    ``MonolithicSolver.solve()`` calls ``build()`` on every invocation
+    and ``build()`` is NOT idempotent (it re-creates ``self.slot`` and
+    re-adds constraints). We therefore cannot mutate a persistent model
+    between solves; instead we accumulate the FORBIDDEN ASSIGNMENTS
+    (keyed by the stable ``(p, cl, subj, d, h)`` tuples) and let
+    ``solve_once`` re-apply ALL of them on each iteration.
 
-    Loop (at most ``max_iters`` times): solve; if no solution return
-    ``(None, status, [])``; verify the hard DSL on the solution; if none
-    violated return ``(sol, status, [])``; otherwise add a no-good cut
-    forbidding that exact assignment and re-solve. If the budget is
-    exhausted, return ``(last_sol, last_status, still_violated)`` -- the
-    honest "couldn't fully comply within budget" signal.
+    Loop (at most ``max_iters`` times): solve with the current forbidden
+    list; if no solution return ``(None, status, [])``; verify the hard
+    DSL on the solution; if none violated return ``(sol, status, [])``;
+    otherwise append that exact assignment to ``forbidden`` and re-solve.
+    If the budget is exhausted, return ``(last_sol, last_status,
+    still_violated)`` -- the honest "couldn't fully comply within budget"
+    signal.
+
+    Returns ``(sol, status, unsatisfied_exprs)``.
     """
+    forbidden: list[dict] = []
     last_sol, last_status = None, None
     for _ in range(max(1, int(max_iters))):
-        sol, status = solver.solve(time_limit_s=time_limit_s, workers=workers)
+        sol, status = solve_once(forbidden)
         last_sol, last_status = sol, status
         if sol is None:
             return None, status, []          # infeasible / no solution
         violated = verify_dsl_hard(sol, profs, hard_exprs)
         if not violated:
             return sol, status, []           # fully compliant
-        add_nogood(solver.model, solver.slot, sol)
+        forbidden.append(dict(sol))
     return last_sol, last_status, verify_dsl_hard(last_sol, profs, hard_exprs)
