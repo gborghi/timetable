@@ -65,11 +65,32 @@ generality mandate. Maintained autonomously (user set a no-supervision goal
   exclusion. Return shape kept (list of vars). `solve_monolithic_day` →
   `solve_phase_b_for_day` already inherits B1/B2. temporal/curriculum/metis
   delegate to per-day. 5 new + 10 decomp + 38 phase_b + slow loop green.
-- **C** — BP / column generation: route pricers + master through the stream;
-  delete `_add_full_soft_cost_terms`. (`column_generation.py` has its own
-  `_SIXTH_HOUR=13` + per-teacher buchi calls.)
-- **D** — metaheuristics: replace `metaheuristics.compute_soft` (Python
-  post-hoc scorer) with a walker over the same soft stream (dual backend).
+- **C — DONE** (commits `07e9e5f` accessor refactor, `2427427` CG delegation;
+  pushed, reviewed). `soft_costs._buchi_daydist_vars` refactored to a
+  `vars_at(t,d,h)` accessor callback + new `buchi_daydist_terms_from_accessor`.
+  `column_generation._add_full_soft_cost_terms` (~80-line divergent buchi/
+  five/one copy) now delegates to it. All 9 BP granularities iterate +
+  HARD-feasible. fixed_load + term order byte-equivalent. C Task 3 (CG sixth
+  `_SIXTH_HOUR=13` loop unification) DEFERRED — low-value simple loop; note.
+- **D** — metaheuristics. `compute_soft` (metaheuristics.py:113) is a pure-
+  Python post-hoc scorer; its sixth/buchi/five/one DEFINITIONS already match
+  the CP encoders and weights come from shared `OBJECTIVE_WEIGHTS` (no weight
+  drift possible). REAL gap = metaheuristics IGNORE arbitrary DSL soft (custom
+  user constraints) — a meta post-processor could improve structural metrics
+  while trampling user soft. D deliverable: extend `compute_soft` to ALSO
+  evaluate DSL SOFT rules against the solution via the EXISTING post-hoc
+  evaluator (`build_world`/`evaluate_safe`, already used by
+  `is_hard_feasible(dsl_hard_expressions=, db=)`), weighted per rule. Keep
+  structural scoring; share `sixth_hour`/weights. Add a cross-check test
+  (compute_soft metrics vs CP objective on a locked solution). Full
+  dual-backend pragma system (every pragma carries a Python cost-fn) is YAGNI
+  — the post-hoc DSL evaluator already IS the Python backend. Functional gate:
+  meta runners still produce HARD-feasible solutions + now honor DSL soft.
+
+NOTE (B1 safety): the full fast suite ran 694 passed / 3 failed; all 3
+failures are `test_perf_budgets.py` timing tests under a 64-min saturated
+run (~6 concurrent test subagents) — load flakes, pass in isolation, NOT
+functional regressions (per the test policy, perf/outcome tests may shift).
 - **GEN/HARD** — general hard-constraint capability + cross-day predicates in
   the DSL (e.g. no-same-class-consecutive-days) + **solver-compatibility
   warning system** (structured "constraint X unsupported by pipeline Y" +
