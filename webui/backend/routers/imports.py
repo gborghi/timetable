@@ -696,6 +696,7 @@ _IMPORTERS = {
 async def do_import(entity: str,
                     file: UploadFile = File(...),
                     mode: str = Form("upsert"),
+                    dry: bool = Form(False),
                     db: Session = Depends(get_db)):
     if entity not in _IMPORTERS:
         raise HTTPException(404, f"entity '{entity}' non supportata")
@@ -714,7 +715,21 @@ async def do_import(entity: str,
         raise HTTPException(400, "header non trovato (prima riga vuota?)")
     rows = [_row_to_dict(header, r) for r in body]
     importer = _IMPORTERS[entity]
-    return importer(db, rows, mode)
+    if not dry:
+        return importer(db, rows, mode)
+    # Dry-run / preview: the importers commit internally, so we transiently
+    # rebind ``db.commit`` to ``db.flush`` -- the SQL still executes (counts,
+    # autoincrement IDs and within-txn upsert lookups stay accurate) but is
+    # never persisted: a single ``rollback`` at the end undoes everything,
+    # including a ``replace``-mode table wipe. No per-importer changes.
+    orig_commit = db.commit
+    db.commit = db.flush  # type: ignore[assignment, method-assign]
+    try:
+        report = importer(db, rows, mode)
+    finally:
+        db.commit = orig_commit  # type: ignore[method-assign]
+        db.rollback()
+    return report
 
 
 # ---------- template generator ----------

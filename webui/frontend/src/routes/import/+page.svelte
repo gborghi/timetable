@@ -13,6 +13,7 @@
    */
   import { flash, refreshDataset, bumpMutation } from '$lib/stores';
   import { downloadUrl } from '$lib/api';
+  import Button from '$lib/components/Button.svelte';
 
   const ENTITIES = [
     { value: 'teachers',   label: 'Docenti'   },
@@ -30,6 +31,7 @@
   let dragOver = false;
   let busy = false;
   let report = null;
+  let lastWasDry = false;
 
   function pickFile(ev) {
     selectedFile = ev.target.files?.[0] ?? null;
@@ -46,17 +48,19 @@
     }
   }
 
-  async function runImport() {
+  async function runImport(dry = false) {
     if (!selectedFile) {
       flash('Seleziona prima un file', 'error');
       return;
     }
     busy = true;
     report = null;
+    lastWasDry = dry;
     try {
       const fd = new FormData();
       fd.append('file', selectedFile);
       fd.append('mode', mode);
+      if (dry) fd.append('dry', 'true');
       const res = await fetch('/api/import/' + entity, {
         method: 'POST', body: fd,
       });
@@ -67,13 +71,17 @@
       report = await res.json();
       const ok = report.n_inserted + report.n_updated;
       flash(
-        `Import ${entity}: ${ok} righe (` +
+        (dry ? `Anteprima ${entity}: ` : `Import ${entity}: `) +
+        `${ok} righe (` +
         `${report.n_inserted} nuove, ${report.n_updated} aggiornate, ` +
         `${report.n_skipped} saltate)`,
-        report.errors?.length ? 'warning' : 'success',
+        report.errors?.length ? 'warning' : (dry ? 'info' : 'success'),
       );
-      bumpMutation();
-      await refreshDataset();
+      // A dry-run writes nothing -> no need to refresh counters.
+      if (!dry) {
+        bumpMutation();
+        await refreshDataset();
+      }
     } catch (e) {
       flash('Errore import: ' + e.message, 'error');
     } finally {
@@ -124,12 +132,6 @@
            title="Scarica un .xlsx con header + Istruzioni + Esempi + Dati">
           Scarica template
         </a>
-        <a class="btn !text-xs" href="/api/import/{entity}/template?dry"
-           on:click|preventDefault={() => {
-             location.href = templateUrl;
-           }}>
-          (link diretto)
-        </a>
       </div>
     </section>
 
@@ -168,17 +170,34 @@
         {/if}
       </div>
 
-      <button class="btn-primary w-full"
-              disabled={busy || !selectedFile}
-              on:click={runImport}>
-        {busy ? 'Import in corso...' : 'Importa'}
-      </button>
+      <div class="flex gap-2">
+        <Button variant="secondary" class="flex-1"
+                loading={busy && lastWasDry}
+                disabled={!selectedFile}
+                onclick={() => runImport(true)}
+                title="Simula l'import senza scrivere nulla: vedi quante righe verrebbero inserite/aggiornate e gli eventuali errori.">
+          Anteprima (dry-run)
+        </Button>
+        <Button variant="primary" class="flex-1"
+                loading={busy && !lastWasDry}
+                disabled={!selectedFile}
+                onclick={() => runImport(false)}>
+          Importa
+        </Button>
+      </div>
     </section>
   </div>
 
   {#if report}
     <section class="card p-4">
       <h2 class="!text-base">Report import</h2>
+      {#if lastWasDry}
+        <div class="mt-2 text-xs rounded bg-amber-50 border border-amber-200
+                    px-3 py-2 text-amber-800">
+          <strong>Anteprima (dry-run)</strong>: nessuna riga e' stata scritta.
+          Premi <strong>Importa</strong> per applicare le modifiche.
+        </div>
+      {/if}
       <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mt-2 text-center">
         <div class="card !shadow-none p-2">
           <div class="text-2xl font-semibold">{report.n_total_rows}</div>
