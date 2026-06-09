@@ -63,7 +63,10 @@ curl http://127.0.0.1:8000/api/monitor/event/1/lessons
         \texttt{/subjects}, \texttt{/curricula},
         \texttt{/students}, \texttt{/groups}.
   \item \textbf{Cattedre}: \texttt{/api/assignments} +
-        \texttt{teachers-for-subject} + \texttt{loads}.
+        \texttt{teachers-for-subject} + \texttt{loads} +
+        \texttt{bulk/\{delete,restore,lock,change-teacher,set-flag\}}
+        (\texttt{restore} ricrea le cattedre da uno snapshot: \`e il
+        backend dell'undo dell'eliminazione in blocco).
   \item \textbf{Vincoli logici}:
         \texttt{/api/\{teachers,classes,classrooms\}/\{id\}/logical-unavailabilities},
         \texttt{/api/curricula/\{cid\}/logical-constraints}.
@@ -79,8 +82,14 @@ curl http://127.0.0.1:8000/api/monitor/event/1/lessons
         \texttt{/api/optimize/assignment|phase-b|lns|sa|ts|ils|full|classroom-assignment}.
   \item \textbf{Monitor}: \texttt{/api/monitor/events|summary|constraints|conflicts},
         \texttt{event/\{aid\}/lessons|lesson/\{lid\}}.
-  \item \textbf{Import}: \texttt{/api/import/\{entity\}},
+  \item \textbf{Import}: \texttt{/api/import/\{entity\}}
+        (con \texttt{?dry=true} per l'anteprima senza scrittura),
         \texttt{/api/import/\{entity\}/template}.
+  \item \textbf{Vincoli (xlsx)}:
+        \texttt{/api/dashboard/constraints/template-vincoli},
+        \texttt{/api/dashboard/constraints/import-vincoli}
+        (linguaggio \emph{Vincoli}, \cref{sec:vincoli-xlsx}),
+        \texttt{import-file}, \texttt{export}.
 \end{itemize}
 
 % =========== Cap 8: Estendere ===========

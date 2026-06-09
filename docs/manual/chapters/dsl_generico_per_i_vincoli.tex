@@ -1232,6 +1232,111 @@ ad hoc.}
 \end{itemize}
 \end{statsbox}
 
+\section{Conformit\`a DSL universale e codifica soft unificata}
+\label{sec:dsl-universale}
+
+\begin{novitabox}
+Le revisioni del 2026 hanno portato due garanzie nuove e trasversali:
+(i) la codifica dei costi SOFT vive in \emph{un unico modulo}, consumato
+da ogni backend; (ii) \emph{ogni} metodo del solver \`e stato reso DSL-com\-pliant
+per quanto le sue capacit\`a intrinseche lo consentono, e quando un metodo
+non pu\`o modellare una regola lo \emph{segnala} invece di ignorarla in
+silenzio. La conseguenza pratica: qualunque vincolo DSL si scriva, esiste
+sempre almeno un metodo che lo applica davvero.
+\end{novitabox}
+
+\subsection{\texttt{soft\_costs.py}: sorgente unica delle codifiche SOFT}
+\label{sec:dsl-soft-costs-single}
+
+Storicamente ogni backend ri-implementava per conto proprio le penalit\`a
+SOFT ricorrenti --- la ``sesta ora'', i buchi (\emph{buchi}/gap), la
+distribuzione settimanale (\emph{five}/\emph{one}). Ne nascevano derive
+sottili: la stessa regola pesava in modo diverso a seconda del solver.
+Il modulo \texttt{engine/soft\_costs.py} \`e oggi la \emph{sorgente unica}
+di queste codifiche: funzioni pure su un modello CP-SAT e una vista degli
+slot, consumate sia dal metodo del solver (\texttt{compute\_soft\_cost\_expr})
+sia dai pragma SOFT del compilatore DSL (\texttt{dsl\_to\_cpsat}). La stessa
+penalit\`a, quindi, ha esattamente la stessa forma in monolitico
+settimanale, per-giorno, decomposizione, \emph{column generation} e nel
+punteggio delle metaeuristiche. I tre pragma a soglia oraria della
+\cref{sec:dsl-pragma-nuovi} (\texttt{slot\_after\_hour\_penalty},
+\texttt{teacher\_max\_hours\_after}) attingono allo stesso modulo.
+
+\subsection{La metaeuristica come solver DSL completamente generale}
+\label{sec:dsl-meta-universale}
+
+Una metaeuristica non costruisce un modello CP: valuta una soluzione e
+si muove nel vicinato. Questo la rende il backend \emph{universale} per il
+DSL. \texttt{run\_meta} riceve due liste: le regole HARD (come insieme di
+chiavi proibite, sicch\'e ogni operatore di mossa rifiuta le mosse che
+toccano uno slot vietato) e le regole SOFT (come penalit\`a additiva
+valutata sul mondo della soluzione). Poich\'e il valutatore post-hoc sa
+valutare \emph{qualunque} espressione della grammatica, una passata
+metaeuristica garantisce l'applicazione di ogni vincolo DSL, anche di
+quelli che nessun solver CP riesce a modellare nativamente.
+
+\subsection{CP-SAT monolitico settimanale: compilazione nativa + raffinamento a tagli}
+\label{sec:dsl-nogood}
+
+Il \texttt{MonolithicSolver} compila nativamente il frammento ampio di DSL
+che sa modellare; per il resto adotta un \emph{raffinamento a no-good cut}
+(\texttt{solve\_dsl\_compliant}): risolve, verifica post-hoc le regole HARD
+sul risultato, e se qualcuna \`e violata aggiunge un \emph{taglio} che vieta
+esattamente quell'assegnazione, poi ri-risolve, fino a un numero massimo di
+iterazioni. Quando il budget si esaurisce con regole ancora insoddisfatte,
+emette un \emph{warning} strutturato (cfr.\ \cref{sec:dsl-constraint-compat})
+anzich\'e fingere conformit\`a.
+
+\subsection{Column generation e branch-and-price: verifica e delega}
+\label{sec:dsl-cg-delega}
+
+I pricer applicano il DSL per-colonna che sanno modellare; la soluzione
+assemblata viene poi verificata post-hoc. I vincoli \emph{inter-colonna}
+che il pricer non pu\`o vedere vengono rilevati, riportati come warning e
+\emph{delegati} alla passata metaeuristica. \`E un limite intrinseco della
+decomposizione per colonne, non una svista: il manuale lo dichiara e indica
+la via (una passata di \texttt{run\_meta}).
+
+\subsection{Avvisi di compatibilit\`a: \texttt{constraint\_compat.py}}
+\label{sec:dsl-constraint-compat}
+
+Quando un metodo scarta una regola che non sa modellare, il modulo
+frontend-agnostico \texttt{engine/constraint\_compat.py} trasforma la
+diagnostica grezza in un avviso strutturato
+\texttt{\{constraint, pipeline, reason, suggestion, severity\}}. Il
+suggerimento tipico \`e: ``questa regola \`e troppo dinamica per il solver
+CP per-giorno; esegui una passata metaeuristica, che la applica post-hoc''.
+Gli avvisi risalgono al RunLog e da l\`i alla UI, cos\`i l'utente sa
+\emph{quale} vincolo non \`e stato imposto e \emph{da quale} metodo.
+
+\subsection{Tre pragma recenti: soglie orarie e giorni non consecutivi}
+\label{sec:dsl-pragma-nuovi}
+
+\begin{description}
+\item[\texttt{slot\_after\_hour\_penalty(ora\_soglia[, peso])}]
+  penalit\`a SOFT per ogni lezione in uno slot con
+  \texttt{ora >= ora\_soglia}. Forma generale di ``evita i pomeriggi'':
+  \texttt{ora\_soglia} \`e nelle stesse unit\`a degli slot (il traduttore
+  frontend mappa l'orario di parete sull'indice di ora), quindi l'engine
+  resta agnostico rispetto al calendario concreto.
+\item[\texttt{teacher\_max\_hours\_after(ora\_soglia, max\_n[, peso])}]
+  penalit\`a SOFT per ogni ora che un docente lavora oltre \texttt{max\_n}
+  in slot con \texttt{ora >= ora\_soglia}, in un dato giorno. La forma di
+  ``al massimo un'ora dopo le 15''.
+\item[\texttt{no\_same\_class\_consecutive\_days(classe)}]
+  forma abbreviata del doppio \texttt{forall} su \texttt{lessons} che vieta
+  a una classe due giorni consecutivi con la stessa materia; disponibile sia
+  nel valutatore sia nel compilatore (path \emph{forbid-pair}).
+\end{description}
+
+\begin{esempiobox}
+\begin{lstlisting}
+slot_after_hour_penalty(14, 50)        # evita lezioni dopo le 14 (peso 50)
+teacher_max_hours_after(15, 1, 80)     # max 1 ora dopo le 15 (docente/giorno)
+no_same_class_consecutive_days("3B")   # 3B mai in giorni consecutivi
+\end{lstlisting}
+\end{esempiobox}
+
 \section{Workflow: dal tab Docente al solver}
 \label{sec:dsl-workflow}
 

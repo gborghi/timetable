@@ -599,6 +599,41 @@ forall l in lessons where l.subject == Religione
 
 ---
 
+## Pragma recenti e conformità universale (2026)
+
+Tre pragma comodi, aggiunti di recente, coprono i casi a **soglia oraria**
+(config-driven) e l'abbreviazione del classico "stessa classe non in giorni
+consecutivi":
+
+```
+slot_after_hour_penalty(14, 50)        # SOFT: evita lezioni dopo le 14 (peso 50)
+teacher_max_hours_after(15, 1, 80)     # SOFT: max 1 ora dopo le 15 (docente/giorno)
+no_same_class_consecutive_days("3B")   # 3B mai in giorni consecutivi
+```
+
+L'ora-soglia è espressa nelle stesse unità degli slot: è il **traduttore**
+del frontend a mappare l'orario di parete sull'indice di ora, così l'engine
+resta agnostico rispetto al calendario concreto. Le penalità SOFT nascono da
+un'unica sorgente (`engine/soft_costs.py`), consumata da ogni solver: la
+stessa regola pesa allo stesso modo ovunque.
+
+**Conformità universale.** Ogni metodo è stato reso DSL-compliant per quanto
+le sue capacità lo consentono. In particolare la **metaeuristica** è il
+solver completamente generale: applica qualunque regola HARD (rifiutando le
+mosse che la violano) e qualunque regola SOFT (come penalità). Quando un
+metodo CP non può modellare una regola, **non la ignora**: emette un avviso
+strutturato (`engine/constraint_compat.py`) che ti dice quale vincolo non è
+stato imposto e suggerisce una passata metaeuristica.
+
+**Caricamento in blocco (xlsx).** I vincoli si possono anche caricare da un
+foglio `Vincoli` con una colonna `tipo_vincolo` (vocabolario semplice:
+`indisponibilita`, `giorno_libero`, `max_ore_giorno`, `no_pomeriggio`,
+`compresenza`, …) più una riga `raw_dsl` per scrivere direttamente
+un'espressione DSL. Scarica il template da *Dashboard → Vincoli guidati
+(xlsx) → Scarica template vincoli*.
+
+---
+
 ## Modificare un vincolo, validarlo, eliminarlo
 
 Tutti i vincoli scritti in questo linguaggio sono gestiti dal

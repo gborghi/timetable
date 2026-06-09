@@ -30,6 +30,7 @@ compromesso meditato fra espressivit\`a per l'utente e
 trattabilit\`a per il solver.
 
 \section{La tassonomia dei cinque stati}
+\label{sec:cinque-stati}
 
 I vincoli di $\pi$Tantum sono organizzati in una tassonomia
 uniforme di cinque stati, applicata sia alle matrici di
@@ -841,6 +842,85 @@ L'utente vede un toast di errore con la lista delle
 anomalie. Pu\`o correggerle dai tab pertinenti
 (\texttt{/assignments}, \texttt{/groups},
 \texttt{/coteaching}) e rilanciare.
+
+\section{Caricare i vincoli da xlsx: il linguaggio \emph{Vincoli}}
+\label{sec:vincoli-xlsx}
+
+\begin{novitabox}
+Oltre a creare i vincoli uno per uno dalla UI, si pu\`o \emph{caricarli in
+blocco} da un foglio di calcolo. Un unico foglio \texttt{Vincoli} con una
+colonna discriminante \texttt{tipo\_vincolo} consente a un utente non
+tecnico di definire le regole pi\`u comuni con un vocabolario semplice; una
+riga speciale \texttt{raw\_dsl} \`e la via di fuga per chi vuole scrivere
+direttamente un'espressione DSL completa (la grammatica \`e ormai del tutto
+generale, cfr.\ \cref{sec:dsl-universale}).
+\end{novitabox}
+
+L'engine resta agnostico: il \emph{parser} \texttt{\_vincoli\_parser.py}
+trasforma ogni riga in un \emph{intento} di creazione --- o un'espressione
+DSL da passare al path dei \texttt{GeneralConstraint}, o un inserimento ORM
+diretto (matrice di indisponibilit\`a, compresenza). Ogni espressione DSL
+emessa viene verificata: deve passare il \emph{parse} della grammatica reale
+prima di essere salvata.
+
+\subsection{Il foglio \texttt{Vincoli}}
+
+Le colonne, nell'ordine: \texttt{tipo\_vincolo}, \texttt{entita},
+\texttt{nome}, \texttt{materia}, \texttt{giorno}, \texttt{ora\_da},
+\texttt{ora\_a}, \texttt{valore}, \texttt{livello}, \texttt{peso},
+\texttt{dsl}, \texttt{note}. Il \texttt{giorno} accetta \texttt{lun..sab}
+oppure \texttt{1..6} (vuoto $=$ tutti i giorni); le ore vanno da 8 a 13
+incluse (vuoto $=$ intera giornata); \texttt{livello} \`e uno dei cinque
+stati (\cref{sec:cinque-stati}); \texttt{peso} \`e la penalit\`a SOFT.
+
+\begin{table}[h]
+\centering\small
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textsc{tipo\_vincolo} & \textsc{target} & \textsc{significato} \\
+\midrule
+\texttt{indisponibilita}        & ORM & cella docente non disponibile \\
+\texttt{indisp\_aula}           & ORM & cella aula non disponibile \\
+\texttt{giorno\_libero}         & ORM & giorno libero HARD del docente \\
+\texttt{pref\_giorno\_libero}   & ORM & giorno libero preferito (peso) \\
+\texttt{compresenza}            & ORM & co-docenza (\texttt{valore} $=$ n.\ docenti) \\
+\texttt{max\_ore\_giorno}       & DSL & \texttt{teacher\_max\_per\_day} \\
+\texttt{max\_consecutive}       & DSL & \texttt{teacher\_max\_consecutive} \\
+\texttt{no\_pomeriggio}         & DSL & \texttt{slot\_after\_hour\_penalty} \\
+\texttt{no\_giorni\_consecutivi}& DSL & \texttt{no\_same\_class\_consecutive\_days} \\
+\texttt{no\_buchi}              & DSL & \texttt{no\_holes\_class} \\
+\texttt{presenza\_ora}          & DSL & \texttt{class\_present\_at\_hour} \\
+\texttt{raw\_dsl}               & DSL & espressione DSL libera (colonna \texttt{dsl}) \\
+\bottomrule
+\end{tabular}
+\caption{Il vocabolario \texttt{tipo\_vincolo} e la sua destinazione:
+inserimento ORM diretto oppure espressione DSL generata.}
+\label{tab:vincoli-vocab}
+\end{table}
+
+\begin{esempiobox}
+Una riga \texttt{no\_pomeriggio} con \texttt{entita}=classe, \texttt{nome}=1A,
+\texttt{valore}=14, \texttt{livello}=soft, \texttt{peso}=50 diventa
+l'espressione \texttt{slot\_after\_hour\_penalty(14, 50)}; una riga
+\texttt{raw\_dsl} porta la propria espressione verbatim, per esempio
+\texttt{forall t in teachers: teacher\_max\_consecutive(t.name, 4)}.
+\end{esempiobox}
+
+\subsection{Endpoint e report}
+
+Due endpoint sotto \texttt{/api/dashboard/constraints}:
+\texttt{GET .../template-vincoli} produce un xlsx a tre fogli
+(\texttt{Istruzioni}, \texttt{Esempi}, \texttt{Vincoli}) gi\`a documentato;
+\texttt{POST .../import-vincoli} legge il file, mappa le righe e crea i
+vincoli, restituendo un report con due liste distinte: \texttt{parse\_errors}
+(righe malformate: \texttt{tipo} sconosciuto, giorno/ora fuori range, colonna
+obbligatoria mancante, \texttt{nome} non risolto) e \texttt{create\_errors}
+(intenti validi ma non creabili). Gli avvisi di compatibilit\`a del solver
+(\cref{sec:dsl-constraint-compat}) completano il quadro: se una regola \`e
+sintatticamente valida ma nessun solver CP la modella, l'utente legge
+\emph{quale} metodo la onorer\`a (tipicamente la passata metaeuristica). La
+UI espone tutto questo nella card \emph{Vincoli guidati (xlsx)} del
+cruscotto.
 
 \section{Plessi: pi\`u sedi nello stesso istituto}
 \label{sec:plessi}

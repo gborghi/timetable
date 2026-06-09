@@ -177,3 +177,29 @@ Tutti gli import restituiscono un `ImportReport`:
 
 Il pulsante "Importa" nel frontend mostra un toast con il riepilogo e,
 se ci sono errori, li elenca.
+
+## Anteprima (dry-run)
+
+Ogni import accetta `dry=true` (campo form) oppure `?dry=true`: l'importer
+esegue tutto il parsing e il conteggio ma **non scrive nulla** (commit
+sostituito da flush + rollback, anche per `mode=replace`). Restituisce lo
+stesso `ImportReport` con i conteggi reali. Nel frontend è il pulsante
+**Anteprima (dry-run)** accanto a *Importa*.
+
+## Vincoli in blocco: il linguaggio `Vincoli` (xlsx)
+
+Oltre alle anagrafiche, si possono caricare i **vincoli** da un foglio
+`Vincoli` con una colonna discriminante `tipo_vincolo`. Endpoint:
+
+- `GET /api/dashboard/constraints/template-vincoli` — scarica un xlsx a tre
+  fogli (`Istruzioni`, `Esempi`, `Vincoli`).
+- `POST /api/dashboard/constraints/import-vincoli` — legge il file, mappa le
+  righe (DSL o ORM) e crea i vincoli; report con `parse_errors` +
+  `create_errors`.
+
+Colonne: `tipo_vincolo, entita, nome, materia, giorno, ora_da, ora_a,
+valore, livello, peso, dsl, note`. Vocabolario `tipo_vincolo`:
+`indisponibilita`, `indisp_aula`, `giorno_libero`, `pref_giorno_libero`,
+`compresenza` (ORM); `max_ore_giorno`, `max_consecutive`, `no_pomeriggio`,
+`no_giorni_consecutivi`, `no_buchi`, `presenza_ora` (DSL); `raw_dsl`
+(espressione DSL libera nella colonna `dsl`).

@@ -286,6 +286,7 @@
   columns=fullflexible,
   frame=single,
   rulecolor=\color{cBox},
+  backgroundcolor=\color{cAvorio!35},
   framesep=4pt,
   xleftmargin=8pt,
   xrightmargin=4pt,
@@ -366,6 +367,14 @@
   colback=white, colframe=cIndaco!40, boxrule=0.4pt,
   arc=2pt, left=4pt, right=4pt, top=4pt, bottom=4pt,
   fonttitle=\rmfamily\scshape\color{cIndaco}, title=Schema, #1}
+
+% Box "Novita'": evidenzia funzionalita' introdotte nelle revisioni
+% recenti (conformita' DSL universale, pragma temporali, linguaggio
+% Vincoli xlsx, undo, ...). Verde indaco, coerente con \defbox.
+\newtcolorbox{novitabox}[1][]{enhanced, breakable,
+  colback=cAllow!7, colframe=cEnf!65, boxrule=0.6pt,
+  arc=2pt, left=8pt, right=8pt, top=4pt, bottom=4pt,
+  fonttitle=\rmfamily\scshape, title=Novit\`a, #1}
 
 % ---------- Pull-quote ----------
 \newcommand{\pullquote}[2]{%

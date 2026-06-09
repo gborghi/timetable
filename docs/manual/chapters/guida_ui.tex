@@ -900,3 +900,43 @@ avere un browser con i tasti del mouse rimappati. Su Firefox
 in modalit\`a privata il drag funziona regolarmente; su Edge
 con politiche aziendali pu\`o essere disabilitato.
 \end{erroricomunibox}
+
+\section{Novit\`a dell'interfaccia}
+\label{sec:ui-novita}
+
+\begin{novitabox}
+Le revisioni del 2026 hanno aggiunto una serie di rifiniture trasversali
+all'interfaccia: spiegazioni a comparsa, anteprime non distruttive,
+annullamento delle azioni e una grammatica visiva pi\`u coerente.
+\end{novitabox}
+
+\begin{description}
+\item[Tooltip esplicativi (2 secondi)] passando il mouse su una voce di
+  menu, su un controllo del solver (per esempio \texttt{cp\_sat\_scope} o
+  \texttt{phase\_a\_mode}) o su un termine di dominio, dopo circa due secondi
+  compare un riquadro che ne spiega funzione e caso d'uso. Da tastiera il
+  riquadro appare subito al focus; \`E un \emph{tooltip} accessibile
+  (\texttt{role="tooltip"}, \texttt{aria-describedby}).
+\item[Anteprima dell'import (\emph{dry-run})] nella pagina \emph{Import bulk},
+  accanto a \emph{Importa} c'\`e \emph{Anteprima (dry-run)}: simula
+  l'importazione \emph{senza scrivere nulla} e mostra quante righe verrebbero
+  inserite/aggiornate e gli eventuali errori. Una banda ambra ricorda che
+  nessuna riga \`e stata salvata.
+\item[Annulla (UNDO)] lo spostamento e l'eliminazione di una lezione
+  nell'orario, e l'eliminazione in blocco delle cattedre, offrono un toast
+  \emph{Annulla}: lo spostamento torna allo slot d'origine; l'eliminazione
+  ricrea la lezione (o ripristina le cattedre da uno snapshot). L'undo dello
+  spostamento non viene proposto quando la mossa ha liberato un'aula, perch\'e
+  tornare indietro non la ripristinerebbe.
+\item[Pulsanti con spinner] i pulsanti che lanciano un'azione asincrona
+  mostrano una rotella di caricamento e si disabilitano finch\'e l'azione
+  \`e in corso; un unico componente garantisce stato, accessibilit\`a e
+  contorno di focus uniformi.
+\item[Stati vuoti e scheletri] le liste vuote mostrano un'illustrazione e un
+  invito (\emph{``Crea o importa elementi per cominciare''}); durante il primo
+  caricamento le schede del cruscotto mostrano scheletri animati al posto dei
+  numeri.
+\item[Ornamenti] ogni pagina porta nell'intestazione una piccola
+  illustrazione vettoriale a tema (calendario, orologio, docente, ingranaggi,
+  \dots), puramente decorativa, nei colori del marchio (indaco e oro).
+\end{description}
