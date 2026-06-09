@@ -1,7 +1,7 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
   import { api } from '$lib/api';
-  import { datasetState, flash, refreshDataset, bumpMutation } from '$lib/stores';
+  import { datasetState, datasetEverLoaded, flash, refreshDataset, bumpMutation } from '$lib/stores';
   import RunLogPanel from '$lib/components/RunLogPanel.svelte';
   import EntityGraph from '$lib/components/dashboard/EntityGraph.svelte';
   import DbImportExportCard from '$lib/components/dashboard/DbImportExportCard.svelte';
@@ -290,35 +290,26 @@
 
   <section class="card p-5">
     <h2 class="mb-2">Stato corrente</h2>
+    {#snippet stat(value, label)}
+      <div class="card !shadow-none p-3">
+        {#if $datasetEverLoaded}
+          <div class="text-3xl font-semibold">{value}</div>
+        {:else}
+          <div class="text-3xl font-semibold flex justify-center" aria-hidden="true">
+            <span class="inline-block w-8 h-7 rounded bg-ink-200 animate-pulse"></span>
+          </div>
+        {/if}
+        <div class="text-xs text-ink-500">{label}</div>
+      </div>
+    {/snippet}
     <div class="grid grid-cols-2 md:grid-cols-7 gap-3 text-center">
-      <div class="card !shadow-none p-3">
-        <div class="text-3xl font-semibold">{$datasetState.classes}</div>
-        <div class="text-xs text-ink-500">Classi</div>
-      </div>
-      <div class="card !shadow-none p-3">
-        <div class="text-3xl font-semibold">{$datasetState.teachers}</div>
-        <div class="text-xs text-ink-500">Docenti</div>
-      </div>
-      <div class="card !shadow-none p-3">
-        <div class="text-3xl font-semibold">{$datasetState.subjects}</div>
-        <div class="text-xs text-ink-500">Materie</div>
-      </div>
-      <div class="card !shadow-none p-3">
-        <div class="text-3xl font-semibold">{$datasetState.classrooms}</div>
-        <div class="text-xs text-ink-500">Aule</div>
-      </div>
-      <div class="card !shadow-none p-3">
-        <div class="text-3xl font-semibold">{$datasetState.students ?? 0}</div>
-        <div class="text-xs text-ink-500">Studenti</div>
-      </div>
-      <div class="card !shadow-none p-3">
-        <div class="text-3xl font-semibold">{$datasetState.assignments}</div>
-        <div class="text-xs text-ink-500">Cattedre</div>
-      </div>
-      <div class="card !shadow-none p-3">
-        <div class="text-3xl font-semibold">{$datasetState.solutions}</div>
-        <div class="text-xs text-ink-500">Soluzioni</div>
-      </div>
+      {@render stat($datasetState.classes, 'Classi')}
+      {@render stat($datasetState.teachers, 'Docenti')}
+      {@render stat($datasetState.subjects, 'Materie')}
+      {@render stat($datasetState.classrooms, 'Aule')}
+      {@render stat($datasetState.students ?? 0, 'Studenti')}
+      {@render stat($datasetState.assignments, 'Cattedre')}
+      {@render stat($datasetState.solutions, 'Soluzioni')}
     </div>
     {#if $datasetState.active_solution}
       <div class="mt-4 text-sm">

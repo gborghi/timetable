@@ -18,8 +18,17 @@
     status = null;
     unsub = streamRun(rid, {
       onLog: (l) => {
+        // Only auto-scroll to the tail if the user is already near the
+        // bottom; if they scrolled up to read earlier lines, leave them be.
+        const el = logEl;
+        const atBottom = !el
+          || (el.scrollHeight - el.scrollTop - el.clientHeight <= 40);
         lines = [...lines, l].slice(-2000);
-        queueMicrotask(() => { if (logEl) logEl.scrollTop = logEl.scrollHeight; });
+        if (atBottom) {
+          queueMicrotask(() => {
+            if (logEl) logEl.scrollTop = logEl.scrollHeight;
+          });
+        }
       },
       onStatus: (s) => { status = s; },
       onEnd: (s) => { onEnd(s); }

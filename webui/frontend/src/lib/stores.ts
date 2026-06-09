@@ -92,13 +92,23 @@ function scheduleRefresh(): void {
 }
 mutationCounter.subscribe(() => scheduleRefresh());
 
+// True while a dataset fetch is in flight; `datasetEverLoaded` flips true
+// after the first successful fetch. Together they drive first-load skeletons
+// (show a skeleton only before the first payload arrives, not on every poll).
+export const datasetLoading: Writable<boolean> = writable(false);
+export const datasetEverLoaded: Writable<boolean> = writable(false);
+
 export async function refreshDataset(): Promise<void> {
+  datasetLoading.set(true);
   try {
     const s = await api.get<DatasetState>("/api/dataset/state");
     datasetState.set(s);
+    datasetEverLoaded.set(true);
   } catch {
     // No flash here -- the network-status store already surfaces the
     // disconnect.
+  } finally {
+    datasetLoading.set(false);
   }
 }
 

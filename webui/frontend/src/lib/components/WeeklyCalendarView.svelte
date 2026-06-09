@@ -740,7 +740,9 @@
       ev.preventDefault();
       try { ev.dataTransfer.dropEffect = 'move'; } catch { /* JSDOM */ }
     }
-    dragHoverKey = k;
+    // dragover fires continuously on the SAME cell; only write (and thus
+    // trigger a re-render) when the hovered slot actually changes.
+    if (dragHoverKey !== k) dragHoverKey = k;
   }
   function _onSlotDragLeave(ev, day, hour) {
     if (dragHoverKey === day + '-' + hour) dragHoverKey = null;
