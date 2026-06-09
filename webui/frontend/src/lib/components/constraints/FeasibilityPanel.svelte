@@ -478,7 +478,8 @@
             allo stesso core. Click su un nodo per i dettagli.
           </div>
           <div bind:this={cyContainer}
-               style="width: 100%; height: calc(100% - 24px); border: 1px solid #e5e7eb; border-radius: 6px;"></div>
+               class="border border-ink-200 rounded-md"
+               style="width: 100%; height: calc(100% - 24px);"></div>
           {#if popover}
             <div class="absolute bg-white border border-ink-300 rounded
                         shadow-lg p-3 text-xs space-y-1 z-10"

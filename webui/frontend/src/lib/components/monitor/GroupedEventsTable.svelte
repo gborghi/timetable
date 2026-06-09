@@ -635,7 +635,7 @@
           {#each groupedBuckets as bucket (bucket.key1)}
             {@const g1Open = (groupBy1 === 'none') || !collapsedG1.has(bucket.key1)}
             {#if groupBy1 !== 'none'}
-              <tr style="background-color:#e0e7ff;">
+              <tr class="bg-indigo-100">
                 <td colspan={selectable ? 10 : 9} class="font-semibold py-1 px-2">
                   <button class="inline-block w-4 text-ink-400 cursor-pointer"
                           on:click={() => toggleG1(bucket.key1)}
@@ -692,7 +692,7 @@
                 {@const g2Key = bucket.key1 + '|' + sb.key2}
                 {@const g2Open = (groupBy2 === 'none') || !collapsedG2.has(g2Key)}
                 {#if groupBy1 !== 'none' && groupBy2 !== 'none'}
-                  <tr style="background-color:#eef2ff;">
+                  <tr class="bg-indigo-50">
                     <td colspan={selectable ? 10 : 9} class="text-[11px] pl-6 py-1">
                       <button class="inline-block w-4 text-ink-400 cursor-pointer"
                               on:click={() => toggleG2(g2Key)}
@@ -737,11 +737,11 @@
                 {/if}
                 {#if g2Open}
                   {#each sb.rows2 as r (rowId(r))}
-                    <tr style={selectable && isSelected(r)
-                                ? 'background-color: rgba(59,130,246,0.18);'
+                    <tr class={selectable && isSelected(r)
+                                ? 'bg-blue-100'
                                 : (r.is_scheduled
-                                    ? (r.is_complete ? '' : 'background-color:#fef9c3;')
-                                    : 'background-color:#fef2f2;')}
+                                    ? (r.is_complete ? '' : 'bg-yellow-100')
+                                    : 'bg-red-50')}
                         class:border-l-4={r.is_locked || r.locked}
                         class:border-amber-500={r.is_locked || r.locked}
                         class:cursor-pointer={selectable}

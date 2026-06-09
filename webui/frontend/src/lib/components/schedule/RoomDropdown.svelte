@@ -19,9 +19,8 @@
   {#each allRooms as r}
     {@const busy = isBusy(r)}
     <option value={r} disabled={busy}
-      style={busy
-        ? 'background:#fecaca;color:#991b1b'
-        : 'background:#d1fae5;color:#065f46'}>
+      class:bg-red-200={busy} class:text-red-800={busy}
+      class:bg-green-100={!busy} class:text-green-800={!busy}>
       {r}{busy ? ' (occupata)' : ''}
     </option>
   {/each}
