@@ -24,10 +24,12 @@ xlsx feasibility, css/js). Then implemented the backlog:
   9 tests. Plesso rows deferred (niche).
 - **Feasibility badge** on dashboard active solution.
 
-**Deferred (need NEW backend support, flagged not hacked):** schedule drag-drop
-undo + conflict drill-down list, and assignment/lesson bulk-delete undo — there
-is no assignment-restore / lesson-recreate endpoint, so faithful undo needs
-backend work first. Recommended as the next milestone.
+**#15 DONE (2026-06-09):** added `POST /api/assignments/bulk/restore` (+2 tests)
+-> assignment bulk-delete UNDO; schedule lesson MOVE undo (move back) + DELETE
+undo (recreate via /api/schedule/lesson, dry_run into the freed slot). Conflict
+drill-down already existed (ScheduleConflictModal per-category list); enriched
+with day/hour. Only group-lesson delete-undo is skipped (add endpoint is
+class-bound).
 
 Verify: `npm test` (46) + `npm run check` (0 errors) + `npm run build` green;
 backend import/vincoli tests green. Dev servers: backend :8000, frontend :5173.
