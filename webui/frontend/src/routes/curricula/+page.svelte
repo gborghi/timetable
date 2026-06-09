@@ -1,4 +1,5 @@
 <script>
+  import DecorIcon from '$lib/components/DecorIcon.svelte';
   import { onMount } from 'svelte';
   import { api } from '$lib/api';
   import { flash, refreshDataset } from '$lib/stores';
@@ -204,7 +205,7 @@
 
 <div class="space-y-4" data-testid="curricula-page">
   <div class="flex items-baseline gap-3 flex-wrap">
-    <h1>Indirizzi di studio</h1>
+    <h1 class="flex items-center gap-2"><DecorIcon name="globe" size={26} class="shrink-0" /> Indirizzi di studio</h1>
     <button class="btn-primary ml-auto" on:click={newCurriculum}
             data-testid="add-curriculum-btn">+ Nuovo indirizzo</button>
     <ImportButton entity="curricula" onDone={() => listRef?.reload()}/>

@@ -1,4 +1,5 @@
 <script>
+  import DecorIcon from '$lib/components/DecorIcon.svelte';
   import { onMount } from 'svelte';
   import { api } from '$lib/api';
   import { flash, refreshDataset } from '$lib/stores';
@@ -293,7 +294,7 @@
 
 <div class="space-y-4" data-testid="assignments-page">
   <div class="flex items-baseline gap-3 flex-wrap">
-    <h1>Cattedre (assegnazione docenti -&gt; classi)</h1>
+    <h1 class="flex items-center gap-2"><DecorIcon name="pencil-ruler" size={26} class="shrink-0" /> Cattedre (assegnazione docenti -&gt; classi)</h1>
     <span class="text-sm text-ink-500" data-testid="assignments-class-count">{Object.keys(byClass).length} classi</span>
     {#if loadInfo}
       <button class="btn ml-auto"

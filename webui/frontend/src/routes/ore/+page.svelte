@@ -1,4 +1,5 @@
 <script>
+  import DecorIcon from '$lib/components/DecorIcon.svelte';
   /**
    * Tab Ore -- working days + per-day timetable slots.
    *
@@ -212,7 +213,7 @@
 <div class="max-w-[1300px] mx-auto p-6 space-y-6">
   <header class="flex items-center justify-between gap-4">
     <div>
-      <h1 class="text-2xl font-semibold">Ore di lavoro</h1>
+      <h1 class="text-2xl font-semibold flex items-center gap-2"><DecorIcon name="clock" size={28} class="shrink-0" /> Ore di lavoro</h1>
       <p class="text-sm text-ink-600 max-w-2xl">
         Definisci i giorni della settimana lavorativa e gli slot
         orari per ciascun giorno. Gli slot sono indicizzati 0..N-1 e

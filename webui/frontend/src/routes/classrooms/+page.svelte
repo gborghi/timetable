@@ -1,6 +1,7 @@
 <script>
   import { onMount } from 'svelte';
   import { api } from '$lib/api';
+  import DecorIcon from '$lib/components/DecorIcon.svelte';
   import { flash, refreshDataset } from '$lib/stores';
   import { ROOM_KINDS } from '$lib/constants';
   import Modal from '$lib/components/Modal.svelte';
@@ -311,7 +312,7 @@
 
 <div class="space-y-4" data-testid="classrooms-page">
   <div class="flex items-baseline gap-3 flex-wrap">
-    <h1>Aule</h1>
+    <h1 class="flex items-center gap-2"><DecorIcon name="flask" size={26} class="shrink-0" /> Aule</h1>
     <button class="btn ml-auto" on:click={loadSuggested}>Genera aule...</button>
     <button class="btn" on:click={() => (showTagsModal = true)}
             title="Crea, rinomina o elimina i tag delle aule">

@@ -1,5 +1,6 @@
 <script>
   import { api } from '$lib/api';
+  import DecorIcon from '$lib/components/DecorIcon.svelte';
   import { flash, refreshDataset } from '$lib/stores';
   import Modal from '$lib/components/Modal.svelte';
   import WeeklyCalendarView from '$lib/components/WeeklyCalendarView.svelte';
@@ -240,7 +241,7 @@
 
 <div class="space-y-4" data-testid="classes-page">
   <div class="flex items-baseline gap-3 flex-wrap">
-    <h1>Classi</h1>
+    <h1 class="flex items-center gap-2"><DecorIcon name="desk" size={26} class="shrink-0" /> Classi</h1>
     <button class="btn-primary ml-auto" on:click={newClass}
             data-testid="add-class-btn">+ Nuova classe</button>
     <ImportButton entity="classes" onDone={() => listRef?.reload()}/>

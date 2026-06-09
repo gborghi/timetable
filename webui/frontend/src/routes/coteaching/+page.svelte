@@ -1,4 +1,5 @@
 <script>
+  import DecorIcon from '$lib/components/DecorIcon.svelte';
   import { onMount } from 'svelte';
   import { api } from '$lib/api';
   import { flash } from '$lib/stores';
@@ -72,7 +73,7 @@
 
 <div class="space-y-4" data-testid="coteaching-page">
   <div class="flex items-baseline gap-3">
-    <h1>Compresenze</h1>
+    <h1 class="flex items-center gap-2"><DecorIcon name="teacher" size={26} class="shrink-0" /> Compresenze</h1>
     <span class="text-sm text-ink-500" data-testid="coteaching-count">{rows.length} regole</span>
     <button class="btn-primary ml-auto" on:click={newRule} data-testid="add-coteaching-btn">+ Nuova regola</button>
   </div>

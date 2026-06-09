@@ -1,5 +1,6 @@
 <script>
   import { api } from '$lib/api';
+  import DecorIcon from '$lib/components/DecorIcon.svelte';
   import { flash, refreshDataset } from '$lib/stores';
   import { DAY_NAMES_EN, DAY_NAMES_EN_TO_IT, TEACHER_DEFAULTS } from '$lib/constants';
   import { teachers } from '$lib/services';
@@ -405,7 +406,7 @@
 
 <div class="space-y-4" data-testid="teachers-page">
   <div class="flex items-baseline gap-3 flex-wrap">
-    <h1>Docenti</h1>
+    <h1 class="flex items-center gap-2"><DecorIcon name="teacher" size={26} class="shrink-0" /> Docenti</h1>
     <button class="btn-primary ml-auto" on:click={newTeacher}
             data-testid="add-teacher-btn">+ Nuovo docente</button>
     <ImportButton entity="teachers" onDone={() => listRef?.reload()}/>

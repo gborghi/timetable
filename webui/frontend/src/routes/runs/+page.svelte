@@ -1,4 +1,5 @@
 <script>
+  import DecorIcon from '$lib/components/DecorIcon.svelte';
   /**
    * Runs tab — global view of every optimization run launched in this
    * dataset. Per Giovanni's spec each row shows:
@@ -284,7 +285,7 @@
 
 <div class="space-y-4" data-testid="runs-page">
   <div class="flex items-baseline gap-3 flex-wrap">
-    <h1>Runs</h1>
+    <h1 class="flex items-center gap-2"><DecorIcon name="trophy" size={26} class="shrink-0" /> Runs</h1>
     <span class="text-sm text-ink-500">{runs.length} run nel dataset</span>
     <button class="btn !text-xs ml-auto" on:click={refresh} disabled={busy}
             data-testid="runs-refresh-btn">

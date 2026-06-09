@@ -1,4 +1,5 @@
 <script>
+  import DecorIcon from '$lib/components/DecorIcon.svelte';
   import { onMount } from 'svelte';
   import { api } from '$lib/api';
   import { flash, refreshDataset } from '$lib/stores';
@@ -147,7 +148,7 @@
 
 <div class="space-y-4" data-testid="students-page">
   <div class="flex items-baseline gap-3 flex-wrap">
-    <h1>Studenti</h1>
+    <h1 class="flex items-center gap-2"><DecorIcon name="graduation-cap" size={26} class="shrink-0" /> Studenti</h1>
     <button class="btn ml-auto" on:click={() => (showTagsModal = true)}
             title="Crea, rinomina o elimina i tag degli studenti">
       Gestisci tag

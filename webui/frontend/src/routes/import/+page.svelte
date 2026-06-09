@@ -1,4 +1,5 @@
 <script>
+  import DecorIcon from '$lib/components/DecorIcon.svelte';
   /**
    * Import bulk via xlsx/csv.
    *
@@ -85,7 +86,7 @@
 
 <div class="space-y-5">
   <div>
-    <h1>Import bulk</h1>
+    <h1 class="flex items-center gap-2"><DecorIcon name="agenda" size={26} class="shrink-0" /> Import bulk</h1>
     <p class="text-sm text-ink-500 mt-1">
       Carica file <code>.xlsx</code> / <code>.csv</code> per importare in
       blocco docenti, classi, aule, materie, studenti, indirizzi,

@@ -1,4 +1,5 @@
 <script>
+  import DecorIcon from '$lib/components/DecorIcon.svelte';
   import { onMount } from 'svelte';
   import { api } from '$lib/api';
   import { flash } from '$lib/stores';
@@ -201,7 +202,7 @@
 
 <div class="space-y-4" data-testid="absences-page">
   <div class="flex items-baseline gap-3 flex-wrap">
-    <h1>Assenze e supplenze</h1>
+    <h1 class="flex items-center gap-2"><DecorIcon name="coffee" size={26} class="shrink-0" /> Assenze e supplenze</h1>
     <div class="ml-auto flex items-center gap-2">
       <button class="btn !text-xs" on:click={() => shiftWeek(-1)}
               data-testid="absences-prev-week">&lt; settimana prec.</button>

@@ -1,4 +1,5 @@
 <script>
+  import DecorIcon from '$lib/components/DecorIcon.svelte';
   /**
    * /diagnostics tab.
    *
@@ -408,7 +409,7 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
 </script>
 
 <div class="space-y-6">
-  <h1>Statistiche e diagnostica</h1>
+  <h1 class="flex items-center gap-2"><DecorIcon name="magnifier" size={26} class="shrink-0" /> Statistiche e diagnostica</h1>
   <p class="text-sm text-ink-500 max-w-3xl">
     Le analisi pesanti (Monte Carlo, bipartito, correlazioni,
     distribuzioni) vengono lanciate come <strong>run asincroni</strong>:

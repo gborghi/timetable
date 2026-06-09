@@ -1,6 +1,7 @@
 <script>
   import { onMount } from 'svelte';
   import { api } from '$lib/api';
+  import DecorIcon from '$lib/components/DecorIcon.svelte';
   import { flash } from '$lib/stores';
   import Modal from '$lib/components/Modal.svelte';
   import SortableQueryableList from '$lib/components/SortableQueryableList.svelte';
@@ -90,7 +91,7 @@
 
 <div class="space-y-4" data-testid="subjects-page">
   <div class="flex items-baseline gap-3 flex-wrap">
-    <h1>Materie</h1>
+    <h1 class="flex items-center gap-2"><DecorIcon name="books" size={26} class="shrink-0" /> Materie</h1>
     <button class="btn ml-auto" on:click={() => (editWeights = !editWeights)}
             data-testid="subjects-toggle-weights">
       {editWeights ? 'Vista materie' : 'Pesi cl. concorso'}

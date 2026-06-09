@@ -1,4 +1,5 @@
 <script>
+  import DecorIcon from '$lib/components/DecorIcon.svelte';
   /**
    * /schedule -- timetable view + interactive editor.
    *
@@ -393,7 +394,7 @@
 
 <div class="space-y-4" data-testid="schedule-page">
   <div class="flex items-baseline gap-3 flex-wrap">
-    <h1>Orario</h1>
+    <h1 class="flex items-center gap-2"><DecorIcon name="calendar" size={26} class="shrink-0" /> Orario</h1>
     {#if !legacyMode && summary}
       <span class="text-sm text-ink-500" data-testid="schedule-obj-value">
         obj=<code>{summary.obj_value}</code>

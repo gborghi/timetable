@@ -1,4 +1,5 @@
 <script>
+  import DecorIcon from '$lib/components/DecorIcon.svelte';
   import { onMount } from 'svelte';
   import { api } from '$lib/api';
   import { flash } from '$lib/stores';
@@ -459,7 +460,7 @@
 
 <div class="space-y-4" data-testid="monitor-page">
   <div class="flex items-baseline gap-3 flex-wrap">
-    <h1>Eventi</h1>
+    <h1 class="flex items-center gap-2"><DecorIcon name="bell" size={26} class="shrink-0" /> Eventi</h1>
     {#if summary}
       <span class="text-sm text-ink-500">
         {summary.n_events} eventi totali

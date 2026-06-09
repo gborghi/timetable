@@ -1,4 +1,5 @@
 <script>
+  import DecorIcon from '$lib/components/DecorIcon.svelte';
   /**
    * Plessi (school sites) management.
    *
@@ -205,7 +206,7 @@
 </script>
 
 <div class="container mx-auto p-4 space-y-6" data-testid="plessi-page">
-  <h1 class="text-2xl font-bold">Plessi</h1>
+  <h1 class="text-2xl font-bold flex items-center gap-2"><DecorIcon name="building" size={28} class="shrink-0" /> Plessi</h1>
   <p class="text-sm text-ink-600 max-w-3xl">
     Gestisci le sedi fisiche dell'istituto (Sede Centrale,
     succursali, plessi distaccati), le regole di spostamento tra

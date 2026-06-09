@@ -1,4 +1,5 @@
 <script>
+  import DecorIcon from '$lib/components/DecorIcon.svelte';
   import { onMount } from 'svelte';
   import { api } from '$lib/api';
   import { flash, refreshDataset } from '$lib/stores';
@@ -255,7 +256,7 @@
 </script>
 
 <div class="space-y-6" data-testid="optimize-page">
-  <h1>Workflow di ottimizzazione</h1>
+  <h1 class="flex items-center gap-2"><DecorIcon name="gears" size={26} class="shrink-0" /> Workflow di ottimizzazione</h1>
 
   <p class="text-sm text-ink-500 max-w-3xl">
     Ogni step puo essere lanciato singolarmente o in catena. Tra uno step e l'altro
