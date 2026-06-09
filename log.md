@@ -1,5 +1,35 @@
 # Unified-SOFT + General-Constraints — autonomous work log
 
+## ✅✅ GOAL COMPLETE (2026-06-09) — summary
+
+All directives addressed:
+1. **A→D lifecycle** — `soft_costs.py` is the single source of soft-cost
+   encodings for every backend (mono-week, per-day CP, decomposition, column-
+   generation pricers, metaheuristic scorer). Done.
+2. **Metaheuristic = completely-general DSL solver** — `run_meta` loads + threads
+   ANY DSL hard (move-rejection) and ANY DSL soft (penalty). The universal
+   enforcer. (`7dc46de`)
+3. **Monolithic weekly CP-SAT = completely DSL-compliant** — `solve_dsl_compliant`
+   compiles the broad native fragment then no-good-refines the rest (bounded),
+   warning on exhaustion. (`600f5a6`)
+4. **CG / branch-and-price** — native per-column DSL honored; assembled solution
+   post-hoc verified, cross-column DSL detected + reported + delegated to the
+   meta pass. (`eed55ac`)
+5. **Per-day / decomposition** — maximally compliant within a day; cross-day/
+   global DSL delegated to assembled-week refinement or the meta pass (motivated).
+6. **Motivations** — `docs/dsl_compliance.md`: per-method compliance matrix +
+   intrinsic-limit motivations + "how to guarantee any constraint" (run_meta).
+7. **Solver-compat warnings** — `engine/constraint_compat.py` structures the
+   (previously discarded) diagnostics into {constraint, pipeline, reason,
+   suggestion, severity}; surfaced to RunLog for week + CG/BP. (`689f51f`)
+8. **Convenience pragma** — `no_same_class_consecutive_days(cl)` in evaluator +
+   compiler. (`87e44bc`)
+Frontend-agnostic: `engine/constraint_compat.py` + `engine/dsl_cp_gate.py` carry
+no webui import; the translator (`build_soft_pragmas`/`dsl_translator`) holds
+presets; weights are always pragma args. All pushed to origin/main.
+
+
+
 Running log of decisions, open questions, and problems while implementing the
 full A→D lifecycle of the unified-soft-via-DSL effort **and** the broader
 generality mandate. Maintained autonomously (user set a no-supervision goal
