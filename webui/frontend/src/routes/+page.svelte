@@ -312,11 +312,23 @@
       {@render stat($datasetState.solutions, 'Soluzioni')}
     </div>
     {#if $datasetState.active_solution}
-      <div class="mt-4 text-sm">
-        Soluzione attiva: <strong>{$datasetState.active_solution.name}</strong>
-        ({$datasetState.active_solution.kind}) -
-        obj=<code>{$datasetState.active_solution.obj_value}</code>
-        - metriche {JSON.stringify($datasetState.active_solution.metrics)}
+      {@const sol = $datasetState.active_solution}
+      {@const feasible = sol.metrics?.feasible}
+      <div class="mt-4 text-sm flex items-center gap-2 flex-wrap">
+        <span>Soluzione attiva:
+          <strong>{sol.name}</strong> ({sol.kind})</span>
+        {#if feasible != null}
+          <span class="pill"
+                class:pill-green={feasible}
+                class:pill-red={!feasible}
+                title="Fattibilita della soluzione attiva rispetto ai vincoli hard">
+            {feasible ? '✓ Fattibile' : '✗ Non fattibile'}
+          </span>
+        {/if}
+        <span class="text-ink-500">obj=<code>{sol.obj_value}</code></span>
+        <span class="text-ink-500 text-xs">
+          metriche {JSON.stringify(sol.metrics)}
+        </span>
       </div>
     {/if}
   </section>
