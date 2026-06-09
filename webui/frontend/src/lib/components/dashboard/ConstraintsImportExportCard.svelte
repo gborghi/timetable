@@ -104,6 +104,54 @@
     a.click();
   }
 
+  // ----- Vincoli language (guided xlsx) -----
+  let lastVincoliReport = null;
+
+  function downloadVincoliTemplate() {
+    const a = document.createElement('a');
+    a.href = '/api/dashboard/constraints/template-vincoli';
+    a.rel = 'noopener';
+    a.click();
+  }
+
+  async function importVincoli(file) {
+    if (!file) return;
+    busy = true;
+    lastVincoliReport = null;
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch(
+        '/api/dashboard/constraints/import-vincoli',
+        { method: 'POST', body: fd });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j.detail || j.error || ('HTTP ' + res.status));
+      }
+      const r = await res.json();
+      lastVincoliReport = { ...r, source: file.name };
+      const nerr = (r.parse_errors?.length || 0)
+        + (r.create_errors?.length || 0);
+      flash(
+        `Vincoli da "${file.name}": ${r.n_created} creati `
+        + `(${r.n_intents} righe valide, ${nerr} problemi).`,
+        nerr ? 'info' : 'success');
+      bumpMutation();
+      await refreshDataset();
+    } catch (e) {
+      flash('Errore: ' + (e.message || e), 'error');
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function importVincoliInput(ev) {
+    const f = ev.target.files?.[0];
+    if (!f) return;
+    await importVincoli(f);
+    ev.target.value = '';
+  }
+
   async function deleteAll() {
     if (!confirm(
       'Cancellare TUTTI i vincoli dal DB corrente?\n\n'
@@ -207,6 +255,55 @@
         scartati e riportati nel report sotto.
       </p>
     </div>
+  </div>
+
+  <!-- Guided Vincoli language (xlsx) -->
+  <div class="mt-4 card !shadow-none p-3 bg-indigo-50/40 space-y-2
+              border-indigo-200">
+    <h3 class="!text-base">Vincoli guidati (xlsx) — linguaggio Vincoli</h3>
+    <p class="text-[11px] text-ink-500">
+      Compila il foglio <strong>Vincoli</strong> del template con un
+      vocabolario semplice (<code>indisponibilita</code>,
+      <code>giorno_libero</code>, <code>max_ore_giorno</code>,
+      <code>no_pomeriggio</code>, <code>no_giorni_consecutivi</code>,
+      <code>compresenza</code>, ...) oppure usa <code>raw_dsl</code> per
+      un'espressione DSL libera. Ogni riga diventa un vincolo.
+    </p>
+    <div class="flex flex-wrap gap-2 items-center">
+      <button class="btn !text-sm" on:click={downloadVincoliTemplate}>
+        Scarica template vincoli
+      </button>
+      <label class="btn-primary !text-sm cursor-pointer">
+        Carica vincoli (xlsx)
+        <input type="file" accept=".xlsx,.json"
+               on:change={importVincoliInput}
+               disabled={busy} class="hidden"/>
+      </label>
+    </div>
+    {#if lastVincoliReport}
+      {@const nerr = (lastVincoliReport.parse_errors?.length || 0)
+        + (lastVincoliReport.create_errors?.length || 0)}
+      <div class="text-xs mt-1">
+        <strong>{lastVincoliReport.n_created}</strong> vincoli creati da
+        {lastVincoliReport.n_intents} righe valide
+        ({lastVincoliReport.parse_errors?.length || 0} errori di formato,
+        {lastVincoliReport.create_errors?.length || 0} errori di creazione).
+        {#if nerr}
+          <details class="mt-1">
+            <summary class="text-red-700 cursor-pointer">Mostra problemi</summary>
+            <ul class="text-[11px] text-red-700 mt-1 space-y-0.5
+                       max-h-48 overflow-y-auto">
+              {#each lastVincoliReport.parse_errors || [] as e}
+                <li>riga {e.row} ({e.tipo}): {e.error}</li>
+              {/each}
+              {#each lastVincoliReport.create_errors || [] as e}
+                <li>intent {e.intent}: {e.error}</li>
+              {/each}
+            </ul>
+          </details>
+        {/if}
+      </div>
+    {/if}
   </div>
 
   <div class="mt-4 grid md:grid-cols-2 gap-4">

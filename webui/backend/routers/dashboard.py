@@ -24,6 +24,7 @@ from .. import db as db_mod
 from ..db import get_db
 from ..services.graph import build_graph
 from ..utils.ttl_cache import cached as ttl_cached
+from . import _vincoli_parser as _vp
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
@@ -1067,6 +1068,183 @@ def constraints_export(
         headers={"Content-Disposition":
                  f'attachment; filename="{fn}"'},
     )
+
+
+# ----- Vincoli language (xlsx) ----------------------------------------
+
+_VINCOLI_HEADERS = [
+    "tipo_vincolo", "entita", "nome", "materia", "giorno",
+    "ora_da", "ora_a", "valore", "livello", "peso", "dsl", "note",
+]
+_VINCOLI_ENTITY_SCOPE = {
+    "docente": "teacher", "classe": "class", "aula": "classroom",
+    "curriculum": "curriculum", "gruppo": "group", "globale": "global",
+}
+
+
+def _vincoli_dispatch_intent(db, intent: dict) -> dict:
+    """Translate one parser intent into actual constraint creation(s).
+    Returns {ok, n, error}."""
+    from . import constraints as _crouter
+    from ..schemas import GeneralConstraintIn
+    if intent["target"] == "dsl":
+        scope = intent.get("scope") or "global"
+        owner_id = None
+        if scope != "global" and intent.get("owner_name"):
+            owner_id = _resolve_owner_by_name(db, scope, intent["owner_name"])
+        try:
+            payload = GeneralConstraintIn(
+                expression=intent["expression"],
+                label=(intent.get("note") or None),
+                level=intent.get("level", "hard"),
+                weight=int(intent.get("weight") or 100),
+                scope=scope, owner_id=owner_id)
+            _crouter.create_general(payload, db=db)
+            return {"ok": True, "n": 1}
+        except HTTPException as e:
+            return {"ok": False, "n": 0,
+                    "error": f"HTTP {e.status_code}: {e.detail}"}
+        except Exception as e:  # noqa: BLE001
+            return {"ok": False, "n": 0, "error": str(e)}
+
+    # ORM intents
+    tipo = intent["tipo"]
+    scope = _VINCOLI_ENTITY_SCOPE.get(intent.get("entity", ""), "teacher")
+    if tipo == "compresenza":
+        owner_id = _resolve_owner_by_name(db, "class", intent["name"])
+        if owner_id is None:
+            return {"ok": False, "n": 0,
+                    "error": f"classe '{intent['name']}' non trovata"}
+        body = {"scope": "class", "kind": "coteach", "owner_id": owner_id,
+                "subject": intent.get("subject"),
+                "n_teachers": intent.get("n_teachers"),
+                "level": intent.get("level", "hard"),
+                "weight": intent.get("weight")}
+        out = _create_constraint_via_dispatcher(db, body)
+        return {"ok": bool(out.get("ok")), "n": 1 if out.get("ok") else 0,
+                "error": out.get("error")}
+
+    # matrix_slot family (indisponibilita / indisp_aula / giorno_libero /
+    # pref_giorno_libero): one cell -> one *Unavailability row.
+    owner_id = _resolve_owner_by_name(db, scope, intent["name"])
+    if owner_id is None:
+        return {"ok": False, "n": 0,
+                "error": f"{intent.get('entity')} '{intent['name']}' "
+                         "non trovato"}
+    n_ok, errs = 0, []
+    for (day, hour) in intent.get("cells", []):
+        body = {"scope": scope, "kind": "matrix_slot", "owner_id": owner_id,
+                "day": day, "hour": hour,
+                "level": intent.get("level", "hard"),
+                "weight": intent.get("weight"),
+                "reason": intent.get("note") or None}
+        out = _create_constraint_via_dispatcher(db, body)
+        if out.get("ok"):
+            n_ok += 1
+        else:
+            errs.append(out.get("error"))
+    if n_ok == 0 and errs:
+        return {"ok": False, "n": 0, "error": errs[0]}
+    return {"ok": True, "n": n_ok}
+
+
+@router.get("/constraints/template-vincoli")
+def constraints_template_vincoli():
+    """Download a 3-sheet xlsx (Istruzioni / Esempi / Vincoli) the user
+    fills in to bulk-define constraints in the controlled vocabulary."""
+    try:
+        from openpyxl import Workbook
+    except Exception:
+        raise HTTPException(500, "openpyxl non installato.")
+    wb = Workbook()
+    ws_i = wb.active
+    ws_i.title = "Istruzioni"
+    for line in (
+        ["Compila il foglio 'Vincoli' (una riga per vincolo)."],
+        ["Colonna 'tipo_vincolo' -> tipo di regola. Ammessi:"],
+        [", ".join(_vp.VOCAB)],
+        ["entita: docente | classe | aula | curriculum | gruppo | globale"],
+        ["nome: nome esatto dell'entita (docente/classe/aula)"],
+        ["giorno: lun..sab oppure 1..6 (vuoto = tutti i giorni)"],
+        ["ora_da/ora_a: 8..13 inclusi (vuoto = intera giornata)"],
+        ["valore: argomento numerico (max ore, n docenti, ora soglia)"],
+        ["livello: hard | soft | preferred | forbidden | enforced"],
+        ["peso: penalita SOFT (per soft/preferred)"],
+        ["dsl: SOLO per tipo_vincolo=raw_dsl -> espressione DSL libera"],
+        ["note: testo libero (diventa l'etichetta del vincolo)"],
+    ):
+        ws_i.append(line)
+    ws_e = wb.create_sheet("Esempi")
+    ws_e.append(_VINCOLI_HEADERS)
+    for ex in (
+        ["indisponibilita", "docente", "Rossi Mario", "", "ven", 8, 13, "",
+         "hard", "", "", "impegni esterni"],
+        ["giorno_libero", "docente", "Bianchi Anna", "", "mer", "", "", "",
+         "hard", "", "", "part-time"],
+        ["max_ore_giorno", "docente", "Rossi Mario", "", "", "", "", 5,
+         "hard", "", "", ""],
+        ["no_pomeriggio", "classe", "1A", "", "", "", "", 14, "soft", 50,
+         "", "no lezioni dopo le 14"],
+        ["no_giorni_consecutivi", "classe", "3B", "", "", "", "", "", "hard",
+         "", "", ""],
+        ["compresenza", "classe", "4A", "Scienze", "", "", "", 2, "hard", "",
+         "", "laboratorio"],
+        ["raw_dsl", "globale", "", "", "", "", "", "", "hard", "",
+         "forall t in teachers: teacher_max_consecutive(t.name, 4)",
+         "tetto globale"],
+    ):
+        ws_e.append(ex)
+    ws_v = wb.create_sheet("Vincoli")
+    ws_v.append(_VINCOLI_HEADERS)
+    out = io.BytesIO()
+    wb.save(out)
+    out.seek(0)
+    return StreamingResponse(
+        out, media_type=("application/vnd.openxmlformats-officedocument"
+                          ".spreadsheetml.sheet"),
+        headers={"Content-Disposition":
+                 'attachment; filename="pitantum_vincoli_template.xlsx"'},
+    )
+
+
+@router.post("/constraints/import-vincoli")
+async def constraints_import_vincoli(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    """Import constraints from a 'Vincoli'-sheet xlsx/csv. Each row is
+    mapped (DSL pragma or ORM insert) and created. Returns a report with
+    per-row parse errors and per-intent creation outcomes."""
+    blob = await file.read()
+    if not blob:
+        raise HTTPException(400, "file vuoto")
+    raw = _parse_import_blob(blob, file.content_type, file.filename)
+    # Lowercase the header keys so the parser's column lookups match.
+    rows = [{str(k).strip().lower(): v for k, v in rec.items()} for rec in raw]
+    intents, parse_errors = _vp.parse_rows(rows)
+    n_created = 0
+    create_errors = []
+    for i, intent in enumerate(intents, start=1):
+        res = _vincoli_dispatch_intent(db, intent)
+        if res.get("ok"):
+            n_created += int(res.get("n", 0))
+        else:
+            create_errors.append({"intent": i, "error": res.get("error")})
+    db.commit()
+    try:
+        from ..utils.ttl_cache import bump_mutation
+        bump_mutation()
+    except Exception:
+        pass
+    return {
+        "ok": True,
+        "filename": file.filename,
+        "n_rows": len(rows),
+        "n_intents": len(intents),
+        "n_created": n_created,
+        "parse_errors": parse_errors[:50],
+        "create_errors": create_errors[:50],
+    }
 
 
 # ----- Delete-all -----------------------------------------------------
