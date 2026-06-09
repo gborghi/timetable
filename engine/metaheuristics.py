@@ -152,16 +152,13 @@ def compute_soft(sol, profs, soft_rules=None):
         soft_pen = 0
         try:
             try:
-                from webui.backend.utils import (  # type: ignore
-                    general_dsl as _gd)
+                import general_dsl as _gd  # type: ignore
             except ImportError:
                 import sys as _sys
                 _here = os.path.dirname(os.path.abspath(__file__))
-                _root = os.path.dirname(_here)
-                if _root not in _sys.path:
-                    _sys.path.insert(0, _root)
-                from webui.backend.utils import (  # type: ignore
-                    general_dsl as _gd)
+                if _here not in _sys.path:
+                    _sys.path.insert(0, _here)
+                import general_dsl as _gd  # type: ignore
         except Exception:  # noqa: BLE001
             _gd = None
         if _gd is not None:
@@ -189,14 +186,13 @@ def parse_soft_rules(rules):
     soft_rules=...)``.
     """
     try:
-        from webui.backend.utils import general_dsl as _gd  # type: ignore
+        import general_dsl as _gd  # type: ignore
     except ImportError:
         import sys as _sys
         _here = os.path.dirname(os.path.abspath(__file__))
-        _root = os.path.dirname(_here)
-        if _root not in _sys.path:
-            _sys.path.insert(0, _root)
-        from webui.backend.utils import general_dsl as _gd  # type: ignore
+        if _here not in _sys.path:
+            _sys.path.insert(0, _here)
+        import general_dsl as _gd  # type: ignore
     out = []
     for r in rules or []:
         if r.get("is_hard"):
@@ -524,16 +520,13 @@ def is_hard_feasible(sol, profs, verbose=False,
     if expressions:
         try:
             try:
-                from webui.backend.utils import (  # type: ignore
-                    general_dsl as _gd)
+                import general_dsl as _gd  # type: ignore
             except ImportError:
                 import sys as _sys
                 _here = os.path.dirname(os.path.abspath(__file__))
-                _root = os.path.dirname(_here)
-                if _root not in _sys.path:
-                    _sys.path.insert(0, _root)
-                from webui.backend.utils import (  # type: ignore
-                    general_dsl as _gd)
+                if _here not in _sys.path:
+                    _sys.path.insert(0, _here)
+                import general_dsl as _gd  # type: ignore
         except Exception as exc:  # noqa: BLE001
             if verbose:
                 print(f"  DSL evaluator unavailable: "

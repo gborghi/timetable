@@ -115,13 +115,12 @@ MAX_PROF_HOURS_PER_DAY = 5                     # HARD (C): max 5 ore prof/giorno
 
 
 def _ensure_dsl_imports_available() -> None:
-    """Bootstrap sys.path so ``dsl_to_cpsat`` can ``from
-    webui.backend.utils import general_dsl as gd`` regardless of how
-    the caller set up the import roots. The compiler hardcodes that
-    import path; if the parent directory of ``webui/`` is not on
-    sys.path, the import fails. We add it here so any caller of
-    ``solve_phase_a`` works without needing to set sys.path in tests
-    or scripts.
+    """Bootstrap sys.path so ``dsl_to_cpsat`` can ``import general_dsl``
+    (the engine-flat name) regardless of how the caller set up the import
+    roots. ``general_dsl`` now lives in ``engine/`` next to this module; if
+    the engine dir is not on sys.path the import fails. We add it here so any
+    caller of ``solve_phase_a`` works without needing to set sys.path in
+    tests or scripts.
 
     Safe and idempotent: skips when already importable.
     """
@@ -129,14 +128,13 @@ def _ensure_dsl_imports_available() -> None:
     import os
     import sys
     try:
-        importlib.import_module("webui.backend.utils.general_dsl")
+        importlib.import_module("general_dsl")
         return
     except ImportError:
         pass
     here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.dirname(here)
-    if repo_root not in sys.path:
-        sys.path.insert(0, repo_root)
+    if here not in sys.path:
+        sys.path.insert(0, here)
 
 
 def find_prof_subject(profs, cl, subject):

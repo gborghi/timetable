@@ -1,7 +1,7 @@
 """Compile general_dsl AST nodes into CP-SAT constraints applied
 during solver search (not post-hoc).
 
-The DSL parser ``webui/backend/utils/general_dsl.py`` produces an AST
+The DSL parser ``engine/general_dsl.py`` produces an AST
 of Lit / Ref / Cmp / And / Or / Not / Implies / Iff / Quant / Count /
 Call nodes. The post-hoc evaluator in ``logic_parser.py`` flattens
 those to DNF and checks them against a finalised solution. THIS
@@ -213,7 +213,7 @@ def _eval_static(node, env: dict, key_lookup: dict[str, tuple],
     used to resolve ``l.classroom`` and ``l.classroom.plesso``
     references; they are forwarded to ``_resolve_lesson_path``.
     """
-    from webui.backend.utils import general_dsl as gd  # type: ignore
+    import general_dsl as gd  # type: ignore
 
     if isinstance(node, gd.Lit):
         return node.value
@@ -631,15 +631,14 @@ class DSLConstraintCompiler:
         """Parse (if str) and compile the given DSL expression."""
         if isinstance(source, str):
             try:
-                from webui.backend.utils import general_dsl as gd  # type: ignore
+                import general_dsl as gd  # type: ignore
             except ImportError:
                 import os as _os
                 import sys as _sys
-                _root = _os.path.dirname(
-                    _os.path.dirname(_os.path.abspath(__file__)))
-                if _root not in _sys.path:
-                    _sys.path.insert(0, _root)
-                from webui.backend.utils import general_dsl as gd  # type: ignore
+                _eng = _os.path.dirname(_os.path.abspath(__file__))
+                if _eng not in _sys.path:
+                    _sys.path.insert(0, _eng)
+                import general_dsl as gd  # type: ignore
             tree = gd.parse(source)
         else:
             tree = source
@@ -658,7 +657,7 @@ class DSLConstraintCompiler:
     # ----- node dispatch -----
 
     def _compile_node(self, node, env: dict):
-        from webui.backend.utils import general_dsl as gd  # type: ignore
+        import general_dsl as gd  # type: ignore
         if isinstance(node, gd.Quant):
             return self._compile_quant(node, env)
         if isinstance(node, gd.Count):
@@ -733,7 +732,7 @@ class DSLConstraintCompiler:
         - ``exists``: collect over keys and emit BoolOr at the end
           (handled outside this helper).
         """
-        from webui.backend.utils import general_dsl as gd  # type: ignore
+        import general_dsl as gd  # type: ignore
         if quant != "forall":
             # exists: collect the slot var; aggregate handled by
             # caller. For now: treat the body as a static filter
@@ -780,7 +779,7 @@ class DSLConstraintCompiler:
         bound lesson variables -- enough for "if both lessons exist,
         the inner predicate must hold" patterns.
         """
-        from webui.backend.utils import general_dsl as gd  # type: ignore
+        import general_dsl as gd  # type: ignore
         body = node.body
         if isinstance(body, gd.Quant) and body.source == "lessons":
             # Nested forall: expand inner vars symmetrically.
@@ -857,7 +856,7 @@ class DSLConstraintCompiler:
         if not matched:
             return
         # rhs may be a constant Lit
-        from webui.backend.utils import general_dsl as gd  # type: ignore
+        import general_dsl as gd  # type: ignore
         rhs = node.rhs
         if isinstance(rhs, gd.Lit):
             n = int(rhs.value)
@@ -911,7 +910,7 @@ class DSLConstraintCompiler:
         # "AddBoolOr over reified branch indicators". For now we
         # only implement the case where every branch reduces to a
         # static truth value plus a small slot-disjunction.
-        from webui.backend.utils import general_dsl as gd  # type: ignore
+        import general_dsl as gd  # type: ignore
         slot_vars: list = []
         for arg in node.args:
             try:

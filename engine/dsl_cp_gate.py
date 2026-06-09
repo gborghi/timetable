@@ -37,14 +37,14 @@ def _gd():
     play, so trees parsed here evaluate cleanly there and vice versa.
     """
     try:
-        from webui.backend.utils import general_dsl as gd  # type: ignore
+        import general_dsl as gd  # type: ignore
     except ImportError:
         import os
         import sys
-        _root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        if _root not in sys.path:
-            sys.path.insert(0, _root)
-        from webui.backend.utils import general_dsl as gd  # type: ignore
+        _eng = os.path.dirname(os.path.abspath(__file__))
+        if _eng not in sys.path:
+            sys.path.insert(0, _eng)
+        import general_dsl as gd  # type: ignore
     return gd
 
 
