@@ -466,6 +466,8 @@ PRAGMA_LEVEL: dict[str, str] = {
     "classroom_capacity_ok": "phase_b",
     "class_sixth_penalty": "phase_b",
     "teacher_buchi_penalty": "phase_b",
+    "slot_after_hour_penalty": "phase_b",
+    "teacher_max_hours_after": "phase_b",
     # Phase A (day_count IntVar) pragmas
     "class_day_load_in_day_count": "phase_a",
     "hall_bound_prof_day": "phase_a",
@@ -1116,6 +1118,24 @@ class DSLConstraintCompiler:
                 return True
             self._compile_teacher_buchi_penalty(int(arg_values[0]))
             return True
+        if name == "slot_after_hour_penalty":
+            if len(arg_values) != 2:
+                self.diagnostics.append(
+                    f"slot_after_hour_penalty expects (threshold_hour, "
+                    f"weight), got {len(arg_values)}")
+                return True
+            self._compile_slot_after_hour_penalty(
+                int(arg_values[0]), int(arg_values[1]))
+            return True
+        if name == "teacher_max_hours_after":
+            if len(arg_values) != 3:
+                self.diagnostics.append(
+                    f"teacher_max_hours_after expects (threshold_hour, "
+                    f"max_n, weight), got {len(arg_values)}")
+                return True
+            self._compile_teacher_max_hours_after(
+                int(arg_values[0]), int(arg_values[1]), int(arg_values[2]))
+            return True
         if name == "teacher_five_penalty":
             if len(arg_values) != 1:
                 self.diagnostics.append(
@@ -1528,6 +1548,43 @@ class DSLConstraintCompiler:
         pairs, _aux = sc.buchi_pairs(
             self.model, self.slot, teachers, days, hours,
             weight=weight)
+        self.soft_cost_terms.extend(pairs)
+
+    def _compile_slot_after_hour_penalty(self, threshold_hour: int,
+                                          weight: int):
+        """SOFT 'avoid afternoons / late slots': delegates to
+        ``soft_costs.late_slot_pairs`` (one ``(weight, var)`` pair per slot
+        var at ``hour >= threshold_hour``). ``threshold_hour`` is in the
+        same units as the slot keys' hour field -- the translator maps clock
+        time -> that index, so the engine stays frontend-agnostic."""
+        try:
+            from . import soft_costs as sc  # type: ignore
+        except ImportError:
+            import soft_costs as sc  # type: ignore
+        pairs, _ = sc.late_slot_pairs(
+            self.model, self.slot, weight=weight,
+            threshold_hour=threshold_hour)
+        self.soft_cost_terms.extend(pairs)
+
+    def _compile_teacher_max_hours_after(self, threshold_hour: int,
+                                          max_n: int, weight: int):
+        """SOFT 'max N hours after T' per (teacher, day): delegates to
+        ``soft_costs.teacher_late_excess_pairs`` -- pays ``weight`` for each
+        hour a teacher works beyond ``max_n`` in slots at
+        ``hour >= threshold_hour`` on a day. Skips with a diagnostic when
+        there are no slot vars."""
+        if not self.slot:
+            self.diagnostics.append(
+                "teacher_max_hours_after: slot empty; nothing to penalize")
+            return
+        try:
+            from . import soft_costs as sc  # type: ignore
+        except ImportError:
+            import soft_costs as sc  # type: ignore
+        teachers, days, _hours = self._slot_scope()
+        pairs, _aux = sc.teacher_late_excess_pairs(
+            self.model, self.slot, teachers, days,
+            weight=weight, threshold_hour=threshold_hour, max_n=max_n)
         self.soft_cost_terms.extend(pairs)
 
     def _compile_teacher_five_penalty(self, weight: int):

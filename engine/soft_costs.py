@@ -23,6 +23,52 @@ def sixth_slot_pairs(model, slot, *, weight, sixth_hour=13):
     return pairs, []
 
 
+def late_slot_pairs(model, slot, *, weight, threshold_hour):
+    """SOFT 'avoid afternoons / late slots': one ``(weight, var)`` pair per
+    slot var whose ``hour >= threshold_hour``.
+
+    Generalises :func:`sixth_slot_pairs` (``==`` -> ``>=``) for the
+    config-driven late-hours case ('avoid afternoons', 'avoid slots after
+    15:00'). ``threshold_hour`` is in the SAME units as the slot key's hour
+    field; the translator maps clock time -> that index, so the engine stays
+    frontend-agnostic. Returns ``(pairs, aux_vars)`` with an empty aux list
+    (no new vars), the shape ``DSLConstraintCompiler.soft_cost_terms``
+    stores."""
+    pairs = []
+    for (_t, _cl, _s, _d, h), v in slot.items():
+        if h >= threshold_hour:
+            pairs.append((weight, v))
+    return pairs, []
+
+
+def teacher_late_excess_pairs(model, slot, teachers, days, *, weight,
+                              threshold_hour, max_n):
+    """SOFT 'max N hours after T' per (teacher, day): one
+    ``(weight, excess)`` pair per in-scope (teacher, day) where
+    ``excess = max(0, (#occupied slots at hour>=threshold_hour) - max_n)``.
+
+    Penalises each late hour a teacher works beyond ``max_n`` on a day
+    ('max one hour after 15:00' -> ``threshold_hour=15, max_n=1``). The
+    excess IntVar is lower-bounded by ``sum(late_vars) - max_n`` over a
+    ``[0, n_late]`` domain, so minimisation drives it to exactly the
+    overflow (0 when within budget). A (teacher, day) with no late slot is
+    skipped (contributes nothing). Returns ``(pairs, aux_vars)`` where
+    ``aux_vars`` are the created excess IntVars (creation order)."""
+    pairs = []
+    aux = []
+    for t in teachers:
+        for d in days:
+            late = [v for (tt, _c, _s, dd, h), v in slot.items()
+                    if tt == t and dd == d and h >= threshold_hour]
+            if not late:
+                continue
+            ex = model.NewIntVar(0, len(late), f"lateex_{t}_{d}")
+            model.Add(ex >= sum(late) - max_n)
+            aux.append(ex)
+            pairs.append((weight, ex))
+    return pairs, aux
+
+
 def _sixth_class_busy_indicators(model, busy_indicator_fn, classes, days, *,
                                  sixth_hour=13, name_prefix="sx"):
     """Shared builder for the per-(class, day) sixth-hour busy indicator.

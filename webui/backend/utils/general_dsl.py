@@ -1157,6 +1157,23 @@ def _eval_call(node: Call, env, world):
                 "no_same_class_consecutive_days richiede 1 argomento "
                 "(classe)")
         return _eval_no_same_class_consecutive_days(world, str(pos[0]))
+    if name == "slot_after_hour_penalty":
+        # SOFT pragma; as a boolean predicate it is 'satisfied' iff NO
+        # lesson occupies a slot at/after the threshold hour. The trailing
+        # weight arg is the CP soft-cost weight and is ignored here -- the
+        # post-hoc evaluator scores soft rules flat-by-violation and the
+        # rule's own DB weight is supplied by the metaheuristic layer.
+        if len(pos) < 1:
+            raise DSLError(
+                "slot_after_hour_penalty richiede (threshold_hour[, peso])")
+        return _eval_slot_after_hour_penalty(world, int(pos[0]))
+    if name == "teacher_max_hours_after":
+        if len(pos) < 2:
+            raise DSLError(
+                "teacher_max_hours_after richiede "
+                "(threshold_hour, max_n[, peso])")
+        return _eval_teacher_max_hours_after(
+            world, int(pos[0]), int(pos[1]))
     if name == "class_present_at_hour":
         if len(pos) != 2:
             raise DSLError(
@@ -1356,6 +1373,45 @@ def _eval_no_same_class_consecutive_days(world: dict, cl: str) -> bool:
         if (d + 1) in days:
             return False
     return True
+
+
+def _eval_slot_after_hour_penalty(world: dict, threshold_hour: int) -> bool:
+    """SOFT 'avoid afternoons / late slots' as a boolean predicate:
+    satisfied iff no lesson occupies a slot at ``hour >= threshold_hour``.
+    Mirrors the CP ``_compile_slot_after_hour_penalty`` (which penalises
+    each such slot)."""
+    for l in world.get("lessons", []):
+        h = l.get("hour")
+        if h is None:
+            continue
+        try:
+            if int(h) >= threshold_hour:
+                return False
+        except (TypeError, ValueError):
+            continue
+    return True
+
+
+def _eval_teacher_max_hours_after(world: dict, threshold_hour: int,
+                                  max_n: int) -> bool:
+    """SOFT 'max N hours after T' as a boolean predicate: satisfied iff
+    every (teacher, day) occupies at most ``max_n`` slots at
+    ``hour >= threshold_hour``. Mirrors the CP
+    ``_compile_teacher_max_hours_after`` (which penalises the excess)."""
+    counts: dict[tuple[str, int], int] = {}
+    for l in world.get("lessons", []):
+        t = l.get("teacher")
+        d = l.get("day")
+        h = l.get("hour")
+        if t is None or d is None or h is None:
+            continue
+        try:
+            if int(h) >= threshold_hour:
+                key = (t, int(d))
+                counts[key] = counts.get(key, 0) + 1
+        except (TypeError, ValueError):
+            continue
+    return all(c <= max_n for c in counts.values())
 
 
 def _eval_class_present_at_hour(world: dict, cl: str, hr: int) -> bool:
