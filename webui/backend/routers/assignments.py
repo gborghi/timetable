@@ -2,12 +2,33 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from .. import models, schemas, optimization
 from ..db import get_db
 
 router = APIRouter(prefix="/api/assignments", tags=["assignments"])
+
+
+class _AssignmentRestoreItem(BaseModel):
+    """One assignment snapshot to recreate (the shape list_assignments
+    returns, ids dropped). Used by bulk/restore to power the UNDO of a
+    bulk delete."""
+    teacher_id: int
+    class_id: int | None = None
+    group_id: int | None = None
+    subject: str
+    hours: int = 0
+    locked: bool = False
+    coteach_group_id: int | None = None
+    is_support: bool = False
+    is_potenziamento: bool = False
+    parallel_group_id: int | None = None
+
+
+class _BulkRestoreIn(BaseModel):
+    items: list[_AssignmentRestoreItem]
 
 
 def _assignment_dict(a, t, c, g=None):
@@ -191,6 +212,37 @@ def bulk_delete_assignments(payload: schemas.BulkAssignmentIdsIn,
     db.commit()
     return {
         "ok": n_applied > 0 or not payload.ids,
+        "n_applied": n_applied,
+        "n_skipped": n_skipped,
+        "errors": errors,
+    }
+
+
+@router.post("/bulk/restore", response_model=schemas.BulkAssignmentResultOut)
+def bulk_restore_assignments(payload: _BulkRestoreIn,
+                             db: Session = Depends(get_db)):
+    """Recreate assignments from snapshots (UNDO of a bulk delete). New
+    rows get fresh ids; a snapshot whose teacher no longer exists is
+    skipped. XOR(class_id, group_id) is the caller's responsibility (the
+    snapshots come straight from list_assignments)."""
+    n_applied = 0
+    n_skipped = 0
+    errors: list[str] = []
+    for it in payload.items:
+        if db.get(models.Teacher, it.teacher_id) is None:
+            n_skipped += 1
+            errors.append(f"teacher_id={it.teacher_id}: docente inesistente")
+            continue
+        db.add(models.Assignment(
+            teacher_id=it.teacher_id, class_id=it.class_id,
+            group_id=it.group_id, subject=it.subject, hours=it.hours,
+            locked=it.locked, coteach_group_id=it.coteach_group_id,
+            is_support=it.is_support, is_potenziamento=it.is_potenziamento,
+            parallel_group_id=it.parallel_group_id))
+        n_applied += 1
+    db.commit()
+    return {
+        "ok": n_applied > 0 or not payload.items,
         "n_applied": n_applied,
         "n_skipped": n_skipped,
         "errors": errors,

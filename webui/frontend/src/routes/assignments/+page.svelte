@@ -213,15 +213,39 @@
     if (!confirm(`Eliminare ${selectedIds.size} cattedre selezionate?`)) return;
     bulkBusy = true;
     try {
+      // Snapshot the selected rows (full fields: teacher_id/class_id/
+      // group_id/flags) BEFORE deleting, so the UNDO can recreate them.
+      // bulk/restore ignores the extra denormalized keys (id, *_name).
+      let snaps = [];
+      try {
+        const sel = new Set(selectedIds);
+        const all = await api.get('/api/assignments');
+        snaps = (all || []).filter((a) => sel.has(a.id));
+      } catch { snaps = []; }
       const r = await api.post('/api/assignments/bulk/delete', {
         ids: [...selectedIds],
       });
-      flash(`Eliminate ${r.n_applied} cattedre`
-            + (r.n_skipped ? ` (${r.n_skipped} saltate)` : ''),
-            r.errors?.length ? 'warning' : 'success');
       clearSelection();
       await reload();
       await refreshDataset();
+      flash(`Eliminate ${r.n_applied} cattedre`
+            + (r.n_skipped ? ` (${r.n_skipped} saltate)` : ''),
+            r.errors?.length ? 'warning' : 'success',
+            snaps.length ? { action: {
+              label: 'Annulla',
+              fn: async () => {
+                try {
+                  const rr = await api.post(
+                    '/api/assignments/bulk/restore', { items: snaps });
+                  await reload();
+                  await refreshDataset();
+                  flash(`Ripristinate ${rr.n_applied} cattedre`,
+                        rr.n_applied === snaps.length ? 'success' : 'warning');
+                } catch (e) {
+                  flash('Annullamento fallito: ' + (e.message || e), 'error');
+                }
+              },
+            } } : undefined);
     } catch (e) {
       flash('Errore: ' + e.message, 'error');
     } finally {

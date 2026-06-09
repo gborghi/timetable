@@ -217,12 +217,46 @@
   async function eliminaLesson() {
     if (!actionLesson) return;
     if (!confirm('Eliminare definitivamente questa lezione?')) return;
+    const snap = { ...actionLesson };
     try {
-      await api.del('/api/lessons/' + actionLesson.id);
-      flash('Lezione eliminata', 'success');
+      await api.del('/api/lessons/' + snap.id);
       closeActions();
       await loadCalendar();
       await refreshDataset();
+      // UNDO recreates the lesson via /api/schedule/lesson. Only offered
+      // for class-bound lessons (the add endpoint takes class_name, not a
+      // group); the slot was just freed so on_conflict='dry_run' creates it.
+      const canUndo = !!snap.class_name && snap.day != null
+        && snap.hour != null;
+      flash('Lezione eliminata', 'success',
+        canUndo ? { action: {
+          label: 'Annulla',
+          fn: async () => {
+            try {
+              const r = await api.post('/api/schedule/lesson', {
+                class_name: snap.class_name,
+                teacher_name: snap.teacher_name,
+                subject: snap.subject ?? null,
+                classroom_name: snap.classroom_name ?? null,
+                day: snap.day, hour: snap.hour,
+                on_conflict: 'dry_run',
+                cotaught_with: snap.cotaught_with
+                  ? String(snap.cotaught_with).split(',').filter(Boolean)
+                  : [],
+              });
+              await loadCalendar();
+              await refreshDataset();
+              if (r && r.conflict) {
+                flash('Ripristino non riuscito: lo slot e di nuovo occupato.',
+                      'warning');
+              } else {
+                flash('Eliminazione annullata', 'success');
+              }
+            } catch (e) {
+              flash('Annullamento fallito: ' + (e.message || e), 'error');
+            }
+          },
+        } } : undefined);
     } catch (e) { flash('Errore: ' + e.message, 'error'); }
   }
   async function setLessonRoom(lessonId, roomName) {
@@ -244,6 +278,9 @@
 
   // ---- Drag-drop / pool drop -------------------------------------
   async function onLessonMove(lessonId, day, hour) {
+    // Remember the origin slot so an accepted move can be undone.
+    const _src0 = lessons.find((l) => l.id === lessonId);
+    const _oldDay = _src0?.day, _oldHour = _src0?.hour;
     try {
       const r = await api.post('/api/lessons/' + lessonId + '/move',
                                 { day, hour });
@@ -264,7 +301,26 @@
       if (r && r.accepted === false) {
         flash('Mossa rifiutata: ' + (r.reason || 'vincolo violato'), 'error');
       } else {
-        flash(r?.reason || 'Lezione spostata', 'success');
+        // Offer UNDO only for a clean move (not when a room was cleared --
+        // moving back would not un-clear it, so the undo would be partial).
+        const canUndo = r && r.accepted && !r.room_cleared
+          && _oldDay != null && _oldHour != null
+          && !(_oldDay === day && _oldHour === hour);
+        flash(r?.reason || 'Lezione spostata', 'success',
+          canUndo ? { action: {
+            label: 'Annulla',
+            fn: async () => {
+              try {
+                await api.post('/api/lessons/' + lessonId + '/move',
+                                { day: _oldDay, hour: _oldHour });
+                await loadCalendar();
+                await refreshDataset();
+                flash('Spostamento annullato', 'success');
+              } catch (e) {
+                flash('Annullamento fallito: ' + (e.message || e), 'error');
+              }
+            },
+          } } : undefined);
         if (r && r.accepted && r.room_cleared) {
           roomClearedNotice = {
             room: r.cleared_room, day, hour,

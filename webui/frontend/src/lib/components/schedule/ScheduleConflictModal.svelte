@@ -39,9 +39,12 @@
   $: hasClass   = (details.class_busy   || []).length > 0;
   $: hasRoom    = (details.room_busy    || []).length > 0;
 
+  const _DAYS_IT = ['', 'lun', 'mar', 'mer', 'gio', 'ven', 'sab'];
   function describe(r) {
+    const when = (r.day != null && r.hour != null)
+      ? ` [${_DAYS_IT[r.day] || ('g' + r.day)} ${r.hour}:00]` : '';
     return `${r.class_name} - ${r.subject} (${r.teacher_name})`
-         + (r.classroom_name ? ` in ${r.classroom_name}` : '');
+         + (r.classroom_name ? ` in ${r.classroom_name}` : '') + when;
   }
 </script>
 
