@@ -1,5 +1,33 @@
 # Unified-SOFT + General-Constraints — autonomous work log
 
+## ✅ FOLLOW-UPS COMPLETE (2026-06-09) — all 4 logged items done + pushed
+
+1. **classify_diagnostic colon labels** (`engine/constraint_compat.py`) — peel known
+   trailing suffixes (`:bp:not_modeled_in_pricer`, `:refinement:exhausted`) from the
+   right + handle `compile_failed_extra`; colon-bearing CG/BP + refinement expr
+   labels are preserved whole (no longer split). Test `test_constraint_compat.py`.
+2. **Per-day DSL surfacing** (`webui/backend/optimization.py`) — the monolithic
+   per-day loop loads DB HARD DSL once and threads `via_dsl` /
+   `extra_dsl_expressions` / a shared `diagnostics_sink`; per-day-modelable rules
+   enforced, cross-day/unsupported skipped + surfaced via pure
+   `_per_day_dsl_warning_lines` -> `[phaseB.day][WARN]`. Zero drift when no HARD DSL.
+   Test `test_per_day_dsl_surfacing.py`.
+3. **Time-threshold SOFT pragmas** — `slot_after_hour_penalty(threshold_hour,weight)`
+   ('avoid afternoons') and `teacher_max_hours_after(threshold_hour,max_n,weight)`
+   ('max N hours after T'). One source across 3 layers: `soft_costs.py`
+   (`late_slot_pairs`, `teacher_late_excess_pairs`) -> `dsl_to_cpsat.py` (compile +
+   phase_b PRAGMA_LEVEL) -> `general_dsl.py` (boolean eval, round-trips through meta).
+   threshold_hour in slot-hour units; translator maps clock->index. Test
+   `test_time_threshold_soft_pragmas.py`.
+4. **Q5: general_dsl relocated into engine** — `git mv` to `engine/general_dsl.py`;
+   old path is a `sys.modules` alias shim so all 3 import names resolve to ONE module
+   object (kills the dual-module AST hazard structurally). Engine importers flipped to
+   flat `import general_dsl`; `build_world(db)` keeps a lazy ABSOLUTE webui import
+   (webui-only). Verified `flat is shim == True`, cross-name isinstance True.
+
+Verification: full fast backend suite **740 passed** (2 perf-budget wall-clock flakes,
+confirmed passing isolated — not regressions).
+
 ## ✅✅ GOAL COMPLETE (2026-06-09) — summary
 
 All directives addressed:
