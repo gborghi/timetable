@@ -34,6 +34,15 @@ The single most important fact up front:
    sides) are **diagnosed and skipped**, not silently dropped — the diagnostic
    is collected on `MonolithicSolver.dsl_diagnostics`.
 
+   > **Convenience pragmas.** Some common forbid-pair / quantified shapes also
+   > have a friendly named form that compiles + evaluates identically to the
+   > verbose expression. E.g. `no_same_class_consecutive_days(cl)` ≡
+   > `forall l1 in lessons where l1.class == cl: forall l2 in lessons where
+   > l2.class == cl: not consecutive_days(l1.day, l2.day)` — for class `cl`, no
+   > two of its lessons fall on adjacent days. Honored in both the post-hoc
+   > evaluator and the CP compiler (HARD → forbid-pair `BoolOr`; SOFT → weighted
+   > co-selection penalty).
+
 2. **Post-hoc verification** (`dsl_cp_gate.verify_dsl_hard`). The general DSL
    evaluator can check **any** grammar expression against a finished solution.
    This drives (a) the monolithic week's no-good refinement loop, (b) the

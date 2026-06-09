@@ -454,6 +454,7 @@ PRAGMA_LEVEL: dict[str, str] = {
     # Phase B (slot Bool) pragmas
     "no_holes_class": "phase_b",
     "no_holes_all_classes": "phase_b",
+    "no_same_class_consecutive_days": "phase_b",
     "class_present_at_hour": "phase_b",
     "class_present_at_hour_all": "phase_b",
     "teacher_max_per_day": "phase_b",
@@ -1048,6 +1049,15 @@ class DSLConstraintCompiler:
             for cl in sorted({k[1] for k in self.slot}):
                 self._compile_no_holes_for_class(cl)
             return True
+        if name == "no_same_class_consecutive_days":
+            if len(arg_values) != 1:
+                self.diagnostics.append(
+                    f"no_same_class_consecutive_days expects 1 arg, "
+                    f"got {len(arg_values)}")
+                return True
+            self._compile_no_same_class_consecutive_days(
+                str(arg_values[0]))
+            return True
         if name == "class_present_at_hour":
             if len(arg_values) != 2:
                 self.diagnostics.append(
@@ -1311,6 +1321,51 @@ class DSLConstraintCompiler:
             return owner._build_class_busy_indicators(
                 cl, d, h, name_suffix=f"dsl_{name_suffix}")
         return self._slots_for_class_day_hour(cl, d, h)
+
+    def _compile_no_same_class_consecutive_days(self, cl: str):
+        """Convenience pragma: for class ``cl``, no two of its lessons
+        fall on consecutive days. Equivalent to the verbose
+
+            forall l1 in lessons where l1.class == cl:
+              forall l2 in lessons where l2.class == cl:
+                not consecutive_days(l1.day, l2.day)
+
+        Emits the same forbid-pair constraints as the nested-forall
+        static path (``_compile_dynamic_forall_body``): for every pair
+        of slot keys of ``cl`` on adjacent days (``abs(d1-d2)==1``) the
+        two slots cannot both be selected. HARD -> ``AddBoolOr`` of the
+        negations; SOFT -> reify the co-selection and weight it.
+        """
+        keys = [k for k in self.slot if k[1] == cl]
+        seen: set[tuple] = set()
+        for k1 in keys:
+            d1 = k1[3]
+            for k2 in keys:
+                if k1 is k2:
+                    continue
+                d2 = k2[3]
+                if abs(int(d1) - int(d2)) != 1:
+                    continue
+                pair = (k1, k2) if id(k1) <= id(k2) else (k2, k1)
+                if pair in seen:
+                    continue
+                seen.add(pair)
+                if self.is_hard:
+                    self.model.AddBoolOr([
+                        self.slot[k1].Not(),
+                        self.slot[k2].Not(),
+                    ])
+                else:
+                    b = self.model.NewBoolVar(
+                        f"_dsl_nscd_{id(k1)}_{id(k2)}")
+                    self.model.AddBoolAnd([
+                        self.slot[k1], self.slot[k2],
+                    ]).OnlyEnforceIf(b)
+                    self.model.AddBoolOr([
+                        self.slot[k1].Not(),
+                        self.slot[k2].Not(),
+                    ]).OnlyEnforceIf(b.Not())
+                    self.soft_cost_terms.append((self.soft_weight, b))
 
     def _compile_no_holes_for_class(self, cl: str):
         """Class no-holes: per (class, day) the busy slots are

@@ -1147,6 +1147,16 @@ def _eval_call(node: Call, env, world):
     if name == "no_holes_all_classes":
         return all(_eval_no_holes_class(world, cl)
                    for cl in _classes_in_lessons(world))
+    if name == "no_same_class_consecutive_days":
+        # Convenience shorthand for the nested-forall-over-lessons form:
+        #   forall l1 where l1.class == cl:
+        #     forall l2 where l2.class == cl:
+        #       not consecutive_days(l1.day, l2.day)
+        if len(pos) != 1:
+            raise DSLError(
+                "no_same_class_consecutive_days richiede 1 argomento "
+                "(classe)")
+        return _eval_no_same_class_consecutive_days(world, str(pos[0]))
     if name == "class_present_at_hour":
         if len(pos) != 2:
             raise DSLError(
@@ -1315,6 +1325,35 @@ def _eval_no_holes_class(world: dict, cl: str) -> bool:
         k = len(busy)
         prefix = set(hours[:k])
         if busy != prefix:
+            return False
+    return True
+
+
+def _eval_no_same_class_consecutive_days(world: dict, cl: str) -> bool:
+    """No two lessons of class ``cl`` fall on consecutive days.
+
+    Mirrors the verbose nested-forall form
+    ``forall l1, l2 in lessons (class==cl): not
+    consecutive_days(l1.day, l2.day)`` and the compiler's
+    ``_compile_no_same_class_consecutive_days`` forbid-pair path.
+    Returns False as soon as the class occupies two days ``d1, d2``
+    with ``abs(d1 - d2) == 1``.
+    """
+    days: set[int] = set()
+    for l in world.get("lessons", []):
+        if l.get("_is_group"):
+            continue
+        if l.get("class") != cl:
+            continue
+        d = l.get("day")
+        if d is None:
+            continue
+        try:
+            days.add(int(d))
+        except (TypeError, ValueError):
+            continue
+    for d in days:
+        if (d + 1) in days:
             return False
     return True
 
