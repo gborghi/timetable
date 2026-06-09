@@ -7,6 +7,7 @@
   import DbImportExportCard from '$lib/components/dashboard/DbImportExportCard.svelte';
   import ConstraintsImportExportCard from '$lib/components/dashboard/ConstraintsImportExportCard.svelte';
   import DecorIcon from '$lib/components/DecorIcon.svelte';
+  import Button from '$lib/components/Button.svelte';
 
   // Graph panel: hidden by default; user clicks "Visualizza grafo" to
   // render. Mode toggle: classes-as-nodes vs teachers-as-nodes.
@@ -227,12 +228,13 @@
         </div>
 
         <div class="flex items-center gap-3">
-          <button class="btn-primary"
-                  on:click={importPickle}
-                  disabled={busyImport || availableProfiles.length === 0}
+          <Button variant="primary"
+                  loading={busyImport}
+                  disabled={availableProfiles.length === 0}
+                  onclick={importPickle}
                   data-testid="dashboard-import-btn">
             Importa
-          </button>
+          </Button>
           <button class="btn" on:click={autoGenerateClassrooms}>
             Rigenera solo aule
           </button>
@@ -272,9 +274,9 @@
         </div>
       </div>
       <div class="mt-4">
-        <button class="btn-primary" on:click={generateMock} disabled={busyMock}>
+        <Button variant="primary" loading={busyMock} onclick={generateMock}>
           Genera
-        </button>
+        </Button>
         <span class="text-xs text-ink-500 ml-2">
           Sostituisce classi/docenti del DB.
         </span>
