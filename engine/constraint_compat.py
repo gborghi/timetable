@@ -30,15 +30,41 @@ class ConstraintWarning:
         return asdict(self)
 
 
+# Trailing reason markers whose *label* field is a full DSL expression that
+# may itself contain colons (CG/BP and week-refinement diagnostics). These
+# are stripped from the right so the colon-bearing expression survives intact.
+_COMPILE_FAILED_SUFFIXES = (
+    ":bp:not_modeled_in_pricer",
+    ":refinement:exhausted",
+)
+
+
 # category detection from the existing diagnostic string forms
 def classify_diagnostic(diag: str) -> tuple[str, str, str]:
     """Return (category, constraint_label, reason)."""
     d = diag.strip()
-    if d.startswith("compile_failed"):
-        parts = d.split(":", 3)
-        label = parts[1] if len(parts) > 1 else "(unknown)"
-        reason = (parts[3] if len(parts) > 3 else d)
+    # The per-day 'extra' form carries no constraint label:
+    #   compile_failed_extra:<ExcType>:<excmsg>
+    if d.startswith("compile_failed_extra:"):
+        rest = d[len("compile_failed_extra:"):]
+        return "compile_failed", "(construct)", f"compile error: {rest}"
+    if d.startswith("compile_failed:"):
+        rest = d[len("compile_failed:"):]
+        # CG/BP + refinement: <expr>:<fixed-suffix>. The expression may carry
+        # colons, so peel the known suffix from the right, not by maxsplit.
+        for suf in _COMPILE_FAILED_SUFFIXES:
+            if rest.endswith(suf):
+                label = rest[: -len(suf)]
+                reason = suf.lstrip(":")
+                return "compile_failed", label, f"compile error: {reason}"
+        # Per-day form: <label>:<ExcType>:<excmsg>. label is the first field;
+        # keep the (possibly colon-bearing) message tail intact via maxsplit=2.
+        parts = rest.split(":", 2)
+        label = parts[0] if parts[0] else "(unknown)"
+        reason = parts[2] if len(parts) > 2 else rest
         return "compile_failed", label, f"compile error: {reason}"
+    if d.startswith("compile_failed"):  # bare/no-colon fallback
+        return "compile_failed", "(unknown)", f"compile error: {d}"
     if d.startswith("db_load_failed") or d.startswith(
             "dsl_augmentation_failed"):
         return "load_failed", "(rule set)", d

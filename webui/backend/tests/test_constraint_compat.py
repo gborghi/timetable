@@ -45,6 +45,38 @@ def test_classify_and_summarize_compile_failed():
     assert all(isinstance(w.to_dict(), dict) for w in warns)
 
 
+def test_classify_colon_bearing_expr_label_not_truncated():
+    """CG/BP and week-refinement embed the full DSL *expression* as the
+    label, and such expressions legitimately contain colons (e.g.
+    ``forall t in teachers: ...``). The classifier must preserve the whole
+    expression as the constraint label instead of splitting on its colon."""
+    import constraint_compat as cc
+    expr = "forall t in teachers: count(t, mon) <= 2"
+    diags = [
+        f"compile_failed:{expr}:bp:not_modeled_in_pricer",
+        f"compile_failed:{expr}:refinement:exhausted",
+    ]
+    warns = cc.summarize(diags, pipeline="branch_and_price")
+    assert len(warns) == 2, warns
+    for w in warns:
+        assert w.constraint == expr, w.constraint
+        assert w.raw  # original diagnostic preserved
+    reasons = " ".join(w.reason for w in warns)
+    assert "pricer" in reasons
+    assert "exhausted" in reasons
+
+
+def test_classify_compile_failed_extra_has_no_label():
+    """The per-day 'extra' form ``compile_failed_extra:<ExcType>:<msg>`` has
+    no constraint label; it must not crash and should carry the message."""
+    import constraint_compat as cc
+    warns = cc.summarize(
+        ["compile_failed_extra:KeyError:boom"], pipeline="per_day_cpsat")
+    assert len(warns) == 1
+    assert "boom" in warns[0].reason
+    assert warns[0].severity == "error"
+
+
 def test_summarize_drops_info_and_dedups():
     import constraint_compat as cc
     diags = [
