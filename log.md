@@ -1,5 +1,39 @@
 # Unified-SOFT + General-Constraints — autonomous work log
 
+## ✅ FRONTEND AUDIT + IMPLEMENTATION (2026-06-09) — pushed to origin/main
+
+Audit doc: `docs/frontend_audit_2026-06-09.md` (3 axes: use-cases/gaps, vincoli
+xlsx feasibility, css/js). Then implemented the backlog:
+
+- **Tooltips**: `src/lib/actions/tooltip.ts` (2s hover, focus-immediate, portal,
+  pure `computeTooltipPosition` tested) on nav + Phase B solver enums.
+- **20 decorative SVGs** (`static/decor/`, Recraft vector, transparent) +
+  `DecorIcon.svelte` + manifest; placed in 20 page headers + empty-states.
+- **`Button.svelte`** (variants + loading spinner, `button_variants.ts` tested).
+- **UX perf**: RunLogPanel scroll-preserve; WeeklyCalendarView dragover
+  re-render guard; dashboard skeletons (`datasetLoading`/`datasetEverLoaded`).
+- **Empty-states**: illustrated empty branch in `SortableQueryableList` (all
+  list pages at once).
+- **Color tokens**: GroupedEventsTable/RoomDropdown/FeasibilityPanel hex →
+  Tailwind (chart/graph palettes intentionally kept).
+- **/import dry-run**: backend `dry=true` (commit→flush+rollback, no persist;
+  2 tests) + frontend "Anteprima" button. (The page was already functional —
+  the audit's "shell" was a misread.)
+- **Vincoli xlsx language**: `_vincoli_parser.py` (row→DSL/ORM intent, DSL
+  round-trip tested) + `template-vincoli`/`import-vincoli` endpoints + UI card.
+  9 tests. Plesso rows deferred (niche).
+- **Feasibility badge** on dashboard active solution.
+
+**Deferred (need NEW backend support, flagged not hacked):** schedule drag-drop
+undo + conflict drill-down list, and assignment/lesson bulk-delete undo — there
+is no assignment-restore / lesson-recreate endpoint, so faithful undo needs
+backend work first. Recommended as the next milestone.
+
+Verify: `npm test` (46) + `npm run check` (0 errors) + `npm run build` green;
+backend import/vincoli tests green. Dev servers: backend :8000, frontend :5173.
+
+
+
 ## ✅ FOLLOW-UPS COMPLETE (2026-06-09) — all 4 logged items done + pushed
 
 1. **classify_diagnostic colon labels** (`engine/constraint_compat.py`) — peel known
