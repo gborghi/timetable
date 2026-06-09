@@ -30,6 +30,7 @@
   import { api } from '../api';
   import { flash } from '../stores';
   import { savedViews as savedViewsSvc } from '../services';
+  import DecorIcon from './DecorIcon.svelte';
 
   // Tracks whether this component is still mounted. We use it to
   // ignore async responses that resolve AFTER the component has
@@ -605,9 +606,15 @@
         {:else if !firstLoad && rows.length === 0 && !error}
           {@const colSpan = columns.length + (selectable ? 2 : 1)}
           <tr>
-            <td colspan={colSpan} class="text-center text-ink-400 italic py-6">
-              {q ? 'Nessun risultato per questa ricerca.'
-                 : 'Lista vuota. Crea o importa elementi per cominciare.'}
+            <td colspan={colSpan} class="py-8">
+              <div class="flex flex-col items-center gap-2 text-ink-400">
+                <DecorIcon name={q ? 'magnifier' : 'lightbulb'} size={52}
+                           class="opacity-70" />
+                <p class="italic text-center">
+                  {q ? 'Nessun risultato per questa ricerca.'
+                     : 'Lista vuota. Crea o importa elementi per cominciare.'}
+                </p>
+              </div>
             </td>
           </tr>
         {/if}
