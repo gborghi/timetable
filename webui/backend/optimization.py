@@ -802,7 +802,19 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                         }
                         full_solution.update(out)
             else:
-                # monolithic per day -- locks + coteach + sostegno + parallel
+                # monolithic per day -- locks + coteach + sostegno + parallel.
+                # Per-day DSL: enforce DB HARD rules the single-day CP can
+                # model; cross-day / unsupported rules are skipped with a
+                # diagnostic and delegated to the metaheuristic post-pass.
+                # When there are no HARD DSL rules ``via_dsl`` stays False and
+                # the call is byte-identical to the pre-wiring path (zero
+                # drift on non-DSL runs).
+                try:
+                    with SessionLocal() as _db_h:
+                        _dsl_hard = _load_dsl_hard_expressions(_db_h)
+                except Exception:
+                    _dsl_hard = None
+                _dsl_sink: list[str] = []
                 for d in DAYS:
                     out, status = cv2.solve_phase_b_for_day(
                         d, profs, classes, triples, class_profs, dc_value,
@@ -812,6 +824,9 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                         support_assignments=support_assignments or None,
                         parallel_groups=parallel_groups or None,
                         group_assignments=group_assignments or None,
+                        via_dsl=bool(_dsl_hard),
+                        extra_dsl_expressions=_dsl_hard or None,
+                        diagnostics_sink=_dsl_sink,
                     )
                     if out is None and locked_by_day.get(d):
                         raise RuntimeError(
@@ -821,6 +836,9 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                         )
                     if out is not None:
                         full_solution.update(out)
+                # Surface what the per-day CP could not enforce (RunLog).
+                for _ln in _per_day_dsl_warning_lines(_dsl_sink):
+                    print(_ln)
 
         with open(os.path.join(ws, "solution.pkl"), "wb") as f:
             pickle.dump(full_solution, f)
@@ -1196,6 +1214,31 @@ def _load_dsl_hard_expressions(db) -> list[str] | None:
         return exprs or None
     except Exception:
         return None
+
+
+def _per_day_dsl_warning_lines(diagnostics) -> list[str]:
+    """Format per-day Phase-B DSL diagnostics into RunLog warning lines.
+
+    Pure: turns the free-text ``diagnostics_sink`` collected across the day
+    solves into structured ``[phaseB.day][WARN]`` lines via
+    ``constraint_compat.summarize`` (drops info lines, dedups). Mirrors the
+    week path's ``[phaseB.week][WARN]`` surfacing so the frontend sees, for
+    cross-day / unsupported rules the per-day CP couldn't model, *which*
+    constraint was not enforced and what to do (typically: run a
+    metaheuristic post-pass, which evaluates every DSL rule post-hoc).
+    """
+    if not diagnostics:
+        return []
+    try:
+        from engine import constraint_compat as _cc  # type: ignore
+    except ImportError:
+        import constraint_compat as _cc  # type: ignore
+    lines = []
+    for w in _cc.summarize(diagnostics, pipeline="per_day_cpsat"):
+        lines.append(
+            f"[phaseB.day][WARN] DSL rule not enforced per-day "
+            f"({w.constraint}): {w.reason}. {w.suggestion}")
+    return lines
 
 
 def run_meta(stage: str, budget_s: float, workers: int, log: bool,
