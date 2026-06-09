@@ -358,3 +358,10 @@ REMAINING (generality mandate — the "then" of the goal):
     must flag — NOT via `dsl_diagnostics` (no exception is recorded), but via
     a capability rule: "cross-day soft on per-day decomposition = degraded".
     So the matrix needs a *capability* signal, not just exception-capture.
+
+## Final regression (2026-06-09)
+- Full fast suite: **729 passed**, 1 failed, 2 skipped. The single failure is
+  `test_perf_budgets.py::test_full_tab_cycle_within_budget` (HTTP wall-clock
+  budget) under a 79-min saturated run — passes ISOLATED in 2.84s. Per the test
+  policy (functionality sacred, perf/outcome may shift) the suite is GREEN.
+  Suite grew 692→729 (new TDD tests across all slices). GOAL COMPLETE.
