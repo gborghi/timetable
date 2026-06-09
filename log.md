@@ -429,3 +429,20 @@ REMAINING (generality mandate — the "then" of the goal):
   budget) under a 79-min saturated run — passes ISOLATED in 2.84s. Per the test
   policy (functionality sacred, perf/outcome may shift) the suite is GREEN.
   Suite grew 692→729 (new TDD tests across all slices). GOAL COMPLETE.
+
+## Documentation goal (2026-06-09): COMPLETE — pushed 69af003
+Audited the LaTeX manual + companion markdown; shipped content + aesthetic refresh.
+- **Content** reflecting the unified-soft + full-DSL work and the frontend audit:
+  - `dsl_generico_per_i_vincoli.tex` §Conformità DSL universale (soft_costs single
+    source, universal metaheuristic solver, no-good refinement, CG delega,
+    constraint_compat, 3 new time-threshold pragmas).
+  - `vincoli.tex` §Caricare i vincoli da xlsx (Vincoli vocabulary table +
+    template-vincoli/import-vincoli endpoints); added `\label{sec:cinque-stati}`.
+  - `guida_ui.tex` §Novità dell'interfaccia (tooltip 2s, dry-run, undo, spinner
+    buttons, skeletons, decor SVGs).
+  - `api_rest.tex` bulk/{delete,restore}, import `?dry=true`, Vincoli xlsx group.
+  - `docs/general_dsl.md` + `webui/docs/import_format.md` matching prose.
+- **Aesthetics** (`preamble.tex`): `novitabox` tcolorbox (cAllow/cEnf) + warm
+  `cAvorio!35` listing background.
+- **Build**: lualatex+biber+makeindex, both manuals — `manual.pdf` 4.99 MB,
+  `manual_en.pdf` 1.69 MB, exit 0, no undefined refs/`??`. Committed PDFs + sources.
