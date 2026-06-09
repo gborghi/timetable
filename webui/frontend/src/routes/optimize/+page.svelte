@@ -8,6 +8,7 @@
   import AdvancedTechniquesCard from
     '$lib/components/optimize/AdvancedTechniquesCard.svelte';
   import { PIPELINE_LABEL } from '$lib/pipeline_labels';
+  import { tooltip } from '$lib/actions/tooltip';
 
   let runId = null;
   let runs = [];
@@ -375,7 +376,7 @@
       <div class="mt-3 p-3 rounded border border-ink-200 bg-ink-50/40 space-y-3">
         <p class="text-xs font-medium">Solver CP-SAT (avanzato)</p>
         <div class="field">
-          <label>Scope del solver CP-SAT</label>
+          <label use:tooltip={"Come il solver affronta la settimana. Per giorno: risolve un giorno alla volta (veloce, scalabile, default). Settimana intera: un unico modello CP-SAT su tutta la settimana, piu robusto con compresenze/sostegno/gruppi ma piu lento."}>Scope del solver CP-SAT</label>
           <select bind:value={step3.cp_sat_scope}
                   on:change={coercePhaseAModeForScope}
                   data-testid="optimize-cp-sat-scope">
@@ -391,7 +392,7 @@
           </small>
         </div>
         <div class="field">
-          <label>Modalità Phase A
+          <label use:tooltip={"Come la distribuzione settimanale delle ore (Phase A) entra nella Fase B. Sempre: calcolata e imposta (obbligatoria con scope = Per giorno). Skip: omessa (solo scope = Settimana). Soft hint: passata come suggerimento non vincolante al solver settimanale."}>Modalità Phase A
             <span class="text-[10px] text-ink-400">(distribuzione settimanale ore)</span>
           </label>
           <select bind:value={step3.phase_a_mode}

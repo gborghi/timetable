@@ -7,6 +7,7 @@
            startNetworkMonitor } from '$lib/stores';
   import { queryClient } from '$lib/queries/client';
   import Toast from '$lib/components/Toast.svelte';
+  import { tooltip } from '$lib/actions/tooltip';
 
   // Brand assets: paths into webui/frontend/static/branding/. The
   // SVG placeholder ships with the repo (logo_light.svg); when Giovanni
@@ -32,34 +33,58 @@
   // ottimizzazione. Gestione raggruppa tutto cio' che riguarda la
   // gestione operativa post-orario (assenze, supplenze, ...).
   const navGroups = [
-    { kind: 'link', href: '/', label: 'Dashboard', exact: true },
-    { kind: 'menu', label: 'Anagrafica', children: [
-      { href: '/teachers',   label: 'Docenti'   },
-      { href: '/classes',    label: 'Classi'    },
-      { href: '/curricula',  label: 'Indirizzi' },
-      { href: '/students',   label: 'Studenti'  },
-      { href: '/groups',     label: 'Gruppi'    },
-      { href: '/subjects',   label: 'Materie'   },
-      { href: '/classrooms', label: 'Aule'      },
-      { href: '/plessi',     label: 'Plessi'    },
-      { href: '/ore',        label: 'Ore'       },
+    { kind: 'link', href: '/', label: 'Dashboard', exact: true,
+      hint: 'Panoramica: carica/genera la scuola, stato dei dati e dei run in corso.' },
+    { kind: 'menu', label: 'Anagrafica',
+      hint: 'I dati di base della scuola: chi insegna, quali classi, materie, aule.', children: [
+      { href: '/teachers',   label: 'Docenti',
+        hint: 'Docenti: ore, disponibilita oraria, giorni liberi, preferenze e materie insegnabili.' },
+      { href: '/classes',    label: 'Classi',
+        hint: 'Classi: monte ore per materia, indirizzo, n. studenti e vincoli di classe.' },
+      { href: '/curricula',  label: 'Indirizzi',
+        hint: 'Indirizzi (curricula): il piano orario per anno di corso, riusabile fra classi.' },
+      { href: '/students',   label: 'Studenti',
+        hint: 'Studenti: anagrafica, tag e appartenenza a gruppi.' },
+      { href: '/groups',     label: 'Gruppi',
+        hint: 'Gruppi studio: sottogruppi inter/intra-classe (potenziamento, splitting).' },
+      { href: '/subjects',   label: 'Materie',
+        hint: 'Materie: nomi, pesi di distribuzione e preferenze d\'aula.' },
+      { href: '/classrooms', label: 'Aule',
+        hint: 'Aule e laboratori: capienza, tipo, disponibilita e preferenze per materia.' },
+      { href: '/plessi',     label: 'Plessi',
+        hint: 'Plessi (sedi): regole di spostamento fra edifici e politiche per giorno.' },
+      { href: '/ore',        label: 'Ore',
+        hint: 'Tab Ore: definisce la settimana scolastica (giorni attivi e fasce orarie).' },
     ] },
-    { kind: 'menu', label: 'Pianificazione', children: [
-      { href: '/coteaching',  label: 'Compresenze' },
-      { href: '/assignments', label: 'Cattedre'    },
-      { href: '/constraints', label: 'Vincoli'     },
+    { kind: 'menu', label: 'Pianificazione',
+      hint: 'Le decisioni a monte del solver: compresenze, cattedre e vincoli.', children: [
+      { href: '/coteaching',  label: 'Compresenze',
+        hint: 'Compresenze: due o piu docenti nella stessa ora/classe (es. laboratorio).' },
+      { href: '/assignments', label: 'Cattedre',
+        hint: 'Cattedre (Fase A): assegna ogni (classe, materia) a un docente.' },
+      { href: '/constraints', label: 'Vincoli',
+        hint: 'Vincoli: regole hard/soft sull\'orario, anche in linguaggio DSL generale.' },
     ] },
-    { kind: 'link', href: '/schedule', label: 'Orario' },
-    { kind: 'menu', label: 'Gestione', children: [
-      { href: '/assenze-supplenze', label: 'Assenze e supplenze' },
+    { kind: 'link', href: '/schedule', label: 'Orario',
+      hint: 'Orario: editor settimanale drag-and-drop con anteprima dei conflitti.' },
+    { kind: 'menu', label: 'Gestione',
+      hint: 'Gestione operativa dopo l\'orario: assenze e supplenze.', children: [
+      { href: '/assenze-supplenze', label: 'Assenze e supplenze',
+        hint: 'Assenze e supplenze: copertura settimanale e riassegnazione docenti.' },
     ] },
-    { kind: 'menu', label: 'Esecuzione', children: [
-      { href: '/optimize',    label: 'Workflow'    },
-      { href: '/runs',        label: 'Runs'        },
-      { href: '/diagnostics', label: 'Statistiche' },
+    { kind: 'menu', label: 'Esecuzione',
+      hint: 'Far girare il solver e analizzare i risultati.', children: [
+      { href: '/optimize',    label: 'Workflow',
+        hint: 'Workflow: pipeline del solver (Fase A, Fase B, metaeuristiche, aule).' },
+      { href: '/runs',        label: 'Runs',
+        hint: 'Runs: storico delle esecuzioni con stato, log e metriche.' },
+      { href: '/diagnostics', label: 'Statistiche',
+        hint: 'Statistiche: pre-check Hall, Monte Carlo, matching e distribuzioni.' },
     ] },
-    { kind: 'link', href: '/monitor', label: 'Eventi' },
-    { kind: 'link', href: '/import',  label: 'Import bulk' },
+    { kind: 'link', href: '/monitor', label: 'Eventi',
+      hint: 'Eventi: editor delle cattedre/lezioni grezze con filtri e azioni di massa.' },
+    { kind: 'link', href: '/import',  label: 'Import bulk',
+      hint: 'Import bulk: carica docenti, classi, aule e altro da file xlsx/csv.' },
   ];
 
   onMount(() => {
@@ -131,6 +156,7 @@
                class:bg-ink-100={active}
                class:font-medium={active}
                aria-current={active ? 'page' : undefined}
+               use:tooltip={g.hint}
                data-testid="nav-link"
                data-nav-label={g.label}>{g.label}</a>
           {:else}
@@ -144,6 +170,7 @@
                       class:font-medium={active}
                       aria-haspopup="true"
                       aria-expanded={open}
+                      use:tooltip={g.hint}
                       data-testid="nav-menu"
                       data-nav-label={g.label}
                       on:click={() => toggleMenu(g.label)}
@@ -172,6 +199,7 @@
                        class:font-medium={childActive}
                        role="menuitem"
                        aria-current={childActive ? 'page' : undefined}
+                       use:tooltip={c.hint}
                        data-testid="nav-child-link"
                        data-nav-label={c.label}
                        on:click={closeMenu}>{c.label}</a>
