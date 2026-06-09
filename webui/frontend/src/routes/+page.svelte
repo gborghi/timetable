@@ -6,6 +6,7 @@
   import EntityGraph from '$lib/components/dashboard/EntityGraph.svelte';
   import DbImportExportCard from '$lib/components/dashboard/DbImportExportCard.svelte';
   import ConstraintsImportExportCard from '$lib/components/dashboard/ConstraintsImportExportCard.svelte';
+  import DecorIcon from '$lib/components/DecorIcon.svelte';
 
   // Graph panel: hidden by default; user clicks "Visualizza grafo" to
   // render. Mode toggle: classes-as-nodes vs teachers-as-nodes.
@@ -184,12 +185,14 @@
         <div class="field">
           <label>Profilo</label>
           {#if availableProfiles.length === 0}
-            <p class="text-xs text-ink-500 italic"
-               data-testid="dashboard-no-profiles">
-              Nessun profilo precalcolato trovato in
-              <code>engine/scripts/data/&lt;profile&gt;/</code>.
-              Genera una scuola fittizia qui sotto per popolare il DB.
-            </p>
+            <div class="flex items-center gap-3" data-testid="dashboard-no-profiles">
+              <DecorIcon name="building" size={44} class="shrink-0 opacity-80" />
+              <p class="text-xs text-ink-500 italic">
+                Nessun profilo precalcolato trovato in
+                <code>engine/scripts/data/&lt;profile&gt;/</code>.
+                Genera una scuola fittizia qui sotto per popolare il DB.
+              </p>
+            </div>
           {:else}
             <select bind:value={importProfile}
                     data-testid="dashboard-import-profile-select">

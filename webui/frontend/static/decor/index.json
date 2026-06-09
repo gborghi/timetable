@@ -1,0 +1,25 @@
+{
+  "_comment": "Decorative brand SVGs (indaco #1e3a5f + oro #c9a23a, transparent bg). Generated via recraft vector_illustration. Use via <DecorIcon name=\"...\"/> or /decor/<name>.svg.",
+  "icons": [
+    {"name": "calendar",        "label": "Calendario settimanale", "suggest": ["/ore", "schedule"]},
+    {"name": "clock",           "label": "Orologio / ora",         "suggest": ["/ore", "header"]},
+    {"name": "teacher",         "label": "Docente alla lavagna",   "suggest": ["/teachers"]},
+    {"name": "books",           "label": "Libri",                  "suggest": ["/subjects", "/curricula"]},
+    {"name": "desk",            "label": "Banco di scuola",        "suggest": ["/classes"]},
+    {"name": "graduation-cap",  "label": "Tocco di laurea",        "suggest": ["/students"]},
+    {"name": "gears",           "label": "Ingranaggi (solver)",    "suggest": ["/optimize"]},
+    {"name": "bell",            "label": "Campanella",             "suggest": ["/monitor", "header"]},
+    {"name": "pencil-ruler",    "label": "Matita e righello",      "suggest": ["/constraints"]},
+    {"name": "agenda",          "label": "Agenda aperta",          "suggest": ["/schedule"]},
+    {"name": "network",         "label": "Grafo di nodi",          "suggest": ["/optimize", "/diagnostics"]},
+    {"name": "checklist",       "label": "Checklist",              "suggest": ["/constraints"]},
+    {"name": "magnifier",       "label": "Lente su grafico",       "suggest": ["/diagnostics"]},
+    {"name": "lightbulb",       "label": "Lampadina (idea)",       "suggest": ["empty-states", "help"]},
+    {"name": "coffee",          "label": "Tazza di caffe",         "suggest": ["/assenze-supplenze"]},
+    {"name": "building",        "label": "Edificio + pin",         "suggest": ["/plessi", "dashboard"]},
+    {"name": "group",           "label": "Gruppo di persone",      "suggest": ["/groups", "/classes"]},
+    {"name": "flask",           "label": "Beuta da laboratorio",   "suggest": ["/classrooms"]},
+    {"name": "globe",           "label": "Mappamondo",             "suggest": ["/subjects"]},
+    {"name": "trophy",          "label": "Coppa con stella",       "suggest": ["/runs", "results"]}
+  ]
+}
