@@ -78,6 +78,11 @@ from typing import Any
 
 from ortools.sat.python import cp_model
 
+try:
+    from . import solver_config as _solvercfg  # type: ignore
+except ImportError:  # direct script import (no package context)
+    import solver_config as _solvercfg  # type: ignore
+
 
 def _normalize_classroom(cl: dict) -> dict:
     out = dict(cl)
@@ -330,6 +335,7 @@ def solve_classroom_assignment(
     solver.parameters.num_search_workers = workers
     solver.parameters.log_search_progress = log
     t0 = time.time()
+    _solvercfg.configure_solver(solver)
     status = solver.Solve(model)
     elapsed = time.time() - t0
     if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):

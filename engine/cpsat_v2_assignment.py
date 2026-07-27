@@ -32,6 +32,11 @@ import time
 
 from ortools.sat.python import cp_model
 
+try:
+    from . import solver_config as _solvercfg  # type: ignore
+except ImportError:  # direct script import (no package context)
+    import solver_config as _solvercfg  # type: ignore
+
 
 def load_school(path):
     with open(path, "rb") as f:
@@ -213,6 +218,7 @@ def solve_assignment(data, time_limit_s=60, workers=8, log=True):
     solver.parameters.cp_model_probing_level = 2
 
     t0 = time.time()
+    _solvercfg.configure_solver(solver)
     status = solver.Solve(model)
     elapsed = time.time() - t0
     print(f"\n[assignment] status={solver.StatusName(status)} elapsed={elapsed:.1f}s")

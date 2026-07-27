@@ -42,6 +42,10 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
 import metaheuristics as meta  # type: ignore[no-redef]  # noqa: E402
+try:
+    from . import solver_config as _solvercfg  # type: ignore
+except ImportError:  # direct script import (no package context)
+    import solver_config as _solvercfg  # type: ignore
 
 DAYS = meta.DAYS
 HOURS = meta.HOURS
@@ -910,6 +914,7 @@ def _pricing_subproblem_teacher_legacy(
     solver.parameters.max_time_in_seconds = float(time_limit)
     solver.parameters.num_search_workers = int(workers)
     solver.parameters.log_search_progress = False
+    _solvercfg.configure_solver(solver)
     status = solver.Solve(model)
     if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         return None, 0.0
@@ -1090,6 +1095,7 @@ def _pricing_subproblem_teacher_class(
     solver.parameters.max_time_in_seconds = float(time_limit)
     solver.parameters.num_search_workers = int(workers)
     solver.parameters.log_search_progress = False
+    _solvercfg.configure_solver(solver)
     status = solver.Solve(model)
     if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         return None, 0.0
@@ -1247,6 +1253,7 @@ def _pricing_subproblem_teacher_class_subject(
     solver.parameters.max_time_in_seconds = float(time_limit)
     solver.parameters.num_search_workers = int(workers)
     solver.parameters.log_search_progress = False
+    _solvercfg.configure_solver(solver)
     status = solver.Solve(model)
     if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         return None, 0.0
@@ -1406,6 +1413,7 @@ def _pricing_subproblem_teacher_subject(
     solver.parameters.max_time_in_seconds = float(time_limit)
     solver.parameters.num_search_workers = int(workers)
     solver.parameters.log_search_progress = False
+    _solvercfg.configure_solver(solver)
     status = solver.Solve(model)
     if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         return None, 0.0
@@ -1582,6 +1590,7 @@ def _pricing_subproblem_teacher_day(
     solver.parameters.max_time_in_seconds = float(time_limit)
     solver.parameters.num_search_workers = int(workers)
     solver.parameters.log_search_progress = False
+    _solvercfg.configure_solver(solver)
     status = solver.Solve(model)
     if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         return None, 0.0
@@ -2147,6 +2156,7 @@ def _pricing_subproblem_class(
     solver.parameters.max_time_in_seconds = float(time_limit)
     solver.parameters.num_search_workers = int(workers)
     solver.parameters.log_search_progress = False
+    _solvercfg.configure_solver(solver)
     status = solver.Solve(model)
     if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         return None, 0.0
@@ -2345,6 +2355,7 @@ def _pricing_subproblem_class_day(
     solver.parameters.max_time_in_seconds = float(time_limit)
     solver.parameters.num_search_workers = int(workers)
     solver.parameters.log_search_progress = False
+    _solvercfg.configure_solver(solver)
     status = solver.Solve(model)
     if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         return None, 0.0
@@ -2558,6 +2569,7 @@ def _pricing_subproblem_day(
     solver.parameters.max_time_in_seconds = float(time_limit)
     solver.parameters.num_search_workers = int(workers)
     solver.parameters.log_search_progress = False
+    _solvercfg.configure_solver(solver)
     status = solver.Solve(model)
     if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         return None, 0.0
@@ -2791,6 +2803,7 @@ def _pricing_subproblem_curriculum(
     solver.parameters.max_time_in_seconds = float(time_limit)
     solver.parameters.num_search_workers = int(workers)
     solver.parameters.log_search_progress = False
+    _solvercfg.configure_solver(solver)
     status = solver.Solve(model)
     if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         return None, 0.0

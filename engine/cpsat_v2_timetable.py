@@ -62,6 +62,11 @@ from collections import defaultdict
 
 from ortools.sat.python import cp_model
 
+try:
+    from . import solver_config as _solvercfg  # type: ignore
+except ImportError:  # direct script import (no package context)
+    import solver_config as _solvercfg  # type: ignore
+
 # Tab Ore (working hours config) plumbing
 # ---------------------------------------
 # DAYS / HOURS / SLOTS_PER_DAY are now driven by
@@ -928,6 +933,7 @@ def solve_phase_a(profs, classes, triples, class_profs,
     solver.parameters.cp_model_probing_level = 2
 
     t0 = time.time()
+    _solvercfg.configure_solver(solver)
     status = solver.Solve(model)
     elapsed = time.time() - t0
     print(f"\n[phaseA] status={solver.StatusName(status)} elapsed={elapsed:.1f}s")
@@ -1460,6 +1466,7 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
     solver.parameters.log_search_progress = log
     solver.parameters.linearization_level = 1
 
+    _solvercfg.configure_solver(solver)
     status = solver.Solve(model)
     if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         # Se infeasible per via dei "no holes" stretti, segnaliamo

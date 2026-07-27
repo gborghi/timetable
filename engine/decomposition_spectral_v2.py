@@ -33,6 +33,11 @@ import numpy as np
 from sklearn.cluster import KMeans
 from ortools.sat.python import cp_model
 
+try:
+    from . import solver_config as _solvercfg  # type: ignore
+except ImportError:  # direct script import (no package context)
+    import solver_config as _solvercfg  # type: ignore
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import cpsat_v2_timetable as cv2  # noqa: E402
@@ -290,6 +295,7 @@ def stage_a_bridges(day, profs, bridges, triples, dc_value,
     solver.parameters.max_time_in_seconds = time_limit
     solver.parameters.num_search_workers = workers
     solver.parameters.log_search_progress = log
+    _solvercfg.configure_solver(solver)
     status = solver.Solve(model)
     if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         return None, status
@@ -399,6 +405,7 @@ def stage_b_cluster_internals(cluster_classes, day, profs, bridges,
     solver.parameters.max_time_in_seconds = time_limit
     solver.parameters.num_search_workers = workers
     solver.parameters.log_search_progress = log
+    _solvercfg.configure_solver(solver)
     status = solver.Solve(model)
     if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         return None, status
@@ -516,6 +523,7 @@ def stage_c_ricucitura(day, profs, bridges, triples, dc_value,
     solver.parameters.max_time_in_seconds = time_limit
     solver.parameters.num_search_workers = workers
     solver.parameters.log_search_progress = log
+    _solvercfg.configure_solver(solver)
     status = solver.Solve(model)
     if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         return None, status

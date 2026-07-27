@@ -54,6 +54,11 @@ from typing import Any, Iterable
 from ortools.sat.python import cp_model
 
 try:
+    from . import solver_config as _solvercfg  # type: ignore
+except ImportError:  # direct script import (no package context)
+    import solver_config as _solvercfg  # type: ignore
+
+try:
     from . import metaheuristics as meta  # type: ignore
     from . import cpsat_v2_timetable as _cv2  # type: ignore
     from . import soft_costs  # type: ignore
@@ -1526,6 +1531,7 @@ class MonolithicSolver(ConstraintModel):
         solver.parameters.max_time_in_seconds = float(time_limit_s)
         solver.parameters.num_search_workers = int(workers)
         solver.parameters.log_search_progress = log
+        _solvercfg.configure_solver(solver)
         status = solver.Solve(self.model)
         if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
             return None, solver.StatusName(status)
@@ -1838,6 +1844,7 @@ class DayCountModel(ConstraintModel):
         solver.parameters.max_time_in_seconds = float(time_limit_s)
         solver.parameters.num_search_workers = int(workers)
         solver.parameters.log_search_progress = log
+        _solvercfg.configure_solver(solver)
         status = solver.Solve(self.model)
         if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
             return None, solver.StatusName(status)
@@ -2115,6 +2122,7 @@ class PricerSolver(ConstraintModel):
         solver.parameters.max_time_in_seconds = float(time_limit_s)
         solver.parameters.num_search_workers = int(workers)
         solver.parameters.log_search_progress = False
+        _solvercfg.configure_solver(solver)
         status = solver.Solve(self.model)
         if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
             return None, solver.StatusName(status)

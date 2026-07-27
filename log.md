@@ -486,3 +486,19 @@ byte-compile.
   timetable that breaks hard constraints. Escape hatch: `PITANTUM_DSL_GATE_STRICT=0`.
   (Decomposition/CG partial-coverage gating remains P1 — needs a runnable solver
   to change engine control flow safely.)
+
+## P1 reproducible solver seeds (2026-07-27)
+Audit flagged non-reproducibility (no `random_seed` on any of the 21 CpSolver
+sites, multi-worker + wall-clock budget) as a "worked yesterday, fails today"
+support nightmare. Added `engine/solver_config.py` and routed every solve
+through `configure_solver(solver)` immediately before `Solve()`:
+- `PITANTUM_SOLVER_SEED` (default 42) applied to every solve.
+- `PITANTUM_DETERMINISTIC` forces a single search worker (multi-worker CP-SAT
+  is non-deterministic even with a fixed seed).
+Wired into 20 sites across cpsat_v2_assignment / cpsat_assignment_dsl /
+classroom_assignment / cpsat_v2_timetable / cp_sat_constraint_model /
+decomposition_spectral_v2 / column_generation. (column_generation's ortools
+import is function-local, so its module-level `_solvercfg` import was added by
+hand.) New `test_solver_reproducibility.py` (slow): two deterministic Phase-A
+solves of the `small` profile return identical assignments even at the time
+limit. Full fast suite green (756 passed) — the seed shifts no pinned outcome.
