@@ -518,3 +518,61 @@ end-to-end asserting a solvable small school reaches 100% coverage through the
 real run_phase_b entry point (run 'done', coverage recorded). Slow scenario +
 placement suites still green (my gate doesn't fail legitimate solves); full
 fast suite 760 passed.
+
+## DB integrity CHECKs + concurrency-safe run-log capture (2026-07-28)
+Next audit tranche from the four-agent Opus audit (engine / DB / frontend /
+ops) — the items testable end-to-end with the local solver venv and safe from
+fragile solver control flow. Two areas:
+
+- **Ops CRITICAL — concurrency-safe run-log capture** (`run_manager.py`). The
+  old capture swapped process-global `sys.stdout`/`stderr` for a per-run
+  `_TeeWriter`; with >1 concurrent run (or any request handler that `print`s
+  while a run is live) run B's swap clobbered run A's, and A's `finally`
+  restored whatever stream was current when A *started* — logs cross-
+  contaminated and leaked. Replaced with a single process-wide `_DispatchWriter`
+  that routes each write to the run registered for the **calling thread**
+  (`_CAPTURE_ROUTES: thread ident -> run_id`, guarded by `_CAPTURE_LOCK`);
+  threads with no active run fall straight through, so a `print()` outside any
+  run never lands in an unrelated run's log. Partial lines buffer per-thread via
+  `threading.local`. `_install_dispatch_writers` is idempotent and re-wraps if a
+  test-runner capture plugin swaps stdout back out. Microbenchmarked: ~210 ns
+  extra per write in the no-route case (RLock acquire) — negligible. New
+  `test_capture_stdout_is_isolated_per_thread` (two barrier-synced overlapping
+  captures assert zero cross-contamination). Still open (P1): the in-process run
+  registry itself is per-worker, so the same isolation must move to a shared
+  store before the documented `gunicorn -w 4` topology is safe (see ops audit).
+
+- **DB HIGH/MEDIUM — real integrity CHECKs matching the docstrings**
+  (`models.py`). The XOR invariants were documented as "Enforced via CHECK
+  constraint below" but `grep CheckConstraint models.py` was empty; malformed
+  rows (both-set / both-null) were only silently *skipped* by `engine_io`, so
+  corruption stayed invisible until a class came up under-scheduled. Added:
+  - `ck_assign_class_group_xor` — `Assignment`: exactly one of
+    (class_id, group_id), OR both NULL only for a potenziamento row.
+  - `ck_coteach_class_group_xor` — `CoteachGroup` targets exactly one of
+    class / group.
+  - `ck_csp_required_matches_state` — pins the derived
+    `ClassroomSubjectPreference.required` to `state = 'enforced'` so a bulk
+    path (Core insert/executemany) that bypasses the ORM event can't drift it.
+  Verified against a fresh DB: all three reject every corruption shape and
+  accept the valid ones. `test_group_xor_class_id_set_violates` updated: a
+  both-set Assignment is now rejected at `flush()` by the DB (the earlier,
+  stronger guard) instead of only by the app-layer preflight, which remains as
+  defense-in-depth. Lesson has no DB XOR — its `class_name` is NOT NULL by
+  design (a group Lesson still carries the group's virtual-class label), so
+  there is no both-NULL shape to forbid.
+
+  These CHECKs land on **fresh DBs** via `Base.metadata.create_all` (the
+  new-school / SaaS onboarding case the DB audit flagged). Backfilling them onto
+  **existing** DBs is a deliberate follow-up: the migration graph already has a
+  **pre-existing dual head** (`b2c3d4e5f6a7` / `c2d3e4f5a6b7`) that needs a merge
+  revision first, and a SQLite CHECK add is a table rebuild that fails on any DB
+  already carrying violating rows — so it needs a data-audit + merge, not an
+  in-flight autogen.
+
+Validation: full fast suite `757 passed, 2 skipped`; the only 2 "failures" were
+`test_perf_budgets` wall-clock-budget tests flaking under concurrent machine
+load (an unrelated `uv` build at ~42% CPU during the run) — they pass 20/20 in
+isolation. Targeted `test_run_manager` (6/6, incl. the new isolation test) and
+`test_groups_preflight` (7/7) green. Docs-only `CLAUDE.md` drift present in the
+tree beforehand was left untouched (not part of this tranche).

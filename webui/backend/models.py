@@ -13,6 +13,7 @@ from typing import Any
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     Date,
     DateTime,
     Float,
@@ -514,6 +515,18 @@ class Assignment(Base):
         UniqueConstraint("teacher_id", "class_id", "subject",
                          "is_support",
                          name="uq_assign_t_cl_subj_sup"),
+        # XOR invariant (see class docstring): exactly one of
+        # (class_id, group_id) is set, OR both are NULL only for a
+        # potenziamento row. Both-set or both-NULL-without-potenziamento
+        # are the corruption shapes engine_io silently skips, so forbid
+        # them at the DB level to match the documented contract.
+        CheckConstraint(
+            "(class_id IS NOT NULL AND group_id IS NULL) "
+            "OR (class_id IS NULL AND group_id IS NOT NULL) "
+            "OR (class_id IS NULL AND group_id IS NULL "
+            "AND is_potenziamento = 1)",
+            name="ck_assign_class_group_xor",
+        ),
     )
 
 
@@ -1014,6 +1027,15 @@ class ClassroomSubjectPreference(Base):
     classroom: Mapped["Classroom"] = relationship(back_populates="subject_prefs")
     __table_args__ = (
         UniqueConstraint("classroom_id", "subject", name="uq_room_subj"),
+        # `required` is derived from `state` by the event listener below,
+        # but bulk paths (Core insert/update, executemany) bypass ORM
+        # events and can drift the two apart. This CHECK makes the
+        # invariant a hard DB guarantee so engine_io's `required` read
+        # can never mis-classify an enforced room.
+        CheckConstraint(
+            "required = (state = 'enforced')",
+            name="ck_csp_required_matches_state",
+        ),
     )
 
 
@@ -1207,6 +1229,12 @@ class CoteachGroup(Base):
                          name="uq_coteach_group_cl_subj"),
         UniqueConstraint("group_id", "subject",
                          name="uq_coteach_group_g_subj"),
+        # XOR: coteaching targets exactly one of a class or a study
+        # group (see the class_id/group_id comments above).
+        CheckConstraint(
+            "(class_id IS NOT NULL) <> (group_id IS NOT NULL)",
+            name="ck_coteach_class_group_xor",
+        ),
     )
 
 

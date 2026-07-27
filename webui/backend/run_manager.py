@@ -324,15 +324,32 @@ def get_buffer(run_id: int) -> _RunBuffer:
 
 
 # stdout/stderr capture --------------------------------------------------
+#
+# The capture is *per calling thread*, not a global stdout swap. Runs
+# execute in worker threads (`_runner`); with >1 concurrent run (or a
+# request handler that prints while a run is live) a naive
+# `sys.stdout = tee` swap cross-contaminated logs: run B's swap clobbered
+# run A's, and A's `finally` restored whatever was current when A started.
+# Instead we install ONE dispatch writer on sys.stdout/err (once, process
+# wide) that routes each write to the run buffer registered for the thread
+# that emitted it. Threads with no active run pass straight through, so a
+# print() outside any run never leaks into an unrelated run's log.
+
+_CAPTURE_ROUTES: dict[int, int] = {}      # thread ident -> run_id
+_CAPTURE_LOCK = threading.RLock()
+_CAPTURE_INSTALLED = False
 
 
-class _TeeWriter(io.TextIOBase):
-    """Writes to the underlying stream *and* the run buffer."""
+class _DispatchWriter(io.TextIOBase):
+    """Process-global replacement for sys.stdout/err. Each write is routed
+    to the run buffer registered for the *calling* thread; a thread with no
+    registered run just falls through to the real stream. Partial lines are
+    buffered per-thread via `threading.local`, so concurrent runs never
+    interleave a half-written line."""
 
-    def __init__(self, run_id: int, downstream):
-        self.run_id = run_id
+    def __init__(self, downstream):
         self.downstream = downstream
-        self.buf = ""
+        self._local = threading.local()
 
     def write(self, s: str):
         try:
@@ -340,12 +357,17 @@ class _TeeWriter(io.TextIOBase):
                 self.downstream.write(s)
         except Exception:
             pass
-        self.buf += s
-        while "\n" in self.buf:
-            line, self.buf = self.buf.split("\n", 1)
+        with _CAPTURE_LOCK:
+            run_id = _CAPTURE_ROUTES.get(threading.get_ident())
+        if run_id is None:
+            return len(s)
+        pending = getattr(self._local, "buf", "") + s
+        while "\n" in pending:
+            line, pending = pending.split("\n", 1)
             line = line.rstrip("\r")
             if line:
-                _emit_line(self.run_id, line)
+                _emit_line(run_id, line)
+        self._local.buf = pending
         return len(s)
 
     def flush(self):
@@ -367,12 +389,27 @@ def _emit_line(run_id: int, line: str):
     buf.append(line, run_id)
 
 
+def _install_dispatch_writers() -> None:
+    """Wrap sys.stdout/err in the routing dispatch writers. Left installed
+    for the process lifetime — transparent when no thread has a registered
+    route. Idempotent, and re-wraps if some other layer (e.g. a test-runner
+    capture plugin) has swapped stdout back out from under us."""
+    global _CAPTURE_INSTALLED
+    with _CAPTURE_LOCK:
+        if not isinstance(sys.stdout, _DispatchWriter):
+            sys.stdout = _DispatchWriter(sys.stdout)
+        if not isinstance(sys.stderr, _DispatchWriter):
+            sys.stderr = _DispatchWriter(sys.stderr)
+        _CAPTURE_INSTALLED = True
+
+
 @contextmanager
 def capture_stdout(run_id: int):
-    old_out = sys.stdout
-    old_err = sys.stderr
-    sys.stdout = _TeeWriter(run_id, old_out)
-    sys.stderr = _TeeWriter(run_id, old_err)
+    _install_dispatch_writers()
+    tid = threading.get_ident()
+    with _CAPTURE_LOCK:
+        prev = _CAPTURE_ROUTES.get(tid)
+        _CAPTURE_ROUTES[tid] = run_id
     try:
         yield
     finally:
@@ -381,8 +418,11 @@ def capture_stdout(run_id: int):
             sys.stderr.flush()
         except Exception:
             pass
-        sys.stdout = old_out
-        sys.stderr = old_err
+        with _CAPTURE_LOCK:
+            if prev is None:
+                _CAPTURE_ROUTES.pop(tid, None)
+            else:
+                _CAPTURE_ROUTES[tid] = prev
 
 
 # Run lifecycle ---------------------------------------------------------

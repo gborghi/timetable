@@ -193,3 +193,52 @@ def test_long_lines_truncated_at_4096(isolated_run_id):
                  .filter(models.RunLog.run_id == run_id).first())
     assert row is not None
     assert len(row.text) <= 4096
+
+
+def test_capture_stdout_is_isolated_per_thread(isolated_run_id):
+    """Two concurrent runs printing at the same time must not cross-
+    contaminate each other's logs. `capture_stdout` routes by the
+    calling thread, so run A's `print` reaches only run A's buffer even
+    while run B is capturing in another thread. (Regression guard for
+    the old global `sys.stdout` swap, which leaked B's output into A.)
+    """
+    from backend import run_manager
+    from backend import models
+
+    run_a = isolated_run_id
+    with run_manager.SessionLocal() as db:
+        r = models.Run(kind="test", name="b", profile="small",
+                        params_json="{}", status="pending", progress=0.0)
+        db.add(r)
+        db.commit()
+        db.refresh(r)
+        run_b = r.id
+
+    barrier = threading.Barrier(2)
+
+    def worker(run_id: int, tag: str) -> None:
+        with run_manager.capture_stdout(run_id):
+            barrier.wait()  # force the two captures to overlap
+            for i in range(50):
+                print(f"{tag}-{i}")
+
+    ta = threading.Thread(target=worker, args=(run_a, "A"))
+    tb = threading.Thread(target=worker, args=(run_b, "B"))
+    ta.start()
+    tb.start()
+    ta.join()
+    tb.join()
+    run_manager.get_buffer(run_a).mark_finished()
+    run_manager.get_buffer(run_b).mark_finished()
+
+    with run_manager.SessionLocal() as db:
+        rows_a = [r.text for r in db.query(models.RunLog)
+                  .filter(models.RunLog.run_id == run_a).all()]
+        rows_b = [r.text for r in db.query(models.RunLog)
+                  .filter(models.RunLog.run_id == run_b).all()]
+    assert len(rows_a) == 50 and all(t.startswith("A-") for t in rows_a), (
+        f"run A log contaminated: {[t for t in rows_a if not t.startswith('A-')]}"
+    )
+    assert len(rows_b) == 50 and all(t.startswith("B-") for t in rows_b), (
+        f"run B log contaminated: {[t for t in rows_b if not t.startswith('B-')]}"
+    )

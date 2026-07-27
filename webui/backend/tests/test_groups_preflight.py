@@ -12,10 +12,14 @@ from __future__ import annotations
 
 
 def test_group_xor_class_id_set_violates(client):
+    """A both-set (class_id AND group_id) Assignment is now rejected at
+    the DB layer by the `ck_assign_class_group_xor` CHECK — a stronger
+    guard than the app-layer preflight it supersedes, since such a row
+    can never be persisted to reach the solver in the first place. (The
+    validator's XOR branch remains as defense-in-depth.)"""
+    import pytest
+    from sqlalchemy.exc import IntegrityError
     from backend import models
-    from backend.optimization import (
-        validate_coteach_sostegno_potenziamento,
-    )
     db = next(client.app.dependency_overrides[
         next(iter(client.app.dependency_overrides))]())
     try:
@@ -33,10 +37,9 @@ def test_group_xor_class_id_set_violates(client):
             teacher_id=t.id, class_id=cl.id, group_id=g.id,
             subject="X", hours=2,
         ))
-        db.commit()
-        violations = validate_coteach_sostegno_potenziamento(db)
-        assert any("XOR" in v for v in violations), (
-            f"expected XOR violation, got: {violations}")
+        with pytest.raises(IntegrityError):
+            db.flush()
+        db.rollback()
     finally:
         db.close()
 
