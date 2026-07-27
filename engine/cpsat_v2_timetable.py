@@ -932,14 +932,37 @@ def solve_phase_a(profs, classes, triples, class_profs,
     elapsed = time.time() - t0
     print(f"\n[phaseA] status={solver.StatusName(status)} elapsed={elapsed:.1f}s")
     if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-        if locked_day_count:
+        # Distinguish PROVEN infeasibility from "ran out of time". CP-SAT
+        # returns INFEASIBLE only when it has proved no solution exists;
+        # UNKNOWN (and MODEL_INVALID) mean the solve hit the wall-clock
+        # limit without finding one. Conflating the two -- the old
+        # "nessuna soluzione" for every non-solved status -- made a big
+        # school that merely needs more time look permanently infeasible.
+        if status == cp_model.INFEASIBLE:
+            if locked_day_count:
+                raise RuntimeError(
+                    "Phase A INFEASIBLE: i lock attivi sono incompatibili "
+                    "con i vincoli correnti. Rimuovi o adatta i lock "
+                    "(es. sblocca eventi nel monitor) e ritenta. "
+                    f"Lock attivi: {len(locked_day_count)} cattedra-giorno."
+                )
             raise RuntimeError(
-                "Phase A INFEASIBLE: i lock attivi sono incompatibili "
-                "con i vincoli correnti. Rimuovi o adatta i lock "
-                "(es. sblocca eventi nel monitor) e ritenta. "
-                f"Lock attivi: {len(locked_day_count)} cattedra-giorno."
+                "Phase A INFEASIBLE: il modello dei conteggi-giorno non "
+                "ammette soluzione con i vincoli correnti (dimostrato dal "
+                "solver, non un timeout)."
             )
-        raise RuntimeError("Phase A: nessuna soluzione")
+        # UNKNOWN / MODEL_INVALID / timeout: NOT infeasibility.
+        lock_note = (
+            f" ({len(locked_day_count)} lock cattedra-giorno attivi)"
+            if locked_day_count else ""
+        )
+        raise RuntimeError(
+            f"Phase A non risolta entro il tempo limite "
+            f"({time_limit:.0f}s, status={solver.StatusName(status)}){lock_note}: "
+            "nessuna soluzione trovata in tempo. Aumenta il time limit o "
+            "riduci dimensione/tightness. NB: questo NON significa che il "
+            "problema sia infeasible."
+        )
     print(
         f"[phaseA] obj={solver.ObjectiveValue():.0f} "
         f"uniform_class={solver.Value(uniform_class_pen)} "

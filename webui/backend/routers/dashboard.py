@@ -154,6 +154,23 @@ def _restore_zip(blob: bytes) -> dict:
        - otherwise: not yet supported (would require row-by-row import
          from CSV). Returns 400.
     """
+    # Refuse to swap the DB file out from under a live solver run: the
+    # worker thread holds sessions / is mid-commit, so replacing the
+    # SQLite file (engine.dispose + copy) corrupts both the run and the
+    # imported DB. Applies to both /import-db and /snapshot/restore.
+    from ..run_manager import active_run_count
+    if active_run_count() > 0:
+        raise HTTPException(
+            409,
+            {
+                "detail": (
+                    "Ci sono run attivi o in coda: l'importazione del "
+                    "database e' bloccata per evitare corruzione. Attendere "
+                    "il termine o annullare i run e riprovare."
+                ),
+                "code": "runs_active",
+            },
+        )
     try:
         z = zipfile.ZipFile(io.BytesIO(blob))
     except zipfile.BadZipFile:

@@ -217,6 +217,19 @@ async def upload_pickle(kind: str, file: UploadFile = File(...),
 @router.post("/clear")
 def clear_database(scope: str = "all", db: Session = Depends(get_db)):
     """Wipe DB tables; scope = all / solutions / assignments."""
+    from ..run_manager import active_run_count
+    if active_run_count() > 0:
+        raise HTTPException(
+            409,
+            {
+                "detail": (
+                    "Impossibile azzerare il database mentre ci sono run "
+                    "attivi o in coda: potrebbe corrompere l'esecuzione in "
+                    "corso. Attendere o annullare i run prima di procedere."
+                ),
+                "code": "runs_active",
+            },
+        )
     if scope == "solutions":
         db.query(models.Lesson).delete()
         db.query(models.DayCount).delete()

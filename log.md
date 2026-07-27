@@ -446,3 +446,43 @@ Audited the LaTeX manual + companion markdown; shipped content + aesthetic refre
   `cAvorio!35` listing background.
 - **Build**: lualatex+biber+makeindex, both manuals — `manual.pdf` 4.99 MB,
   `manual_en.pdf` 1.69 MB, exit 0, no undefined refs/`??`. Committed PDFs + sources.
+
+## P0 production-hardening from Opus audit (2026-07-27)
+Four-agent audit (engine / DB / frontend / ops) flagged big-school blockers;
+implemented the five P0 fixes. Backend validated on a Python 3.12 venv (web
+deps only — the solver stack isn't installed here, so the engine-heavy fast
+tests can't run locally; CI must confirm the DSL-gate branch). `test_run_manager`
++ `test_section_2_5` green; full `backend.main` app imports; all touched files
+byte-compile.
+- **P0-5 DB locking** (`db.py`, `async_db.py`): added `PRAGMA busy_timeout=5000`
+  and replicated the WAL/synchronous/busy_timeout listener onto the async engine
+  (previously async connections got neither WAL nor a timeout). Kills the
+  "database is locked" 500s under concurrent solver-commit + UI-write.
+- **P0-2 truthful cancellation** (`run_manager.py`, `optimization.py`): `_runner`
+  no longer overwrites a `cancelled` run back to `done`/`failed` (the Run table
+  lied about outcomes). Added `RunCancelled` + `raise_if_cancelled` and wired
+  cooperative checks into the full-pipeline step loop and every inlined per-day
+  decomposition loop, so a cancel unwinds promptly instead of burning the whole
+  time budget. SSE `stream_events` now emits `end` for `cancelled` too. (Mid
+  single-solve OR-Tools interruption via a SolutionCallback remains a follow-up.)
+- **P0-4 admission control + orphan sweep** (`run_manager.py`, `main.py`): a
+  `BoundedSemaphore(PITANTUM_MAX_CONCURRENT_RUNS, default 1)` queues excess runs
+  as `pending` instead of OOM-ing on N concurrent big-school solves; a
+  cancel-while-queued exits without consuming a slot. `reconcile_orphaned_runs()`
+  runs at startup to flip runs left `running`/`pending` by a crash into `failed`
+  (no more undeletable ghosts with never-ending SSE).
+- **P0-3 single-tenant firewall** (`tenant.py`, `main.py`, `dataset.py`,
+  `dashboard.py`): `SingleTenantGuardMiddleware` universally rejects a spoofed
+  `X-Tenant-Id` (≠ default) with 400 while multi-tenant is off — closing the
+  hole that `current_tenant_id` couldn't (26/27 routers never `Depends` on it).
+  Opt in with `PITANTUM_MULTI_TENANT=1`. Destructive whole-DB ops (`/dataset/clear`,
+  `/dashboard/import-db`, `/snapshot/restore`) now 409 while any run is active,
+  so the DB file can't be swapped out from under a live solver.
+- **P0-1 truthful outcomes** (`cpsat_v2_timetable.py`, `optimization.py`): Phase A
+  distinguishes proven `INFEASIBLE` from `UNKNOWN`/timeout (a big school that
+  needs more time no longer looks permanently infeasible). The week-scope DSL
+  hard-gate is now fail-closed: if hard rules remain violated after no-good
+  refinement it raises instead of silently returning (and marking `done`) a
+  timetable that breaks hard constraints. Escape hatch: `PITANTUM_DSL_GATE_STRICT=0`.
+  (Decomposition/CG partial-coverage gating remains P1 — needs a runnable solver
+  to change engine control flow safely.)

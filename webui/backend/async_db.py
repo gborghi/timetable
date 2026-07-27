@@ -67,6 +67,21 @@ def _try_init_async() -> None:
             echo=False,
             future=True,
         )
+        # Attach the same SQLite pragmas (WAL + synchronous=NORMAL +
+        # busy_timeout) the sync engine uses. Without this, async
+        # connections open in the default rollback-journal mode with no
+        # busy_timeout and reintroduce "database is locked" contention
+        # against the sync engine's writers. The listener runs on the
+        # underlying sync DBAPI connection, so the pragma cursor is
+        # synchronous even on the async engine.
+        from .db import _SQLITE_PRAGMA_APPLIER
+        if _SQLITE_PRAGMA_APPLIER is not None:
+            from sqlalchemy import event
+
+            @event.listens_for(async_engine.sync_engine, "connect")
+            def _set_async_sqlite_pragmas(dbapi_connection, _rec):
+                _SQLITE_PRAGMA_APPLIER(dbapi_connection)
+
         AsyncSessionLocal = async_sessionmaker(
             bind=async_engine, expire_on_commit=False, autoflush=False,
         )

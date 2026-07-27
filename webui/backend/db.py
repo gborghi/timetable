@@ -80,8 +80,7 @@ if IS_SQLITE:
     # files alongside `timetable.db`. Code that copies the .db file
     # directly (export/import in routers/dashboard.py) checkpoints
     # before the read and clears stale sidecars before the write.
-    @event.listens_for(engine, "connect")
-    def _set_sqlite_pragmas(dbapi_connection, _conn_record):
+    def _apply_sqlite_pragmas(dbapi_connection) -> None:
         cur = dbapi_connection.cursor()
         try:
             cur.execute("PRAGMA journal_mode=WAL")
@@ -92,8 +91,28 @@ if IS_SQLITE:
             # the diagnostic background threads -- a large WAL slows
             # readers because each read consults the WAL for visibility.
             cur.execute("PRAGMA wal_autocheckpoint=100")
+            # busy_timeout: WAL still allows only ONE writer at a time.
+            # Without this, the second concurrent writer (e.g. a solver
+            # worker thread committing lessons while the UI saves an
+            # edit) gets SQLITE_BUSY -> "database is locked" 500 *the
+            # instant* it collides. With a 5s timeout SQLite blocks and
+            # retries internally instead, which is what a big school
+            # with concurrent runs + editors needs. Applied on every
+            # connection (it is a per-connection setting).
+            cur.execute("PRAGMA busy_timeout=5000")
         finally:
             cur.close()
+
+    @event.listens_for(engine, "connect")
+    def _set_sqlite_pragmas(dbapi_connection, _conn_record):
+        _apply_sqlite_pragmas(dbapi_connection)
+
+    # Re-export so the async engine (async_db.py) can attach the same
+    # pragmas to its own connections -- otherwise async connections get
+    # neither WAL nor busy_timeout and reintroduce the lock contention.
+    _SQLITE_PRAGMA_APPLIER = _apply_sqlite_pragmas
+else:
+    _SQLITE_PRAGMA_APPLIER = None
 
 
 class Base(DeclarativeBase):

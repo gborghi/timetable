@@ -138,6 +138,14 @@ async def lifespan(app: FastAPI):
     log.info("backend startup -- init_db()")
     _check_production_security()
     init_db()
+    # Sweep runs left 'running'/'pending' by a previous crash/restart
+    # into a terminal 'failed' state so they stop looking active
+    # (undeletable ghosts with never-ending SSE streams).
+    try:
+        from backend.run_manager import reconcile_orphaned_runs
+        reconcile_orphaned_runs()
+    except Exception:
+        log.exception("startup: orphan-run reconciliation failed")
     log.info("backend ready")
     yield
     log.info("backend shutdown")
@@ -159,6 +167,10 @@ app.add_middleware(RequestLoggingMiddleware)
 # Optional API-key gate. No-op when PITANTUM_API_KEY is unset
 # (default for localhost dev). Section 2.6 P1.
 app.add_middleware(APIKeyMiddleware)
+# Single-tenant firewall: reject spoofed X-Tenant-Id headers universally
+# while multi-tenant is disabled (the default). See tenant.py.
+from backend.tenant import SingleTenantGuardMiddleware  # noqa: E402
+app.add_middleware(SingleTenantGuardMiddleware)
 app.add_middleware(MutationBumpMiddleware)
 # GZip JSON responses >= 1 KB. Section 2.4 P3.
 app.add_middleware(GZipMiddleware, minimum_size=1024)

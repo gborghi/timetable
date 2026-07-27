@@ -85,8 +85,25 @@ def test_current_tenant_id_default():
     assert current_tenant_id(None) == DEFAULT_TENANT_ID
 
 
-def test_current_tenant_id_from_header():
+def test_current_tenant_id_from_header(monkeypatch):
+    # Fail-closed single-tenant posture (default): a header asking for a
+    # NON-default tenant is rejected rather than silently trusted, since
+    # cross-tenant scoping is not actually enforced yet. Malformed /
+    # empty / default values fall back to the default tenant.
+    import pytest
+    from fastapi import HTTPException
+    from backend.tenant import current_tenant_id, DEFAULT_TENANT_ID
+    monkeypatch.delenv("PITANTUM_MULTI_TENANT", raising=False)
+    assert current_tenant_id(str(DEFAULT_TENANT_ID)) == DEFAULT_TENANT_ID
+    assert current_tenant_id("not-an-int") == DEFAULT_TENANT_ID
+    assert current_tenant_id("") == DEFAULT_TENANT_ID
+    with pytest.raises(HTTPException) as ei:
+        current_tenant_id("42")
+    assert ei.value.status_code == 400
+
+
+def test_current_tenant_id_honored_when_multitenant_enabled(monkeypatch):
+    # With multi-tenant explicitly enabled, the header is honoured.
     from backend.tenant import current_tenant_id
+    monkeypatch.setenv("PITANTUM_MULTI_TENANT", "1")
     assert current_tenant_id("42") == 42
-    assert current_tenant_id("not-an-int") == 1   # falls back to default
-    assert current_tenant_id("") == 1

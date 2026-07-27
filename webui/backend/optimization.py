@@ -24,6 +24,7 @@ from . import engine_io, models
 from .db import SessionLocal
 from .run_manager import (
     create_run,
+    raise_if_cancelled,
     start_thread,
     update_run,
 )
@@ -739,6 +740,7 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                 cluster_solutions: dict[tuple[int, int], dict] = {}
                 b_failed: dict[int, set] = defaultdict(set)
                 for di, d in enumerate(DAYS):
+                    raise_if_cancelled(rid)
                     if d not in bridge_solutions:
                         continue
                     for k_id in sorted(classes_per_cluster,
@@ -816,6 +818,7 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                     _dsl_hard = None
                 _dsl_sink: list[str] = []
                 for d in DAYS:
+                    raise_if_cancelled(rid)
                     out, status = cv2.solve_phase_b_for_day(
                         d, profs, classes, triples, class_profs, dc_value,
                         time_limit=time_mono, workers=workers, log=log,
@@ -1138,6 +1141,30 @@ def _solve_phase_b_week(*, rid: int, ws: str, profs: dict,
             for w in warns:
                 print(f"[phaseB.week][WARN] DSL hard rule not satisfied "
                       f"within budget: {getattr(w, 'reason', w)}")
+            # P0 truthfulness: a timetable that still violates HARD rules
+            # is NOT a valid result. The gate's no-good refinement can
+            # exhaust its budget (max_iters) and return a violating
+            # solution; returning it here silently marked the whole run
+            # 'done' with hard constraints broken -- the single most
+            # dangerous failure mode for a big school. Fail closed by
+            # default. Set PITANTUM_DSL_GATE_STRICT=0 to restore the old
+            # "keep the partial, violating solution" behaviour for
+            # inspection.
+            strict = os.environ.get(
+                "PITANTUM_DSL_GATE_STRICT", "1"
+            ).strip().lower() not in ("0", "false", "no", "off")
+            if strict:
+                raise RuntimeError(
+                    "Phase B (week scope): "
+                    f"{len(unsatisfied)} vincolo/i HARD DSL non "
+                    "soddisfatti dopo il refinement (budget esaurito). "
+                    "L'orario NON e' valido e non viene salvato. "
+                    "Aumenta il time limit / max_iters, allenta i vincoli, "
+                    "o imposta PITANTUM_DSL_GATE_STRICT=0 per accettare un "
+                    "risultato parziale a scopo di ispezione. "
+                    f"Regole violate: {'; '.join(unsatisfied[:5])}"
+                    + (" ..." if len(unsatisfied) > 5 else "")
+                )
         return full_solution
 
     # Default path (no hard DSL): single-shot build + solve, byte-identical
@@ -1962,6 +1989,10 @@ def run_full_pipeline(profile: str,
                 state["rooms_metrics"]["rooms_error"] = str(e)
 
         for i, step in enumerate(seq):
+            # Cooperative cancellation: bail promptly between pipeline
+            # steps instead of running every remaining step to its full
+            # time budget after the user clicked cancel.
+            raise_if_cancelled(rid)
             update_run(rid, progress=i / n_steps, current_step=step)
             if step == "phase_a":
                 print("[full] === STEP phase_a: assignment ===")
@@ -2010,6 +2041,7 @@ def run_full_pipeline(profile: str,
                     bridge_solutions: dict[int, dict] = {}
                     a_failed = []
                     for d in DAYS:
+                        raise_if_cancelled(rid)
                         out, _st = dec.stage_a_bridges(
                             d, profs, bridges_set, triples, dc_value,
                             (pb_kwargs or {}).get("time_bridges", 30), workers,
@@ -2021,6 +2053,7 @@ def run_full_pipeline(profile: str,
                     cluster_solutions: dict[tuple[int, int], dict] = {}
                     b_failed: dict[int, set] = defaultdict(set)
                     for d in DAYS:
+                        raise_if_cancelled(rid)
                         if d not in bridge_solutions:
                             continue
                         for k_id in sorted(
@@ -2047,6 +2080,7 @@ def run_full_pipeline(profile: str,
                                     cluster_solutions[(k_id, d)]
                                 )
                     for d in sorted(set(b_failed.keys()) | set(a_failed)):
+                        raise_if_cancelled(rid)
                         succ = {}
                         for k_id in classes_per_cluster:
                             if k_id in b_failed.get(d, set()):
@@ -2066,6 +2100,7 @@ def run_full_pipeline(profile: str,
                             full_solution.update(out)
                 else:
                     for d in DAYS:
+                        raise_if_cancelled(rid)
                         out, _st = cv2.solve_phase_b_for_day(
                             d, profs, classes, triples, class_profs,
                             dc_value,

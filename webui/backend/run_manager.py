@@ -25,6 +25,7 @@ import datetime as dt
 import io
 import json
 import logging
+import os
 import queue
 import sys
 import threading
@@ -54,6 +55,21 @@ _BUFFER_TTL_S = 5 * 60
 
 # How often the reaper sweeps the buffer dict.
 _REAPER_INTERVAL_S = 60
+
+# Admission control: cap how many runs execute the CPU-bound solver
+# concurrently. Each solve loads the full-school data structures into
+# memory and saturates cores under the GIL; N simultaneous big-school
+# solves thrash CPU and can OOM the process. Excess runs stay 'pending'
+# and start as slots free up (a simple in-process queue). Default 1 --
+# raise via PITANTUM_MAX_CONCURRENT_RUNS for beefier hosts.
+def _max_concurrent_runs() -> int:
+    try:
+        return max(1, int(os.environ.get("PITANTUM_MAX_CONCURRENT_RUNS", "1")))
+    except ValueError:
+        return 1
+
+
+_RUN_SLOTS = threading.BoundedSemaphore(_max_concurrent_runs())
 
 
 @dataclass
@@ -283,6 +299,23 @@ def is_cancel_requested(run_id: int) -> bool:
         return run_id in _CANCELLED_RUNS
 
 
+class RunCancelled(Exception):
+    """Raised by `raise_if_cancelled` to unwind a running target() when
+    the user has requested cancellation. `_runner` catches it and leaves
+    the run in the 'cancelled' state instead of overwriting it to
+    'done'/'failed'."""
+
+
+def raise_if_cancelled(run_id: int) -> None:
+    """Cooperative cancellation check. Call at safe boundaries inside a
+    long-running target() (between pipeline steps, per-day iterations,
+    metaheuristic rounds). Raises `RunCancelled` if a cancel was
+    requested so the orchestration unwinds promptly instead of running
+    to the full time budget."""
+    if is_cancel_requested(run_id):
+        raise RunCancelled(run_id)
+
+
 def get_buffer(run_id: int) -> _RunBuffer:
     with _BUFFERS_LOCK:
         if run_id not in _BUFFERS:
@@ -355,6 +388,64 @@ def capture_stdout(run_id: int):
 # Run lifecycle ---------------------------------------------------------
 
 
+def reconcile_orphaned_runs() -> int:
+    """Mark runs left non-terminal by a crash/OOM/restart as failed.
+
+    Run state lives in this process's memory (buffers, threads,
+    semaphore). When the process dies mid-solve, the DB row stays
+    'running'/'pending' forever: the worker thread is gone, no buffer
+    will ever be `finished`, so its SSE stream loops indefinitely and
+    delete-run refuses to remove it (it looks active). Call this once at
+    startup, before serving traffic, to sweep those ghosts into a
+    terminal 'failed' state. Returns the number of rows reconciled.
+    """
+    n = 0
+    try:
+        with SessionLocal() as db:
+            orphans = (
+                db.query(models.Run)
+                .filter(models.Run.status.in_(("running", "pending")))
+                .all()
+            )
+            now = dt.datetime.utcnow()
+            for r in orphans:
+                r.status = "failed"
+                r.error = (
+                    (r.error or "")
+                    + "\n[reconcile] interrotto da riavvio/crash del backend"
+                )
+                r.finished_at = now
+                n += 1
+            if n:
+                db.commit()
+    except Exception:
+        log.exception("run_manager: orphan reconciliation failed")
+        return 0
+    if n:
+        log.warning(
+            "run_manager: reconciled %d orphaned run(s) to 'failed' at startup",
+            n,
+        )
+    return n
+
+
+def active_run_count() -> int:
+    """Number of runs currently running or queued. Used to refuse
+    destructive whole-DB operations (clear / import-db / restore) while
+    a solver is mid-flight -- overwriting the DB file or truncating
+    tables under a live run corrupts both."""
+    try:
+        with SessionLocal() as db:
+            return (
+                db.query(models.Run)
+                .filter(models.Run.status.in_(("running", "pending")))
+                .count()
+            )
+    except Exception:
+        log.exception("run_manager: active_run_count failed")
+        return 0
+
+
 def create_run(kind: str, name: str, profile: Optional[str],
                params: dict[str, Any]) -> int:
     with SessionLocal() as db:
@@ -397,6 +488,21 @@ def start_thread(run_id: int, target: Callable[[int], None]) -> None:
 
 def _runner(run_id: int, target: Callable[[int], None]) -> None:
     buf = get_buffer(run_id)
+    # Admission control: wait for a free solver slot. The run stays
+    # 'pending' meanwhile (its row was created 'pending'), so the UI
+    # shows it queued. Poll with a timeout so a run cancelled *while
+    # queued* exits without ever consuming a slot.
+    acquired = False
+    while not acquired:
+        if is_cancel_requested(run_id):
+            update_run(
+                run_id, status="cancelled",
+                finished_at=dt.datetime.utcnow(),
+            )
+            _emit_line(run_id, "[run] cancelled while queued")
+            buf.mark_finished()
+            return
+        acquired = _RUN_SLOTS.acquire(timeout=0.5)
     update_run(
         run_id, status="running",
         started_at=dt.datetime.utcnow(),
@@ -404,19 +510,49 @@ def _runner(run_id: int, target: Callable[[int], None]) -> None:
     try:
         with capture_stdout(run_id):
             target(run_id)
+        # A cancel may have been requested *during* target() (e.g. the
+        # solver ran to its budget after the user clicked cancel, or a
+        # cooperative check hadn't fired yet). Never flip a cancelled
+        # run back to 'done' -- that made the Run table lie about
+        # outcomes. request_cancel() already set status='cancelled'.
+        if is_cancel_requested(run_id):
+            update_run(
+                run_id, progress=1.0,
+                finished_at=dt.datetime.utcnow(),
+            )
+            _emit_line(run_id, "[run] cancelled")
+        else:
+            update_run(
+                run_id, status="done", progress=1.0,
+                finished_at=dt.datetime.utcnow(),
+            )
+            _emit_line(run_id, "[run] done")
+    except RunCancelled:
+        # Cooperative cancellation unwound the target. The DB row is
+        # already 'cancelled' (set by request_cancel); just close out.
         update_run(
-            run_id, status="done", progress=1.0,
+            run_id, status="cancelled",
             finished_at=dt.datetime.utcnow(),
         )
-        _emit_line(run_id, "[run] done")
+        _emit_line(run_id, "[run] cancelled")
     except Exception as exc:  # pragma: no cover
         tb = traceback.format_exc()
-        update_run(
-            run_id, status="failed", error=tb,
-            finished_at=dt.datetime.utcnow(),
-        )
-        _emit_line(run_id, f"[run] FAILED: {exc}")
-        _emit_line(run_id, tb)
+        # Guard the same lie on the failure path: if the user cancelled
+        # and the target happened to raise while unwinding, keep it
+        # 'cancelled' rather than masking it as a crash.
+        if is_cancel_requested(run_id):
+            update_run(
+                run_id, status="cancelled",
+                finished_at=dt.datetime.utcnow(),
+            )
+            _emit_line(run_id, "[run] cancelled")
+        else:
+            update_run(
+                run_id, status="failed", error=tb,
+                finished_at=dt.datetime.utcnow(),
+            )
+            _emit_line(run_id, f"[run] FAILED: {exc}")
+            _emit_line(run_id, tb)
     finally:
         # Order matters: invalidate the server-side TTL cache FIRST,
         # then close the SSE stream. The client's `onEnd` callback
@@ -431,6 +567,14 @@ def _runner(run_id: int, target: Callable[[int], None]) -> None:
             log.exception(
                 "run_manager: bump_mutation failed run_id=%d", run_id,
             )
+        # Release the admission-control slot so a queued run can start.
+        if acquired:
+            try:
+                _RUN_SLOTS.release()
+            except ValueError:
+                log.exception(
+                    "run_manager: slot release imbalance run_id=%d", run_id,
+                )
         buf.mark_finished()
 
 
@@ -466,7 +610,7 @@ async def stream_events(run_id: int, replay: bool = True) -> Iterable[str]:
                     "metrics": json.loads(r.metrics_json or "{}"),
                     "solution_id": r.solution_id,
                 }))
-                if r.status in ("done", "failed") and finished:
+                if r.status in ("done", "failed", "cancelled") and finished:
                     yield _format_event("end", r.status)
                     return
         if finished:
@@ -478,7 +622,8 @@ async def stream_events(run_id: int, replay: bool = True) -> Iterable[str]:
                 await asyncio.sleep(0.1)
                 with SessionLocal() as db2:
                     r2 = db2.get(models.Run, run_id)
-                    if r2 is not None and r2.status in ("done", "failed"):
+                    if r2 is not None and r2.status in (
+                            "done", "failed", "cancelled"):
                         yield _format_event("end", r2.status)
                         return
             yield _format_event("end", "done")
