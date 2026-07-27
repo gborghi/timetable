@@ -502,3 +502,19 @@ import is function-local, so its module-level `_solvercfg` import was added by
 hand.) New `test_solver_reproducibility.py` (slow): two deterministic Phase-A
 solves of the `small` profile return identical assignments even at the time
 limit. Full fast suite green (756 passed) — the seed shifts no pinned outcome.
+
+## P0 leftover: coverage gating (2026-07-27)
+The remaining "silent partial success" P0 hazard: decomposition/monolithic
+Phase B can leave lessons unplaced (a day/cluster unsolved in time), and the
+partial timetable was saved + the run marked 'done'. Added `_coverage_ratio`
+/ `_gate_coverage` in optimization.py: coverage = placed cells / sum of the
+Phase-A day-counts (`dc_value`). The gate records `coverage` in run metrics
+and, when strict (default; PITANTUM_COVERAGE_STRICT=0 to opt out), raises so
+the run is marked failed instead of passing off an incomplete schedule. Wired
+into both the full-pipeline phase_b step and the standalone run_phase_b, before
+the DB import so a strict failure never becomes the active solution.
+Tests (`test_coverage_gate.py`): 4 fast unit tests of the helpers + 1 slow
+end-to-end asserting a solvable small school reaches 100% coverage through the
+real run_phase_b entry point (run 'done', coverage recorded). Slow scenario +
+placement suites still green (my gate doesn't fail legitimate solves); full
+fast suite 760 passed.

@@ -33,6 +33,62 @@ DAYS = list(range(1, 7))
 HOURS = list(range(8, 14))
 
 
+def _coverage_strict() -> bool:
+    """Whether an incomplete timetable should fail the run (default yes).
+
+    P0 truthfulness: a Phase-B solve that leaves lessons unplaced is a
+    partial result, not a success. Set PITANTUM_COVERAGE_STRICT=0 to keep
+    the partial solution (marked done) for inspection instead of raising.
+    """
+    return os.environ.get("PITANTUM_COVERAGE_STRICT", "1").strip().lower() \
+        not in ("0", "false", "no", "off")
+
+
+def _coverage_ratio(full_solution: dict, dc_value: dict | None):
+    """placed lessons / hours Phase A said must be placed, or None.
+
+    ``dc_value`` maps (p, cl, subj, day) -> hour-count; its sum is the
+    total hours the schedule must contain. ``full_solution`` has one key
+    per placed (p, cl, subj, day, hour) cell. Returns None when the
+    required total is unknown (dc_value missing/empty) so callers skip
+    the gate rather than divide by zero.
+    """
+    if not dc_value:
+        return None
+    required = sum(int(v) for v in dc_value.values())
+    if required <= 0:
+        return None
+    placed = sum(1 for v in full_solution.values() if v)
+    return placed / required
+
+
+def _gate_coverage(full_solution: dict, dc_value: dict | None, *,
+                   stage: str, metrics: dict) -> None:
+    """Record coverage in ``metrics`` and, when strict + incomplete,
+    raise so the run is marked failed instead of silently 'done' with a
+    partial timetable. Uses a small epsilon to tolerate FP rounding."""
+    cov = _coverage_ratio(full_solution, dc_value)
+    if cov is None:
+        return
+    metrics["coverage"] = round(cov, 4)
+    if cov < 0.999:
+        placed = sum(1 for v in full_solution.values() if v)
+        required = sum(int(v) for v in dc_value.values())
+        msg = (
+            f"{stage}: coverage {cov * 100:.1f}% "
+            f"({placed}/{required} ore collocate) < 100%: alcune lezioni "
+            "non sono state collocate (giorni/cluster non risolti nel "
+            "tempo limite)."
+        )
+        if _coverage_strict():
+            raise RuntimeError(
+                msg + " Orario NON valido e non salvato come attivo. "
+                "Aumenta i time limit, allenta i vincoli, o imposta "
+                "PITANTUM_COVERAGE_STRICT=0 per accettare il parziale."
+            )
+        print(f"[{stage}][WARN] {msg}")
+
+
 def _runs_dir() -> str:
     here = os.path.dirname(os.path.abspath(__file__))
     out = os.path.normpath(os.path.join(here, "..", "data", "runs"))
@@ -848,6 +904,8 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
 
         v, m = meta.compute_soft(full_solution, profs)
         feasible = meta.is_hard_feasible(full_solution, profs, verbose=False)
+        # P0 truthfulness: don't pass off a partial schedule as success.
+        _gate_coverage(full_solution, dc_value, stage="phase_b", metrics=m)
         with SessionLocal() as db:
             sid = engine_io.import_solution_into_db(
                 db, full_solution,
@@ -2113,6 +2171,10 @@ def run_full_pipeline(profile: str,
                 feasible = meta.is_hard_feasible(
                     full_solution, profs, verbose=False,
                 )
+                # P0 truthfulness: fail the run on an incomplete schedule
+                # rather than saving a partial timetable as active.
+                _gate_coverage(full_solution, state.get("dc_value"),
+                               stage="full.phase_b", metrics=m)
                 with SessionLocal() as db:
                     sid = engine_io.import_solution_into_db(
                         db, full_solution,
