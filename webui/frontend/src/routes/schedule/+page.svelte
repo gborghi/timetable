@@ -185,6 +185,21 @@
     if (v === 'room' && roomNames.length) entityId = roomNames[0];
   }
 
+  // The "cerca" box only *filters* the list; picking a datalist suggestion
+  // (or typing a full name) used to leave the shown timetable unchanged
+  // because it never set `entityId` (which drives the view). Commit the
+  // search to the actual selection: an exact match wins; on `change`
+  // (Enter / blur) a unique remaining candidate is selected too.
+  function commitEntitySearch(strict) {
+    const q = entityFilter.trim().toLowerCase();
+    if (!q) return;
+    const exact = entitySource.find((n) => n.toLowerCase() === q);
+    if (exact) { if (exact !== entityId) entityId = exact; return; }
+    if (!strict && filteredEntities.length === 1) {
+      entityId = filteredEntities[0];
+    }
+  }
+
   // ---- Lesson actions modal --------------------------------------
   function onLessonClick(l) {
     actionLesson = l;
@@ -564,6 +579,8 @@
           <input type="text" placeholder="cerca..."
                  bind:value={entityFilter}
                  list="schedule-entity-list"
+                 on:input={() => commitEntitySearch(true)}
+                 on:change={() => commitEntitySearch(false)}
                  class="px-2 py-1 rounded border border-ink-200 text-sm"
                  data-testid="schedule-entity-filter"/>
           <datalist id="schedule-entity-list">
