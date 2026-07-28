@@ -19,6 +19,7 @@
   import EChart from '$lib/components/EChart.svelte';
   import DiagnosticResult from
     '$lib/components/diagnostics/DiagnosticResult.svelte';
+  import RunProgress from '$lib/components/RunProgress.svelte';
 
   // ---- Hall (now async, like the others) ----
   let hallSamples = 256;
@@ -30,7 +31,7 @@
   // run.metrics once status='done'.
   function _emptyDiag() {
     return { runId: null, status: null, busy: false, result: null,
-              error: null };
+              error: null, progress: null };
   }
   let mc = _emptyDiag();
   let bp = _emptyDiag();
@@ -231,8 +232,10 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
       target.status = 'pending';
       _startPolling(r.run_id, (run) => {
         target.status = run.status;
+        target.progress = run.progress ?? null;
         if (run.status === 'done') {
           target.busy = false;
+          target.progress = 1;
           target.result = run.metrics || null;
           onUpdate?.(run);
           // Refresh the per-kind history from the DB so the new
@@ -431,6 +434,7 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
         <a href="/runs/{hl.runId}" class="text-xs text-accent-500 hover:underline">
           run #{hl.runId}
         </a>
+        <RunProgress status={hl.status} progress={hl.progress} />
       {/if}
       <div class="ml-auto flex gap-2 items-end">
         <div class="field !mb-0">
@@ -464,6 +468,7 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
         <a href="/runs/{mc.runId}" class="text-xs text-accent-500 hover:underline">
           run #{mc.runId}
         </a>
+        <RunProgress status={mc.status} progress={mc.progress} />
       {/if}
       <div class="ml-auto flex gap-2 items-end">
         <div class="field !mb-0">
@@ -557,6 +562,7 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
         <a href="/runs/{bp.runId}" class="text-xs text-accent-500 hover:underline">
           run #{bp.runId}
         </a>
+        <RunProgress status={bp.status} progress={bp.progress} />
       {/if}
       <div class="ml-auto flex gap-2 items-end">
         <div class="field !mb-0">
@@ -662,6 +668,7 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
         <a href="/runs/{co.runId}" class="text-xs text-accent-500 hover:underline">
           run #{co.runId}
         </a>
+        <RunProgress status={co.status} progress={co.progress} />
       {/if}
       <button class="btn-primary !text-xs ml-auto" on:click={runCo}
               disabled={co.busy}>
@@ -808,6 +815,7 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
         <a href="/runs/{ds.runId}" class="text-xs text-accent-500 hover:underline">
           run #{ds.runId}
         </a>
+        <RunProgress status={ds.status} progress={ds.progress} />
       {/if}
       <button class="btn-primary !text-xs ml-auto" on:click={runDs}
               disabled={ds.busy}>

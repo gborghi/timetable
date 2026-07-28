@@ -31,14 +31,17 @@ import metaheuristics as meta  # type: ignore  # noqa: E402
 def run_montecarlo(sol: dict, profs: dict, dc_value: dict,
                    *, n_samples: int = 100,
                    moves_per_sample: int = 30,
-                   seed: int = 0) -> dict[str, Any]:
+                   seed: int = 0,
+                   progress_cb=None) -> dict[str, Any]:
     """Generate `n_samples` perturbations of `sol` and return SOFT
-    statistics."""
+    statistics. If `progress_cb` is given it is called after each sample
+    with the fraction completed in [0, 1] (used to drive the run's
+    progress bar)."""
     rng = random.Random(seed)
     base_val, _ = meta.compute_soft(sol, profs)
     samples: list[float] = []
 
-    for _ in range(n_samples):
+    for i in range(n_samples):
         cur = meta.deepcopy_sol(sol)
         for _ in range(moves_per_sample):
             mv = rng.choice(meta.ATOMIC_MOVES)
@@ -52,6 +55,11 @@ def run_montecarlo(sol: dict, profs: dict, dc_value: dict,
                 cur = nxt
         v, _ = meta.compute_soft(cur, profs)
         samples.append(float(v))
+        if progress_cb is not None:
+            try:
+                progress_cb((i + 1) / n_samples)
+            except Exception:
+                pass
 
     if not samples:
         return {
@@ -92,7 +100,8 @@ def run_montecarlo(sol: dict, profs: dict, dc_value: dict,
 
 
 def run_montecarlo_from_db(db, *, n_samples: int = 100,
-                           seed: int = 0) -> dict[str, Any]:
+                           seed: int = 0,
+                           progress_cb=None) -> dict[str, Any]:
     """Convenience wrapper: pulls the active solution from the DB and
     runs `run_montecarlo`. Returns the same structured report."""
     from backend import engine_io  # type: ignore
@@ -108,4 +117,5 @@ def run_montecarlo_from_db(db, *, n_samples: int = 100,
     from backend import optimization
     dc_value = optimization._restore_dc_from_solution(sol)
     return run_montecarlo(sol, profs, dc_value,
-                           n_samples=n_samples, seed=seed)
+                           n_samples=n_samples, seed=seed,
+                           progress_cb=progress_cb)

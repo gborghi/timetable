@@ -1633,7 +1633,28 @@ def run_diagnostic_async(kind: str, label: str,
 
     def target(rid_inner: int):
         update_run(rid_inner, progress=0.05)
-        result = producer()
+        # Long diagnostics (Monte Carlo) can pass fine-grained progress by
+        # accepting a 1-arg callback `progress_cb(frac)` with frac in [0,1];
+        # we map it onto the run's [0.05, 0.95] band and throttle DB writes
+        # to ~1% steps. Producers that take no argument keep working as-is.
+        last = [0.05]
+
+        def on_progress(frac: float) -> None:
+            try:
+                f = max(0.0, min(1.0, float(frac)))
+            except Exception:
+                return
+            p = 0.05 + 0.90 * f
+            if p - last[0] >= 0.01 or f >= 1.0:
+                last[0] = p
+                update_run(rid_inner, progress=round(p, 3))
+
+        import inspect
+        try:
+            takes_cb = len(inspect.signature(producer).parameters) >= 1
+        except (TypeError, ValueError):
+            takes_cb = False
+        result = producer(on_progress) if takes_cb else producer()
         update_run(rid_inner, progress=0.95,
                     metrics=result if isinstance(result, dict)
                             else {"result": result})
@@ -1648,11 +1669,12 @@ def run_diag_montecarlo(*, n_samples: int = 100,
         os.path.dirname(__file__), "..", "..", "engine",
     ))
 
-    def _go() -> dict:
+    def _go(progress_cb=None) -> dict:
         from diagnostics import montecarlo_sensitivity as mc  # type: ignore
         with SessionLocal() as db:
             return mc.run_montecarlo_from_db(
                 db, n_samples=n_samples, seed=seed,
+                progress_cb=progress_cb,
             )
     return run_diagnostic_async(
         "diag_montecarlo",
