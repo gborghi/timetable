@@ -146,6 +146,24 @@ async def lifespan(app: FastAPI):
         reconcile_orphaned_runs()
     except Exception:
         log.exception("startup: orphan-run reconciliation failed")
+    # Run state (log buffers, worker threads, cancel set, concurrency
+    # semaphore) lives in THIS process's memory. A multi-worker deploy
+    # (gunicorn -w >1) therefore breaks SSE log streaming, progress, and
+    # cancellation for any request routed to a different worker than the
+    # one running the solve. Scale with container replicas, each single
+    # worker. Surface the constraint loudly; if we can tell we're under
+    # gunicorn, warn harder (it may be misconfigured with >1 worker).
+    if os.environ.get("SERVER_SOFTWARE", "").startswith("gunicorn"):
+        log.warning(
+            "running under gunicorn: the run orchestrator requires a "
+            "SINGLE worker (-w 1). With -w >1, SSE log streaming and run "
+            "cancellation break. Scale with container replicas instead."
+        )
+    else:
+        log.info(
+            "run orchestrator uses per-process state -- deploy single "
+            "worker; scale with container replicas."
+        )
     log.info("backend ready")
     yield
     log.info("backend shutdown")

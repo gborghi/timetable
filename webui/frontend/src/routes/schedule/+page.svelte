@@ -373,8 +373,10 @@
       }
     }
     try {
-      for (const id of ids) {
-        await api.del('/api/lessons/' + id);
+      if (ids.size) {
+        // One round-trip instead of N serial DELETEs (each of which used
+        // to also trigger a full timetable reload).
+        await api.post('/api/lessons/bulk-delete', { ids: [...ids] });
       }
       if (dc.kind === 'move') {
         await onLessonMove(dc.sourceId, dc.day, dc.hour);

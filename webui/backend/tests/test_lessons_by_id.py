@@ -189,6 +189,40 @@ def test_delete_lesson_by_id(app_with_temp_db):
         s.close()
 
 
+def test_bulk_delete_removes_many_and_ignores_unknown(app_with_temp_db):
+    """The conflict-resolver bulk endpoint deletes every known id in one
+    call and silently skips ids that don't exist."""
+    from fastapi.testclient import TestClient
+    from backend import models
+
+    app, SessionLocal = app_with_temp_db
+    _, l1, l2 = _seed(SessionLocal)
+    client = TestClient(app)
+    r = client.post("/api/lessons/bulk-delete",
+                    json={"ids": [l1, l2, 99999]})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["deleted"] == 2
+    assert sorted(body["deleted_ids"]) == sorted([l1, l2])
+    s = SessionLocal()
+    try:
+        assert s.get(models.Lesson, l1) is None
+        assert s.get(models.Lesson, l2) is None
+    finally:
+        s.close()
+
+
+def test_bulk_delete_empty_is_noop(app_with_temp_db):
+    from fastapi.testclient import TestClient
+
+    app, SessionLocal = app_with_temp_db
+    _seed(SessionLocal)
+    client = TestClient(app)
+    r = client.post("/api/lessons/bulk-delete", json={"ids": []})
+    assert r.status_code == 200
+    assert r.json()["deleted"] == 0
+
+
 def test_delete_lesson_by_id_404_on_unknown(app_with_temp_db):
     from fastapi.testclient import TestClient
 

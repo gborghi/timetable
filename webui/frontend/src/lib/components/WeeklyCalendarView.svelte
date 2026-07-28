@@ -59,6 +59,7 @@
     reindexSlots as _reindexSlots,
     clampToOpenWindow as _clampOpen,
   } from '$lib/calendar_layout.mjs';
+  import { offGridLessons } from '$lib/off_grid';
 
   export let value = [];
   export let onChange = (_v) => {};
@@ -656,6 +657,14 @@
     return set;
   })();
 
+  // Lessons placed on a (day, hour) that no longer maps to a configured
+  // slot (e.g. Tab Ore dropped an hour that still had lessons). They have
+  // no cell to render into, so surface them in a banner instead of
+  // silently dropping them from the view.
+  $: offGrid = mode === 'schedule'
+    ? offGridLessons(filteredLessons, configuredSlots)
+    : [];
+
   // Drag state.
   let dragSource = null;     // {kind:'lesson',lesson} or {kind:'unscheduled',entry}
   let dragHoverKey = null;   // "day-hour" being hovered while dragging
@@ -871,6 +880,20 @@
       <a href="/ore" class="link">Ore</a> per definirli.
     </div>
   {:else}
+    {#if offGrid.length}
+      <div class="off-grid-warning" role="status">
+        <strong>{offGrid.length}</strong>
+        {offGrid.length === 1 ? 'lezione' : 'lezioni'} fuori dalla griglia
+        configurata (ora non più presente in <a href="/ore" class="link">Ore</a>):
+        non compaiono nel calendario. Sposta o rimuovi queste lezioni, oppure
+        riabilita l'ora corrispondente.
+        <span class="off-grid-warning__list">
+          {offGrid.slice(0, 6).map((l) =>
+            `${l.class_name ?? l.group_name ?? '?'} · ${l.subject ?? '?'}`
+          ).join('  ·  ')}{offGrid.length > 6 ? ' …' : ''}
+        </span>
+      </div>
+    {/if}
     <div class="cal-layout"
          class:cal-layout--with-pool={mode === 'schedule'}>
     <div class="overflow-x-auto cal-layout__calendar" tabindex="0"
@@ -1203,6 +1226,26 @@
 </div>
 
 <style>
+  /* Off-grid lessons banner: warns that some placed lessons fall on an
+     hour no longer configured in Tab Ore, so they can't be rendered. */
+  .off-grid-warning {
+    margin: 0 0 0.5rem;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid rgb(217 119 6 / 0.4);
+    border-radius: 0.5rem;
+    background: rgb(251 191 36 / 0.12);
+    color: rgb(146 64 14);
+    font-size: 0.8125rem;
+    line-height: 1.4;
+  }
+  .off-grid-warning__list {
+    display: block;
+    margin-top: 0.25rem;
+    font-family: ui-monospace, monospace;
+    font-size: 0.75rem;
+    opacity: 0.85;
+  }
+
   /* Calendar-grid layout: time column on the left + N day columns,
      with configured Tab Ore slots rendered as absolutely-positioned
      event blocks ON TOP of the always-visible hour gridlines. The

@@ -77,7 +77,13 @@ export function clearToast(): void {
 // can subscribe to it to invalidate their lists. Centralised so
 // individual pages don't need to call refreshDataset() manually.
 export const mutationCounter: Writable<number> = writable(0);
-export function bumpMutation(): void {
+// Resource key(s) touched by the most recent bump, so the query client
+// can invalidate selectively instead of nuking the whole cache. `null`
+// (the default, for legacy call sites) means "unknown -> invalidate
+// everything", preserving the previous behaviour.
+export const lastMutatedResources: Writable<string[] | null> = writable(null);
+export function bumpMutation(resources: string[] | null = null): void {
+  lastMutatedResources.set(resources);
   mutationCounter.update((n) => n + 1);
 }
 

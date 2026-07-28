@@ -48,6 +48,10 @@ class RescheduleIn(BaseModel):
     hour: int
 
 
+class BulkDeleteIn(BaseModel):
+    ids: list[int]
+
+
 # ---------- helpers ----------
 
 
@@ -190,6 +194,25 @@ def delete_lesson_by_id(lesson_id: int, db: Session = Depends(get_db)):
     db.delete(l)
     db.commit()
     return {"ok": True, "deleted_id": lesson_id}
+
+
+@router.post("/bulk-delete")
+def bulk_delete_lessons(payload: BulkDeleteIn,
+                        db: Session = Depends(get_db)):
+    """Delete many Lesson rows in one round-trip. Used by the calendar's
+    "Sostituisci" conflict resolver, which previously issued N serial
+    DELETEs (each a request + a full timetable reload). Unknown ids are
+    ignored; the response reports how many rows were actually removed."""
+    ids = [int(i) for i in payload.ids]
+    if not ids:
+        return {"ok": True, "deleted": 0, "deleted_ids": []}
+    rows = db.query(models.Lesson).filter(models.Lesson.id.in_(ids)).all()
+    deleted_ids = [l.id for l in rows]
+    for l in rows:
+        db.delete(l)
+    db.commit()
+    return {"ok": True, "deleted": len(deleted_ids),
+            "deleted_ids": deleted_ids}
 
 
 @router.post("/{lesson_id}/unschedule")

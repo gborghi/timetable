@@ -576,3 +576,54 @@ load (an unrelated `uv` build at ~42% CPU during the run) — they pass 20/20 in
 isolation. Targeted `test_run_manager` (6/6, incl. the new isolation test) and
 `test_groups_preflight` (7/7) green. Docs-only `CLAUDE.md` drift present in the
 tree beforehand was left untouched (not part of this tranche).
+
+## Frontend scalability + ops multi-worker advisory (2026-07-28)
+The next two audit tranches — frontend scalability (audit agent 1) and the
+ops multi-worker run-registry hazard (agent 4). Scoped to the changes that are
+verifiable here (svelte-check + `npm test` + `vite build` + backend pytest +
+buildx-safe); the calendar rewrites that can only be proven on a running stack
+(server-side `/api/lessons` pagination, optimistic drag-drop) are deferred and
+listed below.
+
+- **Ops CRITICAL — single-worker run registry** (`Dockerfile`, `main.py`). The
+  run orchestrator keeps buffers / threads / cancel-set / semaphore in
+  per-process memory, so the docs' `gunicorn -w 4` recipe silently breaks SSE
+  log streaming + cancellation for any request the LB routes to another worker.
+  Corrected the Dockerfile production hint `-w 4` → `-w 1` with an explanation
+  (scale via container replicas, not workers) and added a startup log advisory
+  (a hard WARNING when `SERVER_SOFTWARE` shows we're under gunicorn). No code
+  path changed — the default CMD was already single-worker uvicorn.
+- **Frontend HIGH — RunLogPanel O(n²) log churn** (`RunLogPanel.svelte` +
+  new tested `log_buffer.ts`). The panel rebuilt the whole 2000-line array (and
+  re-joined the whole string) on *every* SSE line. Now lines batch into a
+  `pending` list flushed at most once per `requestAnimationFrame`, capped via
+  `appendCapped` (one allocation per frame). `log_buffer.test.mjs` (6 cases).
+- **Frontend HIGH — invalidation storm** (`queries/client.ts`, `stores.ts`).
+  Set `refetchOnWindowFocus: false` (alt-tabbing back used to refetch every
+  mounted query at once) and made `bumpMutation(resources?)` selective-capable:
+  the client now invalidates the reported resource key(s), falling back to
+  invalidate-all only when a legacy call site reports none (fully backward
+  compatible — no call sites had to change).
+- **Frontend HIGH (correctness) — off-grid lessons silently vanish**
+  (`WeeklyCalendarView.svelte` + new tested `off_grid.ts`). A lesson on a
+  (day,hour) no longer configured in Tab Ore had no cell and just disappeared
+  from the view. A warning banner now surfaces the count + first few, so the
+  data loss is visible and actionable. `off_grid.test.mjs` (4 cases).
+- **Frontend/Backend HIGH — conflict resolver N serial deletes**
+  (`routers/lessons.py` `POST /api/lessons/bulk-delete`, wired into
+  `schedule/+page.svelte::resolveDropConflict`). "Sostituisci" used to fire one
+  DELETE per conflicting lesson, each triggering a full timetable reload; now
+  one round-trip. Backend tests `test_bulk_delete_*` (2).
+
+Validation: frontend `npm test` 56/56 (10 new), `svelte-check` 0 errors,
+`vite build` OK; backend `761 passed` (the only 2 failures are the
+`test_perf_budgets` wall-clock-budget tests, flaking because a local Tower-72B
+MLX server was pinning ~62% CPU during the run — they pass 20/20 in isolation
+and on an idle CI runner). Dockerfile change is comments-only, so the buildx CI
+gate is unaffected.
+
+Deferred (need a running stack / E2E to prove safe, not pushed): server-side
+`/api/lessons` scoping+pagination and virtualization (the CRITICAL "3000 DOM
+nodes / full reload per drag" items), optimistic single-lesson drag-drop,
+FeasibilityPanel per-edit 30s solve debounce, conflict-graph layout cap. These
+stay on the frontend audit backlog.

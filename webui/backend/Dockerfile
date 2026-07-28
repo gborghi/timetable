@@ -11,8 +11,8 @@
 # Test build (single worker, no API key, dev defaults):
 #   docker run --rm -p 8000:8000 pitantum-backend
 #
-# Production hint (gunicorn+uvicorn-worker, N workers, fail-fast on
-# missing PITANTUM_API_KEY when PITANTUM_ENV=production):
+# Production hint (gunicorn+uvicorn-worker, fail-fast on missing
+# PITANTUM_API_KEY when PITANTUM_ENV=production):
 #   docker run -p 8000:8000 \
 #     -e PITANTUM_ENV=production \
 #     -e PITANTUM_API_KEY=$(openssl rand -hex 32) \
@@ -20,7 +20,16 @@
 #     pitantum-backend \
 #     gunicorn webui.backend.main:app \
 #       -k uvicorn.workers.UvicornWorker \
-#       -w 4 -b 0.0.0.0:8000
+#       -w 1 -b 0.0.0.0:8000
+#
+# IMPORTANT: keep -w 1. The run orchestrator (run_manager.py) keeps run
+# state — log buffers, worker threads, the cancel set, the concurrency
+# semaphore — in *per-process* memory. With -w >1 an SSE stream / cancel
+# / progress request routed by the load balancer to a different worker
+# than the one that launched the run sees no logs and cannot cancel it.
+# Scale out with container replicas (each its own -w 1), not gunicorn
+# workers, until run state is moved to a shared store (see the ops audit
+# backlog). main.py logs this constraint at startup.
 
 ARG PYTHON_VERSION=3.11-slim
 
