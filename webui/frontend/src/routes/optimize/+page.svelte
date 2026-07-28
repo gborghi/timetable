@@ -2,6 +2,7 @@
   import DecorIcon from '$lib/components/DecorIcon.svelte';
   import { onMount } from 'svelte';
   import { api } from '$lib/api';
+  import { humanMetricsLine } from '$lib/metrics_labels';
   import { flash, refreshDataset } from '$lib/stores';
   import { OPTIMIZE_DEFAULTS } from '$lib/constants';
   import RunLogPanel from '$lib/components/RunLogPanel.svelte';
@@ -253,15 +254,59 @@
     };
     go('/api/optimize/full-pipeline', payload);
   };
+
+  // One-click "just make my timetable": runs the standard recommended
+  // pipeline (the app's own default-enabled steps) on the active school,
+  // independent of whatever the user has toggled in the advanced cards
+  // below. This is the path a non-technical user should take.
+  const RECOMMENDED_STEPS = [
+    'hall_check', 'phase_a', 'decomp_spectral', 'phase_b',
+    'lns', 'alns', 'sa', 'ts', 'ils',
+  ];
+  const launchRecommended = () => {
+    const payload = {
+      ...stepFull,
+      profile: stepFull.profile || activeProfile || 'unknown',
+      steps: RECOMMENDED_STEPS,
+      phase_b: { ...step3 },
+      meta_optimize_rooms: !!step4.optimize_rooms,
+      meta_rooms_time_limit_s: step4.rooms_time_limit_s,
+      meta_rooms_prefer_home: !!step4.rooms_prefer_home,
+    };
+    go('/api/optimize/full-pipeline', payload);
+  };
 </script>
 
 <div class="space-y-6" data-testid="optimize-page">
   <h1 class="flex items-center gap-2"><DecorIcon name="gears" size={26} class="shrink-0" /> Workflow di ottimizzazione</h1>
 
+  <!-- Primary path for the non-technical user: one click, sane defaults. -->
+  <section class="card p-5 border-2 border-accent-300 bg-accent-50/40"
+           data-testid="optimize-recommended">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <h2 class="!mb-1">Genera l'orario</h2>
+        <p class="text-sm text-ink-500 max-w-2xl">
+          Per la maggior parte delle scuole basta questo: lancia la
+          pipeline consigliata sulla scuola attiva
+          {#if activeProfile}(<code>{activeProfile}</code>){/if}
+          con impostazioni predefinite. Il progresso appare qui sotto.
+        </p>
+      </div>
+      <button class="btn-primary !text-base !px-5 !py-2.5"
+              on:click={launchRecommended}
+              data-testid="optimize-run-recommended">
+        Genera orario (consigliato)
+      </button>
+    </div>
+  </section>
+
   <p class="text-sm text-ink-500 max-w-3xl">
-    Ogni step puo essere lanciato singolarmente o in catena. Tra uno step e l'altro
-    puoi tornare alle pagine CRUD per modificare a mano vincoli, cattedre, e singole
-    lezioni. Il log live arriva via SSE dal backend.
+    <strong>Opzioni avanzate.</strong> Le schede qui sotto servono solo
+    per casi particolari: ogni step puo essere lanciato singolarmente o
+    in catena, e tra uno step e l'altro puoi tornare alle pagine CRUD per
+    modificare a mano vincoli, cattedre e singole lezioni. Il log live
+    arriva via SSE dal backend.
   </p>
 
   <!-- CSS columns layout: cards still take half-width on lg+ but
@@ -759,7 +804,7 @@
                   class:pill-blue={r.status === 'running'}>{r.status}</span>
               </td>
               <td>{r.obj_value ?? ''}</td>
-              <td class="text-xs">{r.metrics ? Object.entries(r.metrics).map(([k,v]) => `${k}=${v}`).join(' ') : ''}</td>
+              <td class="text-xs">{humanMetricsLine(r.metrics, { max: 4 })}</td>
               <td class="text-xs">{r.started_at?.split('T')[1]?.split('.')[0] ?? ''}</td>
               <td class="text-xs">
                 {#if r.started_at && r.finished_at}

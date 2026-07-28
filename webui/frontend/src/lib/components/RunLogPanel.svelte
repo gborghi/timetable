@@ -44,18 +44,36 @@
     }
   }
 
+  let cancelling = false;
+
   function reset(rid) {
     if (unsub) unsub();
     cancelFlush();
     lines = [];
     pending = [];
     status = null;
+    cancelling = false;
     unsub = streamRun(rid, {
       onLog: (l) => { pending.push(l); scheduleFlush(); },
       onStatus: (s) => { status = s; },
       onEnd: (s) => { flush(); onEnd(s); }
     });
   }
+
+  // Stop the run from where the user is actually watching it (the inline
+  // panel), instead of forcing a trip to the Runs page. Cooperative: the
+  // status stream reflects the 'cancelled' outcome when it lands.
+  async function cancelRun() {
+    if (!runId || cancelling) return;
+    cancelling = true;
+    try {
+      await api.post('/api/optimize/runs/' + runId + '/cancel');
+    } catch (_e) {
+      cancelling = false;   // let the user retry if the request failed
+    }
+  }
+
+  $: isActive = status?.status === 'running' || status?.status === 'pending';
 
   onDestroy(() => { if (unsub) unsub(); cancelFlush(); });
 </script>
@@ -73,6 +91,14 @@
         {/if}
         {#if status.obj_value != null}
           <span class="text-ink-500">obj={status.obj_value}</span>
+        {/if}
+        {#if isActive}
+          <button type="button"
+                  class="rounded border border-red-300 px-2 py-0.5 text-red-600 hover:bg-red-50 disabled:opacity-50"
+                  on:click={cancelRun} disabled={cancelling}
+                  data-testid="runlog-cancel">
+            {cancelling ? 'Interruzione…' : 'Interrompi'}
+          </button>
         {/if}
       </div>
     {/if}

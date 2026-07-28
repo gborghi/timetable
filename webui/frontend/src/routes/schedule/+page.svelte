@@ -29,6 +29,7 @@
   import { onMount } from 'svelte';
   import { page } from '$app/stores';
   import { api, downloadUrl } from '$lib/api';
+  import { humanMetricsLine } from '$lib/metrics_labels';
   import { flash, refreshDataset } from '$lib/stores';
   import { DAYS, HOURS, DAY_NAMES_IT } from '$lib/constants';
   import WeeklyCalendarView from '$lib/components/WeeklyCalendarView.svelte';
@@ -471,12 +472,12 @@
     {#if !legacyMode && summary}
       <span class="text-sm text-ink-500" data-testid="schedule-obj-value">
         obj=<code>{summary.obj_value}</code>
-        - {Object.entries(summary.metrics || {}).map(([k, v]) => `${k}=${v}`).join(' ')}
+        {#if humanMetricsLine(summary.metrics)} · {humanMetricsLine(summary.metrics)}{/if}
       </span>
     {:else if legacyMode && classData}
       <span class="text-sm text-ink-500" data-testid="schedule-obj-value">
         obj=<code>{classData.obj_value}</code>
-        - {Object.entries(classData.metrics || {}).map(([k, v]) => `${k}=${v}`).join(' ')}
+        {#if humanMetricsLine(classData.metrics)} · {humanMetricsLine(classData.metrics)}{/if}
       </span>
     {/if}
     <a class="btn-primary !text-xs ml-auto"

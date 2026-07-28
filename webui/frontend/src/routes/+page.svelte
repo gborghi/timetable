@@ -1,8 +1,10 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
   import { api } from '$lib/api';
+  import { humanMetricsLine } from '$lib/metrics_labels';
   import { datasetState, datasetEverLoaded, flash, refreshDataset, bumpMutation } from '$lib/stores';
   import RunLogPanel from '$lib/components/RunLogPanel.svelte';
+  import OnboardingChecklist from '$lib/components/dashboard/OnboardingChecklist.svelte';
   import EntityGraph from '$lib/components/dashboard/EntityGraph.svelte';
   import DbImportExportCard from '$lib/components/dashboard/DbImportExportCard.svelte';
   import ConstraintsImportExportCard from '$lib/components/dashboard/ConstraintsImportExportCard.svelte';
@@ -175,6 +177,8 @@
     </p>
   </section>
 
+  <OnboardingChecklist />
+
   <DbImportExportCard />
 
   <ConstraintsImportExportCard />
@@ -326,9 +330,9 @@
           </span>
         {/if}
         <span class="text-ink-500">obj=<code>{sol.obj_value}</code></span>
-        <span class="text-ink-500 text-xs">
-          metriche {JSON.stringify(sol.metrics)}
-        </span>
+        {#if humanMetricsLine(sol.metrics)}
+          <span class="text-ink-500 text-xs">{humanMetricsLine(sol.metrics)}</span>
+        {/if}
       </div>
     {/if}
   </section>
