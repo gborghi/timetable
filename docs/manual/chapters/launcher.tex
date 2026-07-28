@@ -1,30 +1,63 @@
-\chapter{Launcher}
+\chapter{Avviare e fermare il programma}
+\label{ch:launcher}
+\index{Avvio}\index{Launcher}
 
-\section{Windows: \texttt{start.bat}}
+\lettrine[lines=3]{P}{er} usare piTantum non serve digitare comandi
+complicati: c'\`e uno script che avvia tutto e uno che ferma tutto.
+piTantum \`e composto da due pezzi che partono insieme --- il
+\emph{motore} (backend) e l'\emph{interfaccia} nel browser
+(frontend) --- ma dal tuo punto di vista \`e un'unica applicazione.
 
-Apre due finestre cmd separate. Pre-flight:
-\begin{itemize}
-  \item npm reachable (forza \texttt{nodejs} nel PATH);
-  \item venv esiste in \texttt{backend/.venv};
-  \item \texttt{backend/main.py} e \texttt{frontend/package.json}
-        presenti;
-  \item se \texttt{node\_modules} manca, lancia \texttt{npm install};
-  \item avvisa se 8000 / 5173 sono g\`ia occupate.
-\end{itemize}
+\section{Avviare}
 
-I path sono relativi a \texttt{\%\textasciitilde dp0}, quindi lo
-script funziona ovunque venga messo.
+\begin{description}
+\item[Windows] Fai doppio click su \texttt{webui\textbackslash
+start.bat} (oppure eseguilo da terminale). Si aprono due finestre
+--- lasciale aperte: sono il motore e l'interfaccia in esecuzione.
+\item[Linux / macOS] Da terminale, nella cartella del progetto:
+\texttt{webui/start.sh}. Parte in background; aggiungi
+\texttt{-{}-foreground} se preferisci tenerlo in primo piano e
+fermarlo con \texttt{Ctrl+C}.
+\end{description}
 
-\section{Linux / macOS: \texttt{start.sh} + \texttt{stop.sh}}
+Quando \`e pronto, apri il browser su \texttt{http://localhost:5173}:
+\`e l'indirizzo dell'interfaccia.
 
-Default background: log in \texttt{webui/logs/}, PID in
-\texttt{webui/logs/pids}. Flag \texttt{-f} / \texttt{--foreground}
-per Ctrl+C cleanup. Auto-crea venv e fa \texttt{npm install} se
-mancano. Hint per \texttt{apt}, \texttt{dnf}, \texttt{pacman},
-\texttt{brew} se python3 / npm non sono nel PATH.
+\begin{avvertenzabox}
+\textbf{Il primo avvio richiede qualche minuto}: la prima volta lo
+script prepara da solo l'ambiente Python e le dipendenze del
+frontend. Dalla seconda volta in poi l'avvio \`e immediato. Se una
+delle due porte (\texttt{8000} per il motore, \texttt{5173} per
+l'interfaccia) risulta gi\`a occupata, lo script te lo segnala:
+probabilmente \`e rimasta aperta una sessione precedente ---
+fermala prima (vedi sotto).
+\end{avvertenzabox}
 
-\texttt{stop.sh} legge \texttt{logs/pids}, manda SIGTERM con
-fallback SIGKILL dopo 3s, killa anche i child via \texttt{pkill -P}
-e ha un fallback per ammazzare qualunque processo ancora in ascolto
-su 8000 / 5173 via \texttt{lsof}.
+\section{Fermare}
 
+\begin{description}
+\item[Windows] Chiudi le due finestre aperte all'avvio.
+\item[Linux / macOS] \texttt{webui/stop.sh}: ferma in modo pulito
+sia il motore sia l'interfaccia.
+\end{description}
+
+\section{Cosa fanno gli script, in breve}
+
+Entrambi gli avvii, prima di partire, fanno alcuni controlli:
+verificano che Python e Node siano disponibili, creano l'ambiente
+virtuale in \texttt{backend/.venv} se manca, installano le
+dipendenze del frontend al primo giro, e avvisano se le porte
+\texttt{8000}/\texttt{5173} sono gi\`a in uso. Su Linux/macOS
+suggeriscono anche il comando giusto (\texttt{apt}, \texttt{dnf},
+\texttt{pacman}, \texttt{brew}) se manca qualcosa.
+
+\begin{biblioparvabox}
+\textbf{Dettagli tecnici.} Su Windows \texttt{start.bat} usa path
+relativi a \texttt{\%\textasciitilde dp0}, quindi funziona ovunque
+lo si copi. Su Linux/macOS \texttt{start.sh} scrive i log in
+\texttt{webui/logs/} e i PID in \texttt{webui/logs/pids};
+\texttt{stop.sh} li rilegge, invia \texttt{SIGTERM} con fallback
+\texttt{SIGKILL} dopo 3\,s, termina anche i processi figli
+(\texttt{pkill -P}) e, come ultima rete, libera le porte
+\texttt{8000}/\texttt{5173} via \texttt{lsof}.
+\end{biblioparvabox}

@@ -1,0 +1,214 @@
+\chapter{Risoluzione dei problemi (FAQ)}
+\label{ch:faq}
+\index{FAQ}
+\index{Risoluzione dei problemi}
+
+\epigraph{``In teoria non c'\`e differenza tra teoria e pratica.
+Nella pratica, s\`i.''}{\textsc{attribuito a} Yogi Berra}
+
+\lettrine[lines=3]{Q}{uesto} capitolo raccoglie in un unico posto
+i problemi che capitano pi\`u spesso, con la soluzione a portata
+di mano. \`E organizzato per \emph{sintomo}: cerca la frase che
+somiglia a quello che vedi e segui i passi. Se un termine non ti
+\`e chiaro, il \hyperref[ch:terminologia_didattica]{glossario dei
+termini scolastici} lo spiega; per i dettagli operativi rimandiamo
+alla \hyperref[ch:getting_started]{guida rapida} e alle
+\hyperref[ch:workflow_tipici]{procedure tipiche}.
+
+\begin{avvertenzabox}
+Regola d'oro: quasi tutti i problemi si diagnosticano dal
+\emph{pannello di log} (i messaggi che scorrono durante un
+lancio) e dal banner di stato in alto. Un messaggio rosso non
+va ignorato: dice quasi sempre \emph{cosa} \`e mancato.
+\end{avvertenzabox}
+
+\section{Avvio e installazione}
+
+\begin{description}
+
+\item[Il browser si apre ma vedo una pagina bianca.]
+Apri la console del browser (\texttt{F12}): nella quasi totalit\`a
+dei casi il backend non risponde. Verifica
+\texttt{http://localhost:8000/api/health}: deve restituire un
+piccolo JSON \texttt{\{"status":"ok"\}}. Se non risponde, il
+processo del backend non \`e partito o si \`e chiuso.
+
+\item[``Backend non raggiungibile''.]
+Il dashboard contatta \texttt{http://localhost:8000/api/health};
+se non risponde compare un banner rosso. Controlla che il
+processo del server (\texttt{uvicorn}) sia ancora attivo e che
+la porta \texttt{8000} non sia occupata da un altro programma.
+
+\item[``La porta 5173 (o 8000) \`e gi\`a in uso''.]
+Un'istanza precedente non \`e stata chiusa. Su Linux/macOS
+\texttt{./webui/stop.sh} ferma tutto in modo pulito; su Windows
+chiudi le finestre lasciate aperte o termina il processo
+\texttt{node.exe}/\texttt{python.exe} dal Task Manager. Poi
+riavvia con \texttt{start.sh}/\texttt{start.bat}.
+
+\item[Il primo avvio \`e lentissimo.]
+\`E normale: al primo lancio vengono create l'ambiente Python e
+le dipendenze del frontend (qualche minuto). I lanci successivi
+sono immediati. Vedi il capitolo \hyperref[ch:launcher]{Avviare e
+fermare il programma}.
+
+\end{description}
+
+\section{Dati, import ed export}
+
+\begin{description}
+
+\item[Il dashboard \`e vuoto (tutti zeri).]
+Non c'\`e ancora una scuola in memoria. Hai due strade: inserire
+i tuoi dati (Ore \textrightarrow{} Materie \textrightarrow{}
+Docenti \textrightarrow{} Classi \textrightarrow{} Aule
+\textrightarrow{} Cattedre), oppure importare un dataset di
+esempio dal dashboard per fare una prova. Le procedure sono nel
+capitolo \hyperref[ch:workflow_tipici]{Procedure tipiche}.
+
+\item[``Import error'' / il file non viene accettato.]
+Il file non rispetta il formato atteso (colonne o fogli
+mancanti). Usa i \emph{modelli} scaricabili dalla pagina di
+import: i fogli \emph{Istruzioni}, \emph{Esempi} e \emph{Dati}
+mostrano esattamente le colonne. Prima di scrivere davvero, lancia
+l'import in modalit\`a \emph{anteprima (dry-run)}: mostra riga per
+riga cosa verrebbe creato senza toccare il database.
+
+\begin{avvertenzabox}
+Un import ``a sostituzione'' (\emph{replace}) di un intero
+database \textbf{cancella} i dati esistenti. Fai prima un
+backup/esporta, e in caso di dubbio usa la modalit\`a
+\emph{anteprima}.
+\end{avvertenzabox}
+
+\item[Ho rinominato un docente/una classe e l'orario sembra rotto.]
+Le lezioni gi\`a piazzate fanno riferimento ai nomi: dopo una
+rinomina possono restare ``orfane''. Rilancia l'ottimizzazione,
+oppure ripristina il nome precedente.
+
+\end{description}
+
+\section{Vincoli}
+
+\begin{description}
+
+\item[Ho cambiato la matrice di indisponibilit\`a ma non vedo effetto.]
+Le modifiche ai vincoli entrano in gioco al \emph{successivo}
+lancio della pipeline: non spostano lezioni gi\`a piazzate.
+Rilancia dalla pagina di ottimizzazione (\emph{Workflow}).
+
+\item[``DSL: parser error''.]
+Se scrivi vincoli nel linguaggio DSL, le parole chiave sono
+\emph{minuscole} e \emph{case-sensitive}: \texttt{forall},
+\texttt{where}, \texttt{in}, \texttt{exists}, \texttt{count}. Gli
+identificatori (nomi di docenti, materie, classi) sono valori
+letterali, senza virgolette. Il capitolo
+\hyperref[part:dsl]{Il DSL dei vincoli} ha la grammatica completa.
+
+\item[Il modello risulta ``non fattibile'' (infeasible).]
+Vuol dire che i vincoli \emph{HARD} si contraddicono a vicenda:
+non esiste alcun orario che li rispetti tutti. Non \`e un errore
+del programma, \`e la scuola che chiede l'impossibile. Usa il
+\emph{Feasibility Check} nella pagina Vincoli per individuare il
+sottoinsieme minimo di vincoli in conflitto, poi ammorbidiscine
+uno (da \emph{HARD} a \emph{SOFT}) o rimuovilo. Vedi il capitolo
+\hyperref[ch:vincoli]{Vincoli}.
+
+\end{description}
+
+\section{Ottimizzazione e run}
+
+\begin{description}
+
+\item[La pipeline si blocca su ``Phase A''.]
+Su una scuola piccola Phase A finisce in pochi secondi. Se supera
+la mezza minuto, spesso il database \`e stato importato male
+(cattedre senza ore assegnate): reimporta i dati e riprova. Su
+scuole molto grandi \`e invece normale che serva pi\`u tempo:
+distingui i due casi dal messaggio (``nessuna soluzione'' \`e
+diverso da ``non risolto nel tempo'').
+
+\item[``Pipeline completata ma orario vuoto''.]
+Controlla sul dashboard che il numero di lezioni sia positivo. Se
+\`e zero, la pipeline \`e probabilmente fallita: leggi i messaggi
+rossi nel pannello di log (fase Phase B). Con il \emph{controllo
+di copertura} attivo, un orario incompleto viene ora segnalato
+come fallimento invece di essere salvato in silenzio.
+
+\item[Come interrompo un lancio partito per errore?]
+Ogni run pu\`o essere annullato: nella pagina \emph{Runs} il
+pulsante di annullamento ferma il lavoro. L'annullamento \`e
+\emph{cooperativo}, quindi pu\`o richiedere qualche secondo per
+rientrare da un passaggio lungo.
+
+\item[Ho lanciato due ottimizzazioni e la seconda resta ``in coda''.]
+\`E voluto: per non saturare la macchina il sistema esegue un
+lancio pesante alla volta (\emph{admission control}); i lanci
+eccedenti restano \emph{pending} e partono appena si libera lo
+slot.
+
+\item[Un run \`e rimasto ``running/pending'' per sempre dopo un riavvio.]
+Se il backend si \`e chiuso a met\`a, il run resta ``appeso''. Al
+riavvio il sistema fa pulizia automatica e lo marca come
+\emph{failed}: non \`e un dato reale ma un residuo, puoi
+eliminarlo.
+
+\end{description}
+
+\section{Orario e modifiche manuali}
+
+\begin{description}
+
+\item[Come sposto una lezione a mano?]
+Nella pagina \emph{Orario} trascina la lezione su uno slot vuoto;
+un click sulla lezione apre le azioni (sposta, elimina, svincola).
+Le lezioni ``svincolate'' finiscono nel pool laterale, da cui puoi
+ritrascinarle sul calendario.
+
+\item[Vedo un avviso ``lezioni fuori dalla griglia''.]
+Alcune lezioni sono su un'ora che non \`e pi\`u configurata nel
+tab \emph{Ore} (magari l'hai tolta dopo aver generato l'orario):
+non hanno una cella dove comparire. Riabilita l'ora corrispondente
+oppure sposta/elimina quelle lezioni.
+
+\item[Una modifica manuale viola un vincolo?]
+Il calendario mostra in anteprima i conflitti \emph{soft} mentre
+trascini; le celle bloccate (\emph{lock}) non si possono
+sovrascrivere. Un lock \`e un vincolo \emph{HARD}: il solver lo
+rispetter\`a in ogni rilancio.
+
+\end{description}
+
+\section{Prestazioni}
+
+\begin{description}
+
+\item[Tutto \`e lento e la macchina \`e satura.]
+Un altro programma sta consumando la CPU, oppure stai lanciando
+un profilo molto grande (\texttt{huge}/\texttt{superhuge}). Per un
+uso reale una scuola sta comodamente nei profili medi; i profili
+enormi servono ai benchmark. Chiudi gli altri processi pesanti
+prima di un lancio importante.
+
+\item[``Database is locked''.]
+Capita se molte scritture concorrono sullo stesso database SQLite.
+Il sistema attende gi\`a fino a qualche secondo prima di
+arrendersi; se persiste, evita di lanciare un'ottimizzazione
+mentre importi o svuoti il database. Per usi con pi\`u utenti in
+contemporanea valuta PostgreSQL.
+
+\item[I risultati cambiano tra un lancio e l'altro a parit\`a di dati.]
+Il solver \`e reso \emph{riproducibile} da un seme fisso
+(\texttt{PITANTUM\_SOLVER\_SEED}); se vuoi risultati
+bit-identici forza anche la modalit\`a deterministica
+(\texttt{PITANTUM\_DETERMINISTIC}), che usa un solo worker.
+
+\end{description}
+
+\begin{biblioparvabox}
+Non hai trovato il tuo problema? Il pannello di log di un run e la
+console del browser (\texttt{F12}) sono la prima fonte di
+informazione. In seconda battuta, apri una \emph{issue} sul
+repository (vedi l'appendice \hyperref[ch:repository_github]{Il
+repository GitHub}).
+\end{biblioparvabox}

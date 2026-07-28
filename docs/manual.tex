@@ -1,7 +1,8 @@
 % =====================================================================
 % piTantum -- Manuale unico (vintage editorial)
-% Una monografia in unico volume, capitoli numerati progressivamente,
-% senza divisione in Parti.
+% Una monografia in unico volume, in due meta`: una Parte UTENTE
+% (Parti I--IV: installare, usare, vincoli, FAQ) e una Parte TECNICA
+% (Parti V+: fondamenti, DSL, solver, benchmark, appendici).
 %
 % Compilare con lualatex + biber + makeindex + lualatex (x2).
 % Helper: docs/build_manual.sh oppure docs/build_manual.bat
@@ -188,45 +189,75 @@ Documento prodotto a maggio MMXXVI.
 \mainmatter
 
 % =====================================================================
-% Capitoli organizzati in sette Parti tematiche, in flusso didattico
-% crescente: dal "primo schedule" all'estensione del sistema.
+% Struttura in due meta` nette, per non far attraversare la teoria a
+% chi deve solo usare il programma:
+%
+%   PARTE UTENTE  (Parti I--IV): installare, usare l'interfaccia,
+%       configurare i vincoli, risolvere i problemi comuni.
+%   PARTE TECNICA (Parti V--VIII + Appendici): fondamenti, modello
+%       dati, DSL, metodi del solver, benchmark, estensione.
+%
+% Un vicepreside/segreteria puo` fermarsi alla fine della Parte IV.
 % =====================================================================
 
+% #####################################################################
+% #                          PARTE UTENTE                             #
+% #####################################################################
+
 % ---------------------------------------------------------------------
-\part{Per iniziare}
-\label{part:per_iniziare}
+\part{Guida rapida e primi passi}
+\label{part:guida_rapida}
 % ---------------------------------------------------------------------
 \input{manual/chapters/prologo}
-\input{manual/chapters/panoramica_pitantum}
-\input{manual/chapters/problema_timetabling}
-\input{manual/chapters/orario_oggetto_strutturale}
 \input{manual/chapters/installazione}
+\input{manual/chapters/launcher}
 \input{manual/chapters/getting_started}
 \input{manual/chapters/terminologia_didattica}
 
 % ---------------------------------------------------------------------
-\part{Modello dati}
-\label{part:modello_dati}
+\part{Usare l'interfaccia}
+\label{part:uso_interfaccia}
 % ---------------------------------------------------------------------
-\input{manual/chapters/modello_dati}
-\input{manual/chapters/architettura_dati_profili}
+\input{manual/chapters/guida_ui}
 \input{manual/chapters/calendario_e_ore}
+\input{manual/chapters/workflow_tipici}
+\input{manual/chapters/diagnostica_statistica}
 
 % ---------------------------------------------------------------------
-\part{Vincoli}
+\part{Vincoli e regole della scuola}
 \label{part:vincoli}
 % ---------------------------------------------------------------------
 \input{manual/chapters/vincoli}
 
 % ---------------------------------------------------------------------
-\part{Il DSL}
+\part{Risoluzione dei problemi}
+\label{part:faq}
+% ---------------------------------------------------------------------
+\input{manual/chapters/faq}
+
+% #####################################################################
+% #                          PARTE TECNICA                            #
+% #####################################################################
+
+% ---------------------------------------------------------------------
+\part{Fondamenti e modello dei dati}
+\label{part:fondamenti}
+% ---------------------------------------------------------------------
+\input{manual/chapters/panoramica_pitantum}
+\input{manual/chapters/problema_timetabling}
+\input{manual/chapters/orario_oggetto_strutturale}
+\input{manual/chapters/modello_dati}
+\input{manual/chapters/architettura_dati_profili}
+
+% ---------------------------------------------------------------------
+\part{Il DSL dei vincoli}
 \label{part:dsl}
 % ---------------------------------------------------------------------
 \input{manual/chapters/metodo_dsl}
 \input{manual/chapters/dsl_generico_per_i_vincoli}
 
 % ---------------------------------------------------------------------
-\part{Solver}
+\part{Il solver: metodi di ottimizzazione}
 \label{part:solver}
 % ---------------------------------------------------------------------
 \input{manual/chapters/workflow_di_ottimizzazione}
@@ -241,21 +272,12 @@ Documento prodotto a maggio MMXXVI.
 \input{manual/chapters/tecniche_di_ottimizzazione_avanzate}
 
 % ---------------------------------------------------------------------
-\part{Interfaccia e workflow}
-\label{part:ui}
-% ---------------------------------------------------------------------
-\input{manual/chapters/guida_ui}
-\input{manual/chapters/workflow_tipici}
-\input{manual/chapters/launcher}
-\input{manual/chapters/diagnostica_statistica}
-\input{manual/chapters/qualita_ui}
-
-% ---------------------------------------------------------------------
 \part{Benchmark e qualit\`a}
 \label{part:benchmark}
 % ---------------------------------------------------------------------
 \input{manual/chapters/benchmarks}
 \input{manual/chapters/qualita_e2e}
+\input{manual/chapters/qualita_ui}
 
 % ---------------------------------------------------------------------
 \appendix

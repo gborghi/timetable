@@ -29,6 +29,34 @@ livelli che ora descriveremo \`e il risultato di un
 compromesso meditato fra espressivit\`a per l'utente e
 trattabilit\`a per il solver.
 
+\begin{schemabox}[title={Quadro di riferimento rapido}]
+\textbf{I cinque stati} (dal pi\`u permissivo al pi\`u rigido):
+\begin{itemize}\setlength\itemsep{0pt}
+  \item \textcolor{cAllow}{\textbf{ALLOWED}} --- neutro, nessun
+        effetto (default).
+  \item \textcolor{cSoft}{\textbf{SOFT}} --- ``preferirei di no'':
+        penalit\`a se violato, ma ammesso.
+  \item \textcolor{cPref}{\textbf{PREFERRED}} --- ``preferirei di
+        s\`i'': bonus se soddisfatto.
+  \item \textcolor{cHard}{\textbf{HARD}} --- divieto assoluto: la
+        soluzione che lo viola \`e scartata.
+  \item \textcolor{cEnf}{\textbf{ENFORCED}} --- obbligo assoluto,
+        opposto di HARD.
+\end{itemize}
+\textbf{Le tre forme speciali} di cattedra:
+\begin{itemize}\setlength\itemsep{0pt}
+  \item \emph{compresenza} --- pi\`u docenti sulla stessa
+        (classe, materia) nella stessa ora;
+  \item \emph{sostegno} --- docente ``ombra'' agganciato a una
+        classe;
+  \item \emph{potenziamento} --- ore senza una classe fissa.
+\end{itemize}
+\textbf{Un vincolo scritto nel DSL}, come esempio:\\
+\texttt{forall t in Docenti: count(t, Sabato) = 0}\\
+(``nessun docente lavora il sabato''). La grammatica completa \`e
+nella \hyperref[part:dsl]{Parte sul DSL}.
+\end{schemabox}
+
 \section{La tassonomia dei cinque stati}
 \label{sec:cinque-stati}
 
