@@ -17,3 +17,4 @@ ruff>=0.5,<1.0
 # Production WSGI/ASGI runner; useful locally too for `docker run`
 # parity with the multi-worker prod command.
 gunicorn>=21.2,<24.0
+selenium>=4.20  # headless screenshot capture for the manual (scripts/capture_shots.py)

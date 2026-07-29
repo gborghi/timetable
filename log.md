@@ -669,3 +669,17 @@ returns `400 GatewayException` for build 1217 and the installer hangs).
   build now and pick the shots up the moment `docs/figures/shot_*.png` exist —
   which needs the same browser this environment can't fetch. Rebuilt
   `manual.pdf` + `manual_en.pdf`.
+
+## Manual screenshots captured via Homebrew Chromium (2026-07-29)
+Follow-up to the previous section's "blocked by the environment". Playwright's
+chromium is still unfetchable here, but the *browser* isn't the blocker -- only
+the Microsoft CDN is. `brew install --cask chromium` pulls a build from Google's
+CDN, which works; `xattr -dr com.apple.quarantine` clears Gatekeeper so it runs
+headless unattended. Drove it with Selenium (Selenium Manager auto-resolves
+chromedriver) via `webui/frontend/scripts/capture_shots.py` against the running
+dev server, clicking "Per classe" before the `/schedule` shot. Captured the five
+`docs/figures/shot_*.png` (1360-wide, 125-160 KB each) the manual already
+embedded via `\grokfig`; both PDFs grew ~700 KB and now show real UI. (Aside:
+`safaridriver` drives Safari fine and needs no download, but its WebDriver
+screenshot returns a blank frame on this box -- the Chromium path is the one that
+works.) selenium added to `requirements-dev.txt`.
