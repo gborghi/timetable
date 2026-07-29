@@ -29,6 +29,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { api } from '../api';
   import { flash } from '../stores';
+  import { confirmDialog } from '../confirm';
   import { savedViews as savedViewsSvc } from '../services';
   import DecorIcon from './DecorIcon.svelte';
 
@@ -300,7 +301,7 @@
       (x) => String(x.id) === String(selectedViewId),
     );
     if (!v) return;
-    if (!confirm('Eliminare la vista "' + v.name + '"?')) return;
+    if (!(await confirmDialog('Eliminare la vista "' + v.name + '"?'))) return;
     try {
       await savedViewsSvc.remove(v.id);
       selectedViewId = '';

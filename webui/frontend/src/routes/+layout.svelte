@@ -7,6 +7,7 @@
            startNetworkMonitor } from '$lib/stores';
   import { queryClient } from '$lib/queries/client';
   import Toast from '$lib/components/Toast.svelte';
+  import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
   import { tooltip } from '$lib/actions/tooltip';
 
   // Brand assets: paths into webui/frontend/static/branding/. The
@@ -249,4 +250,5 @@
 </div>
 
 <Toast />
+<ConfirmDialog />
 </QueryClientProvider>

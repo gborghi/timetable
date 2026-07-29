@@ -2,6 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { api } from '$lib/api';
   import { humanMetricsLine } from '$lib/metrics_labels';
+  import { confirmDialog } from '$lib/confirm';
   import { datasetState, datasetEverLoaded, flash, refreshDataset, bumpMutation } from '$lib/stores';
   import RunLogPanel from '$lib/components/RunLogPanel.svelte';
   import OnboardingChecklist from '$lib/components/dashboard/OnboardingChecklist.svelte';
@@ -109,7 +110,10 @@
   }
 
   async function clearAll() {
-    if (!confirm('Sicuro? Cancella TUTTO (classi, docenti, soluzioni, ecc.).')) return;
+    if (!(await confirmDialog(
+      'Cancella TUTTO il database: classi, docenti, aule, cattedre, '
+      + 'vincoli e soluzioni. L\'operazione non è reversibile.',
+      { title: 'Reset del database', confirmLabel: 'Cancella tutto' }))) return;
     try {
       await api.post('/api/dataset/clear?scope=all');
       await refreshDataset();

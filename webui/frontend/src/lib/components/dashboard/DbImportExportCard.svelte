@@ -13,6 +13,7 @@
   import { onMount } from 'svelte';
   import { api } from '$lib/api';
   import { flash, refreshDataset, bumpMutation } from '$lib/stores';
+  import { confirmDialog } from '$lib/confirm';
 
   let snapshots = [];
   let busy = false;
@@ -40,10 +41,11 @@
   async function importFile(ev) {
     const f = ev.target.files?.[0];
     if (!f) return;
-    if (!confirm(
+    if (!(await confirmDialog(
       'Questa operazione cancella i dati correnti del DB e li sostituisce '
-      + 'con il contenuto di "' + f.name + '". Procedere?'
-    )) {
+      + 'con il contenuto di "' + f.name + '". Procedere?',
+      { title: 'Importa database' }
+    ))) {
       ev.target.value = '';
       return;
     }
@@ -81,10 +83,11 @@
   }
 
   async function restore(s) {
-    if (!confirm(
+    if (!(await confirmDialog(
       'Ripristinare lo snapshot "' + s.filename + '"? '
-      + 'I dati correnti del DB verranno sostituiti.'
-    )) return;
+      + 'I dati correnti del DB verranno sostituiti.',
+      { title: 'Ripristina snapshot' }
+    ))) return;
     busy = true;
     try {
       const res = await api.post(
@@ -101,7 +104,7 @@
   }
 
   async function del(s) {
-    if (!confirm('Eliminare lo snapshot "' + s.filename + '"?')) return;
+    if (!(await confirmDialog('Eliminare lo snapshot "' + s.filename + '"?'))) return;
     try {
       await api.del('/api/dashboard/snapshot/'
                     + encodeURIComponent(s.filename));

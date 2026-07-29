@@ -14,6 +14,7 @@
    */
   import { api } from '$lib/api';
   import { flash, refreshDataset, bumpMutation } from '$lib/stores';
+  import { confirmDialog } from '$lib/confirm';
 
   const PROFILES = ['small', 'medium', 'big', 'huge', 'superhuge', 'mega'];
 
@@ -24,11 +25,12 @@
   let dropActive = false;
 
   async function importStress() {
-    if (!confirm(
+    if (!(await confirmDialog(
       `Importare i vincoli del profilo "${profile}" nel DB corrente?\n`
       + `I vincoli esistenti NON vengono cancellati: i nuovi si `
-      + `aggiungono.`
-    )) return;
+      + `aggiungono.`,
+      { title: 'Importa vincoli', danger: false, confirmLabel: 'Importa' }
+    ))) return;
     busy = true;
     lastReport = null;
     try {
@@ -153,15 +155,14 @@
   }
 
   async function deleteAll() {
-    if (!confirm(
+    if (!(await confirmDialog(
       'Cancellare TUTTI i vincoli dal DB corrente?\n\n'
-      + 'Questa azione svuota le tabelle: '
-      + 'logical_unavailabilities, curriculum_logical_constraints, '
-      + 'teacher/class/classroom_unavailability, coteaching_rules e '
-      + 'le room preferences. NON e\' reversibile (a meno di '
-      + 'ripristinare uno snapshot DB).'
-    )) return;
-    if (!confirm('Sei davvero sicuro? Doppia conferma richiesta.')) return;
+      + 'Questa azione svuota le tabelle dei vincoli (indisponibilità '
+      + 'logiche, vincoli di curriculum, indisponibilità di '
+      + 'docenti/classi/aule, compresenze e preferenze aula). NON è '
+      + 'reversibile, salvo ripristinare uno snapshot del database.',
+      { title: 'Cancella tutti i vincoli', confirmLabel: 'Cancella tutto' }
+    ))) return;
     busy = true;
     try {
       const res = await fetch(
