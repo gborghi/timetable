@@ -224,8 +224,25 @@
 
   // levelPill / levelLabel imported from $lib/constraint_levels.js
 
+  // Human labels for the raw `kind` enum (the raw value stays as a
+  // tooltip). Unknown kinds fall back to a de-underscored form.
+  const KIND_LABELS = {
+    teacher_cell: 'Cella docente',
+    class_cell: 'Cella classe',
+    room_cell: 'Cella aula',
+    matrix_hard_enforced: 'Matrice (HARD)',
+    logical_teacher: 'Docente (logico)',
+    logical_curriculum: 'Curricolo (logico)',
+    logical_unsatisfiable: 'Insoddisfacibile (logico)',
+    subject_room_pref: 'Materia ↔ aula',
+    teacher_room_pref: 'Docente ↔ aula',
+    coteach: 'Compresenza',
+    enforced_on_free_day: 'Obbligo su giorno libero',
+  };
+  const kindLabel = (k) => KIND_LABELS[k] || (k ? String(k).replace(/_/g, ' ') : k);
+
   const columns = [
-    { key: 'kind', label: 'Kind' },
+    { key: 'kind', label: 'Tipo' },
     { key: 'scope', label: 'Ambito' },
     { key: 'applicato_a', label: 'Applicato a' },
     { key: 'level', label: 'Stato' },
@@ -268,9 +285,9 @@
     </button>
     <button class="btn-primary"
             on:click={() => (feasibilityOpen = !feasibilityOpen)}
-            title="Analisi MUS dei vincoli HARD/ENFORCED"
+            title="Verifica se i vincoli HARD/ENFORCED sono compatibili tra loro; se non lo sono, individua il gruppo minimo in conflitto (analisi MUS)."
             data-testid="feasibility-toggle-btn">
-      {feasibilityOpen ? 'Nascondi' : ''} Feasibility Check
+      {feasibilityOpen ? 'Nascondi' : ''} Controllo fattibilità
     </button>
     <button class="btn"
             on:click={() => searchResults === null ? (searchResults = []) : (searchResults = null)}
@@ -291,7 +308,7 @@
 
   {#if feasibilityOpen}
     <div class="card p-4 border-2 border-accent-500/30 bg-accent-500/5">
-      <h2 class="mb-2">Feasibility Check (MUS)</h2>
+      <h2 class="mb-2">Controllo di fattibilità</h2>
       <FeasibilityPanel onChanged={async () => {
         if (listRef) await listRef.reload();
       }}/>
@@ -514,7 +531,7 @@
     rowKey={(r) => r.kind + '-' + r.id}
     let:row let:columns>
     <tr>
-      <td class="text-xs"><code>{row.kind}</code></td>
+      <td class="text-xs" title={row.kind}>{kindLabel(row.kind)}</td>
       <td class="text-xs">
         <span class="pill !text-[10px]">{row.scope}</span>
       </td>

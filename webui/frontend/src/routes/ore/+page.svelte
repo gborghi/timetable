@@ -215,12 +215,17 @@
     <div>
       <h1 class="text-2xl font-semibold flex items-center gap-2"><DecorIcon name="clock" size={28} class="shrink-0" /> Ore di lavoro</h1>
       <p class="text-sm text-ink-600 max-w-2xl">
-        Definisci i giorni della settimana lavorativa e gli slot
-        orari per ciascun giorno. Gli slot sono indicizzati 0..N-1 e
-        usati internamente dal motore come <code>hour_idx</code>;
-        gli orari (HH:MM) appaiono nelle viste calendarietto e nei
-        report.
+        Definisci i giorni della settimana lavorativa e, per ciascun
+        giorno, le ore di lezione (con orario di inizio e fine). È il
+        primo passo: l'orario verrà costruito su questa griglia.
       </p>
+      <details class="text-xs text-ink-500 max-w-2xl mt-1">
+        <summary class="cursor-pointer select-none">Dettagli tecnici</summary>
+        Gli slot sono indicizzati 0..N-1 (nel motore: <code>hour_idx</code>);
+        il motore usa <code>max_slots_per_day</code> come lunghezza comune
+        di <code>HOURS</code> e i giorni con meno slot lasciano gli indici
+        eccedenti inutilizzati.
+      </details>
     </div>
     <div class="flex items-center gap-3">
       <div class="inline-flex border border-ink-300 rounded
@@ -264,13 +269,10 @@
                   rounded p-3 text-sm leading-relaxed">
         <strong>Riepilogo:</strong>
         {config.days.filter((d) => d.is_active).length} giorni
-        attivi, max {config.max_slots_per_day} slot/giorno,
+        attivi, max {config.max_slots_per_day} ore/giorno,
         {config.uniform_slot_count
-          ? 'conteggio slot uniforme.'
-          : 'conteggio slot variabile per giorno.'}
-        Il motore usa <code>max_slots_per_day</code> come lunghezza
-        comune di <code>HOURS</code>; i giorni con meno slot
-        lasciano gli indici eccedenti inutilizzati.
+          ? 'numero di ore uguale in tutti i giorni.'
+          : 'numero di ore variabile per giorno.'}
       </div>
 
       <div class="bg-white border border-ink-200 rounded p-4"

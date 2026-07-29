@@ -483,10 +483,10 @@
                placeholder={(editing.last_name ?? '') + ' ' + (editing.first_name ?? '')}/>
       </div>
       <div class="field"><label>Matricola</label><input bind:value={editing.matricola}/></div>
-      <div class="field"><label>Classe di concorso</label><input bind:value={editing.group}/></div>
-      <div class="field"><label>Max ore-cattedra</label><input type="number" bind:value={editing.max_hours} data-testid="teacher-max-hours-input"/></div>
-      <div class="field"><label>Ore di completamento</label><input type="number" bind:value={editing.completion_hours}/></div>
-      <div class="field"><label>Ore di esonero</label><input type="number" bind:value={editing.exemption_hours}/></div>
+      <div class="field"><label title="Codice della classe di concorso ministeriale (es. A027 Matematica e fisica). Facoltativo.">Classe di concorso</label><input bind:value={editing.group}/></div>
+      <div class="field"><label title="Numero massimo di ore settimanali che il docente può insegnare.">Max ore-cattedra</label><input type="number" bind:value={editing.max_hours} data-testid="teacher-max-hours-input"/></div>
+      <div class="field"><label title="Ore che il docente completa in questa scuola (spezzone / part-time). Facoltativo.">Ore di completamento</label><input type="number" bind:value={editing.completion_hours}/></div>
+      <div class="field"><label title="Ore di esonero dall'insegnamento (es. per incarichi o funzioni strumentali). Facoltativo.">Ore di esonero</label><input type="number" bind:value={editing.exemption_hours}/></div>
       <div class="field">
         <label title="Punteggio in graduatoria provinciale (0-300). Usato dal preset 'Anzianita' di Phase A per assegnare i docenti piu' anziani agli indirizzi pesanti.">
           Punteggio graduatoria
@@ -497,7 +497,7 @@
                placeholder="(non impostato)"/>
       </div>
       <div class="field">
-        <label>Giorno libero (alias di "riga rossa nella matrice")</label>
+        <label title="Imposta rapidamente un giorno di libertà: blocca (rosso/HARD) tutte le ore di quel giorno nella matrice qui sotto. Per più preferenze, o preferenze morbide, usa il pannello 'Giorni liberi (avanzato)'.">Giorno libero (rapido)</label>
         <select value={editing.free_day || ''} on:change={onFreeDaySelect}>
           <option value="">(nessuno)</option>
           {#each DAY_NAMES_EN as d}<option value={d}>{DAY_NAMES_EN_TO_IT[d] || d}</option>{/each}
@@ -519,8 +519,8 @@
         onChange={onMatrixChange}/>
       {#if editing.free_day}
         <p class="text-xs text-ink-500 mt-1">
-          Le 6 ore del giorno libero ({editing.free_day}) sono pre-impostate
-          a HARD (rosso) automaticamente.
+          Le ore del giorno libero ({DAY_NAMES_EN_TO_IT[editing.free_day] || editing.free_day})
+          sono pre-impostate a HARD (rosso) automaticamente.
         </p>
       {/if}
     </div>
@@ -657,10 +657,15 @@
       {/if}
     </div>
 
-    <div class="mt-4 grid grid-cols-3 gap-3">
-      <div class="field"><label>Peso "no buchi"</label><input type="number" bind:value={editing.pref_no_buchi_weight}/></div>
-      <div class="field"><label>Peso "no 5 ore"</label><input type="number" bind:value={editing.pref_no_five_weight}/></div>
-      <div class="field"><label>Peso "no 1 ora isolata"</label><input type="number" bind:value={editing.pref_no_one_weight}/></div>
+    <p class="mt-4 text-xs text-ink-500 max-w-2xl">
+      Penalità personali del docente: quanto ci tiene a evitare, nel suo
+      orario, ore buche (vuoti tra due lezioni), giornate da 5 ore e ore
+      isolate. Numero più alto = penalità più forte (0 = indifferente).
+    </p>
+    <div class="mt-1 grid grid-cols-3 gap-3">
+      <div class="field"><label title="Quanto penalizzare le ore buche (buchi) nell'orario del docente.">Peso "no buchi"</label><input type="number" bind:value={editing.pref_no_buchi_weight}/></div>
+      <div class="field"><label title="Quanto penalizzare le giornate in cui il docente ha 5 ore di lezione.">Peso "no 5 ore"</label><input type="number" bind:value={editing.pref_no_five_weight}/></div>
+      <div class="field"><label title="Quanto penalizzare una singola ora isolata nella giornata del docente.">Peso "no 1 ora isolata"</label><input type="number" bind:value={editing.pref_no_one_weight}/></div>
     </div>
 
     <div class="mt-4">

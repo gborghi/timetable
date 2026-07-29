@@ -119,7 +119,17 @@
     : view === 'teacher' ? `Orario docente ${entityId || '...'}`
     : `Orario aula ${entityId || '...'}`;
 
+  // Dismissible how-to strip above the calendar: the drag/click
+  // affordances otherwise live only in hover tooltips.
+  let helpDismissed = false;
+  function dismissHelp() {
+    helpDismissed = true;
+    try { localStorage.setItem('pt_schedule_help_dismissed', '1'); } catch (_e) { /**/ }
+  }
+
   onMount(async () => {
+    try { helpDismissed = localStorage.getItem('pt_schedule_help_dismissed') === '1'; }
+    catch (_e) { /**/ }
     if (legacyMode) {
       await loadLegacy();
       return;
@@ -607,6 +617,19 @@
     {#if lessons.length > 0 || unscheduled.length > 0}
       <div class="card p-2"
            data-testid="schedule-calendar-card">
+        {#if !helpDismissed}
+          <div class="mb-2 flex items-start gap-2 rounded bg-accent-50 border border-accent-200 px-3 py-2 text-xs text-ink-600"
+               data-testid="schedule-help">
+            <span class="flex-1">
+              <strong>Come si usa:</strong>
+              trascina una lezione su uno slot vuoto per spostarla ·
+              click su una lezione per le azioni (sposta, elimina, svincola) ·
+              trascina dal pool a destra per ripiazzare una lezione svincolata.
+            </span>
+            <button type="button" class="text-ink-400 hover:text-ink-600"
+                    on:click={dismissHelp} aria-label="Nascondi aiuto">✕</button>
+          </div>
+        {/if}
         <WeeklyCalendarView mode="schedule"
                             title={calendarTitle}
                             config={workingHoursConfig}
