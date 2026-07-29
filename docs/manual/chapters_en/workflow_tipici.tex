@@ -1,0 +1,327 @@
+\chapter{Typical procedures}
+\label{ch:workflow_tipici}
+\index{Workflow!typical}\index{Procedures}\index{Use cases}
+
+\epigraph{``To learn to do a new thing well, it helps to repeat
+it five times. The first time gropingly, the second with caution,
+the third with ease, the fourth with grace, the fifth with
+mastery.''}{Adapted from \textsc{Beatrice Bizzarri},
+\emph{Teaching notebook}, 1923}
+
+\lettrine[lines=3]{T}{his} chapter gathers the six recurring
+procedures from the experience of a timetable coordinator. Each
+one is described as a sequence of numbered steps, with the tab to
+open, the buttons to press, the expected effect. They are the
+operational cookbook: to learn a school of thirty-two classes by
+heart in two hours. The procedures are independent of one another:
+a school that opens the timetable in August will follow the first
+two; a school that steps in mid-year with an Excel file will jump
+to the third.
+
+\grokfig{fig_happy_path_aula}{The classroom at the first working
+timetable: fifteen happy students and the weekly calendar on the
+teacher's desk.}
+
+\section{Procedure 1: a school from scratch}
+\label{sec:wf_da_zero}
+
+Starting point: empty database, a school to be configured for the
+first time. Destination: a complete weekly timetable displayed.
+
+\subsection{Step 1 -- configure the time grid}
+
+Go to the \emph{Ore} (Hours) tab. Check that the working days and
+the time slots reflect the reality of the school. The default
+(Mon--Sat, 8:00--14:00, six slots) is fine for the vast majority
+of Italian schools. Change it only if necessary. Press
+\emph{Salva} (Save).
+
+\paragraph{Attention.} Fix the grid now, not later. Changing it
+afterwards invalidates the unavailability matrices already
+entered.
+
+\subsection{Step 2 -- load the registry data}
+
+You have two roads.
+
+\paragraph{Road A: import from Excel.}
+Go to the \emph{Import bulk} tab. Download the templates of the
+seven sheets (\texttt{teachers}, \texttt{subjects},
+\texttt{classes}, \texttt{classrooms}, \texttt{curricula},
+\texttt{students}, \texttt{groups}). Fill in each sheet. Re-import
+in the same order, in \texttt{upsert} mode.
+
+\paragraph{Road B: manual entry.}
+Visit the tabs \emph{Indirizzi} (Tracks), \emph{Materie}
+(Subjects), \emph{Docenti} (Teachers), \emph{Classi} (Classes),
+\emph{Aule} (Classrooms), \emph{Studenti} (Students),
+\emph{Gruppi} (Groups) in this order, and use the \emph{+ Nuovo}
+(+ New) button of each to insert the rows. Longer, but suited to
+small schools or to when a starting Excel sheet is missing.
+
+\subsection{Step 3 -- assign the cattedre}
+
+Go to the \emph{Cattedre} (Teaching posts) tab. For each class
+you see a card with all the subjects of its track. Press
+\emph{cambia} (change) next to each subject and choose the
+teacher. For the first session it is best to start with the most
+constrained teachers (example: those with a single possible
+class), and finish with the \emph{jolly} (flexible, wildcard)
+ones. Once configuration is complete, check with the
+\emph{Warnings cattedre} button that no teacher is
+\texttt{SFORA} (over quota) or \texttt{SOTTO} (under quota).
+
+\subsection{Step 4 -- add unavailabilities and constraints}
+
+For each teacher open the card from the \emph{Docenti} (Teachers)
+tab and colour their matrix. Use red (\textsc{Hard}) for the real
+unavailabilities; yellow (\textsc{Soft}) for the negative
+preferences; blue (\textsc{Preferred}) for positively preferred
+days.
+
+For the logical constraints (e.g.\ ``Bianchi does not work on
+Saturday'', ``in 5A no history on Friday'') go to the
+\emph{Vincoli} (Constraints) tab, press \emph{+ Nuovo vincolo DSL}
+(+ New DSL constraint), write the expression, \emph{Valida}
+(Validate), \emph{Salva} (Save).
+
+\begin{esempiobox}[title={Recurring constraints, in DSL}]
+\begin{lstlisting}
+# Bianchi does not work on Saturday
+forall l in lessons where l.teacher == Bianchi:
+    l.day != sab
+
+# In 5A no history on Friday
+forall l in lessons where l.class == 5A and l.subject == Storia:
+    l.day != ven
+
+# The gym is occupied on Tuesday morning
+forall l in lessons where l.classroom == Palestra:
+    l.day != mar or l.hour > 11
+\end{lstlisting}
+\end{esempiobox}
+
+\subsection{Step 5 -- snapshot before the computation}
+
+Go to the \emph{Dashboard}, \emph{Import / Export DB} card, press
+\emph{Salva snapshot} (Save snapshot). This way you have a
+guaranteed way back if the first pipeline produces strange
+results.
+
+\subsection{Step 6 -- pre-check}
+
+On the \emph{Diagnostica} (Diagnostics) tab press
+\emph{Hall pre-check}. The system verifies that the required hours
+are formally serviceable by the available teachers. If the check
+fails, the panel indicates the subset of classes and subjects in
+deficit: do not launch the pipeline, fix things first.
+
+\subsection{Step 7 -- launch the pipeline}
+
+Go to the \emph{Workflow} tab, press \emph{Pipeline completa}
+(Full pipeline). The lower log panel shows the phases one after
+the other (Phase A, Phase B per day, metaheuristics, classrooms).
+Depending on the size of the school:
+
+\begin{itemize}
+\item \texttt{small} (8 classes): 30--90 seconds;
+\item \texttt{medium} (15--20 classes): 2--5 minutes;
+\item \texttt{huge} (40+ classes): 8--20 minutes.
+\end{itemize}
+
+When it finishes, the green banner \emph{Pipeline completed}
+takes you directly to the \emph{Orario} (Timetable) tab.
+
+\subsection{Step 8 -- view and refine}
+
+On the \emph{Orario} (Timetable) tab, navigate the four views (by
+class, teacher, classroom, slot). If you find a lesson out of
+place, drag it to another slot: the system checks the Hard
+constraints in real time. If all is well, export with the
+\emph{Esporta XLSX} (Export XLSX) button.
+
+\grokfig{fig_no_solution_ape}{The confused bee: what to do when no
+solution exists and a constraint has to be relaxed.}
+
+\section{Procedure 2: importing data from another school's Excel}
+\label{sec:wf_import_excel}
+
+A school that receives the registry Excel sheets from another
+institute, or from a previous year.
+
+\paragraph{Premise.} Not all sheets arrive in the format of our
+template. A small renaming job before the import is advisable.
+
+\begin{enumerate}
+\item Open the official template from the \emph{Import bulk} tab
+  (\emph{Scarica template} / Download template button for
+  \texttt{teachers}). Open the \emph{Istruzioni} (Instructions)
+  sheet: there the canonical names and the accepted synonyms are
+  listed (e.g.\ \texttt{nome}, \texttt{teacher\_name},
+  \texttt{cognome\_nome} are all accepted for the \texttt{name}
+  field).
+\item In your starting Excel, rename the column headers with the
+  canonical names (or any one of the aliases). Extra columns are
+  ignored.
+\item Save the file. On the \emph{Import bulk} tab choose
+  \texttt{teachers}, \texttt{upsert} mode, drag the file. Press
+  \emph{Importa} (Import).
+\item The report panel below the button lists the imported rows
+  and the discarded ones. The discarded ones report the index
+  and the reason for the error (missing field, out-of-range
+  value, and so on).
+\item Repeat for the other six sheets, in the same order.
+\end{enumerate}
+
+\begin{erroricomunibox}
+\textbf{``The file has broken accents.''} The importer accepts
+Excel xlsx (recommended) or CSV. If the CSV comes from an
+Italian Excel, save it in \emph{CSV UTF-8 (delimited)} format;
+otherwise the letter \`e becomes a sequence of symbols and the
+records are discarded.
+
+\textbf{``The classes are imported but have no track.''}
+Probably the \texttt{curriculum} column was missing from the
+file, or the value did not match any track in the database. Fix
+the error by importing the tracks first and then the classes.
+\end{erroricomunibox}
+
+\grokfig{fig_merge_rivoletti}{Three little streams of water flow
+together into the river \texttt{main} downstream of the merge.}
+
+\section{Procedure 3: re-running the pipeline after a change of constraints}
+\label{sec:wf_relancia}
+
+Typical scenario: the teachers' assembly asks for a substantial
+change (e.g.\ ``let us add a co-teaching in all the first-year
+classes''). The pipeline has to be re-run.
+
+\begin{enumerate}
+\item Snapshot of the current solution, from the \emph{Dashboard},
+  \emph{Import / Export DB} card, \emph{Salva snapshot} (Save
+  snapshot) button. The snapshot serves to compare before/after.
+\item Add the new constraints (matrix, DSL, co-teachings\dots).
+\item On the \emph{Diagnostica} (Diagnostics) tab press
+  \emph{Hall pre-check} to verify that the request is still
+  formally feasible.
+\item Go to the \emph{Workflow} tab, press \emph{Pipeline
+  completa} (Full pipeline). If the first pipeline had taken N
+  minutes, the second will take a similar time.
+\item Compare. On the \emph{Runs} tab you will see the new run at
+  the top. Click it for the detail, compare the SOFT score with
+  the previous one.
+\item If the new one is better: it is done. If worse: go to the
+  previous snapshot and press \emph{Ripristina} (Restore).
+\end{enumerate}
+
+\section{Procedure 4: editing a single lesson by hand}
+\label{sec:wf_edit_manuale}
+
+Scenario: the timetable has been in production for a week, the
+principal asks to move 2B's English from Friday to Thursday.
+
+\begin{enumerate}
+\item On the \emph{Orario} (Timetable) tab, choose the \emph{Per
+  classe} (By class) view, select 2B.
+\item Drag the English cell from Friday to Thursday. As you drag,
+  the candidate Thursday cells become coloured: green if
+  acceptable, yellow if they worsen the SOFT, red if they violate
+  a Hard.
+\item Drop it over a green slot. The timetable updates; the
+  \emph{Cost} panel at the top changes.
+\item If the classroom was not compatible with the new slot, the
+  \emph{Aula da scegliere} (Classroom to choose) modal opens:
+  select one of the green alternatives.
+\item Export the new timetable (XLSX) to distribute it.
+\end{enumerate}
+
+\paragraph{Suggestion.} The manual change does not automatically
+update the saved constraints. If the change is to become permanent
+(\emph{2B's English is always on Thursday}), it is best to add the
+corresponding constraint in the \emph{Vincoli} (Constraints) tab
+so that the next pipeline respects it without having to repeat the
+drag-and-drop.
+
+\grokfig{fig_supplenza_volante}{The substitute teacher flies
+towards the classroom with her folder under her arm.}
+
+\section{Procedure 5: handling a daily substitution}
+\label{sec:wf_supplenza}
+
+Daily scenario: three teachers are absent, the substitutions for
+today have to be placed.
+
+\begin{enumerate}
+\item Open the \emph{Assenze e supplenze} (Absences and
+  substitutions) tab.
+\item Click the header of the current day (example:
+  \emph{Marted\`{\i}} / Tuesday). A modal opens with the list of
+  teachers; check the absent ones, confirm.
+\item The timetable cells of those teachers turn red: uncovered
+  classes.
+\item For each red cell, click on the cell. A two-column modal
+  opens: \emph{uncovered classes} on the left,
+  \emph{available teachers} on the right. The available teachers
+  are ordered by \texttt{graduatoria\_score} (ranking score): the
+  most suitable appear at the top.
+\item Drag a teacher onto the uncovered class; the cell turns
+  green.
+\item If all the cells are green, the day is covered. Export the
+  absence bulletin with the button at the top right; it will be
+  printed and posted.
+\end{enumerate}
+
+\begin{esempiobox}[title=Real case]
+Liceo Galileo, Tuesday, 7:45. Absent are Bianchi (mathematics,
+4 hours), Rossi (history, 2 hours) and Verdi (English, 3 hours):
+nine uncovered cells. The system proposes at the top of the lists
+three substitutes consistent with each subject, ordered by score.
+The coverage closes in twelve minutes.
+\end{esempiobox}
+
+\grokfig{fig_backup_snapshot}{The backup hourglass with dated
+snapshots in place of the sand.}
+
+\section{Procedure 6: exporting and archiving the timetable}
+\label{sec:wf_export}
+
+At the end of the year, or when a consolidated version is closed,
+it is best to archive three things:
+
+\begin{enumerate}
+\item The \emph{timetable in XLSX}. Go to the \emph{Orario}
+  (Timetable) tab, \emph{Per classe} (By class) view, press
+  \emph{Esporta XLSX} (Export XLSX). You will get a file with one
+  sheet per class, formatted like the classic form of Italian
+  schools. Repeat for the \emph{Per docente} (By teacher) view if
+  needed.
+\item The \emph{complete database}. Go to the \emph{Dashboard},
+  \emph{Import / Export DB} card, press \emph{Esporta DB completo}
+  (Export full DB). You will get a zip containing the raw SQLite
+  file, the per-table CSVs and the metadata. It is the official
+  backup.
+\item The \emph{constraints}. On the same \emph{Import / Export
+  constraints} card, press \emph{Esporta JSON} (Export JSON) (or
+  xlsx). You will have a file with all the logical constraints
+  written by the user, handy for reuse in similar schools.
+\end{enumerate}
+
+\paragraph{Archiving note.} It is best to save the three files in
+a folder named \texttt{<school\_name>\_<school\_year>} on the
+school's shared drive. Year after year, the archive becomes the
+basis for historical studies (e.g.\ ``where did we get
+worse/better'') and for restarting the next year from a known
+structure.
+
+\fleuron
+
+\begin{biblioparvabox}
+The six procedures in this chapter cover ninety per cent of the
+real use cases. The residual situations (advanced diagnostics,
+deep infeasibility, branch-and-price for enormous schools) are
+treated in the specialist chapters:
+\cref{ch:diagnostica_statistica_en} for statistical diagnostics,
+\cref{ch:tecniche_avanzate_en} for the advanced techniques,
+\cref{ch:lessons_learned_en} for the problematic scenarios
+encountered in the pilot schools.
+\end{biblioparvabox}

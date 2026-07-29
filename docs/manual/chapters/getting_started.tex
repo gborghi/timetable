@@ -103,6 +103,10 @@ utente normale (non amministratore) e di non aver impostato
 
 \section{Avvio dei due processi}
 
+\grokfig{shot_dashboard}{Il cruscotto (Dashboard) a browser aperto:
+in alto la checklist guidata dei primi passi, che si spunta da sola
+man mano che inserisci i dati.}
+
 $\pi$Tantum gira come due processi collaborativi:
 
 \begin{itemize}
@@ -202,6 +206,10 @@ opzionalmente ---
 
 \section{Visualizzare l'orario}
 
+\grokfig{shot_orario}{L'orario settimanale nella vista \emph{Per
+classe}: ogni lezione \`e un blocco trascinabile; il click apre le
+azioni (sposta, elimina, svincola).}
+
 Vai sulla tab \emph{Schedule} (\texttt{/schedule}). Se hai
 importato la soluzione pre-calcolata vedi una griglia
 $36\text{ slot} = 6\text{ giorni} \times 6\text{ ore}$, con
@@ -227,6 +235,11 @@ I tre comandi essenziali:
 \end{itemize}
 
 \section{Lanciare la pipeline da zero}
+
+\grokfig{shot_optimize}{La pagina \emph{Ottimizza}: in cima il
+pulsante \emph{Genera orario (consigliato)} per l'uso normale; le
+schede con i parametri del solver sono nell'accordion
+\emph{Modalit\`a avanzata}.}
 
 Ora rifacciamo il giro generando l'orario senza appoggiarsi alla
 soluzione pre-calcolata.
@@ -265,6 +278,10 @@ e il capitolo~\ref{ch:tecniche_avanzate}
 spiega quando ha senso ciascuna combinazione.
 
 \section{Aggiungere un vincolo dalla UI}
+
+\grokfig{shot_vincoli}{La pagina \emph{Vincoli}: da qui si aggiungono
+regole (giorni liberi, indisponibilit\`a, preferenze) e si lancia il
+controllo di fattibilit\`a.}
 
 Per chiudere il giro inseriamo un vincolo personalizzato e lo
 applichiamo. Apri la tab \emph{Vincoli} (\texttt{/constraints}) e

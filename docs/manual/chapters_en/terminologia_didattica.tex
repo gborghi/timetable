@@ -1,0 +1,323 @@
+\chapter{Glossary of school terms}
+\label{ch:terminologia_didattica}
+\index{Glossary!of school terms}
+\index{Terminology!didactic}
+
+\epigraph{``Words are things, and a small drop of ink, falling
+like dew upon a thought, produces that which makes thousands,
+perhaps millions, think.''}{\textsc{Lord Byron}, \emph{Don Juan},
+III, 88}
+
+\lettrine[lines=3]{T}{he} timetabling of Italian schools carries
+with it a rich lexicon that is often not shared with the rest of
+the world. One and the same entity is called \emph{cattedra}
+(teaching post) by the principal, \emph{assegnamento} (assignment)
+by the information system, \emph{ore di servizio} (service hours)
+by the union, \emph{tuples $(t,c,s)$} by the solver. This chapter
+fixes the vocabulary: each entry carries the canonical term, the
+aliases, an operational definition and a pointer to the database
+tables or the code modules where the concept lives.
+
+\section{Registry entities}
+
+\begin{description}
+\item[Docente (Teacher).]\index{Teacher}\index{Cattedra}
+  \emph{Aliases}: insegnante, prof, teacher (code). A physical
+  person holding one or more \emph{cattedre} (teaching posts)
+  within the school. In the database it is a row of the
+  \texttt{teachers} table, with \texttt{name}, \texttt{group} (the
+  \emph{classe di concorso}, the competition class / subject
+  qualification), weekly \texttt{max\_hours} and a set of flags
+  (sostegno, potenziamento). Its unavailabilities are in
+  \texttt{teacher\_unavailability}.
+
+\item[Cattedra (Teaching post).]\index{Cattedra}\index{Assignment}
+  \emph{Aliases}: assegnamento (assignment), cattedra di
+  insegnamento, row of the \texttt{Assignment}. A triple
+  $(\text{teacher},\text{class},\text{subject})$ with the number
+  of weekly hours. A mathematics cattedra for 1A worth 5 hours is
+  the row $(\text{Borghi}, 1A, \text{Matematica}, 5)$ in the
+  \texttt{assignments} table. All the hours of a cattedra end up
+  in the six days of the week and in the six time slots of each
+  day: the constraint $\sum_{d,h} x_{tcsdh} = \text{hours}$ is the
+  heart of the CP-SAT model.
+
+\item[Classe (Class).]\index{Class}
+  \emph{Aliases}: teaching room (sometimes), ``the class 1A''.
+  It is a group of students who share the study programme. In the
+  database it is a row of \texttt{classes} with \texttt{name}
+  (e.g.\ \texttt{1A}), \texttt{year} (1\ldots5), \texttt{section}
+  (A, B, C\ldots), \texttt{curriculum} (e.g.\ Scientific,
+  Linguistic) and \texttt{n\_students}. The distinction between
+  \emph{class} and \emph{classroom} is essential: the class is a
+  set of students, the classroom is a physical unit.
+
+\item[Aula (Classroom).]\index{Classroom}
+  \emph{Aliases}: laboratory, gym, classroom (code). A physical
+  space with characteristics (capacity, equipment, plesso it
+  belongs to). Table \texttt{classrooms}. The constraint \emph{the
+  lessons of a class in one slot must take place in the same
+  classroom} is an implicit standard (with exceptions for
+  articulations and laboratories).
+
+\item[Materia (Subject).]\index{Subject}
+  \emph{Aliases}: subject, discipline. The subject in itself is
+  simply a name (\emph{Matematica} / Mathematics, \emph{Italiano}
+  / Italian). The hours of each subject in each class are the
+  Cartesian product (class $\times$ subject $\to$ hours) that
+  lives in \texttt{class\_subjects}.
+
+\item[Studente (Student).]\index{Student}
+  Table \texttt{students}. For the base model $\pi$Tantum does not
+  place individual students into slots --- it does so for classes.
+  But when there are \emph{articulated groups} or
+  \emph{potenziamenti} (enrichment courses), the student becomes a
+  first-class entity because their \texttt{tags} and
+  \texttt{groups} influence the aggregation.
+\end{description}
+
+\section{Organizational structures}
+
+\begin{description}
+\item[Plesso (Campus).]\index{Plesso}
+  \emph{Aliases}: succursale, detached site. A separate physical
+  building under the same school. A school with three plessi has
+  three logical coordinates $(x,y)$ in \texttt{plessi}. A typical
+  constraint: ``Borghi cannot have one hour at Plesso A at 9 and
+  one hour at Plesso B at 10'' (impossible commuting). It is
+  handled by the \texttt{plesso\_commuting\_rules} table with a
+  minimum \texttt{min\_gap\_hours} between two hours in different
+  plessi.
+
+\item[Indirizzo (Study track / curriculum).]\index{Indirizzo}\index{Curriculum}
+  \emph{Aliases}: curriculum, profile, thematic section. It
+  defines the \emph{study plan}: which subjects and how many
+  hours. A \emph{liceo scientifico} (science high school) has
+  Latin, a \emph{liceo scienze applicate} (applied-sciences high
+  school) does not; a \emph{scientifico} does more hours of
+  mathematics than a \emph{linguistico} (language high school).
+  Table \texttt{curricula}. The data model allows curricula to
+  share subjects, and a single curriculum to change the hours per
+  subject per year (1A scientifico does 5 hours of mathematics, 3A
+  scientifico does 4).
+
+\item[Anno (Year).]\index{School year}
+  \emph{Aliases}: year class, year of course. In Italian licei and
+  institutes it is an integer in $\{1,2,3,4,5\}$. The classes of
+  the \emph{biennio} (first two years: 1, 2) tend to be more
+  numerous (5--6 sections); those of the \emph{triennio} (last
+  three years: 3, 4, 5) sparser. In code the field is
+  \texttt{class.year}.
+
+\item[Sezione (Section).]\index{Section}
+  \emph{Aliases}: corso (stream). The letter of the class (1A, 1B,
+  1C\ldots). It is the \emph{third} index (year, section,
+  curriculum) that uniquely identifies a class.
+\end{description}
+
+\section{Special teaching forms}
+
+\begin{description}
+\item[Compresenza (Co-teaching).]\index{Compresenza}\index{Coteach}
+  \emph{Aliases}: co-teaching, co-docenza, coteach (code). Two
+  teachers simultaneously on the same class in the same hour,
+  usually for subjects with a strong laboratory component
+  (language $+$ native-speaker conversation assistant; science $+$
+  laboratory technician). Table \texttt{coteach\_groups} with
+  \texttt{required=True} for the mandatory hours,
+  \texttt{required=False} for the preferred hours. The number of
+  co-teaching hours is \texttt{n\_hours}; the CP-SAT constraint is
+  $x_{t_1} = x_{t_2}$ in all the designated slots.
+
+\item[Sostegno (Special-needs support).]\index{Sostegno}
+  \emph{Aliases}: docente di sostegno, BES support. A specialized
+  teacher who follows one or more students with special
+  educational needs, usually in co-teaching with the subject
+  teacher. Their presence is modelled as \texttt{is\_support=True}
+  on the corresponding \texttt{assignments} row, and the slots in
+  which they are co-present coincide with those of the other
+  teacher.
+
+\item[Potenziamento (Enrichment hours).]\index{Potenziamento}
+  \emph{Aliases}: hours of empowerment, ore di potenziamento.
+  Additional hours of a subject beyond the ministerial minimum,
+  usually delivered by a second teacher of the same competition
+  class. It is \texttt{is\_potenziamento=True} on
+  \texttt{assignments} and typically does \emph{not} translate
+  into co-teaching hours: they are separate hours.
+
+\item[Gruppo articolato (Articulated group).]\index{Articulated group}
+  \emph{Aliases}: classe articolata, articulated class, group
+  (code). A subset of a class with a specific tag (for example:
+  the students of second language French vs.\ Spanish within 3A
+  linguistico). For the solver a group is a separate entity that
+  lives in the same slot as its base class. Table \texttt{groups};
+  the articulated cattedre have a non-null \texttt{group\_id}.
+  Typical constraint: ``in 1A linguistico, the hour of French
+  conversation and the hour of Spanish conversation go in the same
+  slot but in two different classrooms''.
+
+\item[Parallel group.]\index{Parallel group}
+  Cattedre of different classes fixed at the same hour, usually
+  because the students are split across transversal groups (e.g.\
+  physical education divided into male/female from two parallel
+  classes). Table \texttt{parallel\_groups}; constraint
+  $x_{t_1, c_1, s, d, h} = x_{t_2, c_2, s, d, h}$ for each
+  $(d, h)$ of the group.
+\end{description}
+
+\section{Time slots and calendar}
+
+\begin{description}
+\item[Slot.]\index{Slot}
+  A pair $(\text{day}, \text{hour})$ in
+  $\{1,\ldots,6\} \times \{1,\ldots,6\}$ for the base model. That
+  is 36 slots per week. A lesson occupies exactly one slot.
+
+\item[Giorno (Day).]
+  Index from 1 (Monday) to 6 (Saturday) in the classic Italian
+  model. Saturday is configurable as \emph{free} for schools that
+  adopt the short week.
+
+\item[Ora (Hour).]
+  Index from 1 to 6, corresponding typically to 8:00, 9:00,
+  10:00, 11:00, 12:00, 13:00. The maximum number of hours per day
+  is configurable per profile and per track.
+
+\item[Sesta ora (Sixth hour).]\index{Sixth hour}
+  The 6\textsuperscript{th} hour (\texttt{hour=13} in the legacy
+  code, \texttt{6} in the current model) is penalized because in
+  many institutes it ends at 13:50 and is preferably avoided.
+
+\item[Buco (Gap).]\index{Gap}
+  An empty slot between two full slots in the same day of the same
+  teacher or the same class. It is penalized in the soft score.
+
+\item[Working hours.]\index{Working hours}
+  Table \texttt{working\_hours} (imported from the pickles): for
+  each (day, hour) a flag that says whether that slot is
+  \emph{operational} or \emph{closed}. Closed slots receive no
+  lessons. It allows modelling schools with a reduced Saturday
+  timetable (5 hours) or without Saturday.
+
+\item[Holiday calendar.]\index{Calendar}\index{Holidays}
+  Overlaid on the model week, it describes the dates on which the
+  school is closed (holidays, bridge days, strikes). It does not
+  enter the CP-SAT model directly: it serves only for the XLSX
+  export and the Schedule view to hide the non-working days.
+\end{description}
+
+\section{Constraints and preferences}
+
+\begin{description}
+\item[Hard.]\index{Constraint!hard}
+  A constraint that the solution \emph{must} respect. A hard
+  violation makes the solution infeasible: the Feasibility Check
+  marks it as such and the pipeline fails or falls back.
+
+\item[Soft.]\index{Constraint!soft}
+  A constraint that one \emph{would prefer} to respect but that
+  can be violated by paying a penalty (the
+  \texttt{soft\_penalty}). The softs feed the objective that
+  CP-SAT minimizes.
+
+\item[Preferred.]\index{Constraint!preferred}
+  Equivalent to soft with a \emph{very low} penalty: the solver
+  satisfies it only if free.
+
+\item[Enforced.]\index{Constraint!enforced}
+  Equivalent to hard with an explicit enforcement priority: it
+  represents ``institutional'' constraints (usually of legal
+  origin).
+
+\item[Indisponibilit\`a (Unavailability).]\index{Unavailability}
+  A slot in which an entity (teacher, class, classroom) cannot be
+  used. The dedicated tables are
+  \texttt{teacher\_unavailability},
+  \texttt{class\_unavailability},
+  \texttt{classroom\_unavailability}, each with \texttt{state}
+  $\in$ \{hard, soft\}.
+
+\item[Logical unavailability.]\index{Logical unavailability}
+  A synthetic form for complex unavailabilities:
+  \texttt{logical\_unavailabilities} admits a DNF expression
+  (e.g.\ ``the teacher is not available on Monday morning OR
+  Tuesday afternoon''). It is derived automatically from the DSL.
+
+\item[5 states.]\index{Five states}
+  The tables \texttt{teacher\_class\_preferences} and
+  \texttt{teacher\_curriculum\_preferences} use a 5-level scale:
+  \texttt{forbidden} (hard excluded), \texttt{soft} (medium
+  penalty), \texttt{allowed} (default), \texttt{preferred}
+  (bonus), \texttt{enforced} (hard imposed). It is the
+  formalization of the classic preferences of a school principal.
+\end{description}
+
+\section{Terms of the mathematical model}
+
+\begin{description}
+\item[$x_{tcsdh}$.]\index{Boolean variable}
+  Binary variable of the CP-SAT. It is 1 if in slot $(d,h)$ the
+  teacher $t$ teaches the subject $s$ to the class $c$. It is the
+  \emph{heart} of the model.
+
+\item[$\text{dc}_{tcsd}$.]\index{Day count}\index{dc value}
+  Daily count of hours: it lies between 0 and
+  $\text{hours}_{tcs}$. Produced by Phase A; consumed as ``floor''
+  or ``exact value'' by Phase B. It is not a classic decision
+  variable of the final model, but a decision already taken in the
+  previous phase.
+
+\item[Master LP.]\index{Master LP}
+  In the Column Generation framework it is the relaxed problem
+  that decides \emph{which patterns to select} with non-integer
+  coefficients. The dual variables of the master feed the pricers.
+
+\item[Pattern (column).]\index{Pattern}\index{Column}
+  A feasible solution restricted to one entity (usually: a
+  teacher). The pricer generates it, the master evaluates it, and
+  the final $\lambda$-combination is the timetable. A column in
+  branch-and-price is encoded as a set of slots
+  $\{(c,s,d,h)\}$.
+
+\item[Reduced cost.]\index{Reduced cost}
+  For a candidate column, reduced cost $=$ cost of the pattern $-$
+  contribution of the duals. A column enters the master if it has
+  reduced cost $<\,$0.
+
+\item[Ryan-Foster branching.]\index{Ryan-Foster}
+  A branching strategy on pairs of patterns: given a fractional
+  $\lambda^* \in (0,1)$, one looks for a pair of slots that some
+  patterns use together and others do not, and branches by
+  imposing or forbidding their simultaneous use.
+
+\item[Dual stabilization.]\index{Dual stabilization}
+  A technique to avoid oscillations of the duals between
+  iterations of Column Generation: the current dual vector is
+  mixed with the previous one, smoothing the variations.
+\end{description}
+
+\section{Pricing granularity in branch-and-price}
+
+\index{Granularity!pricing}
+
+The \texttt{granularity=} parameter of
+\texttt{run\_column\_generation()}
+(\texttt{engine/column\_generation.py}) admits nine values ---
+from \texttt{teacher} (the coarsest, one column per teacher,
+default) up to \texttt{day} and \texttt{curriculum} (the finest,
+one column per day or per track) --- each with its own enumeration
+function \texttt{\_enumerate\_pricing\_keys()}. The complete
+taxonomy, with the columnar encoding and the indication of when to
+prefer one granularity over another, is in
+Table~\ref{tab:bp-granularity-en} of
+chapter~\ref{ch:tecniche_avanzate_en}.
+
+\fleuron
+
+To these entries are added the algorithmic terms
+(LNS, ALNS, SA, TS, ILS, VNS, Hall, Lagrangian, Column
+Generation, Monte Carlo) treated in
+chapter~\ref{ch:glossario_discorsivo_en} in a narrative language.
+The present chapter does not repeat them: as a rule, if a term is
+not found here, it should be looked for there.
