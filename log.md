@@ -627,3 +627,45 @@ Deferred (need a running stack / E2E to prove safe, not pushed): server-side
 nodes / full reload per drag" items), optimistic single-lesson drag-drop,
 FeasibilityPanel per-edit 30s solve debounce, conflict-graph layout cap. These
 stay on the frontend audit backlog.
+
+## Calendar CRITICALs + EN manual chapters (2026-07-29)
+Closed the two calendar rewrites the 2026-07-28 tranche had deferred as
+"only provable on a running stack", plus the manual leftovers. Verified with
+what runs here (pytest + svelte-check + `npm test` + `vite build`); the drag
+gesture itself and entity-switch flow still want a live E2E pass, which this
+environment can't give (Playwright's chromium download fails — the MS CDN
+returns `400 GatewayException` for build 1217 and the installer hangs).
+
+- **CRITICAL — server-side `/api/lessons` scoping + pagination**
+  (`routers/lessons.py`, `test_lessons_list_scoping.py`). `GET /api/lessons`
+  gained optional `class_name` / `teacher_name` / `room_name` (plus
+  `limit`/`offset`, and a `total` in the body). No params = the original
+  whole-solution contract, so the "Orario globale" view and every existing
+  caller are untouched. The scoped predicate mirrors `WeeklyCalendarView`'s
+  client filter exactly (exact match, groups excluded); a test asserts
+  scoped == fetch-all-then-filter so a future frontend can adopt the params
+  without changing which lessons a view shows. 6 new tests + the 12 existing
+  lessons-by-id tests green. The frontend *adoption* (sourcing the entity
+  dropdowns from the dedicated `/api/{classes,teachers,classrooms}` endpoints
+  instead of from the lesson set, so a scoped fetch doesn't collapse the
+  switcher) is intentionally left for a session with a browser — it's a
+  data-flow change to a load-bearing view that shouldn't ship un-E2E'd.
+- **CRITICAL — optimistic drag-drop** (`schedule/+page.svelte`). A drop now
+  repositions the block in the local `lessons` array immediately (`lessons`
+  reassigned so Svelte re-renders and the soft-conflict overlay recomputes),
+  instead of waiting for the move round-trip + a full grid reload. Rejects
+  (HARD violation / occupied slot) and network errors snap the block back to
+  its origin via `_optimisticMove(id, oldDay, oldHour)`; the accept path keeps
+  the reconciling `loadCalendar()` as a safety net, so a wrong guess is
+  self-correcting and the worst case matches the old flow. svelte-check 0
+  errors, build + 61 unit tests green.
+- **Manual — EN user chapters + screenshot embedding** (`manual_en.tex`,
+  `chapters_en/{getting_started,workflow_tipici,terminologia_didattica}.tex`,
+  IT+EN `getting_started`/`calendario_e_ore`). Wired the three translated
+  user-facing chapters into the EN manual with EN-suffixed cross-refs
+  (`check_refs` clean, 0 dangling), and embedded five UI screenshots via
+  `\grokfig{shot_*}` in the IT+EN quick-start / `/ore` chapters. `\grokfig`'s
+  `IfFileExists` guard omits the PNGs until they're captured, so both manuals
+  build now and pick the shots up the moment `docs/figures/shot_*.png` exist —
+  which needs the same browser this environment can't fetch. Rebuilt
+  `manual.pdf` + `manual_en.pdf`.
