@@ -263,6 +263,7 @@
              class:bg-ink-50={dragIdx === i}>
           <div class="flex items-center gap-2 px-2 py-1.5"
                draggable="true"
+               role="button" tabindex="-1"
                on:dragstart={(ev) => onDragStart(i, ev)}
                on:dragover={onDragOver}
                on:drop={(ev) => onDrop(i, ev)}>

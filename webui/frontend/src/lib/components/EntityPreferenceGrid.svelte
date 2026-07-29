@@ -73,7 +73,7 @@
     onChange(list);
   }
 
-  function onClick(ev: MouseEvent, item: Item): void {
+  function onClick(ev: MouseEvent | KeyboardEvent, item: Item): void {
     const t = ev.target as HTMLElement | null;
     if (t && t.tagName === "INPUT") return;
     const shortcutState = shortcutToRoomState(get(heldKey));
@@ -125,7 +125,9 @@
           {@const pref = byKey.get(it.key)}
           {@const state = pref ? pref.state : "allowed"}
           <div class="rounded border-2 p-2 cursor-pointer transition-colors {colorClasses(state)}"
+               role="button" tabindex="0"
                on:click={(e) => onClick(e, it)}
+               on:keydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(e, it); } }}
                title={(state === "allowed" ? "Default (consentito)" :
                        state === "soft" ? "SOFT - penalita " + (pref?.soft_penalty ?? "") :
                        state === "preferred" ? "PREFERITA - bonus " + (pref?.soft_penalty ?? "") :

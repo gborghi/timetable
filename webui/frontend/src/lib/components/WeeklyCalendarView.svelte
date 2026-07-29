@@ -1542,7 +1542,6 @@
   /* Hide click outline on the wrapping scroll container that catches
      keyboard Delete events (it must be focusable, but the visual
      focus ring is distracting on the calendar itself). */
-  .weekly-calendar > .overflow-x-auto:focus { outline: none; }
   .weekly-calendar :global(.overflow-x-auto):focus { outline: none; }
 
   /* ----- SCHEDULE MODE additions ----- */

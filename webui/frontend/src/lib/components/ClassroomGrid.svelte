@@ -161,7 +161,9 @@
           {@const pref = byName.get(room.name)}
           {@const state = pref ? pref.state : 'allowed'}
           <div class="rounded border-2 p-2 cursor-pointer transition-colors {colorClasses(state)}"
+               role="button" tabindex="0"
                on:click={(e) => onClick(e, room)}
+               on:keydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(e, room); } }}
                title={(state === 'allowed' ? 'Aula consentita (default)' :
                       state === 'soft' ? 'SOFT - penalita ' + (pref?.weight ?? '') :
                       state === 'preferred' ? 'PREFERITA - bonus ' + (pref?.weight ?? '') :

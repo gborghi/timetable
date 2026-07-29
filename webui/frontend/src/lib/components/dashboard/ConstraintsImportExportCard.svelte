@@ -228,7 +228,8 @@
     <!-- Custom file -->
     <div class="card !shadow-none p-3 bg-ink-50/40 space-y-2">
       <h3 class="!text-base">File custom (JSON / xlsx)</h3>
-      <div on:dragover={onDragOver}
+      <div role="button" tabindex="-1"
+           on:dragover={onDragOver}
            on:dragleave={onDragLeave}
            on:drop={onDrop}
            class="border-2 border-dashed rounded p-4 text-center text-xs cursor-pointer

@@ -140,6 +140,7 @@
 
       <div class="border-2 border-dashed rounded-md p-6 text-center
                   text-sm transition-colors"
+           role="button" tabindex="-1"
            class:bg-accent-500={dragOver}
            class:bg-opacity-5={dragOver}
            class:border-accent-500={dragOver}
