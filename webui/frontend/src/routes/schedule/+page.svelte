@@ -304,14 +304,32 @@
   }
 
   // ---- Drag-drop / pool drop -------------------------------------
+  // Optimistically reposition a lesson in the local array so the drop
+  // reads as instant. `lessons` is reassigned (not mutated) so Svelte
+  // re-renders and WeeklyCalendarView recomputes its soft-conflict
+  // overlays from the new positions. Returns nothing; pair every
+  // optimistic move with a revert on rejection.
+  function _optimisticMove(lessonId, day, hour) {
+    lessons = lessons.map(
+      (l) => (l.id === lessonId ? { ...l, day, hour } : l));
+  }
+
   async function onLessonMove(lessonId, day, hour) {
-    // Remember the origin slot so an accepted move can be undone.
+    // Remember the origin slot so an accepted move can be undone and a
+    // rejected one reverted.
     const _src0 = lessons.find((l) => l.id === lessonId);
     const _oldDay = _src0?.day, _oldHour = _src0?.hour;
+    // Optimistic: show the lesson at the target slot immediately. The
+    // reconciling loadCalendar() on the accept path (and the revert on
+    // the reject paths) keep the array truthful, so a wrong guess is
+    // self-correcting -- worst case matches the old full-reload flow.
+    _optimisticMove(lessonId, day, hour);
     try {
       const r = await api.post('/api/lessons/' + lessonId + '/move',
                                 { day, hour });
       if (r && r.accepted === false && r.conflicts) {
+        // Snap back before prompting the "Sostituisci o annulla" modal.
+        _optimisticMove(lessonId, _oldDay, _oldHour);
         const src = lessons.find((l) => l.id === lessonId);
         const head = src
           ? `${src.class_name} / ${src.teacher_name}`
@@ -326,6 +344,7 @@
         return;
       }
       if (r && r.accepted === false) {
+        _optimisticMove(lessonId, _oldDay, _oldHour);  // snap back
         flash('Mossa rifiutata: ' + (r.reason || 'vincolo violato'), 'error');
       } else {
         // Offer UNDO only for a clean move (not when a room was cleared --
@@ -358,7 +377,10 @@
       }
       await loadCalendar();
       await refreshDataset();
-    } catch (e) { flash('Errore: ' + e.message, 'error'); }
+    } catch (e) {
+      _optimisticMove(lessonId, _oldDay, _oldHour);  // network error: snap back
+      flash('Errore: ' + e.message, 'error');
+    }
   }
   async function onUnscheduledDrop(unschedId, day, hour) {
     try {
