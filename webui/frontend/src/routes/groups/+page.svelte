@@ -231,7 +231,7 @@
                      placeholder="es. debito_matematica_4, BES"
                      bind:value={tagFilter}/>
               <datalist id="all-student-tags">
-                {#each allTagNames as t}<option value={t}/>{/each}
+                {#each allTagNames as t}<option value={t}></option>{/each}
               </datalist>
             </div>
             <div>
@@ -293,7 +293,7 @@
                   <input list="g-subj-{i}" class="w-full px-2 py-1 border border-ink-200 rounded"
                          bind:value={sh.subject}/>
                   <datalist id="g-subj-{i}">
-                    {#each allSubjects as sn}<option value={sn}/>{/each}
+                    {#each allSubjects as sn}<option value={sn}></option>{/each}
                   </datalist>
                 </td>
                 <td class="w-20">

@@ -487,7 +487,7 @@
             <tr>
               <td>
                 <input list="sub-{i}" bind:value={s.subject} class="w-full px-2 py-1 border border-ink-200 rounded"/>
-                <datalist id="sub-{i}">{#each allSubjects as ss}<option value={ss}/>{/each}</datalist>
+                <datalist id="sub-{i}">{#each allSubjects as ss}<option value={ss}></option>{/each}</datalist>
               </td>
               <td class="w-24"><input type="number" bind:value={s.weight} class="w-full px-2 py-1 border border-ink-200 rounded"/></td>
               <td class="w-20 text-center"><input type="checkbox" bind:checked={s.required}/></td>
@@ -508,7 +508,7 @@
             <tr>
               <td>
                 <input list="cls-{i}" bind:value={c.class_name} class="w-full px-2 py-1 border border-ink-200 rounded"/>
-                <datalist id="cls-{i}">{#each allClasses as cn}<option value={cn}/>{/each}</datalist>
+                <datalist id="cls-{i}">{#each allClasses as cn}<option value={cn}></option>{/each}</datalist>
               </td>
               <td class="w-24"><input type="number" bind:value={c.weight} class="w-full px-2 py-1 border border-ink-200 rounded"/></td>
               <td class="w-20 text-center"><input type="checkbox" bind:checked={c.is_home}/></td>

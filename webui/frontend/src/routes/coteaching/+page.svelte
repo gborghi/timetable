@@ -119,12 +119,12 @@
       <div class="field">
         <label>Classe</label>
         <input list="ll-cls" bind:value={editing.class_name} data-testid="coteaching-class-input"/>
-        <datalist id="ll-cls">{#each allClasses as c}<option value={c}/>{/each}</datalist>
+        <datalist id="ll-cls">{#each allClasses as c}<option value={c}></option>{/each}</datalist>
       </div>
       <div class="field">
         <label>Materia</label>
         <input list="ll-subj" bind:value={editing.subject} data-testid="coteaching-subject-input"/>
-        <datalist id="ll-subj">{#each allSubjects as s}<option value={s}/>{/each}</datalist>
+        <datalist id="ll-subj">{#each allSubjects as s}<option value={s}></option>{/each}</datalist>
       </div>
       <label class="flex items-center gap-2 text-sm"><input type="checkbox" bind:checked={editing.required} data-testid="coteaching-required-checkbox"/> HARD (obbligatoria)</label>
       <div class="field">
@@ -144,7 +144,7 @@
       <div class="space-y-2" data-testid="coteaching-teachers-list">
         {#each editing.teachers as t, i}
           <input list="ll-t-{i}" class="w-full px-2 py-1 rounded border border-ink-200" bind:value={editing.teachers[i]} data-testid="coteaching-teacher-input" data-index={i}/>
-          <datalist id="ll-t-{i}">{#each allTeachers as tn}<option value={tn}/>{/each}</datalist>
+          <datalist id="ll-t-{i}">{#each allTeachers as tn}<option value={tn}></option>{/each}</datalist>
         {/each}
       </div>
     </div>

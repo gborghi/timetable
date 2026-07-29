@@ -1080,11 +1080,14 @@
                              style={`background:${col.bg};border-color:${col.bd};color:${col.fg};` +
                                     (lst.length > 1 ? `width:${100 / lst.length}%;left:${(100 / lst.length) * lIdx}%;` : '')}
                              draggable="true"
+                             role="button"
+                             tabindex="0"
                              data-lesson-id={l.id}
                              data-testid={'sched-lesson-' + l.id}
                              on:dragstart={(e) => _onLessonDragStart(e, l)}
                              on:dragend={_onDragEnd}
                              on:click={(e) => _onLessonClick(e, l)}
+                             on:keydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); _onLessonClick(e, l); } }}
                              title={_lessonLabel(l) +
                                (l.classroom_name ? ' @ ' + l.classroom_name : '') +
                                (isConflict && dragSource ? ' -- conflitto con la lezione che stai trascinando' : '')}>

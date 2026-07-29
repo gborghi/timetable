@@ -373,7 +373,7 @@
             <tr>
               <td>
                 <input list="subj-{i}" class="w-full px-2 py-1 border border-ink-200 rounded" bind:value={s.subject}/>
-                <datalist id="subj-{i}">{#each allSubjects as sn}<option value={sn}/>{/each}</datalist>
+                <datalist id="subj-{i}">{#each allSubjects as sn}<option value={sn}></option>{/each}</datalist>
               </td>
               <td class="w-24"><input type="number" min="0" max="10" bind:value={s.hours_per_week} class="w-full px-2 py-1 border border-ink-200 rounded"/></td>
               <td><button class="btn-danger !text-xs !px-2 !py-1" on:click={() => delSubject(i)}>x</button></td>

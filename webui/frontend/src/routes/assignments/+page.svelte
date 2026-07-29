@@ -655,7 +655,7 @@
                  data-testid="assignment-teacher-input"/>
           - <datalist id="ll-t">
               {#each teachersForSubject as t}
-                <option value={t.name}/>
+                <option value={t.name}></option>
               {/each}
             </datalist> )
         </div>

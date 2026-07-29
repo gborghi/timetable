@@ -297,7 +297,7 @@
                   <input list="curr-subj-{i}" class="w-full px-2 py-1 border border-ink-200 rounded"
                          bind:value={h.subject}/>
                   <datalist id="curr-subj-{i}">
-                    {#each allSubjects as sn}<option value={sn}/>{/each}
+                    {#each allSubjects as sn}<option value={sn}></option>{/each}
                   </datalist>
                 </td>
                 <td class="w-24">

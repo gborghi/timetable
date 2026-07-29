@@ -163,6 +163,14 @@
     dragSrcIdx = null;
   }
   function onDragEnd() { dragSrcIdx = null; }
+  // Keyboard-accessible alternative to drag reordering.
+  function movePipelineItem(i, delta) {
+    const j = i + delta;
+    if (j < 0 || j >= pipelineList.length) return;
+    const next = pipelineList.slice();
+    [next[i], next[j]] = [next[j], next[i]];
+    pipelineList = next;
+  }
 
   onMount(async () => {
     await Promise.all([
@@ -309,13 +317,17 @@
     arriva via SSE dal backend.
   </p>
 
+  <details class="mt-1" data-testid="optimize-advanced">
+    <summary class="cursor-pointer select-none text-sm font-medium text-ink-600 hover:text-ink-800 py-1">
+      Modalità avanzata — step singoli e parametri del solver
+    </summary>
   <!-- CSS columns layout: cards still take half-width on lg+ but
        each one keeps its NATURAL height instead of being stretched
        to match its row sibling. The browser packs cards vertically
        column-by-column, top-to-bottom, like a Pinterest board.
        Each direct child is `break-inside: avoid` so a single card
        never splits across columns. -->
-  <div class="columns-1 lg:columns-2 gap-6 [&>*]:break-inside-avoid [&>*]:mb-6">
+  <div class="columns-1 lg:columns-2 gap-6 [&>*]:break-inside-avoid [&>*]:mb-6 mt-3">
     <!-- Step 1 -->
     <div class="card p-5">
       <h2 class="mb-3">1) Genera / carica scuola</h2>
@@ -763,7 +775,15 @@
               on:drop={(ev) => onDrop(i, ev)}
               on:dragend={onDragEnd}>
             <span class="cursor-grab text-ink-400 text-lg leading-none"
-                  title="Trascina per riordinare">&#x2630;</span>
+                  title="Trascina per riordinare (oppure usa le frecce)">&#x2630;</span>
+            <span class="flex flex-col leading-none">
+              <button type="button" aria-label="Sposta su"
+                      class="text-ink-400 hover:text-ink-700 text-[10px] disabled:opacity-30"
+                      on:click={() => movePipelineItem(i, -1)} disabled={i === 0}>&#x25B2;</button>
+              <button type="button" aria-label="Sposta giù"
+                      class="text-ink-400 hover:text-ink-700 text-[10px] disabled:opacity-30"
+                      on:click={() => movePipelineItem(i, 1)} disabled={i === pipelineList.length - 1}>&#x25BC;</button>
+            </span>
             <input type="checkbox" bind:checked={item.enabled}/>
             <span class="text-sm flex-1">{PIPELINE_LABEL[item.key]}</span>
             <span class="text-xs text-ink-400">{i + 1}</span>
@@ -774,6 +794,7 @@
       <button class="btn-primary mt-3" on:click={launchFull}>Avvia pipeline completa</button>
     </div>
   </div>
+  </details>
 
   {#if runId}
     <RunLogPanel {runId} title="Run #{runId}" onEnd={onEnd}/>

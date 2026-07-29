@@ -127,7 +127,7 @@
       Le modifiche fatte ora non saranno salvate.
     </div>
   {/if}
-  <header class="bg-white border-b border-ink-200" role="banner">
+  <header class="bg-white border-b border-ink-200">
     <div class="max-w-[1500px] mx-auto px-6 py-3 flex items-center gap-4">
       <a href="/" class="flex items-center gap-3 leading-tight"
          title={SENECA_LATIN}>
@@ -187,6 +187,7 @@
                             min-w-[10rem] bg-white border border-ink-200
                             rounded-md shadow-lg py-1"
                      role="menu"
+                     tabindex="-1"
                      data-testid="nav-dropdown"
                      data-nav-parent={g.label}
                      on:mouseleave={closeMenu}>
@@ -235,7 +236,7 @@
     <slot />
   </main>
 
-  <footer class="border-t border-ink-200 bg-white" role="contentinfo">
+  <footer class="border-t border-ink-200 bg-white">
     <div class="max-w-[1500px] mx-auto px-6 py-3 text-xs text-ink-500 flex flex-wrap gap-3 items-baseline">
       <span class="font-semibold" style="color: var(--brand-primary);">
         <span class="font-serif italic" style="color: var(--brand-secondary);">π</span>Tantum
