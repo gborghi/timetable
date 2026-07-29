@@ -24,7 +24,7 @@ just shuttle the row between `lessons` and `unscheduled_lessons`
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -89,22 +89,55 @@ def _serialise_unscheduled(u: models.UnscheduledLesson) -> dict:
 
 
 @router.get("")
-def list_scheduled(db: Session = Depends(get_db)):
-    """Return every Lesson in the active solution as a flat list.
+def list_scheduled(
+    db: Session = Depends(get_db),
+    class_name: str | None = Query(
+        None, description="Return only lessons of this class."),
+    teacher_name: str | None = Query(
+        None, description="Return only lessons of this teacher."),
+    room_name: str | None = Query(
+        None, description="Return only lessons in this classroom."),
+    limit: int | None = Query(
+        None, ge=1, description="Cap the number of rows returned."),
+    offset: int = Query(0, ge=0, description="Rows to skip (with limit)."),
+):
+    """Return Lessons in the active solution as a flat list.
 
     The legacy /api/schedule/by-class folds co-teachings into a single
     cell with a list of teachers, dropping all but one ``lesson_id`` --
     that's lossy for the calendar UI which renders each Lesson as its
     own draggable event. This endpoint hands back the raw rows so the
-    frontend can group them itself."""
+    frontend can group them itself.
+
+    With no query params it returns the whole active solution (the
+    original contract, used by the "Orario globale" view). For a single
+    class/teacher/room the calendar can scope the fetch server-side so a
+    big school does not ship thousands of rows per view -- the filter
+    predicate mirrors the client-side one in ``WeeklyCalendarView``
+    (``class_name`` / ``teacher_name`` / ``classroom_name`` exact match,
+    groups excluded) so a scoped fetch shows exactly the same lessons as
+    the client would after filtering the full set. ``limit`` / ``offset``
+    add optional pagination on top; ``total`` reports the unpaged count."""
     from .. import engine_io
     active = engine_io.get_active_solution(db)
     if active is None:
-        return {"lessons": []}
-    rows = db.query(models.Lesson).filter(
-        models.Lesson.solution_id == active.id
-    ).order_by(models.Lesson.id).all()
-    return {"lessons": [_serialise(l) for l in rows]}
+        return {"lessons": [], "total": 0}
+    q = db.query(models.Lesson).filter(
+        models.Lesson.solution_id == active.id)
+    if class_name is not None:
+        q = q.filter(models.Lesson.class_name == class_name)
+    if teacher_name is not None:
+        q = q.filter(models.Lesson.teacher_name == teacher_name)
+    if room_name is not None:
+        q = q.filter(models.Lesson.classroom_name == room_name)
+    total = q.count()
+    q = q.order_by(models.Lesson.id)
+    if offset:
+        q = q.offset(offset)
+    if limit is not None:
+        q = q.limit(limit)
+    rows = q.all()
+    return {"lessons": [_serialise(l) for l in rows], "total": total}
 
 
 @router.get("/unscheduled")
