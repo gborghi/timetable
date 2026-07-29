@@ -1,5 +1,6 @@
 <script>
   import DecorIcon from '$lib/components/DecorIcon.svelte';
+  import { confirmDialog } from '$lib/confirm';
   import { onMount } from 'svelte';
   import { api } from '$lib/api';
   import { flash, refreshDataset } from '$lib/stores';
@@ -59,9 +60,9 @@
     finally { tagPreviewBusy = false; }
   }
 
-  function clearMembers() {
+  async function clearMembers() {
     if (editing.student_ids.length === 0) return;
-    if (!confirm('Rimuovere tutti i ' + editing.student_ids.length
+    if (!await confirmDialog('Rimuovere tutti i ' + editing.student_ids.length
                  + ' membri attualmente selezionati?')) return;
     editing = { ...editing, student_ids: [] };
   }
@@ -123,7 +124,7 @@
   }
 
   async function del(row) {
-    if (!confirm('Eliminare gruppo ' + row.name + '?')) return;
+    if (!await confirmDialog('Eliminare gruppo ' + row.name + '?')) return;
     try {
       await groupsSvc.remove(row.id);
       await listRef.reload();

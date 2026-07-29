@@ -1,5 +1,6 @@
 <script>
   import DecorIcon from '$lib/components/DecorIcon.svelte';
+  import { confirmDialog } from '$lib/confirm';
   /**
    * /diagnostics tab.
    *
@@ -81,7 +82,7 @@
                     co: coHistory, ds: dsHistory };
     const ids = (lists[kind] || []).map((e) => e.runId);
     if (ids.length === 0) return;
-    if (!confirm(`Eliminare ${ids.length} run dalla cronologia?
+    if (!await confirmDialog(`Eliminare ${ids.length} run dalla cronologia?
 Le righe verranno rimosse dalla tabella runs del database.`)) return;
     try {
       await api.post('/api/optimize/runs/delete-batch', { run_ids: ids });

@@ -1,5 +1,6 @@
 <script>
   import DecorIcon from '$lib/components/DecorIcon.svelte';
+  import { confirmDialog } from '$lib/confirm';
   /**
    * Runs tab — global view of every optimization run launched in this
    * dataset. Per Giovanni's spec each row shows:
@@ -199,7 +200,7 @@
   function clearSelection() { selected = new Set(); }
 
   async function killRun(r) {
-    if (!confirm(`Interrompere run #${r.id} (${r.kind})?`)) return;
+    if (!await confirmDialog(`Interrompere run #${r.id} (${r.kind})?`)) return;
     try {
       await api.post('/api/optimize/runs/' + r.id + '/cancel', {});
       flash(`Run #${r.id} richiesta cancellazione`, 'success');
@@ -213,7 +214,7 @@
   async function deleteRun(r) {
     const isPartOfBatch = selected.size > 1 && selected.has(r.id);
     if (isPartOfBatch) {
-      const ans = confirm(
+      const ans = await confirmDialog(
         `Eliminare TUTTI i ${selected.size} run selezionati?\n\n`
         + `(annulla -> elimina solo run #${r.id})`
       );
@@ -224,7 +225,7 @@
       flash('Run ancora attivo: non si puo\' eliminare.', 'error');
       return;
     }
-    if (!confirm(`Eliminare run #${r.id} (${r.kind})?`)) return;
+    if (!await confirmDialog(`Eliminare run #${r.id} (${r.kind})?`)) return;
     try {
       await api.del('/api/optimize/runs/' + r.id);
       flash('Run eliminato.', 'success');
@@ -237,7 +238,7 @@
 
   async function bulkDelete(ids) {
     if (!ids || ids.length === 0) return;
-    if (!confirm(`Eliminare ${ids.length} run selezionati?`)) return;
+    if (!await confirmDialog(`Eliminare ${ids.length} run selezionati?`)) return;
     try {
       const r = await api.post('/api/optimize/runs/delete-batch',
                                 { run_ids: ids });

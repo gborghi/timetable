@@ -1,5 +1,6 @@
 <script>
   import DecorIcon from '$lib/components/DecorIcon.svelte';
+  import { confirmDialog } from '$lib/confirm';
   import { onMount } from 'svelte';
   import { api } from '$lib/api';
   import { flash, refreshDataset } from '$lib/stores';
@@ -94,7 +95,7 @@
   }
 
   async function del(row) {
-    if (!confirm('Eliminare ' + row.last_name + ' ' + row.first_name + '?')) return;
+    if (!await confirmDialog('Eliminare ' + row.last_name + ' ' + row.first_name + '?')) return;
     const snapshot = cloneRow(row);
     delete snapshot.id;
     delete snapshot.class_name;

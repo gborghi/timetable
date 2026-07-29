@@ -1,5 +1,6 @@
 <script>
   import DecorIcon from '$lib/components/DecorIcon.svelte';
+  import { confirmDialog } from '$lib/confirm';
   import { onMount } from 'svelte';
   import { api } from '$lib/api';
   import { flash } from '$lib/stores';
@@ -83,7 +84,7 @@
     dslLoading = false;
   }
   async function deleteDSL(id) {
-    if (!confirm(`Eliminare il vincolo DSL #${id}?`)) return;
+    if (!await confirmDialog(`Eliminare il vincolo DSL #${id}?`)) return;
     try {
       await api.del('/api/constraints/general/' + id);
       flash('Vincolo eliminato.', 'success');
@@ -180,7 +181,7 @@
   }
 
   async function del(row) {
-    if (!confirm('Eliminare il vincolo "' + row.detail + '" su ' + row.owner_name + '?')) return;
+    if (!await confirmDialog('Eliminare il vincolo "' + row.detail + '" su ' + row.owner_name + '?')) return;
     try {
       await api.del(`/api/monitor/constraints/${row.kind}/${row.id}`);
       await listRef.reload();
@@ -415,7 +416,7 @@
                             if (r.kind === 'general_dsl') {
                               await deleteDSL(r.id);
                             } else {
-                              if (!confirm('Eliminare questo vincolo?')) return;
+                              if (!await confirmDialog('Eliminare questo vincolo?')) return;
                               try {
                                 await api.del(`/api/monitor/constraints/${r.kind}/${r.id}`);
                                 flash('Vincolo eliminato.', 'success');

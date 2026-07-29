@@ -1,5 +1,6 @@
 <script>
   import DecorIcon from '$lib/components/DecorIcon.svelte';
+  import { confirmDialog } from '$lib/confirm';
   import { onMount } from 'svelte';
   import { api } from '$lib/api';
   import { flash } from '$lib/stores';
@@ -102,7 +103,7 @@
   }
 
   async function clearDayAbsences(date) {
-    if (!confirm('Cancellare TUTTE le assenze e supplenze del ' + fmtDateShort(date) + '?')) return;
+    if (!await confirmDialog('Cancellare TUTTE le assenze e supplenze del ' + fmtDateShort(date) + '?')) return;
     try {
       await api.del('/api/absences?date=' + date);
       await load();
@@ -191,10 +192,10 @@
                     || cellModal.detail.uncovered.length === 0
                     || cellModal.detail.uncovered.every((u) => u.substitute_teacher_id);
 
-  function closeCellModal() {
+  async function closeCellModal() {
     if (cellModal && cellModal.detail
         && cellModal.detail.uncovered.some((u) => !u.substitute_teacher_id)) {
-      if (!confirm('Ci sono ancora ore scoperte. Chiudere comunque?')) return;
+      if (!await confirmDialog('Ci sono ancora ore scoperte. Chiudere comunque?')) return;
     }
     cellModal = null;
   }

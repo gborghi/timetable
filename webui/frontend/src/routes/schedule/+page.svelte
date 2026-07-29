@@ -1,5 +1,6 @@
 <script>
   import DecorIcon from '$lib/components/DecorIcon.svelte';
+  import { confirmDialog } from '$lib/confirm';
   /**
    * /schedule -- timetable view + interactive editor.
    *
@@ -230,7 +231,7 @@
   }
   async function svincolaLesson() {
     if (!actionLesson) return;
-    if (!confirm('Svincolare questa lezione? Verra messa nel pool '
+    if (!await confirmDialog('Svincolare questa lezione? Verra messa nel pool '
                  + 'unscheduled e non occupera piu lo slot.')) return;
     try {
       await api.post('/api/lessons/' + actionLesson.id + '/unschedule');
@@ -242,7 +243,7 @@
   }
   async function eliminaLesson() {
     if (!actionLesson) return;
-    if (!confirm('Eliminare definitivamente questa lezione?')) return;
+    if (!await confirmDialog('Eliminare definitivamente questa lezione?')) return;
     const snap = { ...actionLesson };
     try {
       await api.del('/api/lessons/' + snap.id);
@@ -446,7 +447,7 @@
     } catch (e) { flash('Errore: ' + e.message, 'error'); }
   }
   async function delSolution(id) {
-    if (!confirm('Eliminare questa soluzione?')) return;
+    if (!await confirmDialog('Eliminare questa soluzione?')) return;
     try {
       await api.del('/api/schedule/solutions/' + id);
       solutions = await api.get('/api/schedule/solutions');

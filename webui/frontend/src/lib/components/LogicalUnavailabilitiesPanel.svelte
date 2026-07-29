@@ -11,6 +11,8 @@
   // backend list updates (parent can use it for counters).
 
   import { api } from '../api';
+
+  import { confirmDialog } from '$lib/confirm';
   import { flash } from '../stores';
 
   export let entityType = 'teachers';
@@ -135,7 +137,7 @@
   }
 
   async function del(r) {
-    if (!confirm('Eliminare questo vincolo?\n' + r.pretty)) return;
+    if (!await confirmDialog('Eliminare questo vincolo?\n' + r.pretty)) return;
     try {
       await api.del(`${base}/${r.id}`);
       flash('Vincolo eliminato', 'success');

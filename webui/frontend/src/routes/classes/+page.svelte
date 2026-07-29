@@ -1,5 +1,6 @@
 <script>
   import { api } from '$lib/api';
+  import { confirmDialog } from '$lib/confirm';
   import DecorIcon from '$lib/components/DecorIcon.svelte';
   import { flash, refreshDataset } from '$lib/stores';
   import Modal from '$lib/components/Modal.svelte';
@@ -97,7 +98,7 @@
   }
 
   async function del(row) {
-    if (!confirm('Eliminare ' + row.name + '?')) return;
+    if (!await confirmDialog('Eliminare ' + row.name + '?')) return;
     const snapshot = _scrubClassSnapshot(cloneRow(row));
     try {
       await classesSvc.remove(row.id);
@@ -137,11 +138,11 @@
       return;
     }
     if (rows.length !== selectedIds.length) {
-      if (!confirm(`Eliminare ${rows.length} classi? `
+      if (!await confirmDialog(`Eliminare ${rows.length} classi? `
           + `(${selectedIds.length - rows.length} non sono nella `
           + `pagina corrente e verranno ignorati.)`)) return;
     } else {
-      if (!confirm(`Eliminare ${rows.length} classi? `
+      if (!await confirmDialog(`Eliminare ${rows.length} classi? `
           + `L'azione cancella anche le cattedre collegate.`)) return;
     }
     bulkDeleting = true;

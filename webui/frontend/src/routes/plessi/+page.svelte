@@ -1,5 +1,6 @@
 <script>
   import DecorIcon from '$lib/components/DecorIcon.svelte';
+  import { confirmDialog } from '$lib/confirm';
   /**
    * Plessi (school sites) management.
    *
@@ -83,7 +84,7 @@
     }
   }
   async function deletePlesso(p) {
-    if (!confirm(`Elimina plesso "${p.name}"?`)) return;
+    if (!await confirmDialog(`Elimina plesso "${p.name}"?`)) return;
     try {
       await api.del(`/api/plessi/${p.id}`);
       await refreshAll();
@@ -127,7 +128,7 @@
     }
   }
   async function deleteRule(r) {
-    if (!confirm(`Elimina regola #${r.id}?`)) return;
+    if (!await confirmDialog(`Elimina regola #${r.id}?`)) return;
     try {
       await api.del(`/api/plessi/commuting-rules/${r.id}`);
       await refreshAll();
@@ -166,7 +167,7 @@
     }
   }
   async function deletePolicy(p) {
-    if (!confirm(`Elimina policy #${p.id}?`)) return;
+    if (!await confirmDialog(`Elimina policy #${p.id}?`)) return;
     try {
       await api.del(`/api/plessi/entity-policies/${p.id}`);
       await refreshAll();

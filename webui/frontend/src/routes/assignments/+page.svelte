@@ -1,5 +1,6 @@
 <script>
   import DecorIcon from '$lib/components/DecorIcon.svelte';
+  import { confirmDialog } from '$lib/confirm';
   import { onMount } from 'svelte';
   import { api } from '$lib/api';
   import { flash, refreshDataset } from '$lib/stores';
@@ -210,7 +211,7 @@
 
   async function bulkDelete() {
     if (selectedIds.size === 0) return;
-    if (!confirm(`Eliminare ${selectedIds.size} cattedre selezionate?`)) return;
+    if (!await confirmDialog(`Eliminare ${selectedIds.size} cattedre selezionate?`)) return;
     bulkBusy = true;
     try {
       // Snapshot the selected rows (full fields: teacher_id/class_id/

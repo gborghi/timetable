@@ -17,6 +17,8 @@
   //   scopeLabel: optional human label, forwarded to the modal title
 
   import { api } from '../api';
+
+  import { confirmDialog } from '$lib/confirm';
   import { flash } from '../stores';
   import NewGeneralConstraintModal
     from './constraints/NewGeneralConstraintModal.svelte';
@@ -52,7 +54,7 @@
   }
 
   async function deleteRule(id) {
-    if (!confirm(`Eliminare il vincolo DSL #${id}?`)) return;
+    if (!await confirmDialog(`Eliminare il vincolo DSL #${id}?`)) return;
     try {
       await api.del('/api/constraints/general/' + id);
       flash('Vincolo eliminato.', 'success');

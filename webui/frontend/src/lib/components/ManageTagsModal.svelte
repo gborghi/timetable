@@ -18,6 +18,7 @@
    *   helpText?: string                           printed under the form
    */
   import Modal from '$lib/components/Modal.svelte';
+  import { confirmDialog } from '$lib/confirm';
   import { flash } from '$lib/stores';
 
   export let open = false;
@@ -87,7 +88,7 @@
       const noun = n === 1 ? countLabelSingular : countLabelPlural;
       q += ' Verra rimosso da ' + n + ' ' + noun + '.';
     }
-    if (!confirm(q)) return;
+    if (!await confirmDialog(q)) return;
     try {
       await service.remove(row.id);
       await load();

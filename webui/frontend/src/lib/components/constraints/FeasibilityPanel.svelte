@@ -18,6 +18,7 @@
    * the result + the per-action calls.
    */
   import { onMount } from 'svelte';
+  import { confirmDialog, promptDialog } from '$lib/confirm';
   import { api } from '$lib/api';
   import { flash } from '$lib/stores';
   import { levelPill, levelLabel } from '$lib/constraint_levels';
@@ -187,7 +188,7 @@
 
   async function applyAction(member, action, params, opts) {
     const o = opts || {};
-    if (o.confirmText && !confirm(o.confirmText)) return;
+    if (o.confirmText && !await confirmDialog(o.confirmText)) return;
     try {
       const resp = await api.post('/api/constraints/apply-suggestion', {
         action,
@@ -216,8 +217,8 @@
     });
   }
 
-  function softenMember(m) {
-    const w = parseInt(prompt(
+  async function softenMember(m) {
+    const w = parseInt(await promptDialog(
       `Trasforma "${memberShort(m)}" in SOFT.\n\n`
       + `Specifica la penalty (peso). Tipici: 50 = preferenza tenue, `
       + `100 = preferenza media, 1000 = quasi-hard.`,
@@ -236,11 +237,11 @@
     });
   }
 
-  function editMember(m) {
-    const newExpr = prompt(
+  async function editMember(m) {
+    const newExpr = await promptDialog(
       `Modifica espressione DSL del vincolo "${memberShort(m)}":\n\n`
       + `Espressione attuale: ${m.detail || '(non disponibile)'}`,
-      m.detail || '');
+      { defaultValue: m.detail || '' });
     if (newExpr == null) return;
     if (!newExpr.trim()) {
       flash('Espressione vuota; modifica annullata.', 'info');
@@ -267,7 +268,7 @@
       flash('Intervento gia\' revertito.', 'info');
       return;
     }
-    if (!confirm(`Revertire l'intervento #${iv.id} `
+    if (!await confirmDialog(`Revertire l'intervento #${iv.id} `
         + `(${iv.action} ${iv.target_kind}#${iv.target_id})?`)) return;
     try {
       await api.post('/api/constraints/revert', {
@@ -305,7 +306,7 @@
     const verb = action === 'soften' ? 'trasformare in SOFT'
               : action === 'disable' ? 'disabilitare temporaneamente'
               : 'rimuovere';
-    if (!confirm(`${list.length} vincoli da ${verb} per rendere il `
+    if (!await confirmDialog(`${list.length} vincoli da ${verb} per rendere il `
         + `modello feasible:\n\n${summary}${more}\n\n`
         + `Tutte le azioni sono reversibili dallo Storico interventi.`)) {
       return;

@@ -1,5 +1,6 @@
 <script>
   import DecorIcon from '$lib/components/DecorIcon.svelte';
+  import { confirmDialog } from '$lib/confirm';
   import { onMount } from 'svelte';
   import { api } from '$lib/api';
   import { flash } from '$lib/stores';
@@ -57,7 +58,7 @@
   // Per-row actions delegated by GroupedEventsTable.
   async function deleteEventRow(row) {
     if (row.is_scheduled && row.lesson_id != null) {
-      if (!confirm(`Eliminare la lezione di ${row.subject} `
+      if (!await confirmDialog(`Eliminare la lezione di ${row.subject} `
           + `(${row.class_name}, ${row.teacher_name}) di `
           + `${row.day_name} ${row.hour}:00? `
           + `La cattedra rimane ma diventa incompleta.`)) return;
@@ -68,7 +69,7 @@
         flash('Errore: ' + e.message, 'error');
       }
     } else {
-      if (!confirm(`Eliminare l'intera cattedra di ${row.subject} `
+      if (!await confirmDialog(`Eliminare l'intera cattedra di ${row.subject} `
           + `(${row.class_name}, ${row.teacher_name})? `
           + `Saranno eliminate ANCHE tutte le sue lezioni gia' schedulate.`)) return;
       try {
@@ -118,7 +119,7 @@
             'info');
       return;
     }
-    if (!confirm(`Dissociare la lezione di ${row.subject} `
+    if (!await confirmDialog(`Dissociare la lezione di ${row.subject} `
         + `(${row.class_name}, ${row.teacher_name}) di `
         + `${row.day_name} ${row.hour}:00? `
         + `La cattedra resta; questa singola ora torna fra le mancanti.`)) {
@@ -172,7 +173,7 @@
     let msg = `Dissociare ${lessonRows.length} singole lezioni? `
             + `Le cattedre restano; le ore tornano fra le mancanti.`;
     if (skipped > 0) msg += `\n(${skipped} placeholder verranno ignorate)`;
-    if (!confirm(msg)) return;
+    if (!await confirmDialog(msg)) return;
     let okCount = 0;
     for (const r of lessonRows) {
       try {
@@ -243,7 +244,7 @@
     if (nPlaceholders) parts.push(`${nPlaceholders} cattedre`
                                    + ` (con TUTTE le loro lezioni)`);
     const msg = `Eliminare ${parts.join(' + ')}? L'azione non e' reversibile.`;
-    if (!confirm(msg)) return;
+    if (!await confirmDialog(msg)) return;
     let okCount = 0;
     for (const r of rows) {
       try {
@@ -270,7 +271,7 @@
       flash('Lezione senza id; impossibile disassociare.', 'error');
       return;
     }
-    if (!confirm('Disassociare questa lezione da '
+    if (!await confirmDialog('Disassociare questa lezione da '
         + slotPicker.lesson.day + '/' + slotPicker.lesson.hour
         + '? La cattedra rimane ma l\'evento diventa non schedulato.')) {
       return;

@@ -1,5 +1,6 @@
 <script>
   import DecorIcon from '$lib/components/DecorIcon.svelte';
+  import { confirmDialog } from '$lib/confirm';
   import { onMount } from 'svelte';
   import { api } from '$lib/api';
   import { flash } from '$lib/stores';
@@ -55,7 +56,7 @@
   }
 
   async function del(row) {
-    if (!confirm('Eliminare regola compresenza per ' + row.class_name + ' / ' + row.subject + '?')) return;
+    if (!await confirmDialog('Eliminare regola compresenza per ' + row.class_name + ' / ' + row.subject + '?')) return;
     try {
       await coteachingSvc.remove(row.id);
       rows = await coteachingSvc.list();

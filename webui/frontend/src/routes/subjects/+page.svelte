@@ -1,5 +1,6 @@
 <script>
   import { onMount } from 'svelte';
+  import { confirmDialog } from '$lib/confirm';
   import { api } from '$lib/api';
   import DecorIcon from '$lib/components/DecorIcon.svelte';
   import { flash } from '$lib/stores';
@@ -53,7 +54,7 @@
     } catch (e) { flash('Errore: ' + e.message, 'error'); }
   }
   async function del(row) {
-    if (!confirm('Eliminare ' + row.name + '?')) return;
+    if (!await confirmDialog('Eliminare ' + row.name + '?')) return;
     try { await subjectsSvc.remove(row.id); await listRef.reload(); }
     catch (e) { flash('Errore: ' + e.message, 'error'); }
   }

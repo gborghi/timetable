@@ -27,9 +27,10 @@
   // Slots: default takes (row, columns) and renders a <tr>.
 
   import { onMount, onDestroy } from 'svelte';
+
+  import { confirmDialog, promptDialog } from '$lib/confirm';
   import { api } from '../api';
   import { flash } from '../stores';
-  import { confirmDialog } from '../confirm';
   import { savedViews as savedViewsSvc } from '../services';
   import DecorIcon from './DecorIcon.svelte';
 
@@ -279,7 +280,7 @@
 
   async function saveCurrentView() {
     if (!entity) return;
-    const name = (prompt('Nome della vista:') || '').trim();
+    const name = (await promptDialog('Nome della vista:') || '').trim();
     if (!name) return;
     try {
       await savedViewsSvc.create({

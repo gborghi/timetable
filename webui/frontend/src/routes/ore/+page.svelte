@@ -1,5 +1,6 @@
 <script>
   import DecorIcon from '$lib/components/DecorIcon.svelte';
+  import { confirmDialog } from '$lib/confirm';
   /**
    * Tab Ore -- working days + per-day timetable slots.
    *
@@ -189,7 +190,7 @@
   }
 
   async function resetAll() {
-    if (!confirm(
+    if (!await confirmDialog(
       'Ripristinare la configurazione di default ' +
       '(lun-sab, 8:00-14:00)? Le modifiche correnti saranno perse.'
     )) {

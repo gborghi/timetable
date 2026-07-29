@@ -1,5 +1,6 @@
 <script>
   import { api } from '$lib/api';
+  import { confirmDialog } from '$lib/confirm';
   import DecorIcon from '$lib/components/DecorIcon.svelte';
   import { flash, refreshDataset } from '$lib/stores';
   import { DAY_NAMES_EN, DAY_NAMES_EN_TO_IT, TEACHER_DEFAULTS } from '$lib/constants';
@@ -268,7 +269,7 @@
   }
 
   async function del(row) {
-    if (!confirm('Eliminare ' + row.name + '?')) return;
+    if (!await confirmDialog('Eliminare ' + row.name + '?')) return;
     // Snapshot the row before destroying it so UNDO can rebuild it.
     const snapshot = _scrubTeacherSnapshot(cloneRow(row));
     try {
@@ -317,11 +318,11 @@
     if (rows.length !== selectedIds.length) {
       // Selection includes ids that aren't on the current page (e.g.
       // user paginated). Be explicit so the user is not surprised.
-      if (!confirm(`Eliminare ${rows.length} docenti? `
+      if (!await confirmDialog(`Eliminare ${rows.length} docenti? `
           + `(${selectedIds.length - rows.length} non sono nella `
           + `pagina corrente e verranno ignorati.)`)) return;
     } else {
-      if (!confirm(`Eliminare ${rows.length} docenti? `
+      if (!await confirmDialog(`Eliminare ${rows.length} docenti? `
           + `L'azione cancella anche le cattedre collegate.`)) return;
     }
     bulkDeleting = true;

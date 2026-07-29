@@ -1,5 +1,6 @@
 <script>
   import DecorIcon from '$lib/components/DecorIcon.svelte';
+  import { confirmDialog } from '$lib/confirm';
   import { onMount } from 'svelte';
   import { api } from '$lib/api';
   import { flash, refreshDataset } from '$lib/stores';
@@ -114,7 +115,7 @@
   }
 
   async function del(row) {
-    if (!confirm('Eliminare ' + row.code + '? (le classi gia collegate verranno disassociate)')) return;
+    if (!await confirmDialog('Eliminare ' + row.code + '? (le classi gia collegate verranno disassociate)')) return;
     try {
       await curriculaSvc.remove(row.id);
       await listRef.reload();
@@ -181,7 +182,7 @@
     logicalValidate = null;
   }
   async function delLogical(r) {
-    if (!confirm('Eliminare vincolo?\n' + r.pretty)) return;
+    if (!await confirmDialog('Eliminare vincolo?\n' + r.pretty)) return;
     await api.del(`/api/curricula/${editing.id}/logical-constraints/${r.id}`);
     await reloadLogicalRules();
   }
