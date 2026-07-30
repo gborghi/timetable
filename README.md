@@ -120,81 +120,41 @@ npm run test:e2e:playwright
 docker compose -f docker-compose.test.yml down -v
 ```
 
----
-
-The original Italian README content follows below; it is kept
-intact for users who prefer it. The two should stay in sync; if
-they diverge the canonical source is whichever has the more
-recent commit.
-
----
-
-> *Omnia, Lucili, aliena sunt, tempus tantum nostrum est.*
-> &mdash; Seneca, *Epistulae morales ad Lucilium*, I, 1
-
-> "Tutto, Lucilio, ci viene da altri; soltanto il tempo e' nostro."
-
-**piTantum** (alias **Tempus Tantum**) e' un sistema di generazione
-e gestione dell'orario scolastico per un Liceo italiano:
-assegnazioni docenti-classi, ottimizzazione dell'orario settimanale,
-gestione di assenze e supplenze, drag-and-drop con preview live.
-
-Il nome gioca sulla forma della lettera greca **&pi;**: i due tratti
-verticali della pi minuscola ricordano le due **T** di **T**empus
-**T**antum. Il senso del verso senechiano sintetizza il programma:
-del tempo non se ne ha altro che quello che si organizza adesso.
-
-Tre layer, in un unico repo:
-
-1. **Solver** (`engine/`) — a CP-SAT pipeline (Google OR-tools)
-   with spectral decomposition for very large instances, plus a
-   collection of metaheuristics (LNS, SA, TS, ILS) that run on top of
-   the CP-SAT seed solution.
-2. **Web UI** (`webui/`) — a FastAPI backend over SQLite plus a
-   SvelteKit frontend that exposes every piece of data the solver
-   consumes (teachers, classes, subjects, classrooms, indirizzi,
-   students, study groups), runs the optimization steps end-to-end,
-   and lets the user fine-tune constraints, drag lessons around the
-   timetable, manage absences and substitutions, etc.
-3. **Legacy notebooks and prototypes** (`schedule/`) — original
-   single-file scripts that the solver evolved from. Kept for
-   reference.
-
 The full feature list is large; see `proposals/analysis.md` and
 `proposals/benchmarks.md` for the design rationale and the empirical
 performance numbers across school sizes.
 
-## Origini del progetto
+## Project origins
 
-piTantum nasce da idee di **Fernando Gargiulo**, **Giovanni Borghi**,
-**Matteo Mariani** e **Stefano Bertozzi**. Il progetto deve a loro
-il disegno concettuale del metodo di scheduling implementato, la
-scelta dei vincoli rilevanti per la realta' delle scuole italiane
-e l'impostazione complessiva dell'architettura. L'implementazione
-tecnica e' stata sviluppata a partire da queste idee.
+piTantum grew out of ideas by **Fernando Gargiulo**, **Giovanni Borghi**,
+**Matteo Mariani** and **Stefano Bertozzi**. The project owes to them
+the conceptual design of the scheduling method it implements, the
+choice of the constraints that matter for the reality of Italian
+schools, and the overall shape of the architecture. The technical
+implementation was developed from those ideas.
 
 ## Documentation
 
 - **[Installation guide](docs/installation.md)** -- cross-platform
-  setup (Windows / Linux / macOS): prerequisiti, installer ufficiali,
-  comandi di clone, note Apple Silicon, troubleshooting per OS,
-  verifica installazione, aggiornamento, disinstallazione. **Quick
-  start** per ciascun OS in cima al file.
-- **[Manuale (PDF)](docs/manual.pdf)** -- una monografia unica,
-  scritta in stile discorsivo, accessibile a chi non e' tecnico ma
-  rigorosa quando il contenuto lo richiede. Copre il problema del
-  timetabling scolastico, la panoramica di piTantum, l'interfaccia
-  utente, il modello a vincoli, e poi tutti i metodi algoritmici
-  (CP-SAT, decomposizione spettrale, metaeuristiche, Hall pre-check,
-  rilassamento lagrangiano, generazione di colonne, Monte Carlo,
-  analisi del grafo bipartito, statistica applicata, DSL parser),
-  l'architettura software, il modello dati, le API REST, la guida
-  all'estensione, i benchmark sui cinque profili e una sezione di
-  lessons learned. Sorgente LaTeX in `docs/manual.tex` con i
-  capitoli in `docs/manual/chapters/` e la bibliografia in
-  `docs/manual/bibliography.bib`. Ricompila con
-  `docs/build_manual.sh` (Linux/macOS/Git Bash) o
-  `docs/build_manual.bat` (Windows). La pipeline e' lualatex +
+  setup (Windows / Linux / macOS): prerequisites, official installers,
+  clone commands, Apple Silicon notes, per-OS troubleshooting,
+  install verification, updating, uninstalling. **Quick
+  start** for each OS at the top of the file.
+- **[Manual (PDF)](docs/manual.pdf)** -- a single monograph,
+  written in a discursive style, accessible to non-technical readers
+  yet rigorous where the content demands it. It covers the school
+  timetabling problem, an overview of piTantum, the user interface,
+  the constraint model, then every algorithmic method
+  (CP-SAT, spectral decomposition, metaheuristics, Hall pre-check,
+  Lagrangian relaxation, column generation, Monte Carlo,
+  bipartite-graph analysis, applied statistics, DSL parser),
+  the software architecture, the data model, the REST API, the
+  extension guide, the benchmarks over the five profiles, and a
+  lessons-learned section. LaTeX source in `docs/manual.tex` with the
+  chapters in `docs/manual/chapters/` and the bibliography in
+  `docs/manual/bibliography.bib`. Rebuild with
+  `docs/build_manual.sh` (Linux/macOS/Git Bash) or
+  `docs/build_manual.bat` (Windows). The pipeline is lualatex +
   biber + makeindex + lualatex (x2).
 - **[docs/](docs/)** -- modular markdown reference:
   [installation](docs/installation.md) /
@@ -210,117 +170,117 @@ tecnica e' stata sviluppata a partire da queste idee.
   from the UI itself (Excel import format, query syntax, bulk
   operations, classroom auto-generation, ...).
 
-## Funzionalita' avanzate (Italian school constraints)
+## Advanced features (Italian school constraints)
 
-### Lock nativi nelle lezioni
+### Native lesson locks
 
-Una `Assignment` con `locked=True` (toggle nella UI) viene tradotta
-direttamente in un vincolo CP-SAT (non piu' tramite snapshot/restore).
-Vantaggi:
-- fail-fast: lock incompatibili sollevano un 400 al POST, non a meta'
-  della run.
-- propagati a tutte le pipeline (Phase B monolitica, decomposta
+An `Assignment` with `locked=True` (toggled in the UI) is translated
+directly into a CP-SAT constraint (no longer via snapshot/restore).
+Benefits:
+- fail-fast: incompatible locks raise a 400 at POST time, not halfway
+  through the run.
+- propagated to every pipeline (monolithic Phase B, decomposed
   temporal/spectral_v2/curriculum/metis, column generation, ALNS,
   VNS, Lagrangian, classroom assignment).
-- pre-flight `validate_locks_vs_constraints` confronta i lock con
-  free_day del docente, max_hours_per_day della classe, vincoli HARD
-  di compresenza ecc.
+- pre-flight `validate_locks_vs_constraints` checks the locks against
+  the teacher's free_day, the class's max_hours_per_day, HARD
+  co-teaching (compresenza) constraints, and so on.
 
-### Compresenze (Task C1)
+### Co-teaching / compresenze (Task C1)
 
-Due varianti supportate da `CoteachGroup`:
+Two variants supported by `CoteachGroup`:
 
-- **Shared** (es. lab di chimica con assistente): `n_hours` ore di
-  un cattedra condivisa fra il docente principale (cattedra completa)
-  e uno o piu' co-docenti (solo le ore di compresenza). Convenzione
-  `members[0] = principal`. Nel solver: `day_count[principal] >=
-  coday[g, d]` e `day_count[codoc] == coday[g, d]`.
-- **Shadow / sostegno**: prof di sostegno DVA che segue uno studente.
-  Modellato con `Assignment.is_support=True` e subject convenzionalmente
-  `"sostegno"`. Vincolo `slot[(sost, X, sost, h)] <= OR(slot[*, X, *, h]
-  for non-support)`: l'ora di sostegno e' presente solo dove la classe
-  e' gia' occupata da un'altra lezione, e NON conta come ora-classe
-  aggiuntiva.
+- **Shared** (e.g. a chemistry lab with an assistant): `n_hours` hours
+  of a cattedra shared between the principal teacher (full cattedra)
+  and one or more co-teachers (only the co-taught hours). Convention
+  `members[0] = principal`. In the solver: `day_count[principal] >=
+  coday[g, d]` and `day_count[codoc] == coday[g, d]`.
+- **Shadow / sostegno**: a special-needs (sostegno) teacher shadowing
+  a student. Modeled with `Assignment.is_support=True` and, by
+  convention, subject `"sostegno"`. Constraint `slot[(sost, X, sost, h)]
+  <= OR(slot[*, X, *, h] for non-support)`: the sostegno hour is present
+  only where the class is already busy with another lesson, and does
+  NOT count as an extra class-hour.
 
-Esempio Italiano: `2C lab di chimica 2h con compresenza` ->
-`CoteachGroup(class_id=2C, subject=Chimica, n_hours=2)` con
-`Assignment(ProfChim, 2C, Chimica, hours=4)` e
-`Assignment(ProfAss, 2C, Chimica, hours=2)`. Il principale insegna
-4h, l'assistente solo 2h, e quelle 2h coincidono nello stesso slot.
+Italian example: `2C chemistry lab, 2h with co-teaching` ->
+`CoteachGroup(class_id=2C, subject=Chimica, n_hours=2)` with
+`Assignment(ProfChim, 2C, Chimica, hours=4)` and
+`Assignment(ProfAss, 2C, Chimica, hours=2)`. The principal teaches
+4h, the assistant only 2h, and those 2h coincide in the same slot.
 
-### Potenziamento (Legge 107)
+### Potenziamento (Law 107)
 
-Cattedra senza classe: `Assignment.is_potenziamento=True` con
-`class_id=NULL`. Le ore vengono comunque schedulate (max 5/giorno) e
-il docente diventa prioritario per le supplenze nel tab
-`/assenze-supplenze` (badge **POT** + bordo viola). Cap settimanale
-HARD: 30 ore (5 ore/giorno x 6 giorni).
+A class-less cattedra: `Assignment.is_potenziamento=True` with
+`class_id=NULL`. The hours are still scheduled (max 5/day) and the
+teacher becomes a priority for substitutions in the
+`/assenze-supplenze` tab (**POT** badge + purple border). HARD weekly
+cap: 30 hours (5 hours/day x 6 days).
 
 ### Parallel groups intra-class (Task C2)
 
-Casi tipici: `religione + alternativa` nella stessa classe, stessa ora,
-docenti diversi. Modellato con `Assignment.parallel_group_id`:
-membri della stessa parallela condividono lo slot, la classe conta
-come busy **una sola volta**. Esempio:
+Typical case: `religione + alternativa` in the same class, same hour,
+different teachers. Modeled with `Assignment.parallel_group_id`:
+members of the same parallel share the slot, and the class counts as
+busy **only once**. Example:
 `Assignment(ProfRel, 3B, Religione, h=1, parallel_group_id=99)` +
 `Assignment(ProfAlt, 3B, Alternativa, h=1, parallel_group_id=99)`.
 
 ### Inter-class StudyGroup scheduling (Task C3)
 
-Gruppi che attraversano piu' classi (es. **Spagnolo** con studenti
-da 2A + 2B). Modello dati: `StudyGroup` esistente con
-`GroupMembership` (studenti) + `GroupSubjectHours` (ore/materia).
-Schema esteso (Opzione B):
-- `Assignment.group_id` nullable (XOR con `class_id`).
-- `CoteachGroup.group_id` nullable (XOR con `class_id`) per
-  compresenze su gruppo.
-- `Lesson.group_name` nullable per le lezioni-gruppo nei risultati.
+Groups that span several classes (e.g. **Spagnolo** with students
+from 2A + 2B). Data model: the existing `StudyGroup` with
+`GroupMembership` (students) + `GroupSubjectHours` (hours/subject).
+Extended schema (Option B):
+- `Assignment.group_id` nullable (XOR with `class_id`).
+- `CoteachGroup.group_id` nullable (XOR with `class_id`) for group
+  co-teaching.
+- `Lesson.group_name` nullable for group-lessons in the results.
 
 Solver:
-- nuove triple `(prof, group_name, subject, n_hours)` con `group_name`
-  come "virtual class label" non in `classes` (no `cl_day_load`,
+- new tuples `(prof, group_name, subject, n_hours)` with `group_name`
+  as a "virtual class label" not in `classes` (no `cl_day_load`,
   no HARD-2).
-- vincolo per-day capacity: `cl_day_load[home_cl, d] +
-  sum(group_day_count[g, d]) <= 6` su ogni classe-madre dei membri.
-- Phase B class-busy aggregator estende le subj_busy aggiungendo
-  `__grp__<gname>__<subj>` come busy_key per ogni classe-madre.
-  L'invariante `sum(subj_busy) == pr` garantisce che la classe non
-  faccia altre lezioni nello slot del gruppo.
+- per-day capacity constraint: `cl_day_load[home_cl, d] +
+  sum(group_day_count[g, d]) <= 6` on every home class of the members.
+- the Phase B class-busy aggregator extends `subj_busy` by adding
+  `__grp__<gname>__<subj>` as a busy_key for each home class.
+  The invariant `sum(subj_busy) == pr` guarantees the class does not
+  hold other lessons in the group's slot.
 
-Pipeline supportate: monolitica + `decomposition_temporal`. Le altre
-pipeline decomposte (`spectral_v2`, `curriculum`, `metis`,
-`column_generation`) ignorano `group_assignments` per il momento --
-follow-up tracciato in AUDIT.md.
+Supported pipelines: monolithic + `decomposition_temporal`. The other
+decomposed pipelines (`spectral_v2`, `curriculum`, `metis`,
+`column_generation`) ignore `group_assignments` for now --
+follow-up tracked in AUDIT.md.
 
-Esempio: gruppo "Spagnolo cross-class" con 5 studenti da 2A + 7 da 2B,
-3h/settimana, ProfSpa: aggiungi `Assignment(teacher=ProfSpa,
-class_id=NULL, group_id=<id Spagnolo>, subject="Spagnolo", hours=3)`.
-Il solver schedulera' 3 ore in slot diversi; sia 2A che 2B saranno
-"occupate" in quegli slot (i loro studenti sono fisicamente nel
-gruppo).
+Example: group "Spagnolo cross-class" with 5 students from 2A + 7 from
+2B, 3h/week, ProfSpa: add `Assignment(teacher=ProfSpa,
+class_id=NULL, group_id=<Spagnolo id>, subject="Spagnolo", hours=3)`.
+The solver will schedule 3 hours in different slots; both 2A and 2B
+will be "busy" in those slots (their students are physically in the
+group).
 
 ### Pre-flight checks
 
-`validate_coteach_sostegno_potenziamento` controlla a *POST time*:
-- compresenza: principal hours >= n_hours, codoc hours == n_hours.
-- sostegno: class_id deve esistere.
-- potenziamento: class_id NULL, totale settimanale <= 30.
-- gruppo: XOR class_id/group_id, gruppo deve avere studenti, ogni
-  studente deve avere classe-madre, hours > 0.
+`validate_coteach_sostegno_potenziamento` checks at *POST time*:
+- co-teaching: principal hours >= n_hours, codoc hours == n_hours.
+- sostegno: class_id must exist.
+- potenziamento: class_id NULL, weekly total <= 30.
+- group: XOR class_id/group_id, the group must have students, every
+  student must have a home class, hours > 0.
 
-Le violazioni sono restituite come 400 con elenco specifico, non come
-INFEASIBLE silenzioso a fine run.
+Violations are returned as a 400 with a specific list, not as a silent
+INFEASIBLE at the end of the run.
 
 ## Brand assets
 
-Loghi, banner, icone e screenshot vivono in [`branding/`](branding/).
-Ogni sottocartella include un `grok_prompts.md` con prompt
-copia-incolla pronti per generare gli asset definitivi via Grok.
-Sono inoltre presenti degli **placeholder SVG funzionanti** che
-ship-ano con il repo: la UI rimane brand-coherent dal primo avvio.
+Logos, banners, icons and screenshots live in [`branding/`](branding/).
+Each subfolder includes a `grok_prompts.md` with copy-paste-ready
+prompts for generating the final assets via Grok. There are also
+**working SVG placeholders** that ship with the repo, so the UI stays
+brand-coherent from the first launch.
 
-Palette: indaco profondo (`#1e3a5f`), oro caldo (`#c9a23a`), terra
-di Siena (`#9c4a1c`), avorio (`#f7f1de`). Esposta via CSS variables
+Palette: deep indigo (`#1e3a5f`), warm gold (`#c9a23a`), burnt sienna
+(`#9c4a1c`), ivory (`#f7f1de`). Exposed via the CSS variables
 `--brand-{primary,secondary,accent,bg,fg}` in
 `webui/frontend/src/app.css`.
 
@@ -464,33 +424,33 @@ Four kinds: HARD / SOFT / PREFERRED / ENFORCED. Documentation in
 honored by the solver today; predicate-atom enforcement is partial
 and described in the same doc.
 
-### DSL generico (general DSL)
+### General DSL
 
-Per vincoli arbitrari su qualunque combinazione di docenti, classi,
-aule, materie, gruppi, studenti, giorni, ore, c'e' un **DSL
-generico** (un parser, molti compilatori) con quantificatori
-`forall` / `exists` / `count`, predicati atomici, connettivi
-logici, funzioni built-in (`lesson()`, `consecutive()`, `same_day()`,
-...), sorgenti-path (es. `exists g in s.groups`).
+For arbitrary constraints over any combination of teachers, classes,
+classrooms, subjects, groups, students, days and hours, there is a
+**general DSL** (one parser, many compilers) with quantifiers
+`forall` / `exists` / `count`, atomic predicates, logical connectives,
+built-in functions (`lesson()`, `consecutive()`, `same_day()`,
+...), and path-sources (e.g. `exists g in s.groups`).
 
-Esempi tipici:
+Typical examples:
 
 ```
-# Ogni docente di Fisica deve avere esattamente 1 ora a settimana
-# in un'aula di tipo lab_fisica
+# Every Physics teacher must have exactly 1 hour per week
+# in a lab_fisica-type classroom
 forall t in teachers where t.subject == "Fisica":
     count l in lessons where l.teacher == t
                           and l.classroom.type == "lab_fisica":
         l == 1
 
-# Studenti BES devono appartenere a un gruppo Sostegno
+# BES students must belong to a Sostegno group
 forall s in students where "BES" in s.tags:
     exists g in s.groups: g.name == "Sostegno"
 ```
 
-Reference completo + galleria di 30+ esempi in
-[`docs/general_dsl.md`](docs/general_dsl.md) e nel capitolo
-"DSL generico per i vincoli" del [Manuale](docs/manual.pdf).
+Full reference + a gallery of 30+ examples in
+[`docs/general_dsl.md`](docs/general_dsl.md) and in the chapter
+"DSL generico per i vincoli" of the [Manual](docs/manual.pdf).
 
 ## Demo profiles: SQLite is the source of truth
 
