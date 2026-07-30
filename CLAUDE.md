@@ -25,26 +25,51 @@ All Python commands run from **`webui/`** with the three import roots on `PYTHON
 
 ### Run the app (dev)
 ```
-# Windows one-shot (two cmd windows, backend :8000 + frontend :5173):
-webui\start.bat
-# Manual backend:
-webui\backend\.venv\Scripts\python -m uvicorn backend.main:app --reload --port 8000   # run from webui/
-# Manual frontend:
+# macOS / Linux one-shot (backend :8000 + frontend :5173, background):
+webui/start.sh              # --foreground to keep both in the terminal
+webui/stop.sh               # kills the PIDs in webui/logs/pids
+# Windows equivalent:
+webui\start.bat             # or start.ps1
+```
+`start.sh` bootstraps `webui/backend/.venv` and `frontend/node_modules` on first run
+(~4 min); logs land in `webui/logs/{backend,frontend,pip,npm-install}.log`. Manual:
+```
+webui/backend/.venv/bin/python -m uvicorn backend.main:app --reload --port 8000   # run from webui/
 cd webui/frontend && npm run dev
 ```
 
 ### Backend tests (pytest)
 ```
 # from webui/  — PYTHONPATH must include webui + engine + schedule:
-$env:PYTHONPATH = "$PWD;$PWD\..\engine;$PWD\..\schedule"   # PowerShell
+export PYTHONPATH="$PWD:$PWD/../engine:$PWD/../schedule"    # bash/zsh
+$env:PYTHONPATH = "$PWD;$PWD\..\engine;$PWD\..\schedule"    # PowerShell
 pytest backend/tests -m "not slow" -q          # fast suite (CI default)
 pytest backend/tests -m slow                   # full CP-SAT pipeline tests (opt-in)
 pytest backend/tests/test_foo.py::test_bar     # single test
 ```
 The `slow` marker gates anything that invokes the real solver. Root `pyproject.toml`
 mirrors `webui/backend/pytest.ini` so a bare `pytest` at repo root also finds the
-backend suite. There is also a top-level `tests/` dir (constraint unit tests +
-`tests/benchmarks/`) run directly.
+backend suite. The top-level `tests/` dir (constraint unit tests + `tests/benchmarks/`)
+injects `engine/` into `sys.path` itself — `pytest tests/test_capacity_constraint.py`
+works from the repo root with no `PYTHONPATH`.
+
+### Migrations
+```
+cd webui/backend && ./.venv/bin/alembic upgrade head        # apply (17 revisions)
+./.venv/bin/alembic revision --autogenerate -m "msg"        # after editing models.py
+```
+`db.py::init_db()` runs `Base.metadata.create_all` at startup, so a *fresh* DB is
+already canonical; Alembic matters for **existing** DBs. `create_all` only adds
+missing tables, never columns — `db.py` carries hand-rolled SQLite ALTER fallbacks
+mirroring specific revisions for dev DBs that never ran Alembic. Postgres has no
+fallback: run `alembic upgrade head`.
+
+### Environment variables
+`PITANTUM_DB_URL` (default local SQLite), `PITANTUM_ENV` (`prod` turns API-key + CORS
+into fail-fast), `PITANTUM_API_KEY`, `PITANTUM_CORS_ORIGINS`, `PITANTUM_LOG_LEVEL` /
+`PITANTUM_LOG_JSON`, `PITANTUM_DEFAULT_TENANT_ID`, `PITANTUM_DB_POOL_SIZE` /
+`PITANTUM_DB_MAX_OVERFLOW`, `PITANTUM_ALLOW_PICKLE_UPLOAD` (pickle ingest is off by
+default — the `S301` ruff carve-out exists because of this gate).
 
 ### Lint
 ```
@@ -59,10 +84,25 @@ legacy style). Ruleset is `F` + `S` only; many `S*` checks are carved out — se
 ```
 cd webui/frontend
 npm run check          # svelte-kit sync + svelte-check (CI gate)
-npm test               # node:test unit suite (constraint_levels + calendar_layout)
+npm test               # node:test unit suite — the explicit file list lives in package.json;
+                       # a new *.test.mjs is NOT picked up until added there
 npm run build          # vite build (CI gate)
 npm run test:e2e       # Cypress (alias for test:e2e:cypress); Playwright also present
 ```
+E2E needs both servers up. The supported way is the compose file, which gives the
+backend an ephemeral SQLite DB in a tmpfs volume so the host DB isn't touched:
+```
+docker compose -f docker-compose.test.yml up -d     # wait for the backend healthcheck
+cd webui/frontend && npm run test:e2e:cypress
+docker compose -f docker-compose.test.yml down
+```
+~37 Cypress specs in `webui/frontend/cypress/e2e/`.
+
+### CI gates
+`.github/workflows/ci.yml` on every push + PR to main: `ruff check webui/` →
+`pytest -m "not slow"` → `svelte-check` + `npm test` + `vite build` → buildx build of
+both Dockerfiles (so a broken `COPY` path in a Dockerfile fails CI even when
+everything else is green). E2E and the `slow` suite are **not** in CI.
 
 ### Docs / manual
 The LaTeX manual (`docs/manual.pdf` IT, `docs/manual_en.pdf` EN) is rebuilt by a
@@ -88,7 +128,14 @@ DB state into three slim pickle shapes the engine consumes:
 
 Canonical demo data is now a per-profile SQLite snapshot under
 `engine/scripts/data/<profile>/<profile>.sqlite` (built by `engine.scripts.build_profile_db`);
-the old `.pkl` path is a fallback (see `PICKLE_DEPRECATED.md` markers).
+the old `.pkl` path is a fallback (see `PICKLE_DEPRECATED.md` markers). Profiles are
+`small | medium | big | huge | superhuge` (+ `mega`); rebuild them — this actually
+runs Phase A per profile, so it is slow — with:
+```
+./scripts/rebuild_profiles.sh --profiles small,medium --skip-existing    # .ps1 on Windows
+```
+The generated artifacts are gitignored; a missing profile is why the dashboard's
+"Importa modelli risolti" dropdown can come up empty on a fresh clone.
 
 **Run orchestration.** `optimization.py` exposes high-level steps (mock-gen →
 assignment → timetable → post-process); each returns a `run_id` and executes in a
@@ -102,6 +149,39 @@ daemon writer thread and reaps stale buffers (don't reintroduce per-line `Sessio
 constraint across all solver pipelines and post-processors. Touching constraint
 modeling means touching all of them consistently.
 
+**The constraint DSL is the unification layer** — the single most load-bearing piece
+of engine architecture, and the direction the codebase is converging on. Each of the
+~10 special-purpose constraint tables (`TeacherUnavailability`, `CoteachGroup`,
+`PlessoCommutingRule`, …) historically had its own hardcoded path inside
+`cpsat_v2_timetable` / `classroom_assignment` / `plessi_constraints`. The DSL flattens
+them into one stream:
+
+```
+ORM rows ──dsl_translator.*_to_dsl()──▶ DSL strings ──general_dsl parser──▶ AST
+                                                                            │
+                          dsl_to_cpsat ◀──── compilable fragment ───────────┤
+                     (native CP-SAT constraints, HARD + SOFT)               │
+                                                                            │
+                          general_dsl eval ◀── everything else (post-hoc) ──┘
+```
+- `general_dsl.py` (in `engine/`, **not** webui — it was moved to kill a dual-module
+  AST hazard; `webui/backend/utils/general_dsl.py` is the thin re-export) owns the
+  recursive-descent grammar: quantifiers, `count`/`sum`, `=>`/`<=>`, and named
+  convenience *pragmas*.
+- `dsl_to_cpsat.py` compiles only the statically-decidable fragment. `*` `/` `%` and
+  general `sum` aggregates are deliberately out of scope.
+- `dsl_cp_gate.py` closes the gap: solve → `verify_dsl_hard` on the produced solution
+  → `add_nogood` for the exact violating assignment → re-solve, bounded by
+  `max_iters`. This is what makes a solver *completely* DSL-compliant even for rules
+  the compiler can't model. Natively-compiled rules pass at iteration 0 for free.
+- Phase A has its own objective compiler: `webui/backend/utils/objective_dsl.py` →
+  `cpsat_assignment_dsl.py`.
+
+When adding a constraint kind: write the `*_to_dsl` translator first, and only add a
+native compilation path if the gate's refinement loop proves too slow. Adding a
+hardcoded branch inside a solver reintroduces the N-solvers × N-constraints problem.
+`docs/dsl_compliance.md` tracks the matrix of what is compiled vs. gated.
+
 **Frontend ↔ backend.** Each `webui/frontend/src/routes/<page>` maps to a backend
 router in `webui/backend/routers/<page>.py`. `src/lib/api.ts` is the client;
 `pipeline_labels.js` / `constraint_levels.ts` mirror engine vocabulary. The
@@ -112,9 +192,22 @@ router in `webui/backend/routers/<page>.py`. `src/lib/api.ts` is the client;
 
 - **Branch hygiene:** only `main` may exist on `origin`. Cherry-pick work onto `main`
   and delete any service branch before pushing. (Do not push feature branches.)
+- **Commits:** conventional-commit prefixes, scoped to the subsystem —
+  `feat(dsl):`, `fix(constraint_compat):`, `refactor(engine):`, `perf(webui):`,
+  `docs(log):`.
+- **`log.md` is an append-only work log**, not a changelog. Each completed goal gets a
+  dated section (what shipped, which tests, what was misread) committed as
+  `docs(log): …`. `CHANGELOG.md` is the user-facing release history — different file,
+  different audience.
 - Multi-tenant: models carry `TenantMixin`; respect tenant scoping in queries.
 - Backend API key + CORS fail-fast only in prod (`PITANTUM_ENV=prod`); dev defaults
   to localhost-permissive.
+- The repo is bilingual: UI strings, launcher scripts, and the `*_it.md` / `README.it.md`
+  docs are Italian; identifiers and most comments are English. Domain terms stay
+  Italian in code (`cattedre`, `potenziamento`, `sostegno`, `plesso`, `svincolate`,
+  `glibero`) — do not "translate" them. The English manual is partly auto-stubbed from
+  the Italian chapters (`scripts/gen_en_stubs.py`), so `manual_en.pdf` chapters may be
+  summaries pointing back at the Italian text rather than full translations.
 
 ## Engine pipeline-selection map
 
