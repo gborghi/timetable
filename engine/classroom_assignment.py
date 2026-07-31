@@ -14,6 +14,7 @@ INPUT
           'subject': str,
           'day':     int (1..6),
           'hour':    int (8..13),
+          'shares_room': bool,      # compresenza: vedi sotto
         }
     classrooms: list di dict
         {
@@ -23,7 +24,8 @@ INPUT
           'multi_class':    bool,
           'multi_class_max':int,    # HARD: max classi simultanee
           'unavailability': set[(day, hour)],
-          'subject_required': set[str],   # HARD subject restrictions
+          'subject_required': set[str],   # HARD: solo queste materie
+          'subject_forbidden':set[str],   # HARD: tutte tranne queste
           'subject_pref_weight': dict[subject -> float],
           'class_pref_weight':   dict[class_name -> float],
           'is_home_for':    set[class_name],   # SOFT: home room
@@ -46,6 +48,19 @@ NOTE
 - Trattiamo ogni gruppo di compresenze come UN'unica lezione: la chiave
   e\` (class, subject, day, hour). Il modulo non separa le lezioni per
   docente perche\` la stanza e\` condivisa.
+- Compresenze su materia DIVERSA (sostegno, potenziamento, ITP,
+  madrelingua): la chiave sopra non basta, perche\` la lezione del
+  docente in compresenza porta un'altra `subject` e diventerebbe una
+  seconda richiesta d'aula per la stessa classe nella stessa ora. Chi
+  porta `shares_room=True` viene percio\` escluso dal modello e riceve
+  a valle l'aula dell'ospite (vedi `compresenza_map`). Senza questo, in
+  una scuola con molto sostegno il modello e\` insoddisfacibile: le
+  richieste d'aula superano le celle realmente esistenti.
+  Attenzione: NON si puo\` dedurre la regola da "stessa classe, stessa
+  ora", perche\` gli sdoppiamenti veri (Religione / Attivita\`
+  alternativa, gruppi di lingua) mettono davvero la classe in due aule.
+  Serve il dato esplicito, che il backend deriva da
+  `Teacher.compresenza`.
 - Lab-required: se l'aula ha `subject_required` non vuoto, accetta solo
   lezioni con subject in quell'insieme. Le altre lezioni NON possono
   essere assegnate a quell'aula.
@@ -94,6 +109,7 @@ def _normalize_classroom(cl: dict) -> dict:
     out.setdefault("multi_class_pref_weight", 10.0)
     out.setdefault("unavailability", set())
     out.setdefault("subject_required", set())
+    out.setdefault("subject_forbidden", set())
     out.setdefault("subject_pref_weight", {})
     out.setdefault("class_pref_weight", {})
     out.setdefault("is_home_for", set())
@@ -102,14 +118,21 @@ def _normalize_classroom(cl: dict) -> dict:
 
 def _can_host(room: dict, lesson: dict) -> bool:
     """HARD eligibility: subject compatibility + capacity + required-
-    kind + room not unavailable on that slot."""
+    kind + aula base + room not unavailable on that slot."""
     subj = lesson["subject"]
     day = lesson["day"]
     hour = lesson["hour"]
     if (day, hour) in room["unavailability"]:
         return False
+    # HARD divieto per classe: assoluto, non deroga per nessuna materia.
+    if room["name"] in (lesson.get("forbidden_rooms") or ()):
+        return False
     # Lab-required rooms only accept their subjects
     if room["subject_required"] and subj not in room["subject_required"]:
+        return False
+    # HARD divieto per materia (state='forbidden'): l'opposto del
+    # precedente -- l'aula accetta tutto TRANNE queste materie.
+    if subj in room["subject_forbidden"]:
         return False
     # HARD subject->kind: when the lesson carries a non-empty
     # `required_kind`, the room must match. e.g. Educazione Fisica
@@ -117,12 +140,84 @@ def _can_host(room: dict, lesson: dict) -> bool:
     req_kind = lesson.get("required_kind") or ""
     if req_kind and str(room.get("kind", "standard")) != req_kind:
         return False
+    # HARD aula base: la lezione porta `home_room` quando la classe ha
+    # il preset 'fissa' (o una riga 'enforced'), e allora nessun'altra
+    # aula e\` ammessa.
+    #
+    # La deroga per `req_kind` non e\` una comodita\`: senza di essa il
+    # preset sarebbe insoddisfacibile in qualunque scuola con una
+    # palestra, perche\` Scienze motorie chiederebbe insieme l'aula base
+    # e un'aula di tipo palestra. Le due regole vivono su assi diversi
+    # -- la materia vince sulla classe.
+    home_room = lesson.get("home_room") or ""
+    if home_room and not req_kind and room["name"] != home_room:
+        return False
     # HARD capacity: room.capacity >= class.n_students. Skipped silently
     # when the lesson doesn't carry n_students (legacy callers).
     n_stud = int(lesson.get("n_students") or 0)
     if n_stud > 0 and int(room.get("capacity", 0) or 0) < n_stud:
         return False
     return True
+
+
+def _lesson_key(L: dict) -> tuple[str, str, int, int]:
+    return (L["class"], L["subject"], int(L["day"]), int(L["hour"]))
+
+
+def compresenza_map(lessons: list[dict]) -> dict[tuple, tuple]:
+    r"""Chi si accoda a chi per l'aula.
+
+    Ritorna ``{lesson_key_che_segue -> lesson_key_ospite}``. Le chiavi
+    presenti NON devono ricevere un'aula propria: prendono quella
+    dell'ospite, perche\` una compresenza e\` per definizione due docenti
+    nella stessa stanza.
+
+    La regola NON e\` "stessa classe + stessa ora => stessa aula": gli
+    sdoppiamenti veri (Religione / Attivita\` alternativa, gruppi di
+    lingua) dividono la classe fra due aule ed e\` giusto che chiedano
+    due stanze. Si accoda solo chi porta ``shares_room=True``, che il
+    backend deriva da ``Teacher.compresenza``.
+
+    Due precisazioni che sembrano dettagli e non lo sono:
+
+    - ``shares_room`` e\` una proprieta\` del docente, quindi e\` vera
+      anche nelle ore in cui quel docente ha una cattedra tutta sua. Per
+      questo ci si accoda SOLO se nella cella esiste un'altra lezione:
+      da soli si prenota un'aula normalmente.
+    - se nella cella ci sono solo lezioni in compresenza e nessun
+      ospite (nessuno "titolare"), una viene promossa a ospite e le
+      altre la seguono, invece di chiedere N stanze.
+    """
+    rides_by_key: dict[tuple, bool] = {}
+    cells: dict[tuple[str, int, int], list[tuple]] = {}
+    for L in lessons:
+        key = _lesson_key(L)
+        rides = bool(L.get("shares_room"))
+        if key in rides_by_key:
+            # Stessa chiave, piu\` docenti (codocenza sulla stessa
+            # materia): e\` gia\` una sola lezione e una sola aula. Conta
+            # come ospite se almeno uno dei suoi docenti non si accoda.
+            rides_by_key[key] = rides_by_key[key] and rides
+            continue
+        rides_by_key[key] = rides
+        cells.setdefault((L["class"], int(L["day"]), int(L["hour"])),
+                         []).append(key)
+
+    riders: dict[tuple, tuple] = {}
+    for _cell, keys in cells.items():
+        if len(keys) < 2:
+            continue
+        rider_keys = [k for k in keys if rides_by_key[k]]
+        if not rider_keys:
+            continue
+        hosts = [k for k in keys if not rides_by_key[k]]
+        if hosts:
+            host = hosts[0]
+        else:
+            host, rider_keys = rider_keys[0], rider_keys[1:]
+        for k in rider_keys:
+            riders[k] = host
+    return riders
 
 
 def solve_classroom_assignment(
@@ -159,7 +254,13 @@ def solve_classroom_assignment(
     rooms = [_normalize_classroom(r) for r in classrooms]
     room_by_name = {r["name"]: r for r in rooms}
 
-    # Build the locked-room map keyed by lesson_key.
+    # Compresenze: chi si accoda non entra nel modello, riceve a valle
+    # l'aula del suo ospite.
+    riders = compresenza_map(lessons)
+
+    # Build the locked-room map keyed by lesson_key. Un lock su una
+    # lezione in compresenza vale in realta\` per l'ospite: e\` la stessa
+    # stanza, e la chiave della lezione accodata non esiste nel modello.
     locks_by_lesson: dict[tuple, str] = {}
     for entry in (locked_classrooms or []):
         if len(entry) != 5:
@@ -167,15 +268,16 @@ def solve_classroom_assignment(
         cl_l, s_l, d_l, h_l, room_name = entry
         if not room_name:
             continue
-        locks_by_lesson[(cl_l, s_l, int(d_l), int(h_l))] = room_name
+        key = (cl_l, s_l, int(d_l), int(h_l))
+        locks_by_lesson[riders.get(key, key)] = room_name
 
     # Group lessons by (class, subject, day, hour) — multiple co-teachers
     # share one lesson and one room.
     lesson_keys: list[tuple[str, str, int, int]] = []
     seen = set()
     for L in lessons:
-        key = (L["class"], L["subject"], int(L["day"]), int(L["hour"]))
-        if key in seen:
+        key = _lesson_key(L)
+        if key in seen or key in riders:
             continue
         seen.add(key)
         lesson_keys.append(key)
@@ -183,8 +285,8 @@ def solve_classroom_assignment(
     # Sanity: each lesson_key must have at least one eligible room.
     eligible: dict[tuple, list[str]] = {}
     for L in lessons:
-        key = (L["class"], L["subject"], int(L["day"]), int(L["hour"]))
-        if key in eligible:
+        key = _lesson_key(L)
+        if key in eligible or key in riders:
             continue
         elig = [r["name"] for r in rooms
                 if _can_host(r, L)]
@@ -260,8 +362,10 @@ def solve_classroom_assignment(
             plessi_data, "classroom_to_plesso", None):
         teacher_for_lesson: dict[tuple, list[str]] = {}
         for L in lessons:
-            key = (L["class"], L["subject"],
-                   int(L["day"]), int(L["hour"]))
+            key = _lesson_key(L)
+            # I docenti in compresenza stanno nell'aula dell'ospite,
+            # quindi ai fini di plesso e spostamenti contano su quella.
+            key = riders.get(key, key)
             t_list = teacher_for_lesson.setdefault(key, [])
             if L.get("teacher"):
                 t_list.append(L["teacher"])
@@ -322,8 +426,14 @@ def solve_classroom_assignment(
             if cl in room["class_pref_weight"]:
                 b += float(room["class_pref_weight"][cl]) * \
                      soft["class_pref_bonus"] / 10.0
-            if b > 0:
-                bonus_terms.append(int(-b) * x[(key, rn)])
+            # `b` e\` una magnitudine positiva: "quanto e\` gradita questa
+            # aula". Il segno viene normalizzato all'origine da
+            # engine_io, dove `state` e\` la fonte di verita\` e il segno
+            # della colonna `weight` non lo e\` (la UI scrive -20 per
+            # 'preferred', il generatore mock +10). Il modello minimizza,
+            # quindi il bonus entra negato.
+            if b:
+                bonus_terms.append(-int(round(b)) * x[(key, rn)])
 
     # Objective: minimize overflow penalty - bonuses
     objective_terms = list(overflow_terms) + list(bonus_terms)
@@ -346,14 +456,31 @@ def solve_classroom_assignment(
             if solver.Value(x[(key, rn)]) == 1:
                 out[key] = rn
                 break
+    # Le lezioni in compresenza ereditano l'aula dell'ospite.
+    for rider_key, host_key in riders.items():
+        if host_key in out:
+            out[rider_key] = out[host_key]
     print(
         f"[classroom] status={solver.StatusName(status)} "
         f"elapsed={elapsed:.1f}s lessons={len(lesson_keys)} "
         f"rooms={len(rooms)}"
+        + (f" compresenze={len(riders)}" if riders else "")
         + (f" plessi(commute={n_pl_commute}, policy={n_pl_policy})"
            if (n_pl_commute or n_pl_policy) else "")
     )
     return out, solver.StatusName(status)
+
+
+def _plesso_pins(plessi_data) -> dict[tuple[str, int], int]:
+    r"""``{('class'|'teacher', entity_id) -> plesso_id}`` per le policy
+    che inchiodano un'entita\` a un plesso preciso."""
+    pins: dict[tuple[str, int], int] = {}
+    for p in (getattr(plessi_data, "entity_policies", None) or []):
+        if p.entity_id is None or p.plesso_id is None:
+            continue
+        if p.policy in ("single_plesso_total", "single_plesso_per_day"):
+            pins[(p.entity_kind, int(p.entity_id))] = int(p.plesso_id)
+    return pins
 
 
 def greedy_classroom_assignment(
@@ -362,8 +489,9 @@ def greedy_classroom_assignment(
     *,
     prefer_home: bool = True,
     locked_classrooms: list[tuple] | None = None,
+    plessi_data=None,
 ) -> dict:
-    """Fallback greedy: per slot, prefer the lesson's home room if free.
+    r"""Fallback greedy: per slot, prefer the lesson's home room if free.
     Used when CP-SAT is unnecessary or as a warm start.
 
     `locked_classrooms` (optional): list of
@@ -373,14 +501,52 @@ def greedy_classroom_assignment(
     pointing at an ineligible room are still emitted so the upstream
     _apply_locked_classrooms step has the right answer; the
     capacity bookkeeping for that slot is bumped regardless.
+
+    `plessi_data` (optional): stesso oggetto passato al modello esatto.
+    Il greedy ne usa la parte che si puo\` rispettare decidendo una
+    lezione alla volta:
+
+    - HARD, le policy che inchiodano una classe (o un docente) a un
+      plesso: le aule degli altri plessi vengono scartate;
+    - preferenza forte per la CONTINUITA\`, cioe\` restare nel plesso in
+      cui la classe si trova gia\` quel giorno.
+
+    Le regole di pendolarismo (`commuting_rules`, con i loro intervalli
+    minimi fra due spostamenti) NON sono modellate qui: richiedono di
+    guardare avanti e indietro nella giornata, cosa che un greedy per
+    slot non fa. Restano garantite solo dal ramo CP-SAT. Questa
+    funzione e\` una rete di sicurezza per quando il modello esatto non
+    conclude, non un suo sostituto.
     """
     rooms = [_normalize_classroom(r) for r in classrooms]
     out: dict = {}
     busy: dict[tuple[str, int, int], int] = defaultdict(int)
     by_key: dict[tuple, dict] = {}
+    riders = compresenza_map(lessons)
     for L in lessons:
-        key = (L["class"], L["subject"], int(L["day"]), int(L["hour"]))
+        key = _lesson_key(L)
+        if key in riders:
+            continue
         by_key.setdefault(key, L)
+
+    room_plesso = dict(
+        getattr(plessi_data, "classroom_to_plesso", None) or {})
+    class_ids = dict(getattr(plessi_data, "class_name_to_id", None) or {})
+    teacher_ids = dict(
+        getattr(plessi_data, "teacher_name_to_id", None) or {})
+    pins = _plesso_pins(plessi_data) if plessi_data is not None else {}
+    # Plesso in cui ogni classe si trova gia\`, quel giorno.
+    day_plesso: dict[tuple[str, int], int] = {}
+
+    def _pinned_plesso(L: dict, cl: str) -> int | None:
+        cid = class_ids.get(cl)
+        if cid is not None and ("class", cid) in pins:
+            return pins[("class", cid)]
+        for tname in ([L.get("teacher")] + list(L.get("co_teachers") or [])):
+            tid = teacher_ids.get(tname) if tname else None
+            if tid is not None and ("teacher", tid) in pins:
+                return pins[("teacher", tid)]
+        return None
 
     # Pre-place locks. Mark them as done in `out` and reserve the
     # busy slot so the rest of the greedy doesn't double-book.
@@ -392,9 +558,13 @@ def greedy_classroom_assignment(
         if not room_name:
             continue
         key = (cl_l, s_l, int(d_l), int(h_l))
+        key = riders.get(key, key)
         out[key] = room_name
         busy[(room_name, int(d_l), int(h_l))] += 1
         locked_keys.add(key)
+        pl = room_plesso.get(room_name)
+        if pl is not None:
+            day_plesso.setdefault((key[0], int(d_l)), pl)
 
     for key in sorted(by_key):
         if key in locked_keys:
@@ -402,26 +572,49 @@ def greedy_classroom_assignment(
         L = by_key[key]
         cl, subj, d, h = key
         candidates = [r for r in rooms if _can_host(r, L)]
+        pin = _pinned_plesso(L, cl)
+        if pin is not None:
+            hard = [r for r in candidates
+                    if room_plesso.get(r["name"]) == pin]
+            # Se il vincolo di plesso non lascia nessuna aula, meglio
+            # collocare la lezione altrove che lasciarla senza aula:
+            # il greedy e\` gia\` il ramo degradato.
+            candidates = hard or candidates
         if not candidates:
             continue
+        want_plesso = day_plesso.get((cl, d), pin)
+
+        def _fits(room: dict) -> bool:
+            cap = room["multi_class_max"] if room["multi_class"] else 1
+            return busy[(room["name"], d, h)] < cap
+
+        def _place(room: dict) -> None:
+            out[key] = room["name"]
+            busy[(room["name"], d, h)] += 1
+            pl = room_plesso.get(room["name"])
+            if pl is not None:
+                day_plesso.setdefault((cl, d), pl)
+
         if prefer_home:
             home = [r for r in candidates if cl in r["is_home_for"]]
-            if home and busy[(home[0]["name"], d, h)] < (
-                home[0]["multi_class_max"] if home[0]["multi_class"] else 1
-            ):
-                room = home[0]
-                out[key] = room["name"]
-                busy[(room["name"], d, h)] += 1
+            if home and _fits(home[0]):
+                _place(home[0])
                 continue
-        # subject preferences first, then any
+        # Preferenze: prima restare nel plesso della giornata, poi le
+        # materie che quell'aula gradisce (magnitudine positiva, vedi
+        # engine_io), infine le aule non condivise.
         candidates.sort(key=lambda r: (
-            -float(r["subject_pref_weight"].get(subj, 0)),
+            0 if (want_plesso is not None
+                  and room_plesso.get(r["name"]) == want_plesso) else 1,
+            -float(r["subject_pref_weight"].get(subj, 0.0)),
             r["multi_class"],  # avoid multi-class rooms first
         ))
         for room in candidates:
-            cap = room["multi_class_max"] if room["multi_class"] else 1
-            if busy[(room["name"], d, h)] < cap:
-                out[key] = room["name"]
-                busy[(room["name"], d, h)] += 1
+            if _fits(room):
+                _place(room)
                 break
+
+    for rider_key, host_key in riders.items():
+        if host_key in out:
+            out[rider_key] = out[host_key]
     return out

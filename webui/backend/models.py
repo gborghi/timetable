@@ -23,6 +23,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy import event
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -154,6 +155,27 @@ class Teacher(TenantMixin, TimestampMixin, Base):
     max_consecutive: Mapped[int] = mapped_column(Integer, default=5,
                                                  comment="HARD: max ore "
                                                  "consecutive nel giorno")
+    # Compresenza: puo\` questo docente stare in aula INSIEME a un altro,
+    # sulla stessa classe e nella stessa ora? Non e\` una proprieta\` del
+    # sostegno: vale identica per potenziamento, codocenza, madrelingua e
+    # ITP, e per questo NON e\` cablata su `Assignment.is_support` (il
+    # sostegno si limita ad accenderla come preset -- vedi
+    # `optimization.sostegno_assignment`).
+    #
+    # Conta soprattutto per le aule: una compresenza e\` per definizione
+    # due docenti nella STESSA stanza, quindi la lezione non prenota
+    # un'aula propria ma segue quella della classe. Senza questa
+    # informazione il modello delle aule chiede una stanza in piu\` per
+    # ogni ora di compresenza e diventa insoddisfacibile. Non si puo\`
+    # pero\` dedurre "stessa classe, stessa ora => stessa aula", perche\`
+    # esistono sdoppiamenti veri (Religione / Attivita\` alternativa,
+    # gruppi di lingua) in cui la classe si divide fra due aule.
+    compresenza: Mapped[str] = mapped_column(
+        String(16), default="mai", server_default="mai", nullable=False,
+        comment="mai (default) | sempre | oraria. 'oraria' consulta "
+                "teacher_compresenza_hours per le celle (giorno, ora) "
+                "ammesse."
+    )
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     # SOFT prefs as numeric weights
     pref_no_buchi_weight: Mapped[float] = mapped_column(Float, default=10.0)
@@ -177,6 +199,9 @@ class Teacher(TenantMixin, TimestampMixin, Base):
         back_populates="teacher", cascade="all, delete-orphan"
     )
     compatible_classes: Mapped[list["TeacherCompatibleClass"]] = relationship(
+        back_populates="teacher", cascade="all, delete-orphan"
+    )
+    compresenza_hours: Mapped[list["TeacherCompresenzaHour"]] = relationship(
         back_populates="teacher", cascade="all, delete-orphan"
     )
     # Phase-A only preferences (Section: workflow extensions). The
@@ -281,6 +306,34 @@ class TeacherCompatibleClass(Base):
     )
     class_name: Mapped[str] = mapped_column(String(40))
     teacher: Mapped["Teacher"] = relationship(back_populates="compatible_classes")
+
+
+class TeacherCompresenzaHour(Base):
+    """Le celle (giorno, ora) in cui il docente puo\\` stare in compresenza.
+
+    Consultata SOLO quando ``Teacher.compresenza == 'oraria'``; con
+    'mai' e 'sempre' la risposta non dipende dall'ora e queste righe
+    sono ignorate. La presenza della riga e\\` il permesso: non c'e\\` uno
+    stato hard/soft, perche\\` la compresenza o e\\` ammessa o non lo e\\`.
+
+    Il caso d'uso e\\` l'ITP o il madrelingua che affianca il titolare
+    solo in alcune ore di laboratorio e nelle altre ha cattedra
+    propria: in quelle altre ore la sua lezione torna a prenotare
+    un'aula tutta sua.
+    """
+    __tablename__ = "teacher_compresenza_hours"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    teacher_id: Mapped[int] = mapped_column(
+        ForeignKey("teachers.id", ondelete="CASCADE"), index=True
+    )
+    day: Mapped[int] = mapped_column(Integer, comment="1..6 (1=Lun)")
+    hour: Mapped[int] = mapped_column(Integer, comment="legacy 8..13")
+    teacher: Mapped["Teacher"] = relationship(
+        back_populates="compresenza_hours")
+    __table_args__ = (
+        UniqueConstraint("teacher_id", "day", "hour",
+                         name="uq_teacher_compresenza_hour"),
+    )
 
 
 class TeacherClassPreference(Base):
@@ -397,6 +450,24 @@ class SchoolClass(TenantMixin, TimestampMixin, Base):
         comment="HARD: massimo numero di ore al giorno (sostituisce "
                 "il vecchio default fisso di 5)."
     )
+    # Preset di assegnazione aule. Decide SOLO quanto vincola l'aula
+    # base (la ClassroomClassPreference con is_home=True); le aule
+    # speciali restano governate da Subject.required_kind e dalle
+    # preferenze per materia.
+    #   'fissa'  - HARD: tutte le ore della classe nella sua aula base.
+    #              Deroga automatica per le materie con required_kind
+    #              valorizzato (Scienze motorie -> palestra, ecc.):
+    #              senza quella deroga il preset sarebbe insoddisfacibile
+    #              in ogni liceo che abbia una palestra.
+    #   'ibrida' - SOFT: bonus sull'aula base, il resto lo decide
+    #              l'ottimizzatore. E' il comportamento storico, quindi
+    #              il default per non cambiare l'esito dei DB esistenti.
+    #   'libera' - nessun vincolo di aula base: valgono solo le
+    #              preferenze/i lock espliciti.
+    room_policy: Mapped[str] = mapped_column(
+        String(8), default="ibrida", server_default="ibrida", nullable=False,
+        comment="fissa | ibrida | libera -- quanto vincola l'aula base"
+    )
     subjects: Mapped[list["ClassSubject"]] = relationship(
         back_populates="school_class", cascade="all, delete-orphan"
     )
@@ -434,6 +505,13 @@ class SubjectGroupWeight(Base):
 
 # ---------- Cattedre / Assignment (prof -> class -> subject -> ore) ----------
 
+#: Label written into `Assignment.subject` for sostegno rows. It is a
+#: solver key, NOT a `Subject` row: a school never has to create a
+#: "sostegno" subject, nor give every class a ClassSubject with hours
+#: for it. Anything reading Assignment.subject for a support row should
+#: treat this as a marker, not as something a teacher "teaches".
+SUPPORT_SUBJECT = "sostegno"
+
 
 class Assignment(Base):
     """Result of the prof->class assignment step. One row per
@@ -444,9 +522,15 @@ class Assignment(Base):
     Three special-case shapes (Task C1):
     - Shared coteaching: N rows with same (class_id, subject) and a
       shared `coteach_group_id` pointing at the rule that ties them.
-    - Sostegno (shadow): `is_support=True`, `subject="sostegno"`. The
-      teacher follows the class -- placed in slots where the class
-      already has a non-support lesson; doesn't add to class-busy.
+    - Sostegno (shadow): `is_support=True` plus `student_id` -- the
+      teacher is assigned to a *pupil*, not to a class. `class_id` is
+      the pupil's class, derived on write and re-derived at solve time
+      so a pupil who changes class takes their support teacher along.
+      `subject` is filled in automatically with SUPPORT_SUBJECT: there
+      is no need to create a Subject row (nor a ClassSubject with
+      hours) called 'sostegno'. Placement-wise the teacher follows the
+      class -- put in slots where the class already has a non-support
+      lesson; doesn't add to class-busy.
     - Potenziamento: `is_potenziamento=True`, `class_id=NULL`. The
       teacher's hours get scheduled but produce no class-bound
       Lesson; available for substitutions and flexible coteaching.
@@ -475,8 +559,17 @@ class Assignment(Base):
     )
     is_support: Mapped[bool] = mapped_column(
         Boolean, default=False, index=True,
-        comment="true: prof di sostegno; subject is conventionally "
-                "'sostegno'; the teacher follows the class' lessons"
+        comment="true: prof di sostegno; the teacher follows the "
+                "lessons of the class of `student_id`"
+    )
+    student_id: Mapped[int | None] = mapped_column(
+        ForeignKey("students.id", ondelete="SET NULL"),
+        nullable=True, index=True,
+        comment="sostegno target: the pupil this support teacher "
+                "follows. Meaningful only with is_support=True. "
+                "SET NULL rather than CASCADE so removing a pupil "
+                "downgrades the cattedra to class-level sostegno "
+                "(the preflight flags it) instead of deleting hours."
     )
     is_potenziamento: Mapped[bool] = mapped_column(
         Boolean, default=False, index=True,
@@ -503,6 +596,7 @@ class Assignment(Base):
     teacher: Mapped["Teacher"] = relationship()
     school_class: Mapped["SchoolClass"] = relationship()
     study_group: Mapped["StudyGroup | None"] = relationship()
+    student: Mapped["Student | None"] = relationship()
     coteach_group: Mapped["CoteachGroup | None"] = relationship(
         back_populates="assignments"
     )
@@ -512,9 +606,19 @@ class Assignment(Base):
     # invariant for the cattedre-normali case (one teacher per
     # (class, subj, support-flag)) without forbidding shared shape.
     __table_args__ = (
-        UniqueConstraint("teacher_id", "class_id", "subject",
-                         "is_support",
-                         name="uq_assign_t_cl_subj_sup"),
+        # Same invariant as the old uq_assign_t_cl_subj_sup UNIQUE, but
+        # widened by the sostegno pupil. It has to be a functional index
+        # rather than a plain UniqueConstraint because SQL treats NULLs
+        # as distinct: with a bare `student_id` column every non-support
+        # row (student_id NULL) would become trivially unique and the
+        # "one teacher per (class, subject)" invariant would evaporate.
+        # COALESCE(student_id, 0) pins all of them to the same bucket,
+        # so non-support rows keep exactly the old semantics while two
+        # support rows for two different pupils of the same class can
+        # coexist for the same teacher.
+        Index("uq_assign_t_cl_subj_sup_stu",
+              "teacher_id", "class_id", "subject", "is_support",
+              text("COALESCE(student_id, 0)"), unique=True),
         # XOR invariant (see class docstring): exactly one of
         # (class_id, group_id) is set, OR both are NULL only for a
         # potenziamento row. Both-set or both-NULL-without-potenziamento
@@ -1055,6 +1159,23 @@ event.listen(ClassroomSubjectPreference, "before_update",
              _sync_csp_required)
 
 
+def _fill_support_subject(mapper, connection, target):
+    """A sostegno row doesn't need the caller to name a subject.
+
+    `subject` is NOT NULL because it is part of the solver key, but a
+    support teacher doesn't teach a subject -- they follow a pupil. So
+    whoever creates the row can leave it empty and we stamp
+    SUPPORT_SUBJECT here, which is why no school ever has to invent a
+    "sostegno" entry in the subjects table.
+    """
+    if target.is_support and not (target.subject or "").strip():
+        target.subject = SUPPORT_SUBJECT
+
+
+event.listen(Assignment, "before_insert", _fill_support_subject)
+event.listen(Assignment, "before_update", _fill_support_subject)
+
+
 class TeacherClassroomPreference(Base):
     """4-state teacher<->classroom preference. Same semantics as
     ClassroomSubjectPreference but on the (teacher, classroom) pair."""
@@ -1079,13 +1200,37 @@ class TeacherClassroomPreference(Base):
 
 
 class ClassroomClassPreference(Base):
-    """Soft preference: this class prefers this classroom (its 'home')."""
+    r"""class<->classroom preference, con la stessa tassonomia a 4 stati
+    di ClassroomSubjectPreference / TeacherClassroomPreference.
+
+    state: 'allowed'   - nessun contributo (riga inerte)
+           'preferred' - SOFT: bonus `weight` quando l'aula viene usata
+                         da questa classe. E' lo stato storico di ogni
+                         riga di questa tabella.
+           'forbidden' - HARD: questa classe non puo' mai stare qui
+           'enforced'  - HARD: questa classe deve stare SEMPRE qui
+                         (deroga automatica per le materie con
+                         Subject.required_kind valorizzato)
+
+    `state` e `is_home` sono due assi distinti e non ridondanti:
+    `is_home` dice QUALE aula e\` quella base della classe, `state` dice
+    QUANTO vincola. Il caso normale non si scrive riga per riga ma con
+    il preset SchoolClass.room_policy, che promuove la riga is_home a
+    'enforced' ('fissa') o la lascia soft ('ibrida'). Lo stato esplicito
+    serve al caso completamente manuale (una classe fissata in un'aula
+    che non e\` la sua base, o vietata in una specifica aula).
+    Precedenza: uno `state` HARD scritto qui vince sul preset."""
     __tablename__ = "classroom_class_preferences"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     classroom_id: Mapped[int] = mapped_column(
         ForeignKey("classrooms.id", ondelete="CASCADE"), index=True
     )
     class_name: Mapped[str] = mapped_column(String(40))
+    state: Mapped[str] = mapped_column(
+        String(16), default="preferred", server_default="preferred",
+        nullable=False,
+        comment="allowed | preferred | forbidden | enforced"
+    )
     weight: Mapped[float] = mapped_column(Float, default=20.0)
     is_home: Mapped[bool] = mapped_column(
         Boolean, default=False,

@@ -344,6 +344,20 @@ def _import_classes(db: Session, rows: Iterable[dict],
                      "preferred_free_days")
         if pfd not in (None, ""):
             c.preferred_free_days_json = str(pfd)
+        # Preset aule. Valore ignoto -> riga in errore ma import che
+        # prosegue col preset precedente: un refuso in una colonna
+        # facoltativa non deve invalidare l'anagrafica delle classi.
+        rp = _pick(r0, "room_policy", "aule", "politica_aule")
+        if rp not in (None, ""):
+            rp_norm = str(rp).strip().lower()
+            if rp_norm in ("fissa", "ibrida", "libera"):
+                c.room_policy = rp_norm
+            else:
+                rep.errors.append(
+                    f"classe {name}: room_policy '{rp}' non valido "
+                    "(fissa | ibrida | libera); mantengo "
+                    f"'{getattr(c, 'room_policy', 'ibrida') or 'ibrida'}'"
+                )
         c.notes = _pick(r0, "notes", "note")
         if not is_update:
             db.add(c)
@@ -403,6 +417,39 @@ def _import_classrooms(db: Session, rows: Iterable[dict],
         if not is_update:
             db.add(room)
             db.flush()
+        # ----- Aula base (comma-separated class names) -----
+        # Dice quali classi hanno QUESTA come aula base. E' il dato che
+        # rende operativo il preset SchoolClass.room_policy='fissa':
+        # senza, il preset non ha niente da fissare.
+        home_field = _pick(r, "aula_base", "home_class", "classe_base",
+                           "classi_base")
+        if home_field is not None:
+            wanted_classes = [
+                c.strip() for c in _split_csv_field(home_field)
+                if c and c.strip()
+            ]
+            for cl_name in wanted_classes:
+                # Una classe ha una sola aula base: sgancio le altre
+                # invece di cancellarle, cosi\` la preferenza SOFT
+                # eventualmente configurata a mano sopravvive.
+                for other in db.query(
+                    models.ClassroomClassPreference
+                ).filter(
+                    models.ClassroomClassPreference.class_name == cl_name,
+                    models.ClassroomClassPreference.classroom_id != room.id,
+                    models.ClassroomClassPreference.is_home == True,  # noqa: E712
+                ).all():
+                    other.is_home = False
+                pref = db.query(models.ClassroomClassPreference).filter(
+                    models.ClassroomClassPreference.classroom_id == room.id,
+                    models.ClassroomClassPreference.class_name == cl_name,
+                ).one_or_none()
+                if pref is None:
+                    pref = models.ClassroomClassPreference(
+                        classroom_id=room.id, class_name=cl_name,
+                    )
+                    db.add(pref)
+                pref.is_home = True
         # ----- Tags column (comma-separated) -----
         tag_field = _pick(r, "tags", "tag", "etichette")
         if tag_field is not None:
@@ -517,6 +564,7 @@ def _import_students(db: Session, rows: Iterable[dict],
         db.query(models.Student).delete()
         db.commit()
     classes_by_name = {c.name: c.id for c in db.query(models.SchoolClass).all()}
+    teachers_by_name = {t.name: t for t in db.query(models.Teacher).all()}
     # composite key (last_name, first_name, birth_date) for matching
     existing = {(s.last_name, s.first_name, s.birth_date): s
                 for s in db.query(models.Student).all()}
@@ -585,6 +633,43 @@ def _import_students(db: Session, rows: Iterable[dict],
                 db.add(models.StudentTagAssignment(
                     student_id=s.id, tag_id=existing_tags[n].id,
                 ))
+        # ----- Sostegno: the pupil names their support teacher -----
+        # It lives on the pupil's row because that is where the school
+        # knows it: sostegno is granted to a pupil, not to a class, and
+        # there is no "sostegno" subject to hang it off.
+        sost = _pick(r, "sostegno", "docente_sostegno",
+                     "support_teacher")
+        if sost is not None and str(sost).strip():
+            db.flush()
+            tname = str(sost).strip()
+            t = teachers_by_name.get(tname)
+            raw_h = _pick(r, "ore_sostegno", "support_hours")
+            try:
+                ore = int(raw_h) if raw_h not in (None, "") else 18
+            except (TypeError, ValueError):
+                ore = 18
+            if t is None:
+                rep.errors.append(
+                    f"riga {rep.n_total_rows}: docente di sostegno "
+                    f"'{tname}' inesistente (importa prima i docenti)")
+            elif s.class_id is None:
+                rep.errors.append(
+                    f"riga {rep.n_total_rows}: sostegno per {last} "
+                    f"{first} ma l'alunno non ha una classe")
+            else:
+                a = db.query(models.Assignment).filter(
+                    models.Assignment.teacher_id == t.id,
+                    models.Assignment.student_id == s.id,
+                    models.Assignment.is_support == True,  # noqa: E712
+                ).first()
+                if a is None:
+                    a = models.Assignment(
+                        teacher_id=t.id, student_id=s.id,
+                        is_support=True,
+                        subject=models.SUPPORT_SUBJECT)
+                    db.add(a)
+                a.class_id = s.class_id
+                a.hours = ore
         if is_update:
             rep.n_updated += 1
         else:
@@ -767,6 +852,7 @@ _TEMPLATES: dict[str, list[tuple[str, Any]]] = {
         ("max_hours_per_day", 5),
         ("required_free_days_count", 0),
         ("preferred_free_days_json", ""),
+        ("room_policy", "ibrida"),
         ("notes", ""),
     ],
     "classrooms": [
@@ -775,6 +861,7 @@ _TEMPLATES: dict[str, list[tuple[str, Any]]] = {
         ("capacity", 30),
         ("multi_class", "no"),
         ("multi_class_max", 1),
+        ("aula_base", "1A"),
         ("tags", "matematica,scientifico"),
         ("notes", ""),
     ],
@@ -795,6 +882,8 @@ _TEMPLATES: dict[str, list[tuple[str, Any]]] = {
         ("email", ""),
         ("student_code", "S001"),
         ("class_name", "1A"),
+        ("sostegno", ""),
+        ("ore_sostegno", ""),
         ("tags", "BES,debito_matematica_4"),
         ("notes", ""),
     ],
@@ -846,6 +935,12 @@ _TEMPLATE_HINTS: dict[str, dict[str, str]] = {
         "required_free_days_count": "HARD: numero esatto di giorni "
                                      "liberi (default 0 per classi).",
         "preferred_free_days_json": "JSON come per i docenti.",
+        "room_policy": "Preset aule: 'fissa' (tutte le ore nell'aula "
+                       "base, HARD -- deroga automatica per le materie "
+                       "con aula speciale obbligatoria), 'ibrida' "
+                       "(aula base come preferenza, default) o "
+                       "'libera' (nessun vincolo). L'aula base si "
+                       "indica nel foglio Aule, colonna 'aula_base'.",
     },
     "classrooms": {
         "name": "OBBLIGATORIO -- nome aula (es. 'Aula 12', "
@@ -856,6 +951,11 @@ _TEMPLATE_HINTS: dict[str, dict[str, str]] = {
         "capacity": "Capienza (intero).",
         "multi_class": "yes/no (palestre+biblioteche multi-classe).",
         "multi_class_max": "Max classi simultanee (HARD).",
+        "aula_base": "Classi che hanno QUESTA come aula base, separate "
+                     "da virgola (es. '1A' oppure '1A,2A'). Ogni "
+                     "classe puo' avere una sola aula base: indicarla "
+                     "qui la sgancia da quella precedente. Serve al "
+                     "preset room_policy='fissa' del foglio Classi.",
         "tags": "Lista tag separati da virgola (lower-case, creati "
                 "al volo). Esempio: 'matematica,scientifico'.",
     },
@@ -876,6 +976,13 @@ _TEMPLATE_HINTS: dict[str, dict[str, str]] = {
         "gender": "M/F/other (opzionale).",
         "student_code": "Matricola (opzionale).",
         "class_name": "Nome classe di appartenenza (vedi /classes).",
+        "sostegno": "Nome del docente di sostegno assegnato a QUESTO "
+                    "alunno (il docente deve gia' esistere). Il "
+                    "sostegno e' dell'alunno, non della classe: non "
+                    "serve creare una materia 'sostegno'. Lasciare "
+                    "vuoto se l'alunno non ne ha.",
+        "ore_sostegno": "Ore settimanali di sostegno per l'alunno "
+                        "(default 18). Ignorato senza 'sostegno'.",
         "tags": "Lista tag separati da virgola (lower-case, creati "
                 "al volo). Esempio: 'BES,debito_matematica_4'.",
     },

@@ -70,6 +70,7 @@ def _to_out(c: models.SchoolClass, db=None) -> schemas.ClassOut:
         max_hours_per_day=int(
             getattr(c, "max_hours_per_day", 5) or 5
         ),
+        room_policy=(getattr(c, "room_policy", None) or "ibrida"),
         subjects=[
             schemas.ClassSubjectIn(subject=s.subject,
                                    hours_per_week=s.hours_per_week)
@@ -151,6 +152,9 @@ def _apply(c: models.SchoolClass, p: schemas.ClassIn, db: Session) -> None:
     c.required_free_days_count = max(0, min(6, rc))
     mh = int(getattr(p, "max_hours_per_day", 5) or 5)
     c.max_hours_per_day = max(1, min(7, mh))
+    # Lo schema e\` gia\` un Literal, quindi qui basta il fallback per i
+    # payload legacy che non mandano affatto il campo.
+    c.room_policy = getattr(p, "room_policy", None) or "ibrida"
     if c.id is not None:
         db.query(models.ClassSubject).filter(
             models.ClassSubject.class_id == c.id
@@ -218,6 +222,7 @@ def patch_class(class_id: int, payload: dict,
     allowed = {
         "n_students", "max_hours_per_day", "required_free_days_count",
         "notes", "nickname", "soft_minimize_sixth_weight",
+        "room_policy",
     }
     for k, v in (payload or {}).items():
         if k not in allowed:
@@ -240,6 +245,12 @@ def patch_class(class_id: int, payload: dict,
                 raise HTTPException(422,
                     "required_free_days_count must be in [0, 6]")
             c.required_free_days_count = iv
+        elif k == "room_policy":
+            if v not in ("fissa", "ibrida", "libera"):
+                raise HTTPException(422,
+                    "room_policy must be one of fissa | ibrida | libera, "
+                    f"got {v!r}")
+            c.room_policy = v
         elif k == "soft_minimize_sixth_weight":
             c.soft_minimize_sixth_weight = float(v)
         else:

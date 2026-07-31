@@ -18,6 +18,7 @@ class _AssignmentRestoreItem(BaseModel):
     teacher_id: int
     class_id: int | None = None
     group_id: int | None = None
+    student_id: int | None = None
     subject: str
     hours: int = 0
     locked: bool = False
@@ -31,9 +32,16 @@ class _BulkRestoreIn(BaseModel):
     items: list[_AssignmentRestoreItem]
 
 
-def _assignment_dict(a, t, c, g=None):
+def _student_label(s) -> str | None:
+    if s is None:
+        return None
+    return (s.nickname or f"{s.last_name} {s.first_name}").strip()
+
+
+def _assignment_dict(a, t, c, g=None, st=None):
     """Shared serialization. `c` may be None for is_potenziamento or
-    group-targeted rows. `g` is the StudyGroup for group-targeted rows."""
+    group-targeted rows. `g` is the StudyGroup for group-targeted rows.
+    `st` is the pupil a sostegno row follows."""
     return {
         "id": a.id,
         "teacher_id": a.teacher_id,
@@ -42,6 +50,8 @@ def _assignment_dict(a, t, c, g=None):
         "class_name": c.name if c else None,
         "group_id": a.group_id,
         "group_name": g.name if g else None,
+        "student_id": a.student_id,
+        "student_name": _student_label(st),
         "subject": a.subject,
         "hours": a.hours,
         "locked": a.locked,
@@ -56,12 +66,13 @@ def _assignment_dict(a, t, c, g=None):
 def list_assignments(db: Session = Depends(get_db)):
     """Return assignments with denormalized teacher/class/group names.
     Includes C1 flags: coteach_group_id, is_support,
-    is_potenziamento, plus C3 group_id/group_name. Potenziamento rows
-    have class_id=None; group-targeted rows have class_id=None and
-    group_id=<id>."""
+    is_potenziamento, plus C3 group_id/group_name and, for sostegno,
+    student_id/student_name. Potenziamento rows have class_id=None;
+    group-targeted rows have class_id=None and group_id=<id>."""
     teachers = {t.id: t for t in db.query(models.Teacher).all()}
     classes = {c.id: c for c in db.query(models.SchoolClass).all()}
     groups = {g.id: g for g in db.query(models.StudyGroup).all()}
+    students = {s.id: s for s in db.query(models.Student).all()}
     rows = db.query(models.Assignment).all()
     out = []
     for a in rows:
@@ -70,10 +81,12 @@ def list_assignments(db: Session = Depends(get_db)):
             continue
         c = classes.get(a.class_id) if a.class_id is not None else None
         g = groups.get(a.group_id) if a.group_id is not None else None
+        st = (students.get(a.student_id)
+              if a.student_id is not None else None)
         # Skip orphan rows (no class AND no group AND not potenziamento).
         if c is None and g is None and not a.is_potenziamento:
             continue
-        out.append(_assignment_dict(a, t, c, g))
+        out.append(_assignment_dict(a, t, c, g, st))
     return out
 
 
@@ -87,6 +100,7 @@ def assignments_grouped_by_class(db: Session = Depends(get_db)):
     teachers = {t.id: t for t in db.query(models.Teacher).all()}
     classes = {c.id: c for c in db.query(models.SchoolClass).all()}
     groups = {g.id: g for g in db.query(models.StudyGroup).all()}
+    students = {s.id: s for s in db.query(models.Student).all()}
     out: dict[str, list[dict]] = {c.name: [] for c in classes.values()}
     out["__potenziamento__"] = []
     for a in db.query(models.Assignment).all():
@@ -107,6 +121,9 @@ def assignments_grouped_by_class(db: Session = Depends(get_db)):
                 "group_name": g.name,
                 "coteach_group_id": a.coteach_group_id,
                 "is_support": bool(a.is_support),
+                "student_id": a.student_id,
+                "student_name": _student_label(
+                    students.get(a.student_id)),
             })
             continue
         if a.is_potenziamento or c is None:
@@ -127,6 +144,8 @@ def assignments_grouped_by_class(db: Session = Depends(get_db)):
             "locked": a.locked,
             "coteach_group_id": a.coteach_group_id,
             "is_support": bool(a.is_support),
+            "student_id": a.student_id,
+            "student_name": _student_label(students.get(a.student_id)),
             "is_potenziamento": False,
         })
     return out
@@ -162,6 +181,44 @@ def manual_assignment(payload: schemas.ManualAssignmentIn,
             "locked": new.locked,
         }
     return out
+
+
+@router.put("/sostegno")
+def sostegno_assignment(payload: schemas.SostegnoAssignmentIn,
+                        db: Session = Depends(get_db)):
+    """Assign a docente di sostegno to a pupil.
+
+    Separate from /manual because that endpoint requires the class to
+    carry the subject among its weekly hours and the teacher to
+    declare they teach it -- neither of which is true of sostegno.
+    """
+    ok, reason, new = optimization.sostegno_assignment(
+        db, payload.teacher_name, payload.student_id,
+        payload.hours, locked=payload.locked,
+    )
+    out = {"accepted": ok, "reason": reason}
+    if ok and new is not None:
+        teacher = db.get(models.Teacher, new.teacher_id)
+        sclass = (db.get(models.SchoolClass, new.class_id)
+                  if new.class_id is not None else None)
+        student = (db.get(models.Student, new.student_id)
+                   if new.student_id is not None else None)
+        out["new_assignment"] = _assignment_dict(
+            new, teacher, sclass, None, student)
+    return out
+
+
+@router.delete("/sostegno/{assignment_id}")
+def delete_sostegno(assignment_id: int, db: Session = Depends(get_db)):
+    """Remove a sostegno cattedra."""
+    a = db.get(models.Assignment, assignment_id)
+    if a is None:
+        raise HTTPException(404, "cattedra non trovata")
+    if not a.is_support:
+        raise HTTPException(400, "la cattedra non e' di sostegno")
+    db.delete(a)
+    db.commit()
+    return {"deleted": assignment_id}
 
 
 @router.post("/lock/{assignment_id}")
@@ -235,7 +292,8 @@ def bulk_restore_assignments(payload: _BulkRestoreIn,
             continue
         db.add(models.Assignment(
             teacher_id=it.teacher_id, class_id=it.class_id,
-            group_id=it.group_id, subject=it.subject, hours=it.hours,
+            group_id=it.group_id, student_id=it.student_id,
+            subject=it.subject, hours=it.hours,
             locked=it.locked, coteach_group_id=it.coteach_group_id,
             is_support=it.is_support, is_potenziamento=it.is_potenziamento,
             parallel_group_id=it.parallel_group_id))

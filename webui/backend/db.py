@@ -321,6 +321,30 @@ def _apply_lightweight_migrations() -> None:
                         "UPDATE teachers SET min_free_days = "
                         "COALESCE(required_free_days_count, 1)"
                     ))
+        # Compresenza policy on Teacher. Default 'mai' reproduces the
+        # historical behaviour exactly: before this column every lesson
+        # booked a room of its own, so an existing DB must not change
+        # shape just because init_db() ran. Schools that want their
+        # sostegno/ITP to share the class room opt in per teacher.
+        # `teacher_compresenza_hours` is a new table, so create_all()
+        # already made it -- only the column needs the fallback.
+        if insp.has_table("teachers") and not has_column(
+                "teachers", "compresenza"):
+            conn.execute(text(
+                "ALTER TABLE teachers ADD COLUMN "
+                "compresenza VARCHAR(16) NOT NULL DEFAULT 'mai'"
+            ))
+            # Preset sostegno: per chi ha gia\` una cattedra is_support il
+            # comportamento storico non era "diverso", era infattibile
+            # (il docente finiva in un'aula fisica diversa da quella del
+            # suo alunno), quindi qui il backfill non toglie nulla.
+            if insp.has_table("assignments"):
+                conn.execute(text(
+                    "UPDATE teachers SET compresenza = 'sempre' "
+                    "WHERE id IN (SELECT teacher_id FROM assignments "
+                    "             WHERE is_support = 1)"
+                ))
+
         # Same fields on SchoolClass + max_hours_per_day. Default 0
         # for the count (classes work all 6 days normally) and 5 for
         # the per-day cap (was previously hardcoded in the engine).
@@ -341,6 +365,25 @@ def _apply_lightweight_migrations() -> None:
             conn.execute(text(
                 "ALTER TABLE school_classes ADD COLUMN "
                 "max_hours_per_day INTEGER NOT NULL DEFAULT 5"
+            ))
+
+        # Preset aule: school_classes.room_policy +
+        # classroom_class_preferences.state. Il backfill e\` il default
+        # della colonna ('ibrida' / 'preferred'), scelto proprio perche\`
+        # riproduce il comportamento storico: un DB esistente non deve
+        # diventare infattibile allo step aule solo perche\` ha girato
+        # init_db().
+        if insp.has_table("school_classes") and not has_column(
+                "school_classes", "room_policy"):
+            conn.execute(text(
+                "ALTER TABLE school_classes ADD COLUMN "
+                "room_policy VARCHAR(8) NOT NULL DEFAULT 'ibrida'"
+            ))
+        if insp.has_table("classroom_class_preferences") and not has_column(
+                "classroom_class_preferences", "state"):
+            conn.execute(text(
+                "ALTER TABLE classroom_class_preferences ADD COLUMN "
+                "state VARCHAR(16) NOT NULL DEFAULT 'preferred'"
             ))
 
         # subjects.required_kind: nullable string. HARD constraint
@@ -422,6 +465,11 @@ def _apply_lightweight_migrations() -> None:
                 ("group_id",
                  "ALTER TABLE assignments ADD COLUMN "
                  "group_id INTEGER"),
+                # Sostegno per alunno: the support teacher follows a
+                # pupil, not a class.
+                ("student_id",
+                 "ALTER TABLE assignments ADD COLUMN "
+                 "student_id INTEGER"),
             ):
                 if not has_column("assignments", col):
                     conn.execute(text(ddl))
@@ -441,6 +489,19 @@ def _apply_lightweight_migrations() -> None:
                 "CREATE INDEX IF NOT EXISTS "
                 "ix_assignments_group_id "
                 "ON assignments (group_id)",
+                "CREATE INDEX IF NOT EXISTS "
+                "ix_assignments_student_id "
+                "ON assignments (student_id)",
+                # Widened uniqueness (same teacher may support two
+                # pupils of one class). The pre-existing inline UNIQUE
+                # constraint cannot be dropped without recreating the
+                # table, so on a dev DB that never ran alembic the old,
+                # narrower rule still applies and that rare case needs
+                # `alembic upgrade head`.
+                "CREATE UNIQUE INDEX IF NOT EXISTS "
+                "uq_assign_t_cl_subj_sup_stu ON assignments "
+                "(teacher_id, class_id, subject, is_support, "
+                "COALESCE(student_id, 0))",
             ):
                 conn.execute(text(stmt))
         # Task C3: coteach_groups.group_id (nullable, XOR with class_id).

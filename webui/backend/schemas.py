@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 import re
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -183,11 +183,30 @@ class TeacherBase(BaseModel):
     # Default 1 (italian CCNL). Per-teacher overrides support 2 or 3.
     min_free_days: int = 1
     max_consecutive: int = 5
+    compresenza: str = Field(
+        default="mai",
+        description="mai | sempre | oraria. Dichiara se il docente puo' "
+                    "affiancare un collega nella STESSA aula invece di "
+                    "prenotarne una propria. Vale per compresenze di "
+                    "qualunque natura (sostegno, potenziamento, "
+                    "codocenza, madrelingua, ITP): non e' una proprieta' "
+                    "del sostegno. Con 'oraria' le celle ammesse "
+                    "arrivano da compresenza_hours."
+    )
     notes: str | None = None
     pref_no_buchi_weight: float = 10.0
     pref_no_five_weight: float = 30.0
     pref_no_one_weight: float = 80.0
     preferred_days_csv: str | None = None
+
+    @field_validator("compresenza")
+    @classmethod
+    def _check_compresenza(cls, v: str) -> str:
+        allowed = {"mai", "sempre", "oraria"}
+        if v not in allowed:
+            raise ValueError(
+                f"compresenza deve essere uno di {sorted(allowed)}")
+        return v
 
 
 class TeacherClassroomPrefIn(BaseModel):
@@ -196,12 +215,24 @@ class TeacherClassroomPrefIn(BaseModel):
     weight: float = 10.0
 
 
+class CompresenzaHour(BaseModel):
+    """Una cella (giorno, ora) in cui il docente puo' stare in compresenza.
+
+    Letta solo quando ``compresenza == 'oraria'``; negli altri due modi
+    la lista viene comunque conservata, cosi' passare da 'oraria' a
+    'sempre' e ritorno non perde la griglia gia' compilata.
+    """
+    day: int = Field(ge=1, le=6, description="1=Lunedi'")
+    hour: int = Field(description="numerazione legacy 8..13")
+
+
 class TeacherIn(TeacherBase):
     subjects: list[str] = Field(default_factory=list)
     unavailability: list[UnavailabilitySlot] = Field(default_factory=list)
     mandatory_free_days: list[int] = Field(default_factory=list)
     compatible_classes: list[str] = Field(default_factory=list)
     classroom_prefs: list[TeacherClassroomPrefIn] = Field(default_factory=list)
+    compresenza_hours: list[CompresenzaHour] = Field(default_factory=list)
 
 
 class TeacherOut(TeacherBase):
@@ -211,6 +242,7 @@ class TeacherOut(TeacherBase):
     mandatory_free_days: list[int] = Field(default_factory=list)
     compatible_classes: list[str] = Field(default_factory=list)
     classroom_prefs: list[TeacherClassroomPrefIn] = Field(default_factory=list)
+    compresenza_hours: list[CompresenzaHour] = Field(default_factory=list)
     # New: 3-priority free-day preference table rows. Sorted by priority.
     free_day_priorities: list[FreeDayPriorityPref] = Field(
         default_factory=list)
@@ -246,6 +278,9 @@ class ClassBase(BaseModel):
     preferred_free_days: list[FreeDayPref] = Field(default_factory=list)
     required_free_days_count: int = 0
     max_hours_per_day: int = 5
+    # Preset aule: fissa | ibrida | libera. Default 'ibrida' = il
+    # comportamento storico (aula base come preferenza SOFT).
+    room_policy: Literal["fissa", "ibrida", "libera"] = "ibrida"
 
 
 class ClassIn(ClassBase):
@@ -864,6 +899,19 @@ class ManualAssignmentIn(BaseModel):
     hours: int | None = None  # required when target_kind='group'
 
 
+class SostegnoAssignmentIn(BaseModel):
+    """Assign a docente di sostegno to a pupil.
+
+    No `subject` field on purpose: a support teacher does not teach a
+    subject, so a school never has to create one called 'sostegno'.
+    The class is derived from the pupil.
+    """
+    teacher_name: str
+    student_id: int
+    hours: int
+    locked: bool = True
+
+
 class ManualAssignmentOut(BaseModel):
     accepted: bool
     reason: str
@@ -923,6 +971,11 @@ class ClassroomSubjectPrefIn(BaseModel):
 
 class ClassroomClassPrefIn(BaseModel):
     class_name: str
+    # 'preferred' = bonus SOFT (lo stato storico di ogni riga).
+    # 'forbidden'/'enforced' sono HARD e hanno la precedenza sul
+    # preset SchoolClass.room_policy.
+    state: Literal["allowed", "preferred", "forbidden",
+                   "enforced"] = "preferred"
     weight: float = 20.0
     is_home: bool = False
 

@@ -35,7 +35,9 @@ def _to_out(c: models.Classroom) -> schemas.ClassroomOut:
         ],
         class_prefs=[
             schemas.ClassroomClassPrefIn(
-                class_name=p.class_name, weight=p.weight, is_home=p.is_home
+                class_name=p.class_name, weight=p.weight,
+                is_home=p.is_home,
+                state=(p.state or "preferred"),
             )
             for p in c.class_prefs
         ],
@@ -183,6 +185,7 @@ def _apply(r: models.Classroom, p: schemas.ClassroomIn, db: Session):
         db.add(models.ClassroomClassPreference(
             classroom_id=r.id, class_name=cp.class_name,
             weight=cp.weight, is_home=cp.is_home,
+            state=(cp.state or "preferred"),
         ))
     for u in p.unavailability:
         db.add(models.ClassroomUnavailability(

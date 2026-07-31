@@ -176,6 +176,12 @@ def _to_out(t: models.Teacher, db=None) -> schemas.TeacherOut:
             getattr(t, "min_free_days", 1) or 1
         ),
         max_consecutive=t.max_consecutive,
+        compresenza=getattr(t, "compresenza", "mai") or "mai",
+        compresenza_hours=[
+            schemas.CompresenzaHour(day=int(ch.day), hour=int(ch.hour))
+            for ch in sorted(getattr(t, "compresenza_hours", []),
+                             key=lambda c: (c.day, c.hour))
+        ],
         notes=t.notes,
         pref_no_buchi_weight=t.pref_no_buchi_weight,
         pref_no_five_weight=t.pref_no_five_weight,
@@ -257,6 +263,7 @@ def _apply_payload(t: models.Teacher, p: schemas.TeacherIn,
     t.graduatoria_score = p.graduatoria_score
     t.free_day = p.free_day
     t.max_consecutive = p.max_consecutive
+    t.compresenza = p.compresenza
     t.notes = p.notes
     t.pref_no_buchi_weight = p.pref_no_buchi_weight
     t.pref_no_five_weight = p.pref_no_five_weight
@@ -297,6 +304,9 @@ def _apply_payload(t: models.Teacher, p: schemas.TeacherIn,
         db.query(models.TeacherCompatibleClass).filter(
             models.TeacherCompatibleClass.teacher_id == t.id
         ).delete()
+        db.query(models.TeacherCompresenzaHour).filter(
+            models.TeacherCompresenzaHour.teacher_id == t.id
+        ).delete()
         db.flush()
     for s in dict.fromkeys(p.subjects):
         db.add(models.TeacherSubject(teacher_id=t.id, subject=s))
@@ -312,6 +322,14 @@ def _apply_payload(t: models.Teacher, p: schemas.TeacherIn,
     for cn in dict.fromkeys(p.compatible_classes):
         db.add(models.TeacherCompatibleClass(
             teacher_id=t.id, class_name=cn
+        ))
+    # La griglia si conserva anche in modo 'mai'/'sempre': serve a non
+    # perdere le celle gia\` compilate passando avanti e indietro fra i
+    # modi. Il vincolo di unicita\` e\` (teacher, day, hour), da cui il
+    # dedup esplicito prima dell'insert.
+    for cell in {(int(ch.day), int(ch.hour)) for ch in p.compresenza_hours}:
+        db.add(models.TeacherCompresenzaHour(
+            teacher_id=t.id, day=cell[0], hour=cell[1]
         ))
     _apply_teacher_classroom_prefs(db, t.id, p.classroom_prefs)
 

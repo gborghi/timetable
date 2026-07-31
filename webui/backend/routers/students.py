@@ -162,6 +162,15 @@ def _apply(s: models.Student, p: schemas.StudentIn, db: Session) -> None:
     s.gender = p.gender
     s.email = p.email
     s.student_code = p.student_code
+    if s.class_id != p.class_id and s.id is not None:
+        # The docente di sostegno is assigned to the pupil, so they
+        # move with them. Assignment.class_id is only a cached copy of
+        # where the pupil is; the solver re-derives it anyway (see
+        # engine_io.support_class_id), but leaving it stale would show
+        # the support teacher in the old class all over the UI.
+        for a in db.query(models.Assignment).filter(
+                models.Assignment.student_id == s.id).all():
+            a.class_id = p.class_id
     s.class_id = p.class_id
     s.notes = p.notes
     _sync_student_tags(s, getattr(p, "tags", None) or [], db)

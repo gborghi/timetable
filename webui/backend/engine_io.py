@@ -20,7 +20,8 @@ The engine works on three pickle shapes:
     profs = {
         teacher_name: {
             'classi':  {class_name: {subject: {'ore': N}}},
-            'glibero': [d1, d2, d3]
+            'glibero': [d1, d2, d3],
+            'day_capacity': {day: max_hours}
         }
     }
     solution = {(prof, class, subj, day, hour): 0|1}
@@ -167,6 +168,82 @@ def school_dict_from_db(db: Session) -> dict[str, Any]:
     }
 
 
+def day_capacity_by_teacher(db: Session) -> dict[int, dict[int, int]]:
+    """teacher_id -> {legacy day number: max hours workable that day}.
+
+    Only restricted days appear: a day with no HARD constraint is
+    absent, meaning "the day's full capacity". The ceiling is
+
+        configured hours of the day - HARD unavailable hours
+
+    from two sources:
+      * ``TeacherMandatoryFreeDay`` rows -> capacity 0;
+      * ``TeacherUnavailability`` cells with ``state == "hard"``, which
+        is how a school actually enters a part-time or a completamento
+        su altra scuola -- cell by cell.
+
+    This is the form in which per-cell unavailability can reach Phase A
+    at all. Those cells name an hour and Phase A has no hour dimension,
+    but the *count* of blocked hours bounds ``prof_day_load``, which
+    Phase A does speak. Solvers that don't preload the DSL stream from
+    a DB session read this off the profs dict -- the same channel
+    ``min_free_days`` uses.
+    """
+    hours_by_day: dict[int, set[int]] = {}
+    for d in db.query(models.WorkingDay).all():
+        if not d.is_active or d.legacy_day_number is None:
+            continue
+        hours = {int(s.legacy_hour_number) for s in (d.slots or [])
+                 if s.legacy_hour_number is not None}
+        if hours:
+            hours_by_day[int(d.legacy_day_number)] = hours
+    if not hours_by_day:
+        # Pre-Tab-Ore datasets: the legacy 6x6 grid.
+        hours_by_day = {d: set(range(8, 14)) for d in range(1, 7)}
+
+    out: dict[int, dict[int, int]] = {}
+    hard: dict[int, dict[int, set[int]]] = {}
+    for r in db.query(models.TeacherUnavailability).all():
+        if r.state == "hard":
+            hard.setdefault(r.teacher_id, {})\
+                .setdefault(int(r.day), set()).add(int(r.hour))
+    for tid, by_day in hard.items():
+        for day, blocked_hours in by_day.items():
+            configured = hours_by_day.get(day)
+            if not configured:
+                continue
+            blocked = configured & blocked_hours
+            if not blocked:
+                continue
+            out.setdefault(tid, {})[day] = \
+                len(configured) - len(blocked)
+    # Mandatory free days win over any partial ceiling.
+    for r in db.query(models.TeacherMandatoryFreeDay).all():
+        out.setdefault(r.teacher_id, {})[int(r.day)] = 0
+    return out
+
+
+def support_class_id(a, students_by_id: dict) -> int | None:
+    r"""Which class a sostegno Assignment actually shadows.
+
+    A support teacher is assigned to a *pupil*, so the pupil's current
+    class is the authoritative answer and `Assignment.class_id` is only
+    a denormalized copy of it. They diverge whenever a pupil is moved
+    to another class after the cattedra was created; re-deriving here
+    means the support teacher follows the pupil instead of staying
+    behind in the old class with nobody to support.
+
+    Returns None when there is nothing to shadow (no pupil and no
+    class) -- the caller is expected to skip the row; the preflight
+    check is what tells the user about it.
+    """
+    if getattr(a, "student_id", None) is not None:
+        st = students_by_id.get(a.student_id)
+        if st is not None and st.class_id is not None:
+            return int(st.class_id)
+    return a.class_id
+
+
 def profs_dict_from_db(db: Session) -> dict[str, Any]:
     """Build profs_<profile>.pkl content from the active assignments.
 
@@ -181,9 +258,10 @@ def profs_dict_from_db(db: Session) -> dict[str, Any]:
       potenziamento_assignments_from_db channel; the standard
       Phase A / Phase B variables are class-bound and don't fit a
       class-less cattedra.
-    - Sostegno (is_support=True, subject='sostegno'): included in
-      `profs` as a regular triple. The shadow constraint is added
-      separately by the solver using support_assignments_from_db.
+    - Sostegno (is_support=True): included in `profs` as a regular
+      triple, under the class of the pupil it follows (see
+      support_class_id). The shadow constraint is added separately by
+      the solver using support_assignments_from_db.
     """
     rng = random.Random(123)
     days = list(range(1, 7))
@@ -192,6 +270,7 @@ def profs_dict_from_db(db: Session) -> dict[str, Any]:
     teachers = {t.id: t for t in db.query(models.Teacher).all()}
     classes = {c.id: c for c in db.query(models.SchoolClass).all()}
     studygroups = {sg.id: sg for sg in db.query(models.StudyGroup).all()}
+    students = {s.id: s for s in db.query(models.Student).all()}
     for a in db.query(models.Assignment).all():
         if a.is_potenziamento:
             continue
@@ -208,12 +287,23 @@ def profs_dict_from_db(db: Session) -> dict[str, Any]:
             # so glibero / availability hooks still apply.
             out.setdefault(t.name, {"classi": {}, "glibero": []})
             continue
-        cl = classes.get(a.class_id)
+        cl = classes.get(support_class_id(a, students)
+                         if a.is_support else a.class_id)
         if cl is None:
             continue
         node = out.setdefault(t.name, {"classi": {}, "glibero": []})
-        node["classi"].setdefault(cl.name, {})[a.subject] = {"ore": a.hours}
-    # glibero + min_free_days HARD floor
+        slot = node["classi"].setdefault(cl.name, {})
+        if a.is_support and a.subject in slot:
+            # One teacher supporting two pupils of the same class is
+            # two rows but ONE shadow cattedra: they share the solver
+            # key (teacher, class, 'sostegno'), so the hours have to
+            # add up instead of the second row silently replacing the
+            # first. Same merge as in support_assignments_from_db.
+            slot[a.subject]["ore"] += a.hours
+        else:
+            slot[a.subject] = {"ore": a.hours}
+    # glibero + min_free_days HARD floor + per-day capacity
+    day_caps = day_capacity_by_teacher(db)
     for tname, info in out.items():
         t = next((x for x in teachers.values() if x.name == tname), None)
         if t is None:
@@ -228,6 +318,14 @@ def profs_dict_from_db(db: Session) -> dict[str, Any]:
         # distribution still reaches the model.
         info["min_free_days"] = int(
             getattr(t, "min_free_days", 1) or 1)
+        # Per-day hour ceilings from the HARD availability tables.
+        # Read off profs by the solvers that get no DB session --
+        # notably cv2.solve_phase_a, whose day distribution is where
+        # these ceilings actually bite. See day_capacity_by_teacher.
+        info["day_capacity"] = {
+            int(d): int(c)
+            for d, c in sorted(day_caps.get(t.id, {}).items())
+        }
     return out
 
 
@@ -309,27 +407,36 @@ def coteach_groups_for_solver(db: Session) -> list[dict]:
 
 
 def support_assignments_from_db(db: Session) -> list[dict]:
-    """Return the list of sostegno (shadow) assignments. Each entry:
+    r"""Return the list of sostegno (shadow) assignments. Each entry:
       {
         'teacher_name': str, 'class_name': str,
-        'subject': str (typically 'sostegno'), 'n_hours': int,
-        'is_group_target': bool  # True if class_name is actually a
+        'subject': str (the SUPPORT_SUBJECT marker), 'n_hours': int,
+        'is_group_target': bool,  # True if class_name is actually a
                                   # StudyGroup name (Task C3 sostegno
                                   # following a student in a group).
+        'student_names': [str],   # the pupils actually followed
       }
-    These rows have is_support=True and either class_id (regular
-    sostegno on a class) or group_id (Task C3: sostegno follows the
-    student in a StudyGroup). The solver uses them to add
+    These rows have is_support=True and a target, resolved in this
+    order: `student_id` (the pupil -> their current class, the normal
+    shape), `group_id` (Task C3: sostegno follows the pupil into a
+    StudyGroup), `class_id` (legacy class-level sostegno). The solver
+    uses them to add
     `slot[sost,X,sost,h] <= OR(slot[*,X,*,h] for not-support)` for
     class-target, or `slot[sost,G,sost,h] <= group_busy[G,h]` for
     group-target, and to NOT count the sostegno slot in class-busy.
+
+    Rows that land on the same (teacher, target, subject) are **merged
+    with their hours summed** -- one teacher following two pupils of
+    one class is two cattedre on paper but a single shadow in the
+    model, since both would key the same solver variable.
     """
-    out: list[dict] = []
+    merged: dict[tuple, dict] = {}
     teachers_by_id = {t.id: t for t in db.query(models.Teacher).all()}
     classes_by_id = {c.id: c for c in db.query(models.SchoolClass).all()}
     studygroups_by_id = {
         sg.id: sg for sg in db.query(models.StudyGroup).all()
     }
+    students_by_id = {s.id: s for s in db.query(models.Student).all()}
     for a in db.query(models.Assignment).filter(
         models.Assignment.is_support == True  # noqa: E712
     ).all():
@@ -344,21 +451,28 @@ def support_assignments_from_db(db: Session) -> list[dict]:
                 continue
             target_label = sg.name
             is_group = True
-        elif a.class_id is not None:
-            cl = classes_by_id.get(a.class_id)
+        else:
+            cl = classes_by_id.get(support_class_id(a, students_by_id))
             if cl is None:
                 continue
             target_label = cl.name
-        else:
-            continue
-        out.append({
-            "teacher_name": t.name,
-            "class_name": target_label,
-            "subject": a.subject,
-            "n_hours": int(a.hours),
-            "is_group_target": is_group,
-        })
-    return out
+        st = students_by_id.get(getattr(a, "student_id", None))
+        key = (t.name, target_label, a.subject, is_group)
+        node = merged.get(key)
+        if node is None:
+            node = merged[key] = {
+                "teacher_name": t.name,
+                "class_name": target_label,
+                "subject": a.subject,
+                "n_hours": 0,
+                "is_group_target": is_group,
+                "student_names": [],
+            }
+        node["n_hours"] += int(a.hours)
+        if st is not None:
+            node["student_names"].append(
+                f"{st.last_name} {st.first_name}".strip())
+    return list(merged.values())
 
 
 def parallel_groups_for_solver(db: Session) -> list[dict]:
@@ -954,8 +1068,22 @@ def classrooms_dicts_from_db(db: Session) -> list[dict]:
     for r in db.query(models.Classroom).all():
         unav = {(u.day, u.hour) for u in r.unavailability}
         subj_req = {sp.subject for sp in r.subject_prefs if sp.required}
-        subj_pref = {sp.subject: sp.weight for sp in r.subject_prefs}
-        cls_pref = {cp.class_name: cp.weight for cp in r.class_prefs}
+        subj_forbidden = {sp.subject for sp in r.subject_prefs
+                          if sp.state == "forbidden"}
+        # `state` e\` la fonte di verita\`, il SEGNO di `weight` no: la UI
+        # scrive -20 per 'preferred' (convenzione "costo negativo"), il
+        # generatore mock scrive +10. Qui usciamo con una sola
+        # convenzione -- magnitudine POSITIVA = quanto e\` gradita --
+        # cosi\` il consumatore non deve indovinare. Solo le righe
+        # 'preferred' entrano: 'enforced' e\` gia\` HARD in
+        # `subject_required`, 'forbidden' e\` un divieto (non una
+        # preferenza negativa) e 'allowed' e\` neutro.
+        subj_pref = {sp.subject: abs(float(sp.weight or 0.0))
+                     for sp in r.subject_prefs
+                     if sp.state == "preferred" and sp.weight}
+        cls_pref = {cp.class_name: abs(float(cp.weight or 0.0))
+                    for cp in r.class_prefs
+                    if cp.state == "preferred" and cp.weight}
         is_home_for = {cp.class_name for cp in r.class_prefs if cp.is_home}
         out.append({
             "name": r.name,
@@ -967,6 +1095,7 @@ def classrooms_dicts_from_db(db: Session) -> list[dict]:
             "multi_class_pref_weight": r.multi_class_pref_weight,
             "unavailability": unav,
             "subject_required": subj_req,
+            "subject_forbidden": subj_forbidden,
             "subject_pref_weight": subj_pref,
             "class_pref_weight": cls_pref,
             "is_home_for": is_home_for,
@@ -974,8 +1103,107 @@ def classrooms_dicts_from_db(db: Session) -> list[dict]:
     return out
 
 
-def lessons_for_classroom_step(db: Session, solution_id: int) -> list[dict]:
-    """Convert lessons in the active solution to the shape expected by
+def room_pins_from_db(db: Session) -> dict:
+    r"""Risolve i preset di ``SchoolClass.room_policy`` e gli stati HARD
+    di ``ClassroomClassPreference`` in due mappe per classe.
+
+    Ritorna ``{"pin": {classe: aula}, "forbidden": {classe: {aule}},
+    "fissa_senza_aula": [classi]}``.
+
+    - ``pin`` e\` l'aula in cui la classe deve stare (HARD). Vale per
+      ``room_policy='fissa'`` (l'aula base) e per ogni riga esplicita
+      con ``state='enforced'``, che ha la precedenza: e\` il caso
+      manuale "questa classe sta li\`, non nella sua aula base".
+    - ``forbidden`` sono le aule vietate alla classe.
+    - ``fissa_senza_aula`` elenca le classi con preset 'fissa' ma senza
+      riga ``is_home``: non c'e\` niente da fissare, quindi si degrada a
+      'ibrida'. Il chiamante lo segnala nel log invece di far fallire
+      il run -- un preset senza il dato che gli serve e\` un errore di
+      configurazione, non un motivo per non produrre l'orario.
+    """
+    policy_by_class = {
+        c.name: (c.room_policy or "ibrida")
+        for c in db.query(models.SchoolClass).all()
+    }
+    room_name_by_id = {
+        r.id: r.name for r in db.query(models.Classroom).all()
+    }
+    home_by_class: dict[str, str] = {}
+    pin: dict[str, str] = {}
+    forbidden: dict[str, set] = defaultdict(set)
+    for cp in db.query(models.ClassroomClassPreference).all():
+        room = room_name_by_id.get(cp.classroom_id)
+        if not room:
+            continue
+        state = cp.state or "preferred"
+        if state == "forbidden":
+            forbidden[cp.class_name].add(room)
+        elif state == "enforced":
+            pin[cp.class_name] = room
+        if cp.is_home:
+            home_by_class.setdefault(cp.class_name, room)
+
+    fissa_senza_aula = []
+    for cl, policy in policy_by_class.items():
+        if policy != "fissa" or cl in pin:
+            continue
+        home = home_by_class.get(cl)
+        if home:
+            pin[cl] = home
+        else:
+            fissa_senza_aula.append(cl)
+    return {
+        "pin": pin,
+        "forbidden": {k: v for k, v in forbidden.items()},
+        "fissa_senza_aula": sorted(fissa_senza_aula),
+    }
+
+
+def compresenza_resolver(db: Session):
+    r"""Ritorna un predicato ``(teacher_name, day, hour) -> bool``: quel
+    docente, in quella cella, sta in compresenza?
+
+    Legge solo ``Teacher.compresenza`` (+ ``TeacherCompresenzaHour`` per
+    il modo 'oraria'). NON guarda ``Assignment.is_support``: il sostegno
+    e\` gia\` stato tradotto in ``compresenza='sempre'`` a monte, quando
+    la cattedra e\` stata creata (o dalla migrazione a4d81e2c9f57 per i
+    DB preesistenti). Cosi\` la stessa configurazione copre sostegno,
+    potenziamento, codocenza, madrelingua e ITP senza casi speciali.
+
+    Attenzione: 'sempre' e\` una proprieta\` del DOCENTE, non della
+    singola lezione. Un docente di sostegno che abbia anche una
+    cattedra ordinaria risponderebbe True anche li\`. Il chiamante deve
+    quindi trattare la risposta come "puo\` accodarsi a una lezione
+    ospite", non come "non occupa un'aula": senza un ospite nella
+    stessa classe e ora, la lezione torna a prenotare un'aula propria
+    (vedi ``classroom_assignment.solve_classroom_assignment``).
+    """
+    teachers = db.query(models.Teacher).all()
+    name_by_id = {t.id: t.name for t in teachers}
+    modes = {t.name: (getattr(t, "compresenza", None) or "mai")
+             for t in teachers}
+    cells: dict[str, set[tuple[int, int]]] = {}
+    if any(m == "oraria" for m in modes.values()):
+        for r in db.query(models.TeacherCompresenzaHour).all():
+            nm = name_by_id.get(r.teacher_id)
+            if nm is None:
+                continue
+            cells.setdefault(nm, set()).add((int(r.day), int(r.hour)))
+
+    def _shares(teacher_name: str, day, hour) -> bool:
+        mode = modes.get(teacher_name, "mai")
+        if mode == "sempre":
+            return True
+        if mode == "oraria":
+            return (int(day), int(hour)) in cells.get(teacher_name, ())
+        return False
+
+    return _shares
+
+
+def lessons_for_classroom_step(db: Session, solution_id: int,
+                               *, pins: dict | None = None) -> list[dict]:
+    r"""Convert lessons in the active solution to the shape expected by
     classroom_assignment.
 
     `n_students` per lesson is looked up from SchoolClass and used by
@@ -983,6 +1211,9 @@ def lessons_for_classroom_step(db: Session, solution_id: int) -> list[dict]:
     (room.capacity >= class.n_students). Classes missing from the DB
     (defensive: should not happen on a clean import) get a 0 so the
     constraint is trivially satisfied.
+
+    `pins` e\` il risultato di `room_pins_from_db`; viene calcolato qui
+    se il chiamante non lo passa gia\` pronto.
     """
     n_students_by_class = {
         c.name: int(c.n_students or 0)
@@ -992,6 +1223,11 @@ def lessons_for_classroom_step(db: Session, solution_id: int) -> list[dict]:
         s.name: (s.required_kind or None)
         for s in db.query(models.Subject).all()
     }
+    if pins is None:
+        pins = room_pins_from_db(db)
+    pin_by_class = pins.get("pin", {})
+    forbidden_by_class = pins.get("forbidden", {})
+    shares = compresenza_resolver(db)
     out = []
     for l in db.query(models.Lesson).filter(
         models.Lesson.solution_id == solution_id
@@ -1010,6 +1246,17 @@ def lessons_for_classroom_step(db: Session, solution_id: int) -> list[dict]:
             # Pulled from Subject.required_kind. NULL/missing -> ''
             # which classroom_assignment treats as "any room".
             "required_kind": required_kind_by_subj.get(l.subject, "") or "",
+            # Aula base HARD (preset 'fissa' o riga 'enforced'). ''
+            # significa nessun vincolo. La deroga per le materie con
+            # required_kind e\` applicata dentro `_can_host`, non qui:
+            # cosi\` il dato che esce dal DB resta la configurazione
+            # dichiarata e non una sua interpretazione.
+            "home_room": pin_by_class.get(l.class_name, "") or "",
+            "forbidden_rooms": forbidden_by_class.get(l.class_name, set()),
+            # Compresenza: la lezione si accoda all'aula di un'altra
+            # lezione della stessa classe e ora invece di prenotarne
+            # una propria. Vedi `compresenza_resolver`.
+            "shares_room": bool(shares(l.teacher_name, l.day, l.hour)),
         })
     return out
 
