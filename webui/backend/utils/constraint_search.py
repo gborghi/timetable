@@ -182,7 +182,11 @@ def list_all_constraints_with_mentions(db: Session) -> list[dict]:
             "owner_id": owner_id, "owner_name": owner_name or f"#{owner_id}",
             "level": r.kind or ("hard" if r.is_hard else "soft"),
             "weight": int(r.soft_penalty or 0),
-            "detail": (r.label + ": " if r.label else "") + (r.expression or ""),
+            # LogicalUnavailability has no `label` column (unlike
+            # CurriculumLogicalConstraint below): reading r.label raised
+            # AttributeError and made /api/constraints/search return 500
+            # for every search as soon as one logical rule existed.
+            "detail": r.expression or "",
             "expression": r.expression or "",
             "origin": r.entity_type,
             "mentions": mentions,
