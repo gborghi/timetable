@@ -35,8 +35,10 @@ from ortools.sat.python import cp_model
 
 try:
     from . import solver_config as _solvercfg  # type: ignore
+    from . import plessi_constraints as _pc  # type: ignore
 except ImportError:  # direct script import (no package context)
     import solver_config as _solvercfg  # type: ignore
+    import plessi_constraints as _pc  # type: ignore
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -218,13 +220,36 @@ def add_buchi_soft(model, triples_active, slot, day, prefix):
     return [v for (_w, v) in pairs]
 
 
+def add_plessi(model, slot, day, plessi_ctx, stage: str):
+    """Vincoli di plesso su uno stage, dalla vista 4-tupla `slot`.
+
+    Ogni stage decide gli orari di un insieme DISGIUNTO di docenti (A i
+    bridge, B gli interni di un cluster, C la ricucitura), quindi tutte
+    le coppie di ore di un docente cadono dentro un solo stage e il
+    vincolo di trasferimento non puo\` sfuggire fra le maglie della
+    decomposizione.
+
+    No-op quando la scuola non ha plessi (``plessi_ctx is None``).
+    """
+    if not plessi_ctx or not slot:
+        return 0
+    pl, pins = plessi_ctx
+    slot5 = {(p, cl, subj, day, h): v
+             for (p, cl, subj, h), v in slot.items()}
+    n = _pc.add_plesso_constraints_phase_b(
+        model, slot5, pl, day=day, hours=HOURS, class_to_plesso=pins)
+    if n:
+        print(f"[stage{stage}.day{day}] plessi: {n} vincoli")
+    return n
+
+
 # ============================================================
 # STAGE A: bridges only
 # ============================================================
 
 def stage_a_bridges(day, profs, bridges, triples, dc_value,
                     time_limit, workers, log=False,
-                    locked_slots_for_day=None):
+                    locked_slots_for_day=None, plessi_ctx=None):
     """Stage A: schedule bridge teachers' lessons on `day`.
 
     `locked_slots_for_day` (optional): iterable of (prof, class,
@@ -287,6 +312,8 @@ def stage_a_bridges(day, profs, bridges, triples, dc_value,
         model, slot, day, profs, dc_value
     )
 
+    add_plessi(model, slot, day, plessi_ctx, "A")
+
     gap_terms = add_buchi_soft(model, triples_active, slot, day, "A")
     if gap_terms:
         model.Minimize(sum(gap_terms))
@@ -314,7 +341,8 @@ def stage_a_bridges(day, profs, bridges, triples, dc_value,
 def stage_b_cluster_internals(cluster_classes, day, profs, bridges,
                               triples, dc_value, bridge_solution,
                               time_limit, workers, log=False,
-                              locked_slots_for_day=None):
+                              locked_slots_for_day=None,
+                              plessi_ctx=None):
     """Stage B: schedule the internal (non-bridge) profs of a single
     cluster on `day`, with bridges already placed by Stage A.
 
@@ -397,6 +425,8 @@ def stage_b_cluster_internals(cluster_classes, day, profs, bridges,
         model, slot, day, profs, dc_value
     )
 
+    add_plessi(model, slot, day, plessi_ctx, "B")
+
     gap_terms = add_buchi_soft(model, triples_active, slot, day, "B")
     if gap_terms:
         model.Minimize(sum(gap_terms))
@@ -424,7 +454,8 @@ def stage_b_cluster_internals(cluster_classes, day, profs, bridges,
 def stage_c_ricucitura(day, profs, bridges, triples, dc_value,
                        fixed_internal_solution,
                        time_limit, workers, log=False,
-                       locked_slots_for_day=None):
+                       locked_slots_for_day=None,
+                       plessi_ctx=None):
     """Variabili: bridges (tutti) + internals NON in fixed_solution.
     Constraints: gli internals fissati hanno slot[k] == valore.
 
@@ -515,6 +546,8 @@ def stage_c_ricucitura(day, profs, bridges, triples, dc_value,
         for (p, cl, subj, cnt) in triples_active
         if p in bridges or (p, cl, subj) not in fixed_triples_set
     ]
+    add_plessi(model, slot, day, plessi_ctx, "C")
+
     gap_terms = add_buchi_soft(model, free_triples, slot, day, "C")
     if gap_terms:
         model.Minimize(sum(gap_terms))
@@ -545,7 +578,8 @@ def solve_monolithic_day(day, profs, triples, dc_value,
                          coteach_groups=None,
                          support_assignments=None,
                          parallel_groups=None,
-                         group_assignments=None):
+                         group_assignments=None,
+                         plessi_ctx=None):
     """Monolithic fallback for a single day. Forwards
     `locked_slots_for_day`, `coteach_groups`, `support_assignments`,
     `parallel_groups`, `group_assignments` to cv2.solve_phase_b_for_day.
@@ -565,6 +599,7 @@ def solve_monolithic_day(day, profs, triples, dc_value,
         support_assignments=support_assignments,
         parallel_groups=parallel_groups,
         group_assignments=group_assignments,
+        plessi_ctx=plessi_ctx,
     )
     return out, status
 

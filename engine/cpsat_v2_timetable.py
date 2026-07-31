@@ -84,6 +84,24 @@ except ImportError:  # direct script import (no package context)
     import working_hours_config as _whc  # type: ignore
 
 
+class PhaseAError(RuntimeError):
+    """Base for the two ways ``solve_phase_a`` can fail to return a
+    day-count. Subclasses ``RuntimeError`` so pre-existing
+    ``except RuntimeError`` handlers keep catching it."""
+
+
+class PhaseAInfeasible(PhaseAError):
+    """CP-SAT *proved* no day distribution exists. A caller that only
+    wants the day-count as a HINT (``phase_a_mode="soft_hint"``) can
+    catch this and carry on without one; a caller that needs it as
+    input (``"always"``, the per-day pipeline) cannot."""
+
+
+class PhaseAUnsolved(PhaseAError):
+    """The solve hit the wall clock (UNKNOWN / MODEL_INVALID) without a
+    solution. NOT a proof of infeasibility -- more time may suffice."""
+
+
 DAYS: list[int] = list(_whc.get_days())        # default 1..6
 HOURS: list[int] = list(_whc.get_hours())      # default 8..13 (6 ore)
 SLOTS_PER_DAY: dict[int, int] = dict(
@@ -142,13 +160,40 @@ def _ensure_dsl_imports_available() -> None:
         sys.path.insert(0, here)
 
 
+def subject_key(name) -> str:
+    r"""Chiave canonica per confrontare i nomi delle materie.
+
+    Le regole Mat/Ita/Motorie qui sotto sono scritte su letterali
+    ("Scienzemotorie"), ma ogni scuola nomina le proprie materie come
+    vuole: "Scienze motorie", "Scienze Motorie" e "Scienzemotorie"
+    sono la stessa materia e finora erano tre materie diverse -- con
+    il mancato match che falliva IN SILENZIO (find_prof_subject
+    tornava None, la pragma non veniva emessa e per quella scuola la
+    regola semplicemente non esisteva). Minuscole + via i caratteri
+    non alfanumerici: le tre grafie collassano su una chiave sola.
+    """
+    return "".join(ch for ch in str(name).lower() if ch.isalnum())
+
+
+def find_prof_subject_named(profs, cl, subject):
+    r"""Come `find_prof_subject`, ma ritorna anche la materia con la
+    grafia usata da `profs`. Chi emette una pragma DSL deve usare la
+    grafia della scuola, non il letterale che ha cercato."""
+    want = subject_key(subject)
+    for p, info in profs.items():
+        if cl not in info["classi"]:
+            continue
+        for s in info["classi"][cl]:
+            if subject_key(s) == want:
+                return p, s
+    return None, None
+
+
 def find_prof_subject(profs, cl, subject):
     r"""Ritorna il nome del docente che insegna `subject` in `cl`,
-    o None se non esiste in questa classe."""
-    for p, info in profs.items():
-        if cl in info["classi"] and subject in info["classi"][cl]:
-            return p
-    return None
+    o None se non esiste in questa classe. Il confronto e\` sulla
+    chiave canonica (vedi `subject_key`)."""
+    return find_prof_subject_named(profs, cl, subject)[0]
 
 
 def add_consecutive_constraints_phase_b(model, slot, day, profs, dc_value):
@@ -268,6 +313,10 @@ def build_phase_a_pragmas(
         legacy per-prof cross-subject Mat/Ita HARD block.
       * ``subject_day_count_in(cl, "Scienzemotorie", 0, 2)`` per class
         with a Scienzemotorie cattedra in ``day_count``.
+      * ``teacher_day_capacity(prof, day, n)`` -- or its ``n == 0``
+        form ``teacher_unavailable_day(prof, day)`` -- per restricted
+        (prof, day) in ``profs[prof]["day_capacity"]``, so the HARD
+        availability tables bound the day distribution.
 
     The returned list is a list of pragma strings ready for
     ``DSLConstraintCompiler.compile``.
@@ -329,32 +378,56 @@ def build_phase_a_pragmas(
     # coppia di ore").
     for cl in sorted(classes):
         for subject in ("Matematica", "Italiano"):
+            want = subject_key(subject)
             for p in sorted(profs):
                 cmap = profs[p].get("classi", {}) or {}
                 if cl not in cmap:
                     continue
-                if subject not in cmap[cl]:
+                # Match on the canonical key, emit the school's own
+                # spelling: see ``subject_key``.
+                subj = next((s for s in cmap[cl]
+                             if subject_key(s) == want), None)
+                if subj is None:
                     continue
-                ore = int(cmap[cl][subject].get("ore", 0))
+                ore = int(cmap[cl][subj].get("ore", 0))
                 if ore < 2:
                     continue
                 pragmas.append(
                     f'subject_day_count_pair({p!r}, {cl!r}, '
-                    f'{subject!r}, 2)'
+                    f'{subj!r}, 2)'
                 )
     # 5. subject_day_count_in -- per class with a Scienzemotorie
     # cattedra in day_count, restrict daily count to {0, 2}.
     for cl in sorted(classes):
-        p = find_prof_subject(profs, cl, "Scienzemotorie")
+        p, subj = find_prof_subject_named(profs, cl, "Scienzemotorie")
         if p is None:
             continue
-        if not any(k[0] == p and k[1] == cl
-                    and k[2] == "Scienzemotorie"
+        if not any(k[0] == p and k[1] == cl and k[2] == subj
                     for k in day_count_keys):
             continue
         pragmas.append(
-            f'subject_day_count_in({cl!r}, "Scienzemotorie", 0, 2)'
+            f'subject_day_count_in({cl!r}, {subj!r}, 0, 2)'
         )
+    # 6. Per-(prof, day) hour ceiling from the HARD availability
+    # tables: capacity = the day's configured hours minus the prof's
+    # HARD unavailable ones (0 for a mandatory free day). Carried on
+    # profs by ``engine_io.day_capacity_by_teacher``.
+    #
+    # This is the only route by which per-cell unavailability reaches
+    # Phase A. The cells name an hour and Phase A has no hour
+    # dimension -- but their count bounds prof_day_load, which it does
+    # have. Without the bound Phase A can hand the per-day Phase B a
+    # day_count no arrangement of hours can satisfy: a prof blocked
+    # for 4 of 6 slots on Tuesday still got up to 6 Tuesday hours.
+    for p in sorted(profs):
+        caps = profs[p].get("day_capacity") or {}
+        for d in sorted(caps, key=int):
+            n = int(caps[d])
+            if n <= 0:
+                pragmas.append(f'teacher_unavailable_day({p!r}, {int(d)})')
+            else:
+                pragmas.append(
+                    f'teacher_day_capacity({p!r}, {int(d)}, {n})')
     return pragmas
 
 
@@ -946,13 +1019,13 @@ def solve_phase_a(profs, classes, triples, class_profs,
         # school that merely needs more time look permanently infeasible.
         if status == cp_model.INFEASIBLE:
             if locked_day_count:
-                raise RuntimeError(
+                raise PhaseAInfeasible(
                     "Phase A INFEASIBLE: i lock attivi sono incompatibili "
                     "con i vincoli correnti. Rimuovi o adatta i lock "
                     "(es. sblocca eventi nel monitor) e ritenta. "
                     f"Lock attivi: {len(locked_day_count)} cattedra-giorno."
                 )
-            raise RuntimeError(
+            raise PhaseAInfeasible(
                 "Phase A INFEASIBLE: il modello dei conteggi-giorno non "
                 "ammette soluzione con i vincoli correnti (dimostrato dal "
                 "solver, non un timeout)."
@@ -962,7 +1035,7 @@ def solve_phase_a(profs, classes, triples, class_profs,
             f" ({len(locked_day_count)} lock cattedra-giorno attivi)"
             if locked_day_count else ""
         )
-        raise RuntimeError(
+        raise PhaseAUnsolved(
             f"Phase A non risolta entro il tempo limite "
             f"({time_limit:.0f}s, status={solver.StatusName(status)}){lock_note}: "
             "nessuna soluzione trovata in tempo. Aumenta il time limit o "
@@ -1010,6 +1083,31 @@ def solve_phase_a(profs, classes, triples, class_profs,
 # -----------------------------
 # PHASE B: piazzamento ORE
 # -----------------------------
+def build_plessi_ctx(db):
+    """``(PlessiData, class_to_plesso)`` per il solver di giornata.
+
+    Da costruire UNA volta e passare a tutte le chiamate di
+    :func:`solve_phase_b_for_day`: ricostruirlo per ogni giorno vuol
+    dire rileggere aule, docenti, classi e regole sei volte per niente.
+    Ritorna ``None`` quando la scuola non ha plessi configurati, cosi\`
+    il chiamante puo\` saltare il blocco senza casi speciali.
+    """
+    try:
+        from . import plessi_constraints as _pc  # type: ignore
+    except ImportError:
+        import plessi_constraints as _pc  # type: ignore
+    try:
+        pl = _pc.load_plessi_data(db)
+    except Exception:
+        return None
+    if not pl.commuting_rules and not pl.entity_policies:
+        return None
+    pins = _pc.class_plesso_pins(pl)
+    if not pins:
+        return None
+    return (pl, pins)
+
+
 def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
                           dc_value, time_limit=10, workers=4, log=False,
                           enforce_no_holes=True,
@@ -1022,6 +1120,7 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
                           via_dsl=False,
                           extra_dsl_expressions=None,
                           return_objective=False,
+                          plessi_ctx=None,
                           *,
                           diagnostics_sink=None):
     r"""Risolve il sotto-problema di un singolo giorno.
@@ -1365,6 +1464,30 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
         classroom_for_slot=None,
         plessi_data=None,
     )
+
+    # ---- Plessi: dove sta il docente, ora per ora ----
+    # `plessi_data=None` qui sopra non e\` una svista: il compiler DSL
+    # ricava il plesso dall'aula, e in Phase B le aule non esistono
+    # ancora. Il plesso lo sa la CLASSE (sta nella sua aula base tutta
+    # la settimana), e da li\` si ricava quello del docente ora per ora.
+    # Senza questo blocco il tempo di trasferimento fra plessi non
+    # vincola nulla: quando la fase aule interviene le ore sono
+    # congelate, e un docente messo nei due plessi a ore contigue non
+    # ha piu\` nessuna assegnazione di aula che possa salvarlo.
+    if plessi_ctx is None and db is not None:
+        plessi_ctx = build_plessi_ctx(db)
+    if plessi_ctx:
+        _pl, _pins = plessi_ctx
+        try:
+            from . import plessi_constraints as _pc  # type: ignore
+        except ImportError:
+            import plessi_constraints as _pc  # type: ignore
+        n_pl = _pc.add_plesso_constraints_phase_b(
+            model, slot_5, _pl, day=day, hours=HOURS,
+            class_to_plesso=_pins,
+        )
+        if log and n_pl:
+            print(f"[phaseB.day{day}] plessi: {n_pl} vincoli")
 
     _soft_classes = sorted({k[1] for k in slot})
     for _src in _dt.build_soft_pragmas(

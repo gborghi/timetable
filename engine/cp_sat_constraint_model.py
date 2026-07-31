@@ -1081,15 +1081,21 @@ class ConstraintModel:
             if not self._scope_includes_teacher(teacher):
                 continue
             classi = pdata.get("classi", {}) or {}
+            want = _cv2.subject_key(subject_name)
             for class_name, subjs in classi.items():
-                # Subject may be expressed as exact match or sub-string
-                # (legacy code uses "Matematica", "Italiano",
-                # "Scienzemotorie"). Match the canonical form.
-                if subject_name not in subjs:
+                # The caller passes a literal ("Matematica",
+                # "Italiano", "Scienzemotorie") but the school names
+                # its subjects freely, so match on the canonical key
+                # and then use the school's own spelling to build the
+                # slot keys. An exact `in` test here made the rule
+                # vanish silently for e.g. "Scienze motorie".
+                subj = next((s for s in subjs
+                             if _cv2.subject_key(s) == want), None)
+                if subj is None:
                     continue
                 for d in self.days:
                     keys_for_day = [
-                        (teacher, class_name, subject_name, d, h)
+                        (teacher, class_name, subj, d, h)
                         for h in self.hours
                     ]
                     vs = [self.slot.get(k) for k in keys_for_day]
@@ -1151,7 +1157,7 @@ class ConstraintModel:
                                 "'must_pair' or 'pair_exists'")
                         continue
                     day_total = int(self.dc_value.get(
-                        (teacher, class_name, subject_name, d), 0))
+                        (teacher, class_name, subj, d), 0))
                     if mode == "must_pair" and day_total != 2:
                         continue
                     if mode == "pair_exists" and day_total < 2:

@@ -436,13 +436,17 @@ def is_hard_feasible(sol, profs, verbose=False,
     # del prof di motorie (in qualsiasi materia ma tipicamente
     # "Scienzemotorie") devono essere 0 o 2-consecutive.
     for cl in cls_set:
-        p = cv2.find_prof_subject(profs, cl, "Scienzemotorie")
+        # Match on the canonical key AND index the solution with the
+        # school's own spelling: a school naming it "Scienze motorie"
+        # used to miss on both, so this check passed vacuously (empty
+        # `hrs` -> continue) instead of validating anything.
+        p, motorie = cv2.find_prof_subject_named(profs, cl, "Scienzemotorie")
         if p is None:
             continue
         for d in DAYS:
             hrs = sorted(
                 h for h in HOURS
-                if sol.get((p, cl, "Scienzemotorie", d, h), 0) == 1
+                if sol.get((p, cl, motorie, d, h), 0) == 1
             )
             if not hrs:
                 continue

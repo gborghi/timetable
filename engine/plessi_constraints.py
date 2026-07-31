@@ -72,6 +72,13 @@ class PlessiData:
     class_name_to_id: dict[str, int] = field(default_factory=dict)
     group_name_to_id: dict[str, int] = field(default_factory=dict)
 
+    home_classroom_by_class: dict[str, str] = field(default_factory=dict)
+    """``class_name -> classroom_name`` of the class's HOME room (the
+    ``ClassroomClassPreference`` row with ``is_home=True``). It is what
+    tells Phase B where a class -- and so any teacher teaching it --
+    physically is, at a point in the pipeline where no room has been
+    assigned to any lesson yet. See :func:`class_plesso_pins`."""
+
     commuting_rules: list[CommutingRule] = field(default_factory=list)
     entity_policies: list[EntityPolicy] = field(default_factory=list)
 
@@ -225,28 +232,50 @@ def add_plesso_commuting_constraints_for_teacher(
                         model.AddBoolOr([va.Not(), vb.Not()])
 
 
-def _adjacent_violates_rule(
+def _pair_violates_rule(
     rule: CommutingRule, h_a: int, h_b: int,
 ) -> bool:
-    """Return True if having a teacher in (plesso_a, h_a) and in
-    (plesso_b, h_b) with h_b == h_a + 1 violates `rule`.
+    """Return True if being in plesso_a at `h_a` and in plesso_b at
+    `h_b` (same day, ``h_a < h_b``) violates `rule`.
 
-    Rules:
-      - min_gap_hours >= 1: adjacent slots are NOT allowed.
-      - allowed_break_only=True: adjacent slots are allowed only
-        if (h_a, h_b) == (break_start_hour, break_end_hour).
-      - Otherwise (min_gap=0, no break-only): adjacent is OK.
+    Generalises :func:`_adjacent_violates_rule` to non-adjacent pairs,
+    which is what the Phase-B day solver needs: there the two lessons
+    that straddle a site change are often NOT next to each other, and
+    checking only ``h+1`` would wave through a teacher who teaches in
+    plesso A at the 1st hour and in plesso B at the 3rd with nothing
+    in between -- a move the rule is precisely meant to forbid.
+
+    Semantics:
+      - ``min_gap_hours = g``: at least ``g`` free hours must sit
+        strictly between the two lessons.
+      - ``allowed_break_only``: the site change may only happen ACROSS
+        the break, i.e. the last lesson in the departure plesso must
+        end by ``break_start_hour`` and the first in the arrival one
+        may not start before ``break_end_hour``. (For adjacent hours
+        this reduces to the historical ``h_a == bs and h_b == be``.)
+      - neither: any pair is fine.
     """
-    if rule.min_gap_hours and rule.min_gap_hours >= 1:
+    if h_a > h_b:
+        h_a, h_b = h_b, h_a
+    free_between = h_b - h_a - 1
+    if rule.min_gap_hours and free_between < rule.min_gap_hours:
         return True
     if rule.allowed_break_only:
         bs = rule.break_start_hour
         be = rule.break_end_hour
         if bs is None or be is None:
             return True  # malformed rule -> conservative reject
-        if not (h_a == bs and h_b == be):
+        if not (h_a <= bs and h_b >= be):
             return True
     return False
+
+
+def _adjacent_violates_rule(
+    rule: CommutingRule, h_a: int, h_b: int,
+) -> bool:
+    """Adjacent-pair specialisation of :func:`_pair_violates_rule`,
+    kept as the name the classroom-assignment helpers call."""
+    return _pair_violates_rule(rule, h_a, h_b)
 
 
 # ---------- Classroom-assignment integration ----------
@@ -597,6 +626,172 @@ def add_plesso_entity_policy_constraints_class_kind(
     return n_emitted
 
 
+# ---------- Phase-B (day solver) integration ----------
+#
+# Phase B decides WHEN each lesson happens; rooms are assigned only
+# afterwards, by `classroom_assignment`. So none of the helpers above
+# apply: they all read the plesso off a classroom that does not exist
+# yet. Asking Phase B to ignore plessi and hoping the room step fixes
+# it later does not work either -- by then the hours are frozen, and a
+# teacher scheduled in both sites at consecutive hours has no room
+# assignment that can rescue them. The site has to be known while the
+# hours are still free.
+#
+# What IS known that early is where a CLASS sits: a class stays in its
+# own room all week, so its plesso is a fixed property of the class,
+# not of the individual lesson. That gives a teacher's plesso at every
+# hour -- it is the plesso of the class they teach in that hour.
+
+
+def class_plesso_pins(
+    plessi: PlessiData,
+    *,
+    home_classroom_by_class: dict[str, str] | None = None,
+) -> dict[str, int]:
+    """``class_name -> plesso_id`` for the classes whose site is known.
+
+    Two sources, most explicit first:
+
+      1. a ``single_plesso_total`` policy on that class with a non-null
+         ``plesso_id`` -- somebody stated where the class lives;
+      2. the class's HOME classroom (``ClassroomClassPreference.is_home``),
+         whose plesso is the class's by construction.
+
+    A class with neither is simply absent from the map, and no Phase-B
+    plesso constraint mentions it. That is deliberate: an unknown site
+    must not be silently guessed as "plesso 1" -- it would forbid real
+    timetables on the strength of missing data.
+    """
+    pins: dict[str, int] = {}
+    rooms = home_classroom_by_class or plessi.home_classroom_by_class
+    for cl_name, room in (rooms or {}).items():
+        pl = plessi.classroom_to_plesso.get(room)
+        if pl is not None:
+            pins[cl_name] = pl
+    for cl_name, cl_id in plessi.class_name_to_id.items():
+        pol = resolve_entity_policy(plessi, "class", cl_id)
+        if (pol is not None and pol.policy == "single_plesso_total"
+                and pol.plesso_id is not None):
+            pins[cl_name] = pol.plesso_id
+    return pins
+
+
+def add_plesso_constraints_phase_b(
+    model,
+    slot: dict,
+    plessi: PlessiData,
+    *,
+    day: int,
+    hours: Iterable[int],
+    class_to_plesso: dict[str, int],
+) -> int:
+    """Teacher-side plesso constraints for ONE day of Phase B.
+
+    ``slot`` is the 5-tuple view ``(teacher, class, subject, day, hour)
+    -> BoolVar`` (the same one the DSL compiler gets). Only entries on
+    ``day`` are read.
+
+    Emits two families:
+
+    - **commuting rules** -- for every teacher and every pair of hours
+      whose classes sit in different plessi, if the applicable rule
+      says that transition is not possible, forbid the two lessons from
+      both being scheduled (``AddBoolOr([a.Not(), b.Not()])``).
+    - **entity policies** -- ``single_plesso_per_day`` confines a
+      teacher to one site for the whole day. ``single_plesso_total``
+      with a fixed ``plesso_id`` forbids every other site outright;
+      with a null ``plesso_id`` (solver picks the site) the day solver
+      enforces the per-day relaxation, which is implied by the weekly
+      rule and is the strongest thing one day in isolation can know.
+
+    Class-side commuting rules are NOT emitted: a class is pinned to
+    its plesso for the week, so it never commutes and the rule is
+    vacuous. Class-side *room* choices remain the room step's business.
+
+    Returns the number of constraints emitted (0 when the school has no
+    plessi configured, which is the common case).
+    """
+    if not plessi.commuting_rules and not plessi.entity_policies:
+        return 0
+    if not class_to_plesso:
+        return 0
+
+    hours_list = sorted(set(hours))
+    # (teacher, hour) -> [(plesso_id, var), ...] for this day.
+    by_t_h: dict[tuple[str, int], list[tuple[int, object]]] = {}
+    for key, var in slot.items():
+        if len(key) != 5:
+            continue
+        t, cl, _s, d, h = key
+        if d != day:
+            continue
+        pl = class_to_plesso.get(cl)
+        if pl is None:
+            continue
+        by_t_h.setdefault((t, h), []).append((pl, var))
+
+    teachers = sorted({t for (t, _h) in by_t_h})
+    n_emitted = 0
+
+    for t_name in teachers:
+        t_id = plessi.teacher_name_to_id.get(t_name)
+
+        # --- commuting rules over every hour pair of the day ---
+        if plessi.commuting_rules:
+            for i, h_a in enumerate(hours_list):
+                for h_b in hours_list[i + 1:]:
+                    for (pl_a, va) in by_t_h.get((t_name, h_a), []):
+                        for (pl_b, vb) in by_t_h.get((t_name, h_b), []):
+                            if pl_a == pl_b:
+                                continue
+                            rule = resolve_commuting_rule(
+                                plessi, pl_a, pl_b, "teacher", t_id)
+                            if rule is None:
+                                continue
+                            if not _pair_violates_rule(rule, h_a, h_b):
+                                continue
+                            model.AddBoolOr([va.Not(), vb.Not()])
+                            n_emitted += 1
+
+        # --- entity policies ---
+        if not plessi.entity_policies:
+            continue
+        policy = resolve_entity_policy(plessi, "teacher", t_id)
+        if policy is None or policy.policy == "any":
+            continue
+
+        vars_by_plesso: dict[int, list] = {}
+        for h in hours_list:
+            for (pl, var) in by_t_h.get((t_name, h), []):
+                vars_by_plesso.setdefault(pl, []).append(var)
+        if len(vars_by_plesso) <= 1:
+            continue
+
+        if (policy.policy == "single_plesso_total"
+                and policy.plesso_id is not None):
+            for pl, vars_ in vars_by_plesso.items():
+                if pl == policy.plesso_id:
+                    continue
+                for var in vars_:
+                    model.Add(var == 0)
+                    n_emitted += 1
+            continue
+
+        # single_plesso_per_day, or single_plesso_total with a free
+        # choice of site: at most one plesso may be used today.
+        ind = {}
+        for pl in vars_by_plesso:
+            ind[pl] = model.NewBoolVar(f"pltday_{t_name}_{day}_{pl}")
+        for pl, vars_ in vars_by_plesso.items():
+            for var in vars_:
+                model.Add(ind[pl] >= var)
+                n_emitted += 1
+        model.Add(sum(ind.values()) <= 1)
+        n_emitted += 1
+
+    return n_emitted
+
+
 # ---------- Solution-side diagnostic ----------
 
 def check_solution_against_plessi(
@@ -820,6 +1015,22 @@ def load_plessi_data(db) -> PlessiData:
         data.group_name_to_id = {
             g.name: g.id for g in db.query(models.StudyGroup).all()
         }
+
+    # Home rooms: the only pre-room-assignment evidence of where a class
+    # sits, hence of where its teachers are. Best-effort -- a school with
+    # no home rooms configured simply yields an empty map, and the
+    # Phase-B helper then adds nothing.
+    try:
+        rooms_by_id = {c.id: c.name
+                       for c in db.query(models.Classroom).all()}
+        for pref in (db.query(models.ClassroomClassPreference)
+                       .filter(models.ClassroomClassPreference.is_home
+                               == True).all()):  # noqa: E712
+            room_name = rooms_by_id.get(pref.classroom_id)
+            if pref.class_name and room_name:
+                data.home_classroom_by_class[pref.class_name] = room_name
+    except Exception:
+        pass
 
     for r in db.query(models.PlessoCommutingRule).all():
         data.commuting_rules.append(CommutingRule(

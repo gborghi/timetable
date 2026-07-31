@@ -602,10 +602,16 @@ def manual_assignment(db: Session, class_name: str, subject: str,
         return (False,
                 f"Sforamento ore-cattedra: {new_total} > {t.max_hours}",
                 None)
-    # Replace existing
+    # Replace existing. Support rows are excluded on purpose: this
+    # endpoint means "whoever teaches (class, subject), it's now this
+    # teacher", and a sostegno cattedra is nobody's subject -- letting
+    # it match here would silently hand a pupil's support teacher's
+    # hours to somebody else. Sostegno goes through
+    # `sostegno_assignment`.
     existing = db.query(models.Assignment).filter(
         models.Assignment.class_id == cl.id,
         models.Assignment.subject == subject,
+        models.Assignment.is_support == False,  # noqa: E712
     ).first()
     if existing is not None:
         existing.teacher_id = t.id
@@ -617,6 +623,58 @@ def manual_assignment(db: Session, class_name: str, subject: str,
             class_id=cl.id, teacher_id=t.id,
             subject=subject, hours=csubj.hours_per_week,
             locked=locked,
+        )
+        db.add(new)
+    db.commit()
+    return True, "ok", new
+
+
+def sostegno_assignment(db: Session, teacher_name: str, student_id: int,
+                        hours: int, *, locked: bool = True
+                        ) -> tuple[bool, str, models.Assignment | None]:
+    """Create/replace the sostegno cattedra of `teacher_name` on one
+    pupil.
+
+    Deliberately NOT a special case of `manual_assignment`: that one
+    insists on a ClassSubject row for the subject and on the teacher
+    declaring they teach it. Neither applies here. A support teacher
+    doesn't teach a subject and no class has "sostegno" among its
+    weekly hours, so requiring either would force every school to
+    invent a fake Subject just to hire a docente di sostegno.
+
+    `class_id` is filled in from the pupil's class -- it is a cache of
+    the pupil's whereabouts, re-derived at solve time by
+    `engine_io.support_class_id`, not an independent piece of data.
+    """
+    if hours is None or hours <= 0:
+        return False, "Il sostegno richiede ore > 0", None
+    t = db.query(models.Teacher).filter(
+        models.Teacher.name == teacher_name
+    ).first()
+    if t is None:
+        return False, f"Docente {teacher_name} inesistente", None
+    st = db.get(models.Student, student_id)
+    if st is None:
+        return False, f"Alunno #{student_id} inesistente", None
+    if st.class_id is None:
+        return (False,
+                f"L'alunno {st.last_name} {st.first_name} non ha una "
+                f"classe: non ci sono lezioni da seguire", None)
+    existing = db.query(models.Assignment).filter(
+        models.Assignment.teacher_id == t.id,
+        models.Assignment.student_id == st.id,
+        models.Assignment.is_support == True,  # noqa: E712
+    ).first()
+    if existing is not None:
+        existing.class_id = st.class_id
+        existing.hours = int(hours)
+        existing.locked = locked
+        new = existing
+    else:
+        new = models.Assignment(
+            teacher_id=t.id, student_id=st.id, class_id=st.class_id,
+            subject=models.SUPPORT_SUBJECT, hours=int(hours),
+            is_support=True, locked=locked,
         )
         db.add(new)
     db.commit()
@@ -727,6 +785,17 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
         # (decomposed forwards them to the 4 stages below).
         locked_dc = _locked_day_count_from_snapshot(locked_snap)
         locked_by_day = _locked_slots_by_day(locked_snap)
+        # Bound on BOTH paths: only the ``day`` branch below computes a
+        # real day-count. On the ``week`` path the day distribution is a
+        # CP-SAT decision, so there is no dc_value to gate against --
+        # ``_gate_coverage`` treats ``None`` as "total unknown" and skips.
+        # That is sound here: ``_solve_phase_b_week`` raises on anything
+        # other than OPTIMAL/FEASIBLE, and the week model carries the
+        # per-cattedra weekly hours equality as a HARD constraint, so a
+        # returned solution is complete by construction. Without this
+        # initialisation the week path raised UnboundLocalError at the
+        # ``_gate_coverage`` call and discarded a fully solved timetable.
+        dc_value: dict | None = None
         if cp_sat_scope == "week":
             full_solution: dict = _solve_phase_b_week(
                 rid=rid, ws=ws, profs=profs, classes=classes,
@@ -764,6 +833,18 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
             # per-day monolithic path so groups are scheduled
             # correctly. The overall run still benefits from the
             # cached `dc_value` from Phase A above.
+            # Plessi: costruito una volta per run e passato a ogni stage.
+            # E' None quando la scuola non ha plessi configurati (caso
+            # normale), e allora nulla cambia rispetto a prima.
+            try:
+                with SessionLocal() as _db_p:
+                    _plessi_ctx = cv2.build_plessi_ctx(_db_p)
+            except Exception:
+                _plessi_ctx = None
+            if _plessi_ctx:
+                print(f"[phase_b] plessi attivi: "
+                      f"{len(_plessi_ctx[1])} classi con sede nota")
+
             if (use_decomposition and len(classes) >= 8
                     and not group_assignments):
                 import decomposition_spectral_v2 as dec  # type: ignore
@@ -785,6 +866,7 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                         d, profs, bridges_set, triples, dc_value,
                         time_bridges, workers,
                         locked_slots_for_day=locked_by_day.get(d) or None,
+                        plessi_ctx=_plessi_ctx,
                     )
                     if out is None:
                         a_failed.append(d)
@@ -808,6 +890,7 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                             cl_set, d, profs, bridges_set, triples, dc_value,
                             bridge_solutions[d], time_cluster, workers,
                             locked_slots_for_day=locked_by_day.get(d) or None,
+                            plessi_ctx=_plessi_ctx,
                         )
                         if out is None:
                             b_failed[d].add(k_id)
@@ -836,6 +919,7 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                         d, profs, bridges_set, triples, dc_value, succ,
                         time_ricucitura, workers,
                         locked_slots_for_day=locked_by_day.get(d) or None,
+                        plessi_ctx=_plessi_ctx,
                     )
                     if out is None:
                         c_failed.append(d)
@@ -852,6 +936,7 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                         d, profs, triples, dc_value,
                         time_mono, workers,
                         locked_slots_for_day=locked_by_day.get(d) or None,
+                        plessi_ctx=_plessi_ctx,
                     )
                     if out is not None:
                         full_solution = {
@@ -885,6 +970,7 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                         group_assignments=group_assignments or None,
                         via_dsl=bool(_dsl_hard),
                         extra_dsl_expressions=_dsl_hard or None,
+                        plessi_ctx=_plessi_ctx,
                         diagnostics_sink=_dsl_sink,
                     )
                     if out is None and locked_by_day.get(d):
@@ -903,7 +989,8 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
             pickle.dump(full_solution, f)
 
         v, m = meta.compute_soft(full_solution, profs)
-        feasible = meta.is_hard_feasible(full_solution, profs, verbose=False)
+        feasible = meta.is_hard_feasible(full_solution, profs, verbose=False,
+                                         **_hard_check_ctx_fresh())
         # P0 truthfulness: don't pass off a partial schedule as success.
         _gate_coverage(full_solution, dc_value, stage="phase_b", metrics=m)
         with SessionLocal() as db:
@@ -1034,18 +1121,38 @@ def _solve_phase_b_week(*, rid: int, ws: str, profs: dict,
     if phase_a_mode == "soft_hint":
         print(f"[phaseB.week] running Phase A for soft_hint "
               f"(time_limit={time_a}s)")
-        dc_value = cv2.solve_phase_a(
-            profs, classes, triples, class_profs,
-            time_limit=time_a, workers=workers, log=log,
-            locked_day_count=locked_dc or None,
-            coteach_groups=coteach_groups or None,
-            support_assignments=support_assignments or None,
-            potenziamento_assignments=potenziamento_assignments or None,
-            parallel_groups=parallel_groups or None,
-            group_assignments=group_assignments or None,
-        )
-        with open(os.path.join(ws, "phase_a_dc.pkl"), "wb") as f:
-            pickle.dump(dc_value, f)
+        try:
+            dc_value = cv2.solve_phase_a(
+                profs, classes, triples, class_profs,
+                time_limit=time_a, workers=workers, log=log,
+                locked_day_count=locked_dc or None,
+                coteach_groups=coteach_groups or None,
+                support_assignments=support_assignments or None,
+                potenziamento_assignments=potenziamento_assignments or None,
+                parallel_groups=parallel_groups or None,
+                group_assignments=group_assignments or None,
+            )
+        except cv2.PhaseAError as exc:
+            # A hint that cannot be computed is a missing hint, not a
+            # failed run: this branch only ever feeds ``AddHint``, and
+            # the week model is complete on its own (weekly hours
+            # equality is HARD there). Aborting here threw away runs
+            # the week solver could -- and, on `skip`, demonstrably did
+            # -- solve. Degrade to the `skip` routing and say so loudly.
+            #
+            # Only the SOFT path degrades. ``phase_a_mode="always"``
+            # consumes dc_value as solver INPUT, so its caller below
+            # still propagates the exception.
+            print(f"[phaseB.week] ATTENZIONE: fase A non utilizzabile "
+                  f"come suggerimento ({type(exc).__name__}): {exc}")
+            print("[phaseB.week] il run prosegue come 'skip': il solver "
+                  "settimanale decide da se' la distribuzione sui "
+                  "giorni. L'orario prodotto resta valido -- manca "
+                  "solo il suggerimento di partenza.")
+            dc_value = None
+        if dc_value is not None:
+            with open(os.path.join(ws, "phase_a_dc.pkl"), "wb") as f:
+                pickle.dump(dc_value, f)
         update_run(rid, progress=0.20)
     else:
         # phase_a_mode == "skip"
@@ -1301,6 +1408,89 @@ def _load_dsl_hard_expressions(db) -> list[str] | None:
         return None
 
 
+def _hard_check_ctx(db) -> dict[str, Any]:
+    """Le tabelle che `is_hard_feasible` deve vedere per NON sbagliare.
+
+    Senza queste, il controllo class-no-overlap conta come "due lezioni
+    nella stessa cella" tre situazioni che sono invece legittime e
+    volute:
+
+    - **sostegno**: il docente segue l'alunno dentro la lezione del
+      titolare, non aggiunge uno slot alla classe;
+    - **compresenza** (`coteach_groups`): titolare + codocente occupano
+      lo stesso slot ma la classe e\\` occupata UNA volta sola;
+    - **parallel intra-classe**: i membri condividono la stessa
+      `busy_key`.
+
+    Il default di `is_hard_feasible` e\\` `None` per tutti e tre, quindi
+    un chiamante che li omette dichiara infattibile qualunque orario di
+    una scuola che abbia anche solo un docente di sostegno -- e siccome
+    lo stesso controllo governa `validate_and_apply_move`, l'effetto e\\`
+    che la modifica manuale rifiuta OGNI spostamento. I loader sono
+    letture secche su tabelle piccole: si ricaricano ad ogni chiamata
+    invece di tenerli in cache, cosi\\` una modifica alle cattedre e\\`
+    visibile subito.
+
+    Ritorna un dict di kwargs da espandere con `**`.
+    """
+    try:
+        return {
+            "support_assignments": engine_io.support_assignments_from_db(db),
+            "coteach_groups": engine_io.coteach_groups_for_solver(db),
+            "parallel_groups": engine_io.parallel_groups_for_solver(db),
+            "group_assignments": engine_io.group_assignments_for_solver(db),
+        }
+    except Exception:
+        # Meglio il comportamento storico che nessun controllo HARD.
+        return {}
+
+
+def _class_busy_key_fn(ctx: dict[str, Any]):
+    """Da `(docente, classe, materia)` alla chiave di occupazione classe.
+
+    Ritorna `None` per le lezioni che NON occupano uno slot della classe
+    (il sostegno), e una chiave uguale per le lezioni che occupano lo
+    STESSO slato -- compresenza e parallel intra. Due lezioni sono in
+    conflitto solo se hanno chiavi diverse ed entrambe non-`None`.
+
+    Replica la logica di `metaheuristics.is_hard_feasible` perche\\` i
+    pre-controlli "veloci" di `what_if_move` la anticipano: senza questa
+    funzione rifiutavano la mossa PRIMA di arrivare al controllo
+    completo, rendendo inutile passargli il contesto.
+    """
+    support_keys = {(sa.get("teacher_name"), sa.get("class_name"),
+                     sa.get("subject"))
+                    for sa in (ctx.get("support_assignments") or [])}
+    coteach_keys = {(cg.get("class_name"), cg.get("subject"))
+                    for cg in (ctx.get("coteach_groups") or [])}
+    parallel_key: dict[tuple, str] = {}
+    for pg in (ctx.get("parallel_groups") or []):
+        cl = pg.get("class_name")
+        for m in pg.get("members", []):
+            parallel_key[(cl, m.get("subject"))] = (
+                f"__par__{pg.get('group_id')}")
+
+    def _key(teacher: str, cl: str, subj: str) -> str | None:
+        if (teacher, cl, subj) in support_keys:
+            return None
+        if (cl, subj) in parallel_key:
+            return parallel_key[(cl, subj)]
+        if (cl, subj) in coteach_keys:
+            return f"__cot__{cl}__{subj}"
+        return subj
+
+    return _key
+
+
+def _hard_check_ctx_fresh() -> dict[str, Any]:
+    """`_hard_check_ctx` per i chiamanti che non hanno una sessione aperta."""
+    try:
+        with SessionLocal() as db:
+            return _hard_check_ctx(db)
+    except Exception:
+        return {}
+
+
 def _per_day_dsl_warning_lines(diagnostics) -> list[str]:
     """Format per-day Phase-B DSL diagnostics into RunLog warning lines.
 
@@ -1403,6 +1593,16 @@ def run_meta(stage: str, budget_s: float, workers: int, log: bool,
             # rejecting any move that violates an arbitrary HARD rule the
             # per-day CP compiler cannot model. None => zero-drift.
             dsl_hard_expressions = _load_dsl_hard_expressions(db)
+            # Gli stessi quattro pezzi di contesto che gia\` passiamo
+            # agli algoritmi: senza, `is_hard_feasible` conta il
+            # sostegno come doppia occupazione della classe e dichiara
+            # infattibile ogni orario. Vedi `_hard_check_ctx`.
+            hard_ctx = {
+                "support_assignments": support_assignments_meta,
+                "coteach_groups": coteach_groups_meta,
+                "parallel_groups": parallel_groups_meta,
+                "group_assignments": group_assignments_meta,
+            }
         # Native locks for the meta stage: the locked lesson keys
         # are passed to every algorithm via `locks=` so atomic
         # moves never disturb them.
@@ -1416,7 +1616,7 @@ def run_meta(stage: str, budget_s: float, workers: int, log: bool,
                   f"{len(locks_set)} locked keys forbidden to moves")
         if not meta.is_hard_feasible(
                 sol, profs, verbose=False,
-                dsl_hard_expressions=dsl_hard_expressions):
+                dsl_hard_expressions=dsl_hard_expressions, **hard_ctx):
             print("[meta] WARNING: la soluzione iniziale viola gli HARD")
         dc_value = _restore_dc_from_solution(sol)
         # Cluster classi per LNS/ILS
@@ -1529,7 +1729,7 @@ def run_meta(stage: str, budget_s: float, workers: int, log: bool,
         v, m = meta.compute_soft(new_sol, profs)
         feasible = meta.is_hard_feasible(
             new_sol, profs, verbose=False,
-            dsl_hard_expressions=dsl_hard_expressions)
+            dsl_hard_expressions=dsl_hard_expressions, **hard_ctx)
         with SessionLocal() as db:
             sid = engine_io.import_solution_into_db(
                 db, new_sol,
@@ -2192,6 +2392,7 @@ def run_full_pipeline(profile: str,
                 v, m = meta.compute_soft(full_solution, profs)
                 feasible = meta.is_hard_feasible(
                     full_solution, profs, verbose=False,
+                    **_hard_check_ctx_fresh(),
                 )
                 # P0 truthfulness: fail the run on an incomplete schedule
                 # rather than saving a partial timetable as active.
@@ -2341,7 +2542,8 @@ def run_full_pipeline(profile: str,
                 full_solution = state["full_solution"] or {}
                 v, m = meta.compute_soft(full_solution, profs)
                 feasible = meta.is_hard_feasible(
-                    full_solution, profs, verbose=False)
+                    full_solution, profs, verbose=False,
+                    **_hard_check_ctx_fresh())
                 with SessionLocal() as db:
                     sid = engine_io.import_solution_into_db(
                         db, full_solution,
@@ -2524,6 +2726,7 @@ def run_full_pipeline(profile: str,
                 v, m = meta.compute_soft(new_sol, profs)
                 feasible = meta.is_hard_feasible(
                     new_sol, profs, verbose=False,
+                    **_hard_check_ctx_fresh(),
                 )
                 with SessionLocal() as db:
                     sid = engine_io.import_solution_into_db(
@@ -2834,7 +3037,9 @@ def validate_coteach_sostegno_potenziamento(db: Session) -> list[str]:
     - CoteachGroup.n_hours != codoc's Assignment.hours (codoc is
       supposed to have exactly n_hours of weekly hours -- all in
       compresenza).
-    - Support assignment without a valid class_id.
+    - Support assignment with no schedulable target: no pupil, no
+      group and no class, or a pupil who isn't in any class (there
+      would be no lessons to shadow).
     - Potenziamento assignment with class_id set (malformed).
     - Potenziamento total per teacher > 30 (5 hours/day * 6 days).
     """
@@ -2876,16 +3081,40 @@ def validate_coteach_sostegno_potenziamento(db: Session) -> list[str]:
                 )
 
     # Support assignments
+    _support_students = {s.id: s for s in db.query(models.Student).all()}
     for a in db.query(models.Assignment).filter(
         models.Assignment.is_support == True  # noqa: E712
     ).all():
+        t = teachers_by_id.get(a.teacher_id)
+        tn = t.name if t else f"#{a.teacher_id}"
+        # A sostegno row targets a pupil (normal), a StudyGroup (Task
+        # C3, the pupil followed into an articulated group) or -- for
+        # rows predating the per-pupil model -- a bare class. Only a
+        # row that resolves to none of the three is unschedulable.
+        # The old check demanded class_id and so rejected every
+        # group-targeted sostegno, blocking the whole run.
+        if a.group_id is not None:
+            continue
+        if a.student_id is not None:
+            st = _support_students.get(a.student_id)
+            if st is None:
+                violations.append(
+                    f"sostegno {tn}: alunno #{a.student_id} "
+                    f"inesistente."
+                )
+            elif st.class_id is None or st.class_id not in classes_by_id:
+                violations.append(
+                    f"sostegno {tn}: l'alunno "
+                    f"{st.last_name} {st.first_name} non ha una "
+                    f"classe, quindi non ci sono lezioni da seguire. "
+                    f"Assegna l'alunno a una classe."
+                )
+            continue
         if a.class_id is None or a.class_id not in classes_by_id:
-            t = teachers_by_id.get(a.teacher_id)
-            tn = t.name if t else f"#{a.teacher_id}"
             violations.append(
-                f"sostegno {tn}: classe non valida (class_id="
-                f"{a.class_id!r}); il sostegno deve riferirsi a una "
-                f"classe esistente."
+                f"sostegno {tn}: nessun bersaglio (ne' alunno, ne' "
+                f"gruppo, ne' classe). Associa il docente all'alunno "
+                f"da seguire."
             )
 
     # Potenziamento assignments
@@ -3128,6 +3357,34 @@ def _preflight_lock_check() -> None:
         )
 
 
+def _log_room_pins(pins: dict, prefix: str = "rooms") -> None:
+    r"""Rende visibili nel log i preset aule attivi per questo run.
+
+    Il vincolo di aula base e\` HARD e senza traccia nel log un
+    INFEASIBLE dello step aule sarebbe indistinguibile da un problema
+    di capienza. `fissa_senza_aula` e\` una configurazione incompleta
+    (preset 'fissa' senza aula base): si degrada a 'ibrida' e lo si
+    dice, invece di far fallire il run.
+    """
+    pin = pins.get("pin") or {}
+    forb = pins.get("forbidden") or {}
+    orfane = pins.get("fissa_senza_aula") or []
+    if pin:
+        print(f"[{prefix}] {len(pin)} classi con aula fissa (HARD); "
+              "le materie con aula speciale richiesta derogano")
+    if forb:
+        n = sum(len(v) for v in forb.values())
+        print(f"[{prefix}] {n} divieti classe-aula (HARD) "
+              f"su {len(forb)} classi")
+    if orfane:
+        print(f"[{prefix}] ATTENZIONE: {len(orfane)} classi hanno preset "
+              f"'fissa' ma nessuna aula base: {', '.join(orfane[:10])}"
+              + (" ..." if len(orfane) > 10 else ""))
+        print(f"[{prefix}] per queste classi il preset non ha effetto "
+              "(si comportano come 'ibrida'). Assegna un'aula base "
+              "dalla scheda Aule per renderlo operativo.")
+
+
 def _read_locked_lessons(db: Session) -> list[dict]:
     """Capture every Lesson belonging to a LOCKED Assignment in the
     active solution, so we can restore them after a Phase B / meta run
@@ -3359,7 +3616,8 @@ def _apply_rooms_to_solution(sid: int, *, time_limit_s: float,
             load_plessi_data,
         )
     with SessionLocal() as db:
-        lessons = engine_io.lessons_for_classroom_step(db, sid)
+        pins = engine_io.room_pins_from_db(db)
+        lessons = engine_io.lessons_for_classroom_step(db, sid, pins=pins)
         rooms = engine_io.classrooms_dicts_from_db(db)
         # Native lock for the classroom step: read the snapshot of
         # locked Lessons that have a classroom_name and force the
@@ -3382,6 +3640,7 @@ def _apply_rooms_to_solution(sid: int, *, time_limit_s: float,
     print(f"[{log_prefix}] {len(lessons)} lessons, {len(rooms)} rooms"
           + (f", {len(locked_classrooms)} classroom locks"
              if locked_classrooms else ""))
+    _log_room_pins(pins, log_prefix)
     result, status = solve_classroom_assignment(
         lessons, rooms, time_limit_s=time_limit_s,
         workers=workers, log=log,
@@ -3427,7 +3686,9 @@ def run_classroom_assignment(time_limit_s: float, workers: int, log: bool,
                 raise RuntimeError(
                     "Nessuna soluzione attiva: esegui prima Phase B."
                 )
-            lessons = engine_io.lessons_for_classroom_step(db, active.id)
+            pins = engine_io.room_pins_from_db(db)
+            lessons = engine_io.lessons_for_classroom_step(
+                db, active.id, pins=pins)
             rooms = engine_io.classrooms_dicts_from_db(db)
             locked_snap = _read_locked_lessons(db)
             plessi_data = load_plessi_data(db)
@@ -3447,6 +3708,7 @@ def run_classroom_assignment(time_limit_s: float, workers: int, log: bool,
         print(f"[rooms] {len(lessons)} lezioni, {len(rooms)} aule"
               + (f", {len(locked_classrooms)} aule lockate"
                  if locked_classrooms else ""))
+        _log_room_pins(pins)
         result, status = solve_classroom_assignment(
             lessons, rooms, time_limit_s=time_limit_s,
             workers=workers, log=log,
@@ -3458,6 +3720,7 @@ def run_classroom_assignment(time_limit_s: float, workers: int, log: bool,
             result = greedy_classroom_assignment(
                 lessons, rooms, prefer_home=prefer_home,
                 locked_classrooms=locked_classrooms or None,
+                plessi_data=plessi_data,
             )
         with SessionLocal() as db:
             n = engine_io.apply_room_mapping(db, active.id, result)
@@ -3525,7 +3788,13 @@ def auto_generate_classrooms(overrides: dict[str, int | None] | None = None
             for subj in r.get("subject_required", []):
                 db.add(models.ClassroomSubjectPreference(
                     classroom_id=cr.id, subject=subj,
-                    weight=10.0, required=True,
+                    # `state` e\` la fonte di verita\`: scrivere solo
+                    # `required=True` non funziona, perche\` il listener
+                    # `_sync_csp_required` lo ricalcola da `state` (che
+                    # senza questo argomento resterebbe 'allowed') e lo
+                    # riporta a False. I laboratori uscivano quindi
+                    # senza alcuna restrizione di materia.
+                    state="enforced", weight=10.0,
                 ))
             home = r.get("is_home_for_class")
             if home:
@@ -3833,6 +4102,15 @@ def preview_moves_for_lesson(db: Session, src: tuple,
     if candidates is None:
         candidates = [(d, h) for d in DAYS for h in HOURS]
     av = _availability_constraints(db)
+    hard_ctx = _hard_check_ctx(db)
+    busy_key = _class_busy_key_fn(hard_ctx)
+    src_busy = busy_key(*src[:3])
+    # Se l'orario di partenza viola gia\` un HARD globale, il gate
+    # marcherebbe OGNI destinazione come 'hard_violation' e l'anteprima
+    # diventerebbe tutta rossa senza informazione. Vedi la stessa
+    # logica in `validate_and_apply_move`.
+    base_hard_ok = meta.is_hard_feasible(sol, profs, verbose=False,
+                                         **hard_ctx)
     p, cl, subj, _, _ = src
     src_lesson = db.query(models.Lesson).filter(
         models.Lesson.solution_id == active.id,
@@ -3883,8 +4161,13 @@ def preview_moves_for_lesson(db: Session, src: tuple,
             v == 1 and k[0] == p and k[3] == d and k[4] == h
             for k, v in sol.items() if k != src
         )
-        class_busy = any(
+        # Il sostegno non occupa la classe, e compresenza / parallel
+        # intra condividono la stessa cella per costruzione: solo una
+        # busy_key DIVERSA e\` un conflitto reale. Vedi
+        # `_class_busy_key_fn`.
+        class_busy = src_busy is not None and any(
             v == 1 and k[1] == cl and k[3] == d and k[4] == h
+            and busy_key(k[0], k[1], k[2]) not in (None, src_busy)
             for k, v in sol.items() if k != src
         )
         if teacher_busy:
@@ -3903,7 +4186,8 @@ def preview_moves_for_lesson(db: Session, src: tuple,
         new_sol = dict(sol)
         new_sol[src] = 0
         new_sol[dst] = 1
-        if not meta.is_hard_feasible(new_sol, profs, verbose=False):
+        if base_hard_ok and not meta.is_hard_feasible(
+                new_sol, profs, verbose=False, **hard_ctx):
             results.append({"day": d, "hour": h,
                             "status": "hard_violation",
                             "reason": "viola un vincolo HARD globale "
@@ -3978,9 +4262,22 @@ def validate_and_apply_move(db: Session, src: tuple,
     new_sol = dict(sol)
     new_sol[src] = 0
     new_sol[dst] = 1
-    if not meta.is_hard_feasible(new_sol, profs, verbose=False):
-        return {"accepted": False,
-                "reason": "Mossa rifiutata: viola almeno un vincolo HARD."}
+    # Il gate globale ha senso solo se il PUNTO DI PARTENZA e\` pulito.
+    # `is_hard_feasible` e\` un bool sull'intera scuola: se l'orario
+    # attivo viola gia\` un HARD (tipico dopo un import, o quando Phase B
+    # non modella una regola come H_A), pretendere feasibility assoluta
+    # rifiuta OGNI spostamento, compresi quelli che servono proprio a
+    # sanare la violazione. Quando la base e\` gia\` infattibile lo
+    # segnaliamo al chiamante e lasciamo passare la mossa: i controlli
+    # puntuali qui sopra (docente/classe/aula, vincoli logici) restano.
+    hard_ctx = _hard_check_ctx(db)
+    if not meta.is_hard_feasible(new_sol, profs, verbose=False, **hard_ctx):
+        if meta.is_hard_feasible(sol, profs, verbose=False, **hard_ctx):
+            return {"accepted": False,
+                    "reason": "Mossa rifiutata: viola almeno un vincolo HARD."}
+        baseline_infeasible = True
+    else:
+        baseline_infeasible = False
     # Logical disjunctive HARD constraints
     ok_hard, _soft_pen, msg = _logical_check_for_solution(db, new_sol)
     if not ok_hard:
@@ -4034,10 +4331,15 @@ def validate_and_apply_move(db: Session, src: tuple,
                 room_cleared = True
                 cleared_room = src_room
     active.obj_value = float(v1)
-    active.metrics_json = json.dumps({**m1, "feasible": True})
+    # Non dichiarare "feasible" quello che non lo e\`: se la mossa e\`
+    # passata solo perche\` la base era gia\` infattibile, il flag deve
+    # dirlo, altrimenti la dashboard mostra verde su un orario rotto.
+    active.metrics_json = json.dumps(
+        {**m1, "feasible": not baseline_infeasible})
     db.commit()
     return {
         "accepted": True,
+        "baseline_infeasible": baseline_infeasible,
         "reason": ("Miglioramento di "
                    f"{int(v0 - v1)} punti SOFT" if v1 < v0 else
                    ("Stesso valore SOFT" if v1 == v0
@@ -4157,7 +4459,9 @@ def run_decomposition_temporal(*, time_a: float = 60.0,
 
         import metaheuristics as meta  # type: ignore
         v0, m0 = meta.compute_soft(full_solution, profs)
-        feasible = meta.is_hard_feasible(full_solution, profs, verbose=False)
+        hard_ctx = _hard_check_ctx_fresh()
+        feasible = meta.is_hard_feasible(full_solution, profs, verbose=False,
+                                         **hard_ctx)
         print(f"[temporal] HARD feasible: {feasible}, SOFT obj={v0:.1f}")
 
         # Step 5: ALNS finishing stage (optional, sequential on the
@@ -4184,7 +4488,8 @@ def run_decomposition_temporal(*, time_a: float = 60.0,
                     locks=alns_locks,
                 )
                 v1, m1 = meta.compute_soft(refined, profs)
-                if meta.is_hard_feasible(refined, profs, verbose=False) \
+                if meta.is_hard_feasible(refined, profs, verbose=False,
+                                         **hard_ctx) \
                         and v1 <= v0:
                     print(f"[temporal] ALNS improved {v0:.1f} -> {v1:.1f}")
                     full_solution = refined
@@ -4333,7 +4638,9 @@ def run_decomposition_curriculum(*, time_a: float = 60.0,
 
         import metaheuristics as meta  # type: ignore
         v0, m0 = meta.compute_soft(full_solution, profs)
-        feasible = meta.is_hard_feasible(full_solution, profs, verbose=False)
+        hard_ctx = _hard_check_ctx_fresh()
+        feasible = meta.is_hard_feasible(full_solution, profs, verbose=False,
+                                         **hard_ctx)
 
         if run_alns and feasible:
             try:
@@ -4350,7 +4657,8 @@ def run_decomposition_curriculum(*, time_a: float = 60.0,
                     alns_budget_s, log=False, workers=2,
                     locks=alns_locks)
                 v1, m1 = meta.compute_soft(refined, profs)
-                if (meta.is_hard_feasible(refined, profs, verbose=False)
+                if (meta.is_hard_feasible(refined, profs, verbose=False,
+                                          **hard_ctx)
                         and v1 <= v0):
                     full_solution, v0, m0 = refined, v1, m1
             except Exception as e:
@@ -4474,7 +4782,9 @@ def run_decomposition_metis(*, time_a: float = 60.0,
 
         import metaheuristics as meta  # type: ignore
         v0, m0 = meta.compute_soft(full_solution, profs)
-        feasible = meta.is_hard_feasible(full_solution, profs, verbose=False)
+        hard_ctx = _hard_check_ctx_fresh()
+        feasible = meta.is_hard_feasible(full_solution, profs, verbose=False,
+                                         **hard_ctx)
 
         if run_alns and feasible:
             try:
@@ -4491,7 +4801,8 @@ def run_decomposition_metis(*, time_a: float = 60.0,
                     alns_budget_s, log=False, workers=2,
                     locks=alns_locks)
                 v1, m1 = meta.compute_soft(refined, profs)
-                if (meta.is_hard_feasible(refined, profs, verbose=False)
+                if (meta.is_hard_feasible(refined, profs, verbose=False,
+                                          **hard_ctx)
                         and v1 <= v0):
                     full_solution, v0, m0 = refined, v1, m1
             except Exception as e:
