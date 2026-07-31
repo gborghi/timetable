@@ -61,10 +61,15 @@ def test_gate_lenient_keeps_partial(monkeypatch):
 # --- end-to-end (slow) ----------------------------------------------------
 
 @pytest.mark.slow
-def test_run_phase_b_reaches_full_coverage():
+def test_run_phase_b_reaches_full_coverage(temp_global_session):
     """A solvable small school runs phase_a -> phase_b through the real
     orchestration entry point and passes the gate: coverage is recorded
-    in the run metrics and the run ends 'done' (not spuriously failed)."""
+    in the run metrics and the run ends 'done' (not spuriously failed).
+
+    `temp_global_session` non e' un dettaglio: senza, questo test importa
+    la scuola di prova con `replace=True` nel `SessionLocal` globale,
+    cioe' nel DB di sviluppo, e ci cancella sopra i dati veri.
+    """
     import json
     import time
     from backend import models, optimization

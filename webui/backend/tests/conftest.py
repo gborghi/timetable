@@ -115,6 +115,52 @@ def app_with_temp_db(temp_db_url, monkeypatch):
         test_engine.dispose()
 
 
+@pytest.fixture
+def temp_global_session(temp_db_url, monkeypatch):
+    """Come `app_with_temp_db`, ma per il `SessionLocal` GLOBALE.
+
+    `app_with_temp_db` isola solo la dependency `get_db`: basta per
+    tutto cio' che passa dalle rotte. Non basta per l'orchestrazione dei
+    run, che gira in un thread di background e apre le sessioni da
+    `optimization.SessionLocal` / `run_manager.SessionLocal`, cioe' dal
+    `SessionLocal` importato a modulo -- quello legato al DB REALE.
+
+    Un test che chiami `run_phase_b` senza questa fixture non e' lento e
+    basta: importa la scuola di prova nel DB di sviluppo con
+    `replace=True` e ci cancella sopra i dati veri. E' successo.
+
+    Ritorna la sessionmaker, cosi' il test puo' popolare il DB
+    temporaneo con le stesse sessioni che vedra' il run.
+    """
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from backend import db as backend_db
+    from backend import models  # noqa: F401  -- registers tables
+    from backend import optimization, run_manager
+
+    test_engine = create_engine(
+        temp_db_url,
+        connect_args={"check_same_thread": False},
+        future=True,
+    )
+    TestSession = sessionmaker(
+        bind=test_engine, autoflush=False, autocommit=False, future=True
+    )
+    backend_db.Base.metadata.create_all(bind=test_engine)
+    _apply_migrations_on(test_engine)
+
+    # Tutti e tre i binding: `from .db import SessionLocal` ne ha fatto
+    # una copia per modulo, e ripatchare solo `db` non basterebbe.
+    monkeypatch.setattr(backend_db, "SessionLocal", TestSession)
+    monkeypatch.setattr(optimization, "SessionLocal", TestSession)
+    monkeypatch.setattr(run_manager, "SessionLocal", TestSession)
+    try:
+        yield TestSession
+    finally:
+        test_engine.dispose()
+
+
 def _apply_migrations_on(engine):
     """Mirror of db._apply_lightweight_migrations against an arbitrary
     engine (so the test DB has all the post-migration columns)."""
