@@ -683,3 +683,132 @@ embedded via `\grokfig`; both PDFs grew ~700 KB and now show real UI. (Aside:
 `safaridriver` drives Safari fine and needs no download, but its WebDriver
 screenshot returns a blank frame on this box -- the Chromium path is the one that
 works.) selenium added to `requirements-dev.txt`.
+
+## Sostegno per alunno, compresenza in API, e lo sblocco della modifica manuale (2026-07-30)
+Tre filoni, tutti nati dal report dell'agente "Headmaster 60 classi".
+
+**Il sostegno e' dell'alunno, non della classe.** La cattedra di sostegno punta
+a `student_id` e la classe si *deriva* dall'alunno; non serve -- e non si deve
+-- creare un `Subject` chiamato "sostegno" ne' una riga `ClassSubject` che ne
+conti le ore nel monte ore settimanale (era la deriva che gonfiava le classi
+oltre le ore realmente disponibili). L'importer gia' lo faceva; mancavano le
+colonne `sostegno` / `ore_sostegno` nel template `students` e il nome
+dell'alunno sulla pill SOST in `/assignments`, che senza non diceva a chi va.
+Nove test in `test_sostegno_per_alunno.py`, incluso il caso "stesso docente su
+due alunni = due cattedre" (unicita' con `COALESCE(student_id, 0)`).
+
+**`is_hard_feasible` senza contesto sbagliava, non degradava.** I quattro
+argomenti opzionali (`support_assignments`, `coteach_groups`, `parallel_groups`,
+`group_assignments`) non sono un di piu': sostegno e compresenza occupano la
+stessa cella `(classe, giorno, ora)` per costruzione, e senza contesto la
+regola di non-sovrapposizione della classe li legge come doppia occupazione.
+Siccome lo stesso gate governa `validate_and_apply_move`, l'effetto pratico era
+che la modifica manuale rifiutava OGNI spostamento, in tutta la scuola. Aggiunto
+`_hard_check_ctx` e passato il contesto a tutti e 14 i call site. Sulla
+simulazione da 60 classi: prima 36 destinazioni su 36 rifiutate, dopo
+`{hard_violation: 28, ok: 5, soft_worse: 1, noop: 2}` -- le 28 sono rifiuti veri
+(docente o classe occupati).
+
+Seconda causa, indipendente: il gate pretendeva feasibility *assoluta*. Se
+l'orario attivo viola gia' un HARD (tipico dopo un import, o quando la Phase B
+non modella una regola come H_A), rifiutava ogni mossa comprese quelle che la
+riparavano. Ora valuta la baseline e rifiuta solo se il punto di partenza era
+pulito; quando passa per baseline sporca lo dice al chiamante e scrive
+`feasible: false` nelle metriche, invece di mostrare verde su un orario rotto.
+
+**Compresenza: da colonna muta a superficie completa.** `Teacher.compresenza`
+(`mai` | `sempre` | `oraria`) esisteva nel modello e non usciva da nessuna API.
+Aggiunti campo + validator in `TeacherBase`, `CompresenzaHour`, e la griglia 6x6
+in `/teachers`. La griglia si conserva anche in modo `mai`/`sempre`, cosi'
+passare avanti e indietro fra i modi non perde le celle gia' compilate.
+
+**N+1 su `/api/teachers`, e la lezione su come si misura.** `_to_out` rilegge
+sei collezioni per docente piu' due query dentro `_classroom_prefs_for_teacher`:
+543 query per 178 docenti. `test_perf_budgets` lo vedeva (28s contro un budget
+di 15) ma l'ho scambiato per contesa di macchina, perche' il test da solo
+passava: le query erano poche in valore assoluto, e solo i thread di background
+lasciati dai test di diagnostica le amplificavano. Bastava contarle invece di
+cronometrarle. Sei `selectinload` piu' `_classroom_prefs_by_teacher` (le
+`classroom_prefs` non sono una relationship: vanno precaricate a mano) portano
+543 query a 12 e il modulo perf da 108s a 3s. Aggiunto
+`test_teachers_list_no_n_plus_1.py`, che confronta il costo su 10 e su 40
+docenti: e' la rete a maglie strette che il budget a tempo non e'.
+
+**Resta aperto**: la Phase B non conosce i plessi (`plessi_data=None` cablato in
+`cpsat_v2_timetable.py`), quindi il tempo di trasferimento fra i due plessi non
+vincola l'assegnazione delle ore. E' una capacita' nuova, non un cablaggio
+mancante, e non l'ho aperta.
+
+## Il test lento che cancellava il DB di sviluppo (2026-07-31)
+Facendo girare la suite backend *completa* (cioe' con i `-m slow`, che la suite
+veloce deseleziona), il DB di sviluppo si e' trovato con 25 docenti e 10 classi
+al posto di 178 e 100. Colpevole:
+`test_coverage_gate.py::test_run_phase_b_reaches_full_coverage`, che chiama
+`_import_base_school(..., "small")` -> `import_school_into_db(replace=True)`.
+
+La causa e' che `app_with_temp_db` isola solo la dependency `get_db`. Tutto cio'
+che passa dall'orchestrazione dei run gira in un thread di background e apre le
+sessioni dal `SessionLocal` importato a modulo -- quello legato al DB vero. E
+siccome `from .db import SessionLocal` ne fa una copia per modulo, ripatchare
+`backend.db` non basta: vanno patchati anche `optimization` e `run_manager`.
+Aggiunta la fixture `temp_global_session` che fa esattamente questo, e messa in
+firma al test. Con il DB isolato il test passa (5/5, 37s): il fallimento
+"coverage 0.0% (0/305)" non era una regressione del solver, era il solver che
+girava su un DB gia' pieno di un'altra scuola.
+
+Ripristinato il DB da una copia presa quattro minuti prima del danno. Il server
+di sviluppo era acceso su :8000, quindi *non* sostituendo il file (il processo
+avrebbe continuato a scrivere sul vecchio inode) ma con `ATTACH` del backup e
+`DELETE` + `INSERT ... SELECT` tabella per tabella dentro una transazione, che
+passa dallo stesso file e dallo stesso WAL. `PRAGMA integrity_check` ok, e
+`foreign_key_check` restituisce le stesse 105 righe orfane di `run_telemetry`
+di prima -- preesistenti, non introdotte dal ripristino.
+
+## L'N+1 su /api/teachers, contato invece che cronometrato (2026-07-31)
+`test_perf_budgets` falliva, e la prima diagnosi -- contesa di macchina -- era
+sbagliata: il modulo falliva anche da solo, 28.3s. Contando le query invece di
+cronometrarle e' venuto fuori un N+1 vero e proprio, 543 query per una lista di
+docenti. Due sorgenti: le sei collezioni che `_to_out` legge riga per riga, e
+`_classroom_prefs_for_teacher`, che costa due query a docente e non e' una
+relationship, quindi `selectinload` da solo non la copre. Aggiunto
+`selectinload` per le sei collezioni e un caricatore in blocco
+(`_classroom_prefs_by_teacher`) per le preferenze aula: 543 query / 231 ms ->
+**12 query / 90 ms**, e il modulo perf da 108s a 3.0s.
+
+Il test nuovo (`test_teachers_list_no_n_plus_1.py`) confronta il *numero di
+query* su 10 e su 40 docenti invece di misurare il tempo. Un budget a
+cronometro e' una rete a maglie larghe: questo N+1 lo attraversava indisturbato
+finche' non arrivavano i thread di background di un altro modulo ad amplificarlo.
+
+## I plessi entrano in Phase B (2026-07-31)
+Il tempo di trasferimento fra plessi era modellato solo nella fase aule. Ma
+quando quella fase interviene le ore sono gia' congelate: se Phase B ha messo un
+docente in sede alla 3a e in succursale alla 4a, nessuna assegnazione di aula
+puo' rimediare. Il vincolo arrivava a giochi fatti.
+
+L'ostacolo era che tutti gli helper esistenti ricavano il plesso dall'**aula**, e
+in Phase B le aule non esistono ancora. La sede la sa la **classe**: o per una
+`PlessoEntityPolicy` di tipo `single_plesso_total` con `plesso_id` esplicito, o
+per l'**aula di residenza** (`ClassroomClassPreference.is_home`), che e' l'unica
+prova pre-aule di dove una classe -- e quindi chi ci insegna -- stia fisicamente.
+Da qui `class_plesso_pins()`: una classe senza ne' l'una ne' l'altra resta fuori
+dalla mappa, perche' tirare a indovinare "plesso 1" vieterebbe orari legittimi
+sulla base di un dato mancante.
+
+Due dettagli non ovvi. Primo: si controllano **tutte** le coppie di ore, non solo
+quelle adiacenti -- un docente in sede alla 1a e in succursale alla 3a violerebbe
+comunque una regola con `min_gap_hours=2`, e guardare solo `h+1` lo lascerebbe
+passare (da cui `_pair_violates_rule`, generalizzazione di
+`_adjacent_violates_rule`). Secondo: il vincolo va messo in **tutti e quattro**
+gli stage della decomposizione spettrale, non solo nel solver monolitico; regge
+perche' ogni stage decide un insieme *disgiunto* di docenti (A i bridge, B gli
+interni di un cluster, C la ricucitura), quindi tutte le ore di un docente
+cadono dentro un solo stage e nessuna coppia sfugge fra le maglie.
+
+Il contesto (`build_plessi_ctx`) si costruisce una volta per run e si passa ai
+solver; senza plessi configurati e' `None` e non cambia niente. Il controllo
+negativo del test e' costruito, non trovato: una giornata in cui le due classi
+hanno quattro ore ciascuna e il pendolare ne tiene due per parte, cosi' il cambio
+di sede fuori intervallo e' *inevitabile*. Senza contesto la giornata si risolve
+(e viola), con il contesto e' INFEASIBLE. Su un'istanza libera il solver
+raggruppava le ore da solo e il confronto non avrebbe dimostrato nulla.

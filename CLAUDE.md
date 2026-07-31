@@ -293,14 +293,50 @@ SQLite via SQLAlchemy (`models.py`, ~30 tables). All user-facing top entities mi
   `TeacherFreeDayPreference`, `TeacherCompatibleClass`, and **Phase-A-only**
   `TeacherClassPreference` / `TeacherCurriculumPreference` (5-state taxonomy:
   allowed/preferred/soft/forbidden/enforced).
-- Classroom prefs: `ClassroomSubjectPreference` / `TeacherClassroomPreference`
-  (4-state) + `ClassroomClassPreference` (home room) + tags
-  (`ClassroomTag` ↔ `ClassroomTagAssignment`), `Student` tags likewise.
+- Classroom prefs: `ClassroomSubjectPreference` / `TeacherClassroomPreference` /
+  `ClassroomClassPreference` (all 4-state; the last one also carries `is_home`)
+  + tags (`ClassroomTag` ↔ `ClassroomTagAssignment`), `Student` tags likewise.
+
+**Room assignment: two orthogonal axes.** Nothing in the engine assumes a subject
+belongs in a particular kind of room — it has to be configured, and the two ways to
+configure it point in *opposite* directions:
+- `Classroom.subject_required` (from `ClassroomSubjectPreference.required`) restricts
+  the **room**: "this lab only accepts these subjects". It does not force the subject
+  anywhere.
+- `Subject.required_kind` restricts the **subject**: "Scienze motorie must land in a
+  room of kind `palestra`". This is the one that makes gyms/labs actually get used;
+  a school that sets only the former will see its gym sit empty and PE happen in
+  ordinary classrooms, with no error anywhere.
+
+A third axis, orthogonal to both: **`Teacher.compresenza`** (`mai` default |
+`sempre` | `oraria`, the last reading `teacher_compresenza_hours`). It declares
+that a teacher *shares* a colleague's room instead of booking one — so the room
+step treats that lesson as a **rider** attached to a host in the same
+`(class, day, hour)` cell (`classroom_assignment.compresenza_map`). It is a
+per-teacher property, deliberately **not** derived from `Assignment.is_support`,
+because compresenza is the general shape (sostegno, potenziamento, codocenza,
+madrelingua, ITP) and because the converse inference is invalid: same class at
+the same hour does *not* imply the same room — Religione / Attività alternativa
+really do split a class across two rooms. Without this, every shadow lesson
+requested a second room and the room step went INFEASIBLE.
+
+Crossing that is `SchoolClass.room_policy` — `fissa` (HARD: every hour in the class'
+home room, with **automatic derogation** for subjects carrying a `required_kind`,
+without which the preset is infeasible in any school that has a gym) / `ibrida`
+(SOFT home bonus — the historical behaviour and the default) / `libera`. The preset
+resolves against `ClassroomClassPreference` in `engine_io.room_pins_from_db`; an
+explicit `enforced`/`forbidden` row wins over it. All of it lands as
+`lesson["home_room"]` / `lesson["forbidden_rooms"]` in `classroom_assignment._can_host`,
+so the CP-SAT path and the greedy fallback enforce it identically.
 
 **Assignment (Phase A output) → `Assignment`** — one row per (teacher, class, subject).
 Encodes the three Italian special shapes via flags/FKs:
 - shared coteaching → N rows sharing `coteach_group_id` → `CoteachGroup` (`CoTeachingRule` is its **legacy** predecessor)
-- sostegno → `is_support=True`
+- sostegno → `is_support=True` + `student_id` (the **pupil** the teacher follows,
+  not the class — a support teacher is assigned to a person; the class is derived
+  from that pupil). No `Subject` row named "sostegno" is needed or wanted: the
+  cattedra shadows the pupil's ordinary lessons. Uniqueness is
+  `(teacher, class, subject, is_support, COALESCE(student_id, 0))`.
 - potenziamento → `is_potenziamento=True`, `class_id=NULL`
 - inter-class → `group_id` → `StudyGroup` (**XOR** with `class_id`)
 - intra-class parallel → shared `parallel_group_id` (same slot, class counts once)
