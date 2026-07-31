@@ -1,7 +1,7 @@
 <script>
   import { api } from '$lib/api';
   import { confirmDialog } from '$lib/confirm';
-  import DecorIcon from '$lib/components/DecorIcon.svelte';
+  import PageHero from '$lib/components/PageHero.svelte';
   import { flash, refreshDataset } from '$lib/stores';
   import Modal from '$lib/components/Modal.svelte';
   import WeeklyCalendarView from '$lib/components/WeeklyCalendarView.svelte';
@@ -40,6 +40,7 @@
       preferred_free_days: [],
       required_free_days_count: 0,
       max_hours_per_day: 5,
+      room_policy: 'ibrida',
       subjects: [], unavailability: []
     };
   }
@@ -203,12 +204,16 @@
   const N_STUDENTS_MIN = 5;
   const N_STUDENTS_MAX = 50;
   let savingNStudents = new Set();
-  async function saveNStudentsInline(row, raw) {
+  async function saveNStudentsInline(row, raw, el = null) {
     const v = Number(raw);
     if (!Number.isFinite(v) || v < N_STUDENTS_MIN || v > N_STUDENTS_MAX) {
       flash(`N. studenti deve essere fra ${N_STUDENTS_MIN} e ${N_STUDENTS_MAX}`,
             'error');
-      // Revert to the server-side value by reloading the list.
+      // Revert to the server-side value by reloading the list. Il reload
+      // da solo non basta: `value={row.n_students}` viene riscritto nel
+      // DOM solo se il dato cambia, e qui torna identico (22 -> 22),
+      // quindi il numero invalido resterebbe visibile nel campo.
+      if (el) el.value = String(row.n_students ?? '');
       await listRef?.reload();
       return;
     }
@@ -241,22 +246,24 @@
 </script>
 
 <div class="space-y-4" data-testid="classes-page">
-  <div class="flex items-baseline gap-3 flex-wrap">
-    <h1 class="flex items-center gap-2"><DecorIcon name="desk" size={26} class="shrink-0" /> Classi</h1>
-    <button class="btn-primary ml-auto" on:click={newClass}
-            data-testid="add-class-btn">+ Nuova classe</button>
-    <ImportButton entity="classes" onDone={() => listRef?.reload()}/>
-    <button class="btn !text-xs" on:click={() => (showBulk = true)}
-            disabled={selectedIds.length === 0}
-            title="Applica un vincolo a tutte le classi selezionate">
-      Vincolo collettivo ({selectedIds.length})
-    </button>
-    <button class="btn-danger !text-xs" on:click={bulkDel}
-            disabled={selectedIds.length === 0 || bulkDeleting}
-            title="Elimina tutte le classi selezionate (con UNDO)">
-      {bulkDeleting ? 'Eliminazione...' : `Elimina selezionati (${selectedIds.length})`}
-    </button>
-  </div>
+  <PageHero title="Classi"
+            description="Le classi della scuola con anno, sezione e indirizzo. Il monte ore per materia arriva dall'indirizzo e si puo' correggere classe per classe.">
+    <svelte:fragment slot="actions">
+      <button class="btn-primary" on:click={newClass}
+              data-testid="add-class-btn">+ Nuova classe</button>
+      <ImportButton entity="classes" onDone={() => listRef?.reload()}/>
+      <button class="btn !text-xs" on:click={() => (showBulk = true)}
+              disabled={selectedIds.length === 0}
+              title="Applica un vincolo a tutte le classi selezionate">
+        Vincolo collettivo ({selectedIds.length})
+      </button>
+      <button class="btn-danger !text-xs" on:click={bulkDel}
+              disabled={selectedIds.length === 0 || bulkDeleting}
+              title="Elimina tutte le classi selezionate (con UNDO)">
+        {bulkDeleting ? 'Eliminazione...' : `Elimina selezionati (${selectedIds.length})`}
+      </button>
+    </svelte:fragment>
+  </PageHero>
 
   <SortableQueryableList
     bind:this={listRef}
@@ -276,7 +283,8 @@
     <td class="text-center">
       <input type="number" min={N_STUDENTS_MIN} max={N_STUDENTS_MAX}
              value={row.n_students}
-             on:change={(e) => saveNStudentsInline(row, e.currentTarget.value)}
+             on:change={(e) => saveNStudentsInline(
+               row, e.currentTarget.value, e.currentTarget)}
              on:keydown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
              disabled={savingNStudents.has(row.id)}
              class="w-16 text-center px-1 py-0.5 border border-ink-200 rounded
@@ -483,6 +491,36 @@
                    max_hours_per_day: Math.max(1, Math.min(7, Number(e.target.value) || 5)) }}/>
         </div>
       </div>
+      <div class="field">
+        <label>Aule della classe
+          <span title="Decide quanto vincola l'aula base (si imposta dalla scheda Aule). Non riguarda le aule speciali: quelle restano governate dalla materia.">ℹ️</span>
+        </label>
+        <select value={editing.room_policy ?? 'ibrida'}
+                on:change={(e) => editing = { ...editing,
+                  room_policy: e.target.value }}>
+          <option value="fissa">Aula fissa — sempre nella sua aula base</option>
+          <option value="ibrida">Ibrida — aula base preferita (default)</option>
+          <option value="libera">Libera — nessun vincolo di aula base</option>
+        </select>
+      </div>
+      {#if (editing.room_policy ?? 'ibrida') === 'fissa'}
+        <div class="text-xs text-slate-600 bg-slate-50 border border-slate-300 p-2 rounded">
+          Tutte le ore della classe finiranno nella sua aula base.
+          Fanno eccezione automaticamente le materie a cui hai
+          assegnato un'aula obbligatoria (es. Scienze motorie →
+          palestra): senza questa deroga il vincolo sarebbe
+          impossibile da soddisfare. Ricordati di indicare l'aula
+          base dalla scheda <strong>Aule</strong>: senza, il preset
+          non ha effetto.
+        </div>
+      {:else if (editing.room_policy ?? 'ibrida') === 'libera'}
+        <div class="text-xs text-slate-600 bg-slate-50 border border-slate-300 p-2 rounded">
+          L'ottimizzatore e' libero di spostare la classe: le ore
+          possono finire in aule diverse anche nella stessa giornata.
+          Usa questa opzione solo se la scuola pratica davvero le
+          aule-materia.
+        </div>
+      {/if}
       <!-- Live feasibility check: ore_settimanali / giorni_lavorativi <= max_per_day -->
       {#if (editing.subjects?.length ?? 0) > 0}
         {@const totalHours = (editing.subjects ?? [])

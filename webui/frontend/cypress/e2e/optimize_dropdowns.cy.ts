@@ -17,7 +17,13 @@
  * The existing `optimize_phase_b_dropdowns.cy.ts` covers a subset;
  * this one targets the form-level invariants the user has flagged
  * as critical.
+ *
+ * Since the redesign these step-by-step controls live inside the
+ * "Modalita' avanzata" <Panel>, which unmounts its content while
+ * collapsed -- hence the expandPanel() in beforeEach.
  */
+
+import { expandPanel } from '../support/panels';
 
 describe('Tab Optimize dropdowns', () => {
   beforeEach(() => {
@@ -26,6 +32,7 @@ describe('Tab Optimize dropdowns', () => {
     cy.visit('/optimize');
     cy.get('[data-testid="optimize-page"]', { timeout: 15000 })
       .should('exist');
+    expandPanel('optimize-advanced');
   });
 
   it('mock profile dropdown has the 5 canonical sizes', () => {

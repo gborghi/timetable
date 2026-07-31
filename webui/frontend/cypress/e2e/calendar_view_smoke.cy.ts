@@ -78,10 +78,6 @@ describe('WeeklyCalendarView in Tab Docenti edit modal (view mode)', () => {
     seedMiniScenario();
   });
 
-  after(() => {
-    clearDataset();
-  });
-
   it('opening "Modifica" on a teacher row mounts the calendar', () => {
     cy.visit('/teachers');
     cy.contains('button', /Modifica/i, { timeout: 15000 })
@@ -91,15 +87,28 @@ describe('WeeklyCalendarView in Tab Docenti edit modal (view mode)', () => {
     // Modal title -- the seed teacher names use generic strings, so
     // we don't assert on them. Instead assert the calendar is
     // present with its legend.
-    cy.get('.weekly-calendar', { timeout: 10000 }).should('be.visible');
+    //
+    // scrollIntoView() is mandatory, not cosmetic: the calendar sits
+    // ~680px down a 2100px-tall modal body, and the modal wrapper is
+    // `position: fixed`. In the default 1000x660 viewport Cypress
+    // therefore considers it "overflowed by other elements" and
+    // `be.visible` can never pass without scrolling first.
+    cy.get('.weekly-calendar', { timeout: 10000 })
+      .scrollIntoView()
+      .should('be.visible');
     cy.contains(/Disponibilita oraria/i).should('be.visible');
 
-    // Legend: 5 labels.
-    cy.contains(/^libero$/i).should('exist');
-    cy.contains(/SOFT/i).should('exist');
-    cy.contains(/HARD/i).should('exist');
-    cy.contains(/PREFERRED/i).should('exist');
-    cy.contains(/ENFORCED/i).should('exist');
+    // Legend: 5 labels. Asserted on the calendar's text content and
+    // not with cy.contains(/^libero$/i): every label is a bare text
+    // node sitting next to its colour swatch, so the enclosing
+    // <span>'s own text is "\n  libero\n  " and an anchored regex can
+    // never match it.
+    cy.get('.weekly-calendar')
+      .should('contain.text', 'libero')
+      .and('contain.text', 'SOFT')
+      .and('contain.text', 'HARD')
+      .and('contain.text', 'PREFERRED')
+      .and('contain.text', 'ENFORCED');
 
     // Event rectangles rendered (slots from working-hours config).
     cy.get('.cal-event').should('have.length.gte', 1);
@@ -107,6 +116,17 @@ describe('WeeklyCalendarView in Tab Docenti edit modal (view mode)', () => {
 });
 
 describe('WeeklyCalendarView is wired to the working-hours config', () => {
+  // Seeds its own data: this block needs a teacher row to click, and
+  // the seed is not inherited from the describe above (each block
+  // starts from clearDataset()).
+  before(() => {
+    seedMiniScenario();
+  });
+
+  after(() => {
+    clearDataset();
+  });
+
   // If /api/working-hours/config returns 0 active days, the calendar
   // shows the "Nessun giorno lavorativo configurato" empty state with
   // a link back to /ore. This is the failure mode the user hit when
@@ -126,8 +146,10 @@ describe('WeeklyCalendarView is wired to the working-hours config', () => {
       .first()
       .click();
 
+    // Same modal-scroll caveat as the test above.
     cy.contains(/Nessun giorno lavorativo|Vai al tab/i,
                 { timeout: 10000 })
+      .scrollIntoView()
       .should('be.visible');
     cy.contains('a', /^Ore$/).should('have.attr', 'href', '/ore');
   });

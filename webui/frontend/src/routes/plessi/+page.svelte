@@ -1,5 +1,5 @@
 <script>
-  import DecorIcon from '$lib/components/DecorIcon.svelte';
+  import PageHero from '$lib/components/PageHero.svelte';
   import { confirmDialog } from '$lib/confirm';
   /**
    * Plessi (school sites) management.
@@ -206,29 +206,23 @@
   );
 </script>
 
-<div class="container mx-auto p-4 space-y-6" data-testid="plessi-page">
-  <h1 class="text-2xl font-bold flex items-center gap-2"><DecorIcon name="building" size={28} class="shrink-0" /> Plessi</h1>
-  <p class="text-sm text-ink-600 max-w-3xl">
-    Gestisci le sedi fisiche dell'istituto (Sede Centrale,
-    succursali, plessi distaccati), le regole di spostamento tra
-    coppie di plessi (commuting) e le policy globali per docenti
-    e classi (uno stesso plesso al giorno o uno stesso plesso
-    in tutta la settimana).
-  </p>
+<div class="space-y-6" data-testid="plessi-page">
+  <PageHero title="Plessi"
+            description="Le sedi fisiche dell'istituto (Sede Centrale, succursali, plessi distaccati), le regole di spostamento tra coppie di plessi (commuting) e le policy globali per docenti e classi (uno stesso plesso al giorno o uno stesso plesso in tutta la settimana)." />
 
   <!-- Validation banner -->
   {#if !validation.ok}
-    <div class="border border-rose-300 bg-rose-50 rounded p-3">
-      <strong class="text-rose-800">Configurazione incoerente</strong>
-      <ul class="list-disc pl-6 text-sm text-rose-800 mt-2">
+    <div class="card p-4 border-l-[3px] border-l-siena">
+      <span class="eyebrow text-siena">Configurazione incoerente</span>
+      <ul class="list-disc pl-5 text-[12.5px] text-ink-600 mt-1.5 space-y-0.5">
         {#each validation.violations as v}
           <li>{v}</li>
         {/each}
       </ul>
     </div>
   {:else}
-    <div class="border border-emerald-300 bg-emerald-50 rounded p-2">
-      <strong class="text-emerald-800">Configurazione OK</strong>
+    <div class="card px-4 py-2.5 border-l-[3px] border-l-emerald-500">
+      <span class="eyebrow text-emerald-700">Configurazione OK</span>
     </div>
   {/if}
 

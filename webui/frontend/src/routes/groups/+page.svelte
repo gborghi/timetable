@@ -1,5 +1,5 @@
 <script>
-  import DecorIcon from '$lib/components/DecorIcon.svelte';
+  import PageHero from '$lib/components/PageHero.svelte';
   import { confirmDialog } from '$lib/confirm';
   import { onMount } from 'svelte';
   import { api } from '$lib/api';
@@ -149,18 +149,14 @@
 </script>
 
 <div class="space-y-4" data-testid="groups-page">
-  <div class="flex items-baseline gap-3 flex-wrap">
-    <h1 class="flex items-center gap-2"><DecorIcon name="group" size={26} class="shrink-0" /> Gruppi articolati</h1>
-    <button class="btn-primary ml-auto" on:click={newGroup}
-            data-testid="add-group-btn">+ Nuovo gruppo</button>
-    <ImportButton entity="groups" onDone={() => listRef?.reload()}/>
-  </div>
-
-  <p class="text-xs text-ink-500">
-    Un gruppo articolato raggruppa studenti (anche da classi diverse) che
-    fanno una o piu' materie insieme: seconda lingua, IRC vs Alternativa,
-    recupero/potenziamento, classe frazionata, ecc.
-  </p>
+  <PageHero title="Gruppi articolati"
+            description="Un gruppo articolato raggruppa studenti (anche da classi diverse) che fanno una o piu' materie insieme: seconda lingua, IRC vs Alternativa, recupero/potenziamento, classe frazionata, ecc.">
+    <svelte:fragment slot="actions">
+      <button class="btn-primary" on:click={newGroup}
+              data-testid="add-group-btn">+ Nuovo gruppo</button>
+      <ImportButton entity="groups" onDone={() => listRef?.reload()}/>
+    </svelte:fragment>
+  </PageHero>
 
   <SortableQueryableList
     bind:this={listRef}

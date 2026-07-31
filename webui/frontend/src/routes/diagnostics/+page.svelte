@@ -1,5 +1,5 @@
 <script>
-  import DecorIcon from '$lib/components/DecorIcon.svelte';
+  import PageHero from '$lib/components/PageHero.svelte';
   import { confirmDialog } from '$lib/confirm';
   /**
    * /diagnostics tab.
@@ -413,15 +413,16 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
 </script>
 
 <div class="space-y-6">
-  <h1 class="flex items-center gap-2"><DecorIcon name="magnifier" size={26} class="shrink-0" /> Statistiche e diagnostica</h1>
-  <p class="text-sm text-ink-500 max-w-3xl">
-    Le analisi pesanti (Monte Carlo, bipartito, correlazioni,
-    distribuzioni) vengono lanciate come <strong>run asincroni</strong>:
-    compaiono nel tab <a href="/runs" class="text-accent-500 hover:underline">Runs</a>
-    e il risultato torna qui sotto quando completato. Il pre-check
-    Hall resta sincrono (&lt;100ms) per essere usato come
-    "verde/rosso" prima di lanciare Phase A.
-  </p>
+  <PageHero title="Statistiche e diagnostica">
+    <p class="mt-2 max-w-[720px] text-[13px] leading-[1.55] text-ink-500">
+      Le analisi pesanti (Monte Carlo, bipartito, correlazioni,
+      distribuzioni) vengono lanciate come <strong>run asincroni</strong>:
+      compaiono nel tab <a href="/runs" class="text-accent-500 hover:underline">Runs</a>
+      e il risultato torna qui sotto quando completato. Il pre-check
+      Hall resta sincrono (&lt;100ms) per essere usato come
+      "verde/rosso" prima di lanciare Phase A.
+    </p>
+  </PageHero>
 
   <!-- 1) Hall (async run, like the others) -->
   <section class="card p-4 space-y-2">

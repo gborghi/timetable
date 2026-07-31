@@ -22,7 +22,15 @@
  *
  * Both checks rely on stable `data-testid` attributes added in the
  * dashboard card + DbImportExportCard.
+ *
+ * Since the redesign the dashboard is a stack of <Panel> accordions:
+ * "Carica o genera una scuola" nasce aperto, gli altri (backup,
+ * travaso, grafo, zona pericolosa) sono chiusi e il loro contenuto
+ * non e' nel DOM finche' non li si apre -- da qui le expandPanel().
  */
+
+import { expandPanel } from '../support/panels';
+import { dismissConfirm } from '../support/confirm';
 
 const BACKEND = (Cypress.env('backendUrl') as string)
   || 'http://127.0.0.1:8000';
@@ -33,9 +41,11 @@ describe('Dashboard smoke', () => {
     cy.get('[data-testid="navbar"]').should('exist');
     cy.contains(/Dashboard/i).should('exist');
     // Both halves of section 2 (the cards) must be present.
+    expandPanel('carica-scuola');
     cy.get('[data-testid="dashboard-import-card"]').should('exist');
     cy.get('[data-testid="dashboard-mock-card"]').should('exist');
     // Import/Export card too (the snapshot management one).
+    expandPanel('backup-db');
     cy.get('[data-testid="db-import-export-card"]').should('exist');
   });
 
@@ -45,6 +55,7 @@ describe('Dashboard smoke', () => {
       .as('availableProfiles');
     cy.visit('/');
     cy.wait('@availableProfiles').its('response.statusCode').should('eq', 200);
+    expandPanel('carica-scuola');
 
     cy.get('[data-testid="dashboard-import-card"]').within(() => {
       cy.get('body, [data-testid="dashboard-no-profiles"], '
@@ -81,6 +92,7 @@ describe('Dashboard smoke', () => {
 
   it('mock generator dropdown is independent from import dropdown', () => {
     cy.visit('/');
+    expandPanel('carica-scuola');
     cy.get('[data-testid="dashboard-mock-profile-select"]')
       .should('exist')
       .find('option')
@@ -120,6 +132,7 @@ describe('Dashboard smoke', () => {
       }
       cy.visit('/');
       cy.intercept('GET', '**/api/dashboard/snapshot/list').as('snapList');
+      expandPanel('backup-db');
       cy.get('[data-testid="snapshot-reload-btn"]').click();
       cy.wait('@snapList').its('response.statusCode').should('eq', 200);
       cy.get('[data-testid="snapshot-table"]', { timeout: 10000 })
@@ -131,8 +144,10 @@ describe('Dashboard smoke', () => {
   it('Reset DB button is wired (does not throw on click; we cancel '
      + 'the confirm)', () => {
     cy.visit('/');
-    // Cancel the native confirm so the test is non-destructive.
-    cy.on('window:confirm', () => false);
+    expandPanel('zona-pericolosa');
     cy.contains('button', /Reset DB/i).should('be.visible').click();
+    // Il Reset passa da ConfirmDialog (non window.confirm): annullare
+    // dal dialog e' cio' che rende il test non distruttivo.
+    dismissConfirm();
   });
 });

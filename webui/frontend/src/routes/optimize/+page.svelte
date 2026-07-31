@@ -1,5 +1,6 @@
 <script>
-  import DecorIcon from '$lib/components/DecorIcon.svelte';
+  import PageHero from '$lib/components/PageHero.svelte';
+  import Panel from '$lib/components/Panel.svelte';
   import { onMount } from 'svelte';
   import { api } from '$lib/api';
   import { humanMetricsLine } from '$lib/metrics_labels';
@@ -285,42 +286,54 @@
   };
 </script>
 
-<div class="space-y-6" data-testid="optimize-page">
-  <h1 class="flex items-center gap-2"><DecorIcon name="gears" size={26} class="shrink-0" /> Workflow di ottimizzazione</h1>
+<div data-testid="optimize-page">
+  <PageHero title="Genera e rifinisci"
+            description="Il solver lavora in due fasi: prima assegna le cattedre ai docenti, poi colloca le lezioni nella settimana. Le metaeuristiche rifiniscono il risultato, l'ultimo passo assegna le aule. Il percorso consigliato fa tutto da solo."/>
+
+  <div class="space-y-4">
 
   <!-- Primary path for the non-technical user: one click, sane defaults. -->
-  <section class="card p-5 border-2 border-accent-300 bg-accent-50/40"
+  <section class="card p-5 border-l-[3px] border-l-gold"
            data-testid="optimize-recommended">
-    <div class="flex flex-wrap items-center justify-between gap-3">
-      <div>
-        <h2 class="!mb-1">Genera l'orario</h2>
-        <p class="text-sm text-ink-500 max-w-2xl">
+    <div class="flex flex-wrap items-center justify-between gap-4">
+      <div class="min-w-[280px] flex-1">
+        <div class="flex items-center gap-2">
+          <h2 class="!mb-0">Genera l'orario</h2>
+          <span class="pill-amber">consigliato</span>
+        </div>
+        <p class="text-[12.5px] text-ink-500 max-w-[68ch] mt-1.5">
           Per la maggior parte delle scuole basta questo: lancia la
           pipeline consigliata sulla scuola attiva
           {#if activeProfile}(<code>{activeProfile}</code>){/if}
           con impostazioni predefinite. Il progresso appare qui sotto.
         </p>
+        <div class="flex flex-wrap items-center gap-1.5 mt-3">
+          {#each ['Fase A · cattedre', 'Fase B · CP-SAT', 'ALNS / VNS', 'Aule'] as f, i}
+            {#if i > 0}
+              <span class="text-ink-300 text-[11px]" aria-hidden="true">→</span>
+            {/if}
+            <span class="pill">{f}</span>
+          {/each}
+          <span class="num text-[10.5px] text-ink-300 ml-1">~4 min</span>
+        </div>
       </div>
-      <button class="btn-primary !text-base !px-5 !py-2.5"
+      <button class="btn-primary !text-[13.5px] !px-5 !py-2.5"
               on:click={launchRecommended}
               data-testid="optimize-run-recommended">
-        Genera orario (consigliato)
+        Genera orario
       </button>
     </div>
   </section>
 
-  <p class="text-sm text-ink-500 max-w-3xl">
-    <strong>Opzioni avanzate.</strong> Le schede qui sotto servono solo
-    per casi particolari: ogni step puo essere lanciato singolarmente o
-    in catena, e tra uno step e l'altro puoi tornare alle pagine CRUD per
-    modificare a mano vincoli, cattedre e singole lezioni. Il log live
-    arriva via SSE dal backend.
+  <Panel id="optimize-advanced"
+         title="Modalità avanzata"
+         subtitle="step singoli e parametri del solver">
+  <p class="text-[12.5px] text-ink-500 max-w-[76ch] mb-3">
+    Le schede qui sotto servono solo per casi particolari: ogni step puo
+    essere lanciato singolarmente o in catena, e tra uno step e l'altro
+    puoi tornare alle pagine CRUD per modificare a mano vincoli, cattedre
+    e singole lezioni. Il log live arriva via SSE dal backend.
   </p>
-
-  <details class="mt-1" data-testid="optimize-advanced">
-    <summary class="cursor-pointer select-none text-sm font-medium text-ink-600 hover:text-ink-800 py-1">
-      Modalità avanzata — step singoli e parametri del solver
-    </summary>
   <!-- CSS columns layout: cards still take half-width on lg+ but
        each one keeps its NATURAL height instead of being stretched
        to match its row sibling. The browser packs cards vertically
@@ -560,10 +573,6 @@
       </p>
     </div>
 
-    <!-- Step 4-bis: advanced techniques -->
-    <AdvancedTechniquesCard
-      onRunStarted={(rid) => { runId = rid; reloadRuns(); }}/>
-
     <!-- Step rooms -->
     <div class="card p-5">
       <h2 class="mb-3">8) Assegna aule</h2>
@@ -794,7 +803,14 @@
       <button class="btn-primary mt-3" on:click={launchFull}>Avvia pipeline completa</button>
     </div>
   </div>
-  </details>
+  </Panel>
+
+  <Panel id="optimize-tecniche"
+         title="Tecniche avanzate"
+         subtitle="Hall, ALNS, VNS, Lagrangian, Column Generation">
+    <AdvancedTechniquesCard
+      onRunStarted={(rid) => { runId = rid; reloadRuns(); }}/>
+  </Panel>
 
   {#if runId}
     <RunLogPanel {runId} title="Run #{runId}" onEnd={onEnd}/>
@@ -802,7 +818,10 @@
 
   <section class="card p-5">
     <div class="flex items-baseline justify-between mb-3">
-      <h2>Cronologia run</h2>
+      <div>
+        <span class="eyebrow">Storico</span>
+        <h2 class="!mb-0 mt-0.5">Cronologia run</h2>
+      </div>
       <button class="btn !text-xs !px-2 !py-1" on:click={reloadRuns}>Refresh</button>
     </div>
     <div class="overflow-x-auto">
@@ -840,4 +859,5 @@
       </table>
     </div>
   </section>
+  </div>
 </div>

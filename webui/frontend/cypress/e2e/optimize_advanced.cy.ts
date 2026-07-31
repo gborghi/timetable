@@ -17,7 +17,13 @@
  * The existing optimize_dropdowns.cy.ts and optimize_phase_b_dropdowns.cy.ts
  * cover Step 1 / Step 3 dropdowns; this spec is dedicated to the
  * advanced techniques card which has its own state.
+ *
+ * Since the redesign the card lives inside the "Tecniche avanzate"
+ * <Panel>, which keeps its content out of the DOM while collapsed --
+ * hence the expandPanel() in beforeEach.
  */
+
+import { expandPanel } from '../support/panels';
 
 describe('Tab Optimize advanced techniques', () => {
   beforeEach(() => {
@@ -32,6 +38,7 @@ describe('Tab Optimize advanced techniques', () => {
                  { statusCode: 409, body: {} });
 
     cy.visit('/optimize');
+    expandPanel('optimize-tecniche');
     cy.get('[data-testid="advanced-techniques-card"]', { timeout: 15000 })
       .should('exist').scrollIntoView();
   });
@@ -240,8 +247,12 @@ describe('Tab Optimize advanced techniques', () => {
         statusCode: 500, body: { detail: 'mock failure' },
       });
       cy.get('[data-testid="adv-vns-run"]').click();
-      cy.contains(/Errore.*mock failure|Errore/i,
-                  { timeout: 5000 }).should('be.visible');
+      // Scoped to the live region: a bare cy.contains(/Errore/i) would
+      // resolve to Toast's `sr-only` prefix span, which is invisible by
+      // design and can never satisfy `be.visible`.
+      cy.get('[role="status"]', { timeout: 5000 })
+        .should('be.visible')
+        .and('contain.text', 'Errore: mock failure');
       // Card still mounted, button re-enabled.
       cy.get('[data-testid="adv-vns-run"]').should('not.be.disabled');
     });

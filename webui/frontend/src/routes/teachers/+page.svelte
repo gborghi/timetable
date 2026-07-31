@@ -1,9 +1,9 @@
 <script>
   import { api } from '$lib/api';
   import { confirmDialog } from '$lib/confirm';
-  import DecorIcon from '$lib/components/DecorIcon.svelte';
+  import PageHero from '$lib/components/PageHero.svelte';
   import { flash, refreshDataset } from '$lib/stores';
-  import { DAY_NAMES_EN, DAY_NAMES_EN_TO_IT, TEACHER_DEFAULTS } from '$lib/constants';
+  import { DAYS, HOURS, DAY_NAMES_IT, DAY_NAMES_EN, DAY_NAMES_EN_TO_IT, TEACHER_DEFAULTS } from '$lib/constants';
   import { teachers } from '$lib/services';
   import {
     subjectsQuery, classroomsQuery, classesQuery, curriculaQuery
@@ -133,6 +133,8 @@
       graduatoria_score: null,
       free_day: TEACHER_DEFAULTS.free_day,
       max_consecutive: TEACHER_DEFAULTS.max_consecutive,
+      compresenza: TEACHER_DEFAULTS.compresenza,
+      compresenza_hours: [],
       notes: '',
       pref_no_buchi_weight: TEACHER_DEFAULTS.pref_no_buchi_weight,
       pref_no_five_weight: TEACHER_DEFAULTS.pref_no_five_weight,
@@ -374,6 +376,22 @@
     syncFreeDayFromMatrix();
   }
 
+  function hasCompresenzaHour(d, h) {
+    return (editing?.compresenza_hours || []).some(
+      (c) => c.day === d && c.hour === h
+    );
+  }
+
+  // La griglia resta compilata anche in modo 'mai'/'sempre': passare
+  // avanti e indietro fra i modi non deve far perdere il lavoro fatto.
+  function toggleCompresenzaHour(d, h) {
+    const cells = editing.compresenza_hours || [];
+    const next = hasCompresenzaHour(d, h)
+      ? cells.filter((c) => !(c.day === d && c.hour === h))
+      : [...cells, { day: d, hour: h }];
+    editing = { ...editing, compresenza_hours: next };
+  }
+
   const columns = [
     { key: 'last_name', label: 'Cognome' },
     { key: 'first_name', label: 'Nome' },
@@ -406,22 +424,24 @@
 </script>
 
 <div class="space-y-4" data-testid="teachers-page">
-  <div class="flex items-baseline gap-3 flex-wrap">
-    <h1 class="flex items-center gap-2"><DecorIcon name="teacher" size={26} class="shrink-0" /> Docenti</h1>
-    <button class="btn-primary ml-auto" on:click={newTeacher}
-            data-testid="add-teacher-btn">+ Nuovo docente</button>
-    <ImportButton entity="teachers" onDone={() => listRef?.reload()}/>
-    <button class="btn !text-xs" on:click={() => (showBulk = true)}
-            disabled={selectedIds.length === 0}
-            title="Applica un vincolo a tutti i docenti selezionati">
-      Vincolo collettivo ({selectedIds.length})
-    </button>
-    <button class="btn-danger !text-xs" on:click={bulkDel}
-            disabled={selectedIds.length === 0 || bulkDeleting}
-            title="Elimina tutti i docenti selezionati (con UNDO)">
-      {bulkDeleting ? 'Eliminazione...' : `Elimina selezionati (${selectedIds.length})`}
-    </button>
-  </div>
+  <PageHero title="Docenti"
+            description="Anagrafica dei docenti con ore di cattedra, materie insegnabili, giorni liberi e disponibilita' settimanale. Da qui si aprono le matrici di disponibilita' che il solver usa come vincoli.">
+    <svelte:fragment slot="actions">
+      <button class="btn-primary" on:click={newTeacher}
+              data-testid="add-teacher-btn">+ Nuovo docente</button>
+      <ImportButton entity="teachers" onDone={() => listRef?.reload()}/>
+      <button class="btn !text-xs" on:click={() => (showBulk = true)}
+              disabled={selectedIds.length === 0}
+              title="Applica un vincolo a tutti i docenti selezionati">
+        Vincolo collettivo ({selectedIds.length})
+      </button>
+      <button class="btn-danger !text-xs" on:click={bulkDel}
+              disabled={selectedIds.length === 0 || bulkDeleting}
+              title="Elimina tutti i docenti selezionati (con UNDO)">
+        {bulkDeleting ? 'Eliminazione...' : `Elimina selezionati (${selectedIds.length})`}
+      </button>
+    </svelte:fragment>
+  </PageHero>
 
   <SortableQueryableList
     bind:this={listRef}
@@ -505,6 +525,46 @@
         </select>
       </div>
       <div class="field"><label>Max ore consecutive</label><input type="number" bind:value={editing.max_consecutive}/></div>
+      <div class="field col-span-2">
+        <label title="Se il docente può affiancare un collega nella STESSA aula invece di prenotarne una propria. Vale per compresenze di qualunque natura: sostegno, potenziamento, codocenza, madrelingua, ITP.">Compresenza (condivide l'aula)</label>
+        <select bind:value={editing.compresenza}>
+          <option value="mai">Mai — prenota sempre un'aula propria</option>
+          <option value="sempre">Sempre — segue il collega (tipico: sostegno)</option>
+          <option value="oraria">Solo in certe ore — scegli sotto</option>
+        </select>
+        {#if editing.compresenza === 'oraria'}
+          <div class="mt-2 overflow-x-auto">
+            <table class="text-xs border-collapse">
+              <thead>
+                <tr>
+                  <th class="p-1"></th>
+                  {#each HOURS as h}<th class="p-1 font-normal text-ink-500">{h}:00</th>{/each}
+                </tr>
+              </thead>
+              <tbody>
+                {#each DAYS as d}
+                  <tr>
+                    <th class="p-1 font-normal text-ink-500 text-right">{DAY_NAMES_IT[d]}</th>
+                    {#each HOURS as h}
+                      <td class="p-0.5">
+                        <button type="button"
+                                class="w-8 h-6 rounded border {hasCompresenzaHour(d, h) ? 'bg-emerald-500 border-emerald-600' : 'bg-surface-100 border-ink-200'}"
+                                aria-pressed={hasCompresenzaHour(d, h)}
+                                aria-label="{DAY_NAMES_IT[d]} {h}:00"
+                                on:click={() => toggleCompresenzaHour(d, h)}></button>
+                      </td>
+                    {/each}
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+            <p class="text-xs text-ink-500 mt-1">
+              Verde = in quest'ora il docente può stare in compresenza.
+              Nelle altre ore prenota un'aula propria.
+            </p>
+          </div>
+        {/if}
+      </div>
       <div class="field col-span-2">
         <label>Materie insegnate</label>
         <select multiple class="h-32" bind:value={editing.subjects}>

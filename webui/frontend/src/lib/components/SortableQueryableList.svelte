@@ -352,17 +352,20 @@
 </script>
 
 <div class="space-y-3">
-  <div class="card p-3 flex flex-wrap gap-2 items-end">
+  <div class="card px-3.5 py-2.5 flex flex-wrap gap-2 items-end">
     <div class="flex-1 min-w-64">
-      <label class="text-xs text-ink-500">Query</label>
-      <input class="w-full px-2 py-1.5 rounded-md border border-ink-200 font-mono text-sm"
+      <label class="eyebrow mb-1 block" for="sql-query">Query DSL</label>
+      <input id="sql-query"
+             class="w-full px-2.5 py-1.5 rounded-lg border border-ink-200
+                    font-mono text-[12.5px] focus:outline-none focus:ring-2
+                    focus:ring-accent-500/25 focus:border-accent-500"
              placeholder="es. group=A026 AND max_hours>=18"
              bind:value={q}
              on:keydown={(e) => { if (e.key === 'Enter') applyQuery(); }}/>
     </div>
-    <button class="btn" on:click={applyQuery} disabled={busy}>{busy ? '...' : 'Cerca'}</button>
+    <button class="btn-primary" on:click={applyQuery} disabled={busy}>{busy ? '...' : 'Cerca'}</button>
     <button class="btn !text-xs" on:click={() => (showHelp = !showHelp)}>?  guida</button>
-    <span class="border-l border-ink-200 h-6 mx-1"></span>
+    <span class="border-l border-ink-200 h-5 mx-1" aria-hidden="true"></span>
     <button class="btn !text-xs" on:click={resetQuery}
             disabled={!q}
             title="Svuota la barra di ricerca, mostra tutti i risultati">
@@ -374,7 +377,7 @@
       Reset sort
     </button>
     {#if entity}
-      <span class="border-l border-ink-200 h-6 mx-1"></span>
+      <span class="border-l border-ink-200 h-5 mx-1" aria-hidden="true"></span>
       <select class="btn !text-xs !pr-2"
               title="Carica una vista salvata (query + sort)"
               bind:value={selectedViewId}
@@ -395,7 +398,7 @@
         x
       </button>
     {/if}
-    <span class="border-l border-ink-200 h-6 mx-1"></span>
+    <span class="border-l border-ink-200 h-5 mx-1" aria-hidden="true"></span>
     <button class="btn !text-xs" on:click={() => downloadExport('xlsx', false)}
             disabled={exporting || rows.length === 0}
             title="Esporta la vista corrente (query + sort) come xlsx">
@@ -412,7 +415,7 @@
       tutto
     </button>
     {#if selectable}
-      <span class="border-l border-ink-200 h-6 mx-1"></span>
+      <span class="border-l border-ink-200 h-5 mx-1" aria-hidden="true"></span>
       <button class="btn !text-xs" on:click={selectAllVisible}
               title="Seleziona tutte le righe attualmente visibili">
         Seleziona tutto
@@ -425,7 +428,7 @@
         <span class="pill pill-blue">{selectedIds.length} selezionati</span>
       {/if}
     {/if}
-    <span class="text-xs text-ink-500 ml-auto">
+    <span class="ml-auto font-mono text-[11px] tabular-nums text-ink-300">
       {#if busy}
         <span class="inline-flex items-center gap-1">
           <span class="inline-block w-2 h-2 bg-accent-500 rounded-full animate-pulse"
@@ -436,8 +439,8 @@
       {:else if total != null}
         {total} risultati
         {#if pageSize !== 'all'}
-          - mostrati {Math.min(rows.length, pageSizeNum)}
-          (pag {currentPage}/{numPages})
+          · mostrati {Math.min(rows.length, pageSizeNum)}
+          · pag {currentPage}/{numPages}
         {/if}
       {:else}
         {rows.length} risultati
@@ -449,15 +452,15 @@
        'all' and the endpoint returned the total). The user can
        switch page size without losing query/sort. -->
   {#if total != null && pageSize !== 'all'}
-    <div class="card p-2 text-xs flex flex-wrap items-center gap-2">
-      <span class="text-ink-500">Pagina</span>
+    <div class="card px-3.5 py-2 text-[11.5px] flex flex-wrap items-center gap-2">
+      <span class="eyebrow">Pagina</span>
       <button class="btn !text-xs !px-2 !py-0.5"
               on:click={() => gotoPage(0)}
               disabled={offset === 0 || busy}>{'|<'}</button>
       <button class="btn !text-xs !px-2 !py-0.5"
               on:click={() => gotoPage(offset - pageSizeNum)}
               disabled={offset === 0 || busy}>{'<'} prec</button>
-      <span class="px-2">{currentPage} / {numPages}</span>
+      <span class="px-2 font-mono tabular-nums">{currentPage} / {numPages}</span>
       <button class="btn !text-xs !px-2 !py-0.5"
               on:click={() => gotoPage(offset + pageSizeNum)}
               disabled={currentPage >= numPages || busy}>succ {'>'}</button>
@@ -466,7 +469,7 @@
               disabled={currentPage >= numPages || busy}>{'>|'}</button>
       <span class="ml-auto flex items-center gap-1">
         <span class="text-ink-500">Per pagina:</span>
-        <select class="px-1 py-0.5 border border-ink-200 rounded"
+        <select class="px-1.5 py-0.5 border border-ink-200 rounded-md bg-white"
                 value={pageSize}
                 on:change={(e) => changePageSize(
                   e.currentTarget.value === 'all' ? 'all'
@@ -481,13 +484,13 @@
   {:else if total == null && pageSize !== 'all' && rows.length > 0}
     <!-- Endpoint doesn't paginate; expose a switcher so the user
          can opt into "all" or smaller views via DSL filtering -->
-    <div class="card p-2 text-xs flex items-center gap-2">
+    <div class="card px-3.5 py-2 text-[11.5px] flex items-center gap-2">
       <span class="text-ink-500">
         Endpoint senza paginazione (tutto in una pagina).
       </span>
       <span class="ml-auto flex items-center gap-1">
         <span class="text-ink-500">Per pagina:</span>
-        <select class="px-1 py-0.5 border border-ink-200 rounded"
+        <select class="px-1.5 py-0.5 border border-ink-200 rounded-md bg-white"
                 value={pageSize}
                 on:change={(e) => changePageSize(
                   e.currentTarget.value === 'all' ? 'all'
@@ -502,21 +505,21 @@
   {/if}
 
   {#if sortLevels.length > 0}
-    <div class="card p-2 text-xs flex flex-wrap items-center gap-2 bg-accent-500/5 border-accent-500/30">
-      <span class="text-ink-500">Sort attivo:</span>
+    <div class="card px-3.5 py-2 flex flex-wrap items-center gap-2 bg-paper-band">
+      <span class="eyebrow">Ordinamento</span>
       {#each sortLevels as l, i}
-        <span class="pill pill-blue">
+        <span class="pill-blue font-mono">
           {i + 1}. {l.column} {l.direction === 'asc' ? '▲' : '▼'}
         </span>
       {/each}
-      <span class="text-ink-400 italic ml-2">
+      <span class="ml-2 text-[11px] text-ink-300">
         doppio click sul nome di una colonna per aggiungere/rimuovere; click su ▲/▼ per invertire
       </span>
     </div>
   {/if}
 
   {#if showHelp}
-    <div class="card p-3 text-xs space-y-2 bg-ink-50">
+    <div class="card p-3.5 text-[11.5px] space-y-2 bg-paper-band">
       <div>
         <strong>Operatori:</strong>
         <code>= != &lt; &lt;= &gt; &gt;= contains startswith endswith in [...]</code>
@@ -566,7 +569,7 @@
             <th>
               {#if col.sortable !== false && col.key}
                 <span class="inline-flex items-center gap-1">
-                  <button class="hover:text-accent-500 select-none"
+                  <button class="hover:text-ink-900 select-none"
                           title="Doppio click per aggiungere/rimuovere dal sort"
                           on:dblclick={() => onLabelDblClick(col.key)}>
                     {col.label}
@@ -579,7 +582,7 @@
                     </button>
                     {#if sortLevels.length > 1}
                       <span class="text-[9px] bg-accent-500 text-white rounded-full
-                                   w-4 h-4 inline-flex items-center justify-center"
+                                   w-4 h-4 inline-flex items-center justify-center font-mono"
                             title="Livello di sort">
                         {idx + 1}
                       </span>
@@ -600,7 +603,7 @@
           {#each Array(6) as _, i}
             <tr aria-hidden="true">
               <td colspan={colSpan} class="px-2 py-3">
-                <div class="h-4 bg-ink-100 rounded animate-pulse"
+                <div class="h-3.5 bg-ink-100 rounded animate-pulse"
                      style="width: {Math.max(40, 100 - (i * 7))}%"></div>
               </td>
             </tr>
@@ -624,7 +627,7 @@
           {#if selectable}
             <tr class:bg-accent-500={false}
                 class:!bg-accent-500={false}
-                style={isSelected(row) ? 'background-color: rgba(59,130,246,0.10);' : ''}
+                style={isSelected(row) ? 'background-color: rgba(30,58,95,0.07);' : ''}
                 data-testid="entity-row"
                 data-entity={entity}
                 data-row-id={rowKey(row)}

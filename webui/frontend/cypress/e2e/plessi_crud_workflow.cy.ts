@@ -12,6 +12,7 @@
  */
 
 import { clearDataset } from '../support/seed';
+import { acceptConfirm } from '../support/confirm';
 
 const BACKEND = (Cypress.env('backendUrl') as string)
   || 'http://127.0.0.1:8000';
@@ -88,11 +89,12 @@ describe('Tab Plessi CRUD workflow (UI-only)', () => {
     cy.contains(code, { timeout: 15000 }).should('be.visible');
 
     cy.intercept('DELETE', '**/api/plessi/*').as('deletePlesso');
-    cy.on('window:confirm', () => true);
 
     cy.contains('tr', code)
       .find('[data-testid="plesso-delete-btn"]')
       .click();
+    // Elimina apre ConfirmDialog, non window.confirm.
+    acceptConfirm();
 
     cy.wait('@deletePlesso').its('response.statusCode')
       .should('be.oneOf', [200, 204]);

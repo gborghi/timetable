@@ -24,6 +24,7 @@
  */
 
 import { seedMiniScenario } from '../support/seed';
+import { acceptConfirm } from '../support/confirm';
 
 const BACKEND = (Cypress.env('backendUrl') as string)
   || 'http://127.0.0.1:8000';
@@ -189,11 +190,12 @@ describe('Tab Compresenze CRUD workflow', () => {
     cy.wait('@listCoteaching');
 
     cy.intercept('DELETE', '**/api/coteaching/*').as('deleteRule');
-    cy.on('window:confirm', () => true);
 
     cy.get('[data-testid="coteaching-row"]'
       + '[data-class="3A"][data-subject="Storia"]')
       .find('[data-testid="coteaching-delete-btn"]').click();
+    // Elimina apre ConfirmDialog, non window.confirm.
+    acceptConfirm();
 
     cy.wait('@deleteRule').its('response.statusCode')
       .should('be.oneOf', [200, 204]);
@@ -211,13 +213,17 @@ describe('Tab Compresenze CRUD workflow', () => {
     cy.get('[data-testid="coteaching-teacher-input"]')
       .should('have.length', 2);
 
+    // {selectall} e non .clear(): il campo e' controllato
+    // (value={editing.n_teachers}, non bind:value), quindi svuotarlo
+    // fa scrivere subito "0" nel DOM col caret a inizio riga -- il "3"
+    // successivo diventerebbe "30" e la lista crescerebbe a 30 input.
     cy.get('[data-testid="coteaching-nteachers-input"]')
-      .clear().type('3');
+      .type('{selectall}3');
     cy.get('[data-testid="coteaching-teacher-input"]')
       .should('have.length', 3);
 
     cy.get('[data-testid="coteaching-nteachers-input"]')
-      .clear().type('2');
+      .type('{selectall}2');
     cy.get('[data-testid="coteaching-teacher-input"]')
       .should('have.length', 2);
 

@@ -1,5 +1,5 @@
 <script>
-  import DecorIcon from '$lib/components/DecorIcon.svelte';
+  import PageHero from '$lib/components/PageHero.svelte';
   import { confirmDialog } from '$lib/confirm';
   import { onMount } from 'svelte';
   import { api } from '$lib/api';
@@ -205,12 +205,14 @@
 </script>
 
 <div class="space-y-4" data-testid="curricula-page">
-  <div class="flex items-baseline gap-3 flex-wrap">
-    <h1 class="flex items-center gap-2"><DecorIcon name="globe" size={26} class="shrink-0" /> Indirizzi di studio</h1>
-    <button class="btn-primary ml-auto" on:click={newCurriculum}
-            data-testid="add-curriculum-btn">+ Nuovo indirizzo</button>
-    <ImportButton entity="curricula" onDone={() => listRef?.reload()}/>
-  </div>
+  <PageHero title="Indirizzi di studio"
+            description="Ogni indirizzo porta con se' il quadro orario per anno: e' da qui che le classi ereditano il monte ore di ciascuna materia.">
+    <svelte:fragment slot="actions">
+      <button class="btn-primary" on:click={newCurriculum}
+              data-testid="add-curriculum-btn">+ Nuovo indirizzo</button>
+      <ImportButton entity="curricula" onDone={() => listRef?.reload()}/>
+    </svelte:fragment>
+  </PageHero>
 
   <SortableQueryableList
     bind:this={listRef}

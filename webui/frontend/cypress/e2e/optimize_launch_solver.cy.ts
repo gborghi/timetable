@@ -22,6 +22,7 @@
 
 import { seedSmallProfileAndRunPhaseA, waitForRun } from
   '../support/seed';
+import { expandPanel } from '../support/panels';
 
 const BACKEND = (Cypress.env('backendUrl') as string)
   || 'http://127.0.0.1:8000';
@@ -38,6 +39,9 @@ describe('/optimize launches Phase B from the UI', () => {
      },
      () => {
        cy.visit('/optimize');
+       // Phase B lives in the "Modalita' avanzata" accordion, whose
+       // content is out of the DOM until the panel is opened.
+       expandPanel('optimize-advanced');
        // Watch POST /api/optimize/phase-b so we can grab the run_id.
        cy.intercept('POST', '**/api/optimize/phase-b').as('launchB');
        // Click the "Avvia Phase B" button (the page in step 3 has

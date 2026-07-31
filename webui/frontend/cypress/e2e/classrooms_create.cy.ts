@@ -32,15 +32,17 @@ beforeEach(() => {
 describe('/classrooms CRUD', () => {
   it('creates a new room via the UI and lists it', () => {
     cy.visit('/classrooms');
-    // The page may render multiple elements containing "Nuova"
-    // (header text + button); narrow with the button class.
-    cy.get('button.btn-primary').contains(/Nuova aula/).click();
-    // Fill the modal: the first .field input is the room name,
-    // capacity is a number input.
-    cy.get('.field input').first().clear().type(TEST_ROOM_NAME);
-    cy.get('input[type="number"]').first().clear().type('28');
-    // The Save button is also btn-primary inside the modal.
-    cy.contains('button', /^Salva$/).click();
+    cy.get('[data-testid="add-classroom-btn"]').click();
+    // Sui testid e non su `.field input` / `input[type=number]`:
+    // se la lista contiene gia' delle aule, il primo number input
+    // della pagina e' la capienza inline di una riga (coperta dalla
+    // modale), non il campo della modale, e il test fallisce solo
+    // quando gira dopo altri spec che lasciano aule nel DB.
+    cy.get('[data-testid="classroom-name-input"]')
+      .clear().type(TEST_ROOM_NAME);
+    cy.get('[data-testid="classroom-capacity-input"]')
+      .clear().type('28');
+    cy.get('[data-testid="classroom-save-btn"]').click();
     cy.contains(TEST_ROOM_NAME).should('be.visible');
   });
 });

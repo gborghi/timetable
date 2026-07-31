@@ -32,6 +32,29 @@ export const LEVEL_LABEL: Record<ConstraintLevel, string> = {
   enforced: "ENFORCED",
 };
 
+/**
+ * Glossa di una riga per ciascun livello. Serve alla legenda sempre
+ * visibile nella fascia della pagina Vincoli: "HARD" da solo non dice
+ * niente a chi apre l'app per la prima volta.
+ */
+export const LEVEL_GLOSS: Record<ConstraintLevel, string> = {
+  hard: "obbligatorio",
+  soft: "penalizzato se violato",
+  preferred: "preferenza",
+  enforced: "imposto",
+  allowed: "consentito",
+  forbidden: "vietato",
+};
+
+/** I cinque livelli della legenda, nell'ordine in cui vanno letti. */
+export const LEGEND_LEVELS: readonly ConstraintLevel[] = [
+  "hard",
+  "soft",
+  "preferred",
+  "enforced",
+  "allowed",
+];
+
 export const LEVEL_PILL_CLASS: Record<ConstraintLevel, string> = {
   allowed: "pill-c-allowed",
   soft: "pill-c-soft",

@@ -1,5 +1,5 @@
 <script>
-  import DecorIcon from '$lib/components/DecorIcon.svelte';
+  import PageHero from '$lib/components/PageHero.svelte';
   import { confirmDialog } from '$lib/confirm';
   import { onMount } from 'svelte';
   import { api } from '$lib/api';
@@ -318,23 +318,29 @@
 </script>
 
 <div class="space-y-4" data-testid="assignments-page">
-  <div class="flex items-baseline gap-3 flex-wrap">
-    <h1 class="flex items-center gap-2"><DecorIcon name="pencil-ruler" size={26} class="shrink-0" /> Cattedre (assegnazione docenti -&gt; classi)</h1>
-    <span class="text-sm text-ink-500" data-testid="assignments-class-count">{Object.keys(byClass).length} classi</span>
-    {#if loadInfo}
-      <button class="btn ml-auto"
-              on:click={() => (showLoadPanel = !showLoadPanel)}
-              title="Mostra docenti con problemi di copertura"
-              data-testid="assignments-warnings-toggle">
-        {#if loadInfo.n_over + loadInfo.n_under > 0}
-          <span class="pill-amber !text-[10px] mr-1">
-            {loadInfo.n_over + loadInfo.n_under}
-          </span>
-        {/if}
-        {showLoadPanel ? 'Nascondi warnings' : 'Warnings cattedre'}
-      </button>
-    {/if}
-  </div>
+  <PageHero title="Cattedre"
+            description="L'esito della Fase A: chi insegna cosa e dove. Ogni riga e' un abbinamento docente-classe-materia, con le forme speciali (sostegno, potenziamento, compresenza, gruppi articolati).">
+    <svelte:fragment slot="chips">
+      <span class="pill" data-testid="assignments-class-count">
+        <span class="num">{Object.keys(byClass).length}</span> classi
+      </span>
+    </svelte:fragment>
+    <svelte:fragment slot="actions">
+      {#if loadInfo}
+        <button class="btn"
+                on:click={() => (showLoadPanel = !showLoadPanel)}
+                title="Mostra docenti con problemi di copertura"
+                data-testid="assignments-warnings-toggle">
+          {#if loadInfo.n_over + loadInfo.n_under > 0}
+            <span class="pill-amber !text-[10px] mr-1">
+              {loadInfo.n_over + loadInfo.n_under}
+            </span>
+          {/if}
+          {showLoadPanel ? 'Nascondi warnings' : 'Warnings cattedre'}
+        </button>
+      {/if}
+    </svelte:fragment>
+  </PageHero>
 
   {#if showLoadPanel && loadInfo}
     <div class="card p-3 border-amber-300 bg-amber-50/40 space-y-2" data-testid="assignments-load-panel">
@@ -505,8 +511,14 @@
                       title="Compresenza (lab/codocenza)" data-testid="assignments-row-coteach-pill">COTEACH</span>
                   {/if}
                   {#if row.is_support}
+                    <!-- Il sostegno è dell'alunno, non della classe:
+                         senza il nome la riga non dice a chi va. -->
                     <span class="pill-amber !text-[10px]"
-                      title="Sostegno (DVA)">SOST</span>
+                      title={row.student_name
+                        ? `Sostegno per ${row.student_name}`
+                        : 'Sostegno (DVA) — nessun alunno collegato'}>
+                      {row.student_name ? `SOST · ${row.student_name}` : 'SOST'}
+                    </span>
                   {/if}
                 </td>
                 <td data-testid="assignments-row-teacher">{row.teacher}</td>

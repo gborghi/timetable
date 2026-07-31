@@ -1,5 +1,5 @@
 <script>
-  import DecorIcon from '$lib/components/DecorIcon.svelte';
+  import PageHero from '$lib/components/PageHero.svelte';
   import { confirmDialog } from '$lib/confirm';
   /**
    * Tab Ore -- working days + per-day timetable slots.
@@ -211,51 +211,45 @@
 
 <svelte:head><title>Ore -- piTantum</title></svelte:head>
 
-<div class="max-w-[1300px] mx-auto p-6 space-y-6">
-  <header class="flex items-center justify-between gap-4">
-    <div>
-      <h1 class="text-2xl font-semibold flex items-center gap-2"><DecorIcon name="clock" size={28} class="shrink-0" /> Ore di lavoro</h1>
-      <p class="text-sm text-ink-600 max-w-2xl">
-        Definisci i giorni della settimana lavorativa e, per ciascun
-        giorno, le ore di lezione (con orario di inizio e fine). È il
-        primo passo: l'orario verrà costruito su questa griglia.
-      </p>
-      <details class="text-xs text-ink-500 max-w-2xl mt-1">
-        <summary class="cursor-pointer select-none">Dettagli tecnici</summary>
-        Gli slot sono indicizzati 0..N-1 (nel motore: <code>hour_idx</code>);
-        il motore usa <code>max_slots_per_day</code> come lunghezza comune
-        di <code>HOURS</code> e i giorni con meno slot lasciano gli indici
-        eccedenti inutilizzati.
-      </details>
-    </div>
-    <div class="flex items-center gap-3">
-      <div class="inline-flex border border-ink-300 rounded
-                  overflow-hidden text-sm" role="tablist"
+<div class="space-y-6">
+  <PageHero title="Ore di lavoro"
+            description="Definisci i giorni della settimana lavorativa e, per ciascun giorno, le ore di lezione (con orario di inizio e fine). È il primo passo: l'orario verrà costruito su questa griglia.">
+    <svelte:fragment slot="actions">
+      <div class="inline-flex border border-ink-200 rounded-md
+                  overflow-hidden text-[12.5px]" role="tablist"
            aria-label="Vista">
         <button type="button" role="tab"
                 aria-selected={view === 'calendar'}
                 class="px-3 py-1.5"
-                class:bg-sky-100={view === 'calendar'}
-                class:text-sky-900={view === 'calendar'}
+                class:bg-paper-band={view === 'calendar'}
+                class:text-ink={view === 'calendar'}
                 on:click={() => (view = 'calendar')}>
           Calendario
         </button>
         <button type="button" role="tab"
                 aria-selected={view === 'list'}
-                class="px-3 py-1.5 border-l border-ink-300"
-                class:bg-sky-100={view === 'list'}
-                class:text-sky-900={view === 'list'}
+                class="px-3 py-1.5 border-l border-ink-200"
+                class:bg-paper-band={view === 'list'}
+                class:text-ink={view === 'list'}
                 on:click={() => (view = 'list')}>
           Lista
         </button>
       </div>
-      <button class="btn btn-ghost" on:click={refresh}
+      <button class="btn" on:click={refresh}
               disabled={loading}>Ricarica</button>
-      <button class="btn btn-danger" on:click={resetAll}>
+      <button class="btn-danger" on:click={resetAll}>
         Reimposta default (lun-sab, 8-14)
       </button>
-    </div>
-  </header>
+    </svelte:fragment>
+
+    <details class="text-[11.5px] text-ink-400 max-w-[720px] mt-2">
+      <summary class="cursor-pointer select-none">Dettagli tecnici</summary>
+      Gli slot sono indicizzati 0..N-1 (nel motore: <code>hour_idx</code>);
+      il motore usa <code>max_slots_per_day</code> come lunghezza comune
+      di <code>HOURS</code> e i giorni con meno slot lasciano gli indici
+      eccedenti inutilizzati.
+    </details>
+  </PageHero>
 
   {#if error}
     <div class="bg-rose-50 border border-rose-200 text-rose-800
@@ -266,11 +260,11 @@
 
   {#if config}
     <section class="space-y-3">
-      <div class="bg-amber-50 border border-amber-200 text-amber-900
-                  rounded p-3 text-sm leading-relaxed">
-        <strong>Riepilogo:</strong>
-        {config.days.filter((d) => d.is_active).length} giorni
-        attivi, max {config.max_slots_per_day} ore/giorno,
+      <div class="card px-4 py-2.5 border-l-[3px] border-l-gold
+                  text-[12.5px] leading-relaxed text-ink-600">
+        <span class="eyebrow mr-2">Riepilogo</span>
+        <span class="num">{config.days.filter((d) => d.is_active).length}</span> giorni
+        attivi, max <span class="num">{config.max_slots_per_day}</span> ore/giorno,
         {config.uniform_slot_count
           ? 'numero di ore uguale in tutti i giorni.'
           : 'numero di ore variabile per giorno.'}
@@ -290,7 +284,7 @@
             </p>
           </div>
           <div class="flex items-center gap-2">
-            <button class="btn btn-ghost" type="button"
+            <button class="btn" type="button"
                     disabled={!anyCalDirty}
                     on:click={discardCalendarChanges}>
               Annulla modifiche

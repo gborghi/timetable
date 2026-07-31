@@ -39,7 +39,8 @@ describe('Minor-tabs smoke', () => {
 
 describe('/runs refresh button', () => {
   it('clicking refresh fires GET /api/runs', () => {
-    cy.intercept('GET', '**/api/runs**').as('runs');
+    // The page lists runs from /api/optimize/runs (not /api/runs).
+    cy.intercept('GET', '**/api/optimize/runs**').as('runs');
     cy.visit('/runs');
     cy.get('[data-testid="runs-page"]', { timeout: 15000 })
       .should('exist');

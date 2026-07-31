@@ -1,5 +1,5 @@
 <script>
-  import DecorIcon from '$lib/components/DecorIcon.svelte';
+  import PageHero from '$lib/components/PageHero.svelte';
   /**
    * Import bulk via xlsx/csv.
    *
@@ -93,9 +93,8 @@
 </script>
 
 <div class="space-y-5">
-  <div>
-    <h1 class="flex items-center gap-2"><DecorIcon name="agenda" size={26} class="shrink-0" /> Import bulk</h1>
-    <p class="text-sm text-ink-500 mt-1">
+  <PageHero title="Import bulk">
+    <p class="mt-2 max-w-[720px] text-[13px] leading-[1.55] text-ink-500">
       Carica file <code>.xlsx</code> / <code>.csv</code> per importare in
       blocco docenti, classi, aule, materie, studenti, indirizzi,
       gruppi. Se non hai un file di partenza scarica il template
@@ -103,7 +102,7 @@
       colonna, <strong>Esempi</strong> contiene una riga di esempio,
       <strong>Dati</strong> e' il foglio che l'importer legge.
     </p>
-  </div>
+  </PageHero>
 
   <div class="grid md:grid-cols-2 gap-5">
     <section class="card p-4 space-y-3">

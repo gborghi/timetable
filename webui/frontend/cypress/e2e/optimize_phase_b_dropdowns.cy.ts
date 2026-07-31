@@ -20,7 +20,18 @@
  *
  * The POST is stubbed so the run never starts. Network is captured
  * via cy.intercept so we can assert on the request body.
+ *
+ * Since the redesign the Phase B card sits inside the "Modalita'
+ * avanzata" <Panel>, whose content is not in the DOM while collapsed:
+ * `visitOptimize()` visits and opens it.
  */
+
+import { expandPanel } from '../support/panels';
+
+function visitOptimize() {
+  cy.visit('/optimize');
+  expandPanel('optimize-advanced');
+}
 
 describe('/optimize Phase B Phase-3 dropdowns', () => {
   beforeEach(() => {
@@ -41,7 +52,7 @@ describe('/optimize Phase B Phase-3 dropdowns', () => {
   });
 
   it('renders both dropdowns with the correct default options', () => {
-    cy.visit('/optimize');
+    visitOptimize();
     cy.contains('Scope del solver CP-SAT')
       .parent()
       .find('select')
@@ -54,7 +65,7 @@ describe('/optimize Phase B Phase-3 dropdowns', () => {
 
   it('default submit carries cp_sat_scope=day + phase_a_mode=always',
      () => {
-       cy.visit('/optimize');
+       visitOptimize();
        cy.contains('button', /Avvia Phase B/i).click();
        cy.wait('@launchB').then((interception) => {
          const body = interception.request.body as Record<string, any>;
@@ -66,7 +77,7 @@ describe('/optimize Phase B Phase-3 dropdowns', () => {
   it('switching to week coerces phase_a_mode to soft_hint and submits ' +
      'a valid combination',
      () => {
-       cy.visit('/optimize');
+       visitOptimize();
        cy.contains('Scope del solver CP-SAT')
          .parent()
          .find('select')
@@ -85,7 +96,7 @@ describe('/optimize Phase B Phase-3 dropdowns', () => {
      });
 
   it('user can pick skip in week mode', () => {
-    cy.visit('/optimize');
+    visitOptimize();
     cy.contains('Scope del solver CP-SAT')
       .parent()
       .find('select')

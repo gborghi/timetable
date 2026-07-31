@@ -6,6 +6,7 @@
  */
 
 import { clearDataset } from '../support/seed';
+import { acceptConfirm } from '../support/confirm';
 
 const BACKEND = (Cypress.env('backendUrl') as string)
   || 'http://127.0.0.1:8000';
@@ -85,11 +86,12 @@ describe('Tab Materie CRUD workflow (UI-only)', () => {
     cy.contains(name, { timeout: 15000 }).should('be.visible');
 
     cy.intercept('DELETE', '**/api/subjects/*').as('deleteSubject');
-    cy.on('window:confirm', () => true);
 
     cy.contains('tr', name)
       .find('[data-testid="subject-delete-btn"]')
       .click();
+    // Elimina apre ConfirmDialog, non window.confirm.
+    acceptConfirm();
     cy.wait('@deleteSubject').its('response.statusCode')
       .should('be.oneOf', [200, 204]);
     cy.contains(name).should('not.exist');

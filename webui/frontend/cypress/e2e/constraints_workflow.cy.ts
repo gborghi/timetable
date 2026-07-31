@@ -15,6 +15,7 @@
  */
 
 import { clearDataset } from '../support/seed';
+import { acceptConfirm } from '../support/confirm';
 
 const BACKEND = (Cypress.env('backendUrl') as string)
   || 'http://127.0.0.1:8000';
@@ -48,9 +49,29 @@ function seedDsl(expression: string, opts: {
   });
 }
 
+/**
+ * Wipe the GeneralConstraint (DSL) table. `clearDataset()` does not
+ * touch it -- constraints survive a dataset clear by design -- so
+ * without this the DSL rows seeded by one test keep piling up and the
+ * row-count assertions of the later ones drift.
+ */
+function clearDsl(): Cypress.Chainable {
+  return cy.request(`${BACKEND}/api/constraints/general`).then((r) => {
+    const rows = (r.body ?? []) as { id: number }[];
+    return cy.wrap(rows).each((row: any) => {
+      cy.request({
+        method: 'DELETE',
+        url: `${BACKEND}/api/constraints/general/${row.id}`,
+        failOnStatusCode: false,
+      });
+    });
+  });
+}
+
 describe('Tab Vincoli workflow', () => {
   beforeEach(() => {
     clearDataset();
+    clearDsl();
     cy.visit('/constraints');
     cy.get('[data-testid="constraints-page"]', { timeout: 15000 })
       .should('exist');
@@ -106,12 +127,12 @@ describe('Tab Vincoli workflow', () => {
       seedDsl('forall l in lessons: l.hour >= 8',
               { label: 'doomed' }).then((r) => {
         const id = r.body.id;
-        // Stub the confirm() the page triggers.
-        cy.on('window:confirm', () => true);
         cy.reload();
         cy.get(`[data-testid="dsl-row-${id}"]`, { timeout: 10000 })
           .should('exist');
         cy.get(`[data-testid="dsl-delete-${id}"]`).click();
+        // Il ✕ chiede conferma tramite ConfirmDialog.
+        acceptConfirm();
         cy.get(`[data-testid="dsl-row-${id}"]`).should('not.exist');
       });
     });
@@ -168,7 +189,11 @@ describe('Tab Vincoli workflow', () => {
         cy.get('[data-testid="wizard-next"]').click();
 
         // Step 2: switch to soft, weight defaults to 100.
-        cy.contains(/SOFT/i).closest('label')
+        // La ricerca e' ancorata a wizard-step-2: la legenda dei livelli
+        // nell'hero della pagina contiene anch'essa una pill "SOFT", che
+        // sta prima nel DOM e non ha nessun <label> antenato.
+        cy.get('[data-testid="wizard-step-2"]', { timeout: 10000 })
+          .contains('label', /SOFT/i)
           .find('input[type="radio"]').check({ force: true });
         cy.get('[data-testid="wizard-next"]').click();
 
@@ -235,8 +260,14 @@ describe('Tab Vincoli workflow', () => {
         cy.get('[data-testid="search-run"]').click();
 
         // The teacher-scoped one shows up; the global one does not.
-        cy.contains('teacher-dsl', { timeout: 10000 }).should('be.visible');
-        cy.contains('global-dsl').should('not.exist');
+        // Le asserzioni vanno confinate alla tabella dei risultati: le
+        // due etichette compaiono comunque nella tabella DSL in fondo
+        // alla pagina, che elenca tutti i GeneralConstraint e non
+        // c'entra con la ricerca.
+        cy.get('[data-testid="search-results-table"]', { timeout: 10000 })
+          .should('be.visible')
+          .and('contain.text', 'teacher-dsl')
+          .and('not.contain.text', 'global-dsl');
       });
     });
 
@@ -254,21 +285,24 @@ describe('Tab Vincoli workflow', () => {
       seedDsl('forall l in lessons: l.hour >= 8', { label: 'a' });
       seedDsl('forall l in lessons: l.hour <= 13', { label: 'b' });
       seedDsl('forall l in lessons: l.day >= 1', { label: 'c' }).then(() => {
-        cy.on('window:confirm', () => true);
         cy.reload();
         cy.get('[data-testid="dsl-constraints-table"]', { timeout: 10000 })
           .should('be.visible');
         cy.get('[data-testid="dsl-constraints-table"] tbody tr')
           .should('have.length', 3);
 
-        // Click each ✕ in turn -- after each click the row count drops.
+        // Click each ✕ in turn, confermando ogni volta il
+        // ConfirmDialog -- after each click the row count drops.
         cy.get('[data-testid^="dsl-delete-"]').first().click();
+        acceptConfirm();
         cy.get('[data-testid="dsl-constraints-table"] tbody tr')
           .should('have.length', 2);
         cy.get('[data-testid^="dsl-delete-"]').first().click();
+        acceptConfirm();
         cy.get('[data-testid="dsl-constraints-table"] tbody tr')
           .should('have.length', 1);
         cy.get('[data-testid^="dsl-delete-"]').first().click();
+        acceptConfirm();
         // The whole table disappears when the list is empty.
         cy.get('[data-testid="dsl-constraints-table"]')
           .should('not.exist');

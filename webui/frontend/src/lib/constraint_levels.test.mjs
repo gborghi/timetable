@@ -13,7 +13,7 @@ import assert from 'node:assert/strict';
 
 import {
   LEVELS, LOGICAL_KINDS, LEVEL_LABEL, LEVEL_PILL_CLASS, LEVEL_CELL_CLASS,
-  DEFAULT_PENALTY,
+  DEFAULT_PENALTY, LEVEL_GLOSS, LEGEND_LEVELS,
   kindFromRule, levelPill, levelLabel, levelCellClass,
   payloadFromKind, clampPenalty,
 } from './constraint_levels.ts';
@@ -140,4 +140,15 @@ test('clampPenalty falls back to DEFAULT_PENALTY on non-numeric', () => {
 test('clampPenalty leaves other levels untouched (sign-wise)', () => {
   assert.equal(clampPenalty('hard', 0), 0);
   assert.equal(clampPenalty('allowed', 999), 999);
+});
+
+test('LEVEL_GLOSS covers every LEVELS entry (legenda pagina Vincoli)', () => {
+  for (const lv of LEVELS) {
+    assert.ok(LEVEL_GLOSS[lv], `LEVEL_GLOSS missing for ${lv}`);
+  }
+});
+
+test('LEGEND_LEVELS lists the 5 canonical states, forbidden excluded', () => {
+  assert.deepEqual([...LEGEND_LEVELS],
+                   ['hard', 'soft', 'preferred', 'enforced', 'allowed']);
 });

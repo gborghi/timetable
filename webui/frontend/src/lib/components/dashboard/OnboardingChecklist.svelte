@@ -6,6 +6,9 @@
   // never nags an established user.
   import { onMount } from 'svelte';
   import { datasetState, workingHoursConfig, loadWorkingHoursConfig } from '$lib/stores';
+  // I nove passi e la nozione di "fatto" stanno in $lib/tappe: li
+  // condividiamo con le quattro card di tappa della dashboard.
+  import { steps as buildSteps, haSoluzione } from '$lib/tappe';
 
   let dismissed = false;
 
@@ -24,24 +27,9 @@
     try { localStorage.removeItem('pt_onboarding_dismissed'); } catch (_e) { /**/ }
   }
 
-  // "Ore configurate" = at least one active day carrying at least one slot.
-  $: oreConfigured = Array.isArray($workingHoursConfig?.days)
-    && $workingHoursConfig.days.some((d) => d?.is_active && (d?.slots?.length ?? 0) > 0);
-
   $: s = $datasetState || {};
-  $: hasSolution = !!s.active_solution || (s.solutions ?? 0) > 0;
-
-  $: steps = [
-    { label: 'Configura le Ore (la settimana scolastica)', href: '/ore', done: oreConfigured },
-    { label: 'Inserisci le Materie',                        href: '/subjects',    done: (s.subjects ?? 0) > 0 },
-    { label: 'Inserisci i Docenti',                         href: '/teachers',    done: (s.teachers ?? 0) > 0 },
-    { label: 'Inserisci le Classi',                         href: '/classes',     done: (s.classes ?? 0) > 0 },
-    { label: 'Inserisci le Aule',                           href: '/classrooms',  done: (s.classrooms ?? 0) > 0 },
-    { label: 'Assegna le Cattedre (docente → classe → materia)', href: '/assignments', done: (s.assignments ?? 0) > 0 },
-    { label: 'Imposta i Vincoli', href: '/constraints', optional: true, done: false },
-    { label: "Genera l'orario", href: '/optimize', done: hasSolution },
-    { label: "Visualizza e modifica l'orario", href: '/schedule', done: hasSolution },
-  ];
+  $: hasSolution = haSoluzione(s);
+  $: steps = buildSteps(s, $workingHoursConfig);
 
   // Progress counts only the required steps.
   $: required = steps.filter((st) => !st.optional);

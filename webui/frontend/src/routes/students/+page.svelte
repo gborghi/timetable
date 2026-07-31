@@ -1,5 +1,5 @@
 <script>
-  import DecorIcon from '$lib/components/DecorIcon.svelte';
+  import PageHero from '$lib/components/PageHero.svelte';
   import { confirmDialog } from '$lib/confirm';
   import { onMount } from 'svelte';
   import { api } from '$lib/api';
@@ -148,16 +148,18 @@
 </script>
 
 <div class="space-y-4" data-testid="students-page">
-  <div class="flex items-baseline gap-3 flex-wrap">
-    <h1 class="flex items-center gap-2"><DecorIcon name="graduation-cap" size={26} class="shrink-0" /> Studenti</h1>
-    <button class="btn ml-auto" on:click={() => (showTagsModal = true)}
-            title="Crea, rinomina o elimina i tag degli studenti">
-      Gestisci tag
-    </button>
-    <button class="btn-primary" on:click={newStudent}
-            data-testid="add-student-btn">+ Nuovo studente</button>
-    <ImportButton entity="students" onDone={() => listRef?.reload()}/>
-  </div>
+  <PageHero title="Studenti"
+            description="Anagrafica degli studenti, con classe di appartenenza e tag. Serve ai gruppi articolati: seconda lingua, IRC/alternativa, classi frazionate.">
+    <svelte:fragment slot="actions">
+      <button class="btn" on:click={() => (showTagsModal = true)}
+              title="Crea, rinomina o elimina i tag degli studenti">
+        Gestisci tag
+      </button>
+      <button class="btn-primary" on:click={newStudent}
+              data-testid="add-student-btn">+ Nuovo studente</button>
+      <ImportButton entity="students" onDone={() => listRef?.reload()}/>
+    </svelte:fragment>
+  </PageHero>
 
   <SortableQueryableList
     bind:this={listRef}

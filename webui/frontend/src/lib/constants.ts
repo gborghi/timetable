@@ -50,6 +50,9 @@ export const TEACHER_DEFAULTS = {
   exemption_hours: 0,
   // No more than 5 consecutive hours teaching the same day.
   max_consecutive: 5,
+  // Nessuna compresenza: il docente prenota sempre un'aula propria.
+  // Il preset 'sempre' va scelto esplicitamente (tipicamente sostegno).
+  compresenza: "mai",
   // Free day for teachers without an explicit preference.
   free_day: "Saturday",
   // Penalty weights for "no buchi" / "no day with 5h" / "no day with 1h"

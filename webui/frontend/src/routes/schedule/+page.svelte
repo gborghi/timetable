@@ -1,5 +1,5 @@
 <script>
-  import DecorIcon from '$lib/components/DecorIcon.svelte';
+  import PageHero from '$lib/components/PageHero.svelte';
   import { confirmDialog } from '$lib/confirm';
   /**
    * /schedule -- timetable view + interactive editor.
@@ -499,40 +499,57 @@
   }
 </script>
 
-<div class="space-y-4" data-testid="schedule-page">
-  <div class="flex items-baseline gap-3 flex-wrap">
-    <h1 class="flex items-center gap-2"><DecorIcon name="calendar" size={26} class="shrink-0" /> Orario</h1>
-    {#if !legacyMode && summary}
-      <span class="text-sm text-ink-500" data-testid="schedule-obj-value">
-        obj=<code>{summary.obj_value}</code>
-        {#if humanMetricsLine(summary.metrics)} · {humanMetricsLine(summary.metrics)}{/if}
-      </span>
-    {:else if legacyMode && classData}
-      <span class="text-sm text-ink-500" data-testid="schedule-obj-value">
-        obj=<code>{classData.obj_value}</code>
-        {#if humanMetricsLine(classData.metrics)} · {humanMetricsLine(classData.metrics)}{/if}
-      </span>
-    {/if}
-    <a class="btn-primary !text-xs ml-auto"
-       href={downloadUrl('/api/schedule/export/xlsx-classes')}
-       data-testid="schedule-export-xlsx-classes">xlsx classi</a>
-    <a class="btn !text-xs"
-       href={downloadUrl('/api/schedule/export/xlsx-teachers')}
-       data-testid="schedule-export-xlsx-teachers">xlsx docenti</a>
-    <a class="btn !text-xs"
-       href={downloadUrl('/api/schedule/export/pdf-classes')}
-       data-testid="schedule-export-pdf-classes">pdf classi</a>
-    <a class="btn !text-xs"
-       href={downloadUrl('/api/schedule/export/pdf-teachers')}
-       data-testid="schedule-export-pdf-teachers">pdf docenti</a>
-    {#if !legacyMode}
-      <a class="btn !text-xs" href="?legacy=true"
-         data-testid="schedule-legacy-link">vista legacy</a>
-    {:else}
-      <a class="btn !text-xs" href="/schedule"
-         data-testid="schedule-calendar-link">vista calendario</a>
-    {/if}
-  </div>
+<div data-testid="schedule-page">
+  <PageHero title="Orario"
+            description="L'orario della soluzione attiva. Trascina una lezione per spostarla: i conflitti vengono segnalati prima di salvare. Le lezioni svincolate restano nel pool a destra finche' non le ripiazzi.">
+    <svelte:fragment slot="chips">
+      {#if !legacyMode && summary}
+        <span class="text-[11.5px] text-ink-500" data-testid="schedule-obj-value">
+          <span class="eyebrow mr-1">obj</span><span class="num">{summary.obj_value}</span>
+          {#if humanMetricsLine(summary.metrics)}
+            <span class="text-ink-300 mx-1">·</span>{humanMetricsLine(summary.metrics)}
+          {/if}
+        </span>
+      {:else if legacyMode && classData}
+        <span class="text-[11.5px] text-ink-500" data-testid="schedule-obj-value">
+          <span class="eyebrow mr-1">obj</span><span class="num">{classData.obj_value}</span>
+          {#if humanMetricsLine(classData.metrics)}
+            <span class="text-ink-300 mx-1">·</span>{humanMetricsLine(classData.metrics)}
+          {/if}
+        </span>
+      {/if}
+      {#if !legacyMode && lessons.length}
+        <span class="pill-green"><span class="num">{lessons.length}</span> lezioni</span>
+        {#if unscheduled.length}
+          <span class="pill-amber"><span class="num">{unscheduled.length}</span> svincolate</span>
+        {/if}
+      {/if}
+    </svelte:fragment>
+
+    <svelte:fragment slot="actions">
+      <a class="btn-primary"
+         href={downloadUrl('/api/schedule/export/xlsx-classes')}
+         data-testid="schedule-export-xlsx-classes">xlsx classi</a>
+      <a class="btn"
+         href={downloadUrl('/api/schedule/export/xlsx-teachers')}
+         data-testid="schedule-export-xlsx-teachers">xlsx docenti</a>
+      <a class="btn"
+         href={downloadUrl('/api/schedule/export/pdf-classes')}
+         data-testid="schedule-export-pdf-classes">pdf classi</a>
+      <a class="btn"
+         href={downloadUrl('/api/schedule/export/pdf-teachers')}
+         data-testid="schedule-export-pdf-teachers">pdf docenti</a>
+      {#if !legacyMode}
+        <a class="btn" href="?legacy=true"
+           data-testid="schedule-legacy-link">vista legacy</a>
+      {:else}
+        <a class="btn" href="/schedule"
+           data-testid="schedule-calendar-link">vista calendario</a>
+      {/if}
+    </svelte:fragment>
+  </PageHero>
+
+  <div class="space-y-4">
 
   {#if legacyMode}
     <!-- The legacy 6x6 matrix UI is intentionally minimal here: it
@@ -588,8 +605,9 @@
       </div>
     {/if}
 
-    <div class="card p-3 flex items-center gap-3 flex-wrap"
+    <div class="card px-3.5 py-2.5 flex items-center gap-3 flex-wrap"
          data-testid="schedule-view-bar">
+      <span class="eyebrow">Vista</span>
       <div class="flex gap-1">
         <button class="btn !text-xs"
                 class:bg-ink-100={view === 'global'}
@@ -666,6 +684,7 @@
       </div>
     {/if}
   {/if}
+  </div>
 
   <!-- Lesson-actions modal: shown after a lesson click (calendar mode) -->
   <Modal open={actionLesson !== null && actionMode === 'menu'}

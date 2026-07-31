@@ -19,6 +19,7 @@
  */
 
 import { clearDataset } from '../support/seed';
+import { expandPanel } from '../support/panels';
 
 const BACKEND = (Cypress.env('backendUrl') as string)
   || 'http://127.0.0.1:8000';
@@ -64,7 +65,12 @@ describe('A. Tab Ore -> Tab Docenti propagation', () => {
       cy.contains('Rossi', { timeout: 15000 }).should('be.visible');
       cy.contains('button', /Modifica/i).first().click();
 
-      cy.get('.weekly-calendar', { timeout: 10000 }).should('be.visible');
+      // scrollIntoView(): il calendario sta in fondo a una modale alta
+      // ~2000px dentro un wrapper `position: fixed`; nel viewport di
+      // default (1000x660) senza scroll `be.visible` non passa mai.
+      cy.get('.weekly-calendar', { timeout: 10000 })
+        .scrollIntoView()
+        .should('be.visible');
       cy.get('.cal-day-col')
         .should('have.length', activeDays.length);
     });
@@ -117,8 +123,12 @@ describe('B. Create + edit teacher CRUD round-trip', () => {
     cy.contains('Bianchi', { timeout: 15000 }).should('be.visible');
     cy.contains('button', /Modifica/i).first().click();
 
+    // Stessa cautela del blocco A: prima si scrolla dentro la modale,
+    // poi si asserisce la visibilita'.
+    cy.get('.weekly-calendar', { timeout: 10000 })
+      .scrollIntoView()
+      .should('be.visible');
     cy.contains(/Disponibilita oraria/i).should('be.visible');
-    cy.get('.weekly-calendar').should('be.visible');
 
     // Close modal: try to find a close button or press Escape.
     cy.get('body').type('{esc}');
@@ -138,6 +148,7 @@ describe('C. Dashboard import end-state defensive check', () => {
     }).as('emptyProfiles');
     cy.visit('/');
     cy.wait('@emptyProfiles');
+    expandPanel('carica-scuola');
     cy.get('[data-testid="dashboard-no-profiles"]').should('be.visible');
     cy.get('[data-testid="dashboard-import-btn"]').should('be.disabled');
   });

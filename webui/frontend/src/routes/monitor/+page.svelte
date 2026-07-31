@@ -1,5 +1,5 @@
 <script>
-  import DecorIcon from '$lib/components/DecorIcon.svelte';
+  import PageHero from '$lib/components/PageHero.svelte';
   import { confirmDialog } from '$lib/confirm';
   import { onMount } from 'svelte';
   import { api } from '$lib/api';
@@ -460,39 +460,32 @@
 </script>
 
 <div class="space-y-4" data-testid="monitor-page">
-  <div class="flex items-baseline gap-3 flex-wrap">
-    <h1 class="flex items-center gap-2"><DecorIcon name="bell" size={26} class="shrink-0" /> Eventi</h1>
-    {#if summary}
-      <span class="text-sm text-ink-500">
-        {summary.n_events} eventi totali
-        - <span class="pill-amber">{summary.n_incomplete} incompleti</span>
+  <PageHero title="Eventi"
+            description="Ogni lezione collocata e' un evento. Doppio click sul nome di una colonna per aggiungere un livello di sort (max 3); click sulla ▲/▼ accanto per invertire la direzione. Il sort si applica all'interno di ogni nest del raggruppamento e funziona anche senza nesting.">
+    <svelte:fragment slot="chips">
+      {#if summary}
+        <span class="pill"><span class="num">{summary.n_events}</span> eventi</span>
+        <span class="pill-amber"><span class="num">{summary.n_incomplete}</span> incompleti</span>
         {#if summary.n_missing_hours}
-          - <span class="pill-red">{summary.n_missing_hours} senza ore</span>
+          <span class="pill-red"><span class="num">{summary.n_missing_hours}</span> senza ore</span>
         {/if}
         {#if summary.n_missing_room}
-          - <span class="pill-amber">{summary.n_missing_room} senza aula</span>
+          <span class="pill-amber"><span class="num">{summary.n_missing_room}</span> senza aula</span>
         {/if}
         {#if summary.n_missing_group}
-          - <span class="pill">{summary.n_missing_group} senza gruppo</span>
+          <span class="pill"><span class="num">{summary.n_missing_group}</span> senza gruppo</span>
         {/if}
-      </span>
-    {/if}
-  </div>
+      {/if}
+    </svelte:fragment>
 
-  <p class="text-xs text-ink-500">
-    Doppio click sul nome di una colonna per aggiungere un livello di
-    sort (max 3); click sulla ▲/▼ accanto per invertire la direzione.
-    Il sort si applica all'interno di ogni nest del raggruppamento e
-    funziona anche senza nesting.
-  </p>
-
-  <div class="flex items-center gap-2 flex-wrap">
-    <button class="btn-primary !text-xs"
-            on:click={() => (addEventOpen = true)}
-            data-testid="monitor-add-event-btn">
-      + Nuovo evento
-    </button>
-  </div>
+    <svelte:fragment slot="actions">
+      <button class="btn-primary"
+              on:click={() => (addEventOpen = true)}
+              data-testid="monitor-add-event-btn">
+        + Nuovo evento
+      </button>
+    </svelte:fragment>
+  </PageHero>
 
   <!-- Segmented control: Tutti / Incompleti / Lockati. Each tab
        composes a different auxQuery into the table; Reset query

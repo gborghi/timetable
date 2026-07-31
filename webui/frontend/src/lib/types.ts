@@ -90,11 +90,24 @@ export interface TeacherBase {
   graduatoria_score?: number | null;
   free_day?: string | null;
   max_consecutive: number;
+  /**
+   * Se il docente puo' affiancare un collega nella STESSA aula invece di
+   * prenotarne una propria. Vale per compresenze di qualunque natura
+   * (sostegno, potenziamento, codocenza, madrelingua, ITP): non e' una
+   * proprieta' del sostegno. Con 'oraria' le celle ammesse stanno in
+   * `compresenza_hours`.
+   */
+  compresenza: 'mai' | 'sempre' | 'oraria';
   notes?: string | null;
   pref_no_buchi_weight: number;
   pref_no_five_weight: number;
   pref_no_one_weight: number;
   preferred_days_csv?: string | null;
+}
+
+export interface CompresenzaHour {
+  day: number;   // 1 = lunedi'
+  hour: number;  // numerazione legacy 8..13
 }
 
 export interface Teacher extends TeacherBase {
@@ -104,6 +117,7 @@ export interface Teacher extends TeacherBase {
   mandatory_free_days: number[];
   compatible_classes: string[];
   classroom_prefs: TeacherClassroomPref[];
+  compresenza_hours: CompresenzaHour[];
   // Server-derived fields surfaced by /api/teachers
   scheduled_hours?: number;
   n_classes?: number;
@@ -136,7 +150,18 @@ export interface ClassBase {
   hard_motorie_pairs: boolean;
   hard_max_6_per_day: boolean;
   soft_minimize_sixth_weight: number;
+  /** Preset di assegnazione aule -- vedi SchoolClass.room_policy. */
+  room_policy?: RoomPolicy;
 }
+
+/**
+ * Quanto vincola l'aula base della classe:
+ * - `fissa`  HARD, tutte le ore nell'aula base; derogano solo le
+ *            materie con un'aula speciale obbligatoria
+ * - `ibrida` SOFT, l'aula base e' una preferenza (default storico)
+ * - `libera` nessun vincolo di aula base
+ */
+export type RoomPolicy = "fissa" | "ibrida" | "libera";
 
 export interface SchoolClass extends ClassBase {
   id: number;

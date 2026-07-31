@@ -19,6 +19,7 @@
  */
 
 import { clearDataset } from '../support/seed';
+import { acceptConfirm } from '../support/confirm';
 
 const BACKEND = (Cypress.env('backendUrl') as string)
   || 'http://127.0.0.1:8000';
@@ -151,12 +152,11 @@ describe('Tab Docenti CRUD workflow (UI-only)', () => {
 
     cy.intercept('DELETE', '**/api/teachers/*').as('deleteTeacher');
 
-    // The Elimina button has a native confirm() -- accept it.
-    cy.on('window:confirm', () => true);
-
     cy.contains('tr', last)
       .find('[data-testid="teacher-delete-btn"]')
       .click();
+    // Elimina apre ConfirmDialog, non window.confirm.
+    acceptConfirm();
 
     cy.wait('@deleteTeacher').its('response.statusCode')
       .should('be.oneOf', [200, 204]);
@@ -185,9 +185,14 @@ describe('Tab Docenti CRUD workflow (UI-only)', () => {
       .find('[data-testid="teacher-edit-btn"]')
       .click();
 
-    cy.contains(/Disponibilita oraria/i, { timeout: 10000 })
+    // scrollIntoView() is required: the calendar sits ~680px down a
+    // 2100px-tall modal body inside a `position: fixed` wrapper, so in
+    // the default 1000x660 viewport Cypress considers it overflowed by
+    // other elements and be.visible can never pass.
+    cy.get('.weekly-calendar', { timeout: 10000 })
+      .scrollIntoView()
       .should('be.visible');
-    cy.get('.weekly-calendar').should('be.visible');
+    cy.contains(/Disponibilita oraria/i).should('be.visible');
     cy.get('.cal-event').should('have.length.gte', 1);
   });
 });

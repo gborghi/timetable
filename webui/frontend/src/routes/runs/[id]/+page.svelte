@@ -18,6 +18,7 @@
   import { api } from '$lib/api';
   import { flash } from '$lib/stores';
   import EChart from '$lib/components/EChart.svelte';
+  import PageHero from '$lib/components/PageHero.svelte';
   import RunLogPanel from '$lib/components/RunLogPanel.svelte';
   import { pipelineStepLabel } from '$lib/pipeline_labels';
   import DiagnosticResult from
@@ -135,27 +136,31 @@
 </script>
 
 <div class="space-y-5">
-  <div class="flex items-baseline gap-3 flex-wrap">
-    <a href="/runs" class="btn !text-xs">← Torna ai runs</a>
-    <h1>Run #{runId}</h1>
-    {#if run}
-      <span class="pill !text-xs">{run.kind}</span>
-      {#if run.status === 'done'}
-        <span class="pill pill-green">done</span>
-      {:else if run.status === 'failed'}
-        <span class="pill pill-red">failed</span>
-      {:else if run.status === 'running' || run.status === 'pending'}
-        <span class="pill pill-blue">{run.status}</span>
-      {:else}
-        <span class="pill">{run.status}</span>
+  <PageHero title="Run #{runId}">
+    <svelte:fragment slot="chips">
+      {#if run}
+        <span class="pill">{run.kind}</span>
+        {#if run.status === 'done'}
+          <span class="pill-green">done</span>
+        {:else if run.status === 'failed'}
+          <span class="pill-red">failed</span>
+        {:else if run.status === 'running' || run.status === 'pending'}
+          <span class="pill-blue">{run.status}</span>
+        {:else}
+          <span class="pill">{run.status}</span>
+        {/if}
       {/if}
-    {/if}
-    <a class="btn !text-xs ml-auto" href={exportTelemetryUrl()}
-       download={'telemetry_run_' + runId + '.json'}
-       title="Scarica la serie completa di telemetria in JSON">
-      Esporta telemetria (JSON)
-    </a>
-  </div>
+    </svelte:fragment>
+
+    <svelte:fragment slot="actions">
+      <a href="/runs" class="btn">← Torna ai runs</a>
+      <a class="btn" href={exportTelemetryUrl()}
+         download={'telemetry_run_' + runId + '.json'}
+         title="Scarica la serie completa di telemetria in JSON">
+        Esporta telemetria (JSON)
+      </a>
+    </svelte:fragment>
+  </PageHero>
 
   {#if busy && !run}
     <p class="text-sm text-ink-500 italic">Caricamento...</p>

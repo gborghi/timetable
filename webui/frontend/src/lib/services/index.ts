@@ -52,7 +52,7 @@ export const classes = {
     const keys = Object.keys(b ?? {});
     const PATCH_KEYS = new Set([
       "n_students", "max_hours_per_day", "required_free_days_count",
-      "notes", "nickname", "soft_minimize_sixth_weight",
+      "notes", "nickname", "soft_minimize_sixth_weight", "room_policy",
     ]);
     if (keys.length > 0 && keys.every((k) => PATCH_KEYS.has(k))) {
       return api.patch<SchoolClass>("/api/classes/" + id, b);

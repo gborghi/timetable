@@ -15,6 +15,7 @@
  */
 
 import { clearDataset } from '../support/seed';
+import { expandPanel } from '../support/panels';
 
 const BACKEND = (Cypress.env('backendUrl') as string)
   || 'http://127.0.0.1:8000';
@@ -27,7 +28,10 @@ function waitForRunComplete(runId: number, deadlineMs = 60_000) {
     }
     return cy.request({
       method: 'GET',
-      url: `${BACKEND}/api/runs/${runId}`,
+      // /api/optimize/runs/... : il router dei run ha prefix
+      // /api/optimize, quindi /api/runs/<id> risponde sempre 404 e il
+      // poll non vedeva mai la fine dell'import.
+      url: `${BACKEND}/api/optimize/runs/${runId}`,
       failOnStatusCode: false,
     }).then((res) => {
       if (res.status === 200 && res.body && res.body.progress >= 1) {
@@ -48,12 +52,18 @@ describe('Dataset import via SQLite snapshot', () => {
     cy.intercept('POST', '**/api/dataset/import-profile').as('startImport');
 
     cy.visit('/');
+    // "Carica o genera una scuola" nasce aperto, ma l'accordion
+    // ricorda lo stato: apriamolo esplicitamente.
+    expandPanel('carica-scuola');
     cy.get('[data-testid="dashboard-import-profile-select"]',
         { timeout: 15000 })
       .should('exist')
       .select('small');
 
-    cy.contains('button', /Importa profilo/i).click();
+    // Sul testid e non sul testo: il bottone si chiama solo "Importa"
+    // (il contesto lo da' il titolo della card), quindi cercarlo per
+    // etichetta e' fragile.
+    cy.get('[data-testid="dashboard-import-btn"]').click();
     cy.wait('@startImport').its('response.statusCode')
       .should('be.oneOf', [200, 201]);
 
@@ -71,11 +81,13 @@ describe('Dataset import via SQLite snapshot', () => {
       .should('have.length.greaterThan', 0);
     cy.request(`${BACKEND}/api/classrooms`).its('body')
       .should('have.length.greaterThan', 0);
-    cy.request(`${BACKEND}/api/general-constraints`).its('body')
+    // /api/constraints/general: /api/general-constraints non esiste.
+    cy.request(`${BACKEND}/api/constraints/general`).its('body')
       .should('have.length.greaterThan', 0);
     cy.request(`${BACKEND}/api/working-hours/config`).its('body.days')
       .should('have.length.greaterThan', 0);
-    cy.request(`${BACKEND}/api/lessons`).its('body')
+    // /api/lessons risponde { lessons, total }, non un array.
+    cy.request(`${BACKEND}/api/lessons`).its('body.lessons')
       .should('have.length.greaterThan', 0);
 
     // /schedule should render the timetable from the imported rows.

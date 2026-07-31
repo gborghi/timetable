@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { confirmDialog } from '$lib/confirm';
   import { api } from '$lib/api';
-  import DecorIcon from '$lib/components/DecorIcon.svelte';
+  import PageHero from '$lib/components/PageHero.svelte';
   import { flash, refreshDataset } from '$lib/stores';
   import { ROOM_KINDS } from '$lib/constants';
   import Modal from '$lib/components/Modal.svelte';
@@ -135,7 +135,7 @@
   }
   function addSubjectPref() { editing.subject_prefs = [...editing.subject_prefs, { subject: '', weight: 10, required: false }]; }
   function delSubjectPref(i) { editing.subject_prefs = editing.subject_prefs.filter((_, idx) => idx !== i); }
-  function addClassPref() { editing.class_prefs = [...editing.class_prefs, { class_name: '', weight: 20, is_home: false }]; }
+  function addClassPref() { editing.class_prefs = [...editing.class_prefs, { class_name: '', state: 'preferred', weight: 20, is_home: false }]; }
   function delClassPref(i) { editing.class_prefs = editing.class_prefs.filter((_, idx) => idx !== i); }
   function onMatrixChange(newCells) {
     editing = { ...editing, unavailability: newCells };
@@ -263,11 +263,15 @@
   const CAPACITY_MIN = 5;
   const CAPACITY_MAX = 100;
   let savingCapacity = new Set();
-  async function saveCapacityInline(row, raw) {
+  async function saveCapacityInline(row, raw, el = null) {
     const v = Number(raw);
     if (!Number.isFinite(v) || v < CAPACITY_MIN || v > CAPACITY_MAX) {
       flash(`Capienza deve essere fra ${CAPACITY_MIN} e ${CAPACITY_MAX}`,
             'error');
+      // Come su /classes: il reload riporta lo stesso numero, quindi
+      // `value={row.capacity}` non riscrive il DOM e il valore invalido
+      // resterebbe nel campo. Lo rimettiamo a mano.
+      if (el) el.value = String(row.capacity ?? '');
       await listRef?.reload();
       return;
     }
@@ -312,27 +316,29 @@
 </script>
 
 <div class="space-y-4" data-testid="classrooms-page">
-  <div class="flex items-baseline gap-3 flex-wrap">
-    <h1 class="flex items-center gap-2"><DecorIcon name="flask" size={26} class="shrink-0" /> Aule</h1>
-    <button class="btn ml-auto" on:click={loadSuggested}>Genera aule...</button>
-    <button class="btn" on:click={() => (showTagsModal = true)}
-            title="Crea, rinomina o elimina i tag delle aule">
-      Gestisci tag
-    </button>
-    <button class="btn-primary" on:click={newRoom}
-            data-testid="add-classroom-btn">+ Nuova aula</button>
-    <ImportButton entity="classrooms" onDone={() => listRef?.reload()}/>
-    <button class="btn !text-xs" on:click={() => (showBulk = true)}
-            disabled={selectedIds.length === 0}
-            title="Applica un vincolo a tutte le aule selezionate">
-      Vincolo collettivo ({selectedIds.length})
-    </button>
-    <button class="btn-danger !text-xs" on:click={bulkDel}
-            disabled={selectedIds.length === 0 || bulkDeleting}
-            title="Elimina tutte le aule selezionate (con UNDO)">
-      {bulkDeleting ? 'Eliminazione...' : `Elimina selezionati (${selectedIds.length})`}
-    </button>
-  </div>
+  <PageHero title="Aule"
+            description="Le aule con capienza, plesso e tag. Le preferenze materia-aula e docente-aula decidono dove il solver puo' collocare una lezione.">
+    <svelte:fragment slot="actions">
+      <button class="btn" on:click={loadSuggested}>Genera aule...</button>
+      <button class="btn" on:click={() => (showTagsModal = true)}
+              title="Crea, rinomina o elimina i tag delle aule">
+        Gestisci tag
+      </button>
+      <button class="btn-primary" on:click={newRoom}
+              data-testid="add-classroom-btn">+ Nuova aula</button>
+      <ImportButton entity="classrooms" onDone={() => listRef?.reload()}/>
+      <button class="btn !text-xs" on:click={() => (showBulk = true)}
+              disabled={selectedIds.length === 0}
+              title="Applica un vincolo a tutte le aule selezionate">
+        Vincolo collettivo ({selectedIds.length})
+      </button>
+      <button class="btn-danger !text-xs" on:click={bulkDel}
+              disabled={selectedIds.length === 0 || bulkDeleting}
+              title="Elimina tutte le aule selezionate (con UNDO)">
+        {bulkDeleting ? 'Eliminazione...' : `Elimina selezionati (${selectedIds.length})`}
+      </button>
+    </svelte:fragment>
+  </PageHero>
 
   {#if showGenPanel && suggested}
     <div class="card p-5 border-accent-500/40 bg-accent-500/5">
@@ -385,7 +391,8 @@
     <td class="text-center">
       <input type="number" min={CAPACITY_MIN} max={CAPACITY_MAX}
              value={row.capacity}
-             on:change={(e) => saveCapacityInline(row, e.currentTarget.value)}
+             on:change={(e) => saveCapacityInline(
+               row, e.currentTarget.value, e.currentTarget)}
              on:keydown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
              disabled={savingCapacity.has(row.id)}
              class="w-16 text-center px-1 py-0.5 border border-ink-200 rounded
@@ -502,14 +509,28 @@
 
     <div class="mt-4">
       <h3 class="mb-2">Classi affezionate</h3>
+      <p class="text-xs text-ink-500 mb-2">
+        "Aula base" indica l'aula di riferimento della classe. Quanto
+        vincoli dipende dal preset <em>Aule della classe</em> nella
+        scheda Classi: con "Aula fissa" l'aula base diventa HARD.
+        Lo stato qui sotto ha comunque la precedenza sul preset.
+      </p>
       <table class="tbl">
-        <thead><tr><th>Classe</th><th>Peso</th><th>Home?</th><th></th></tr></thead>
+        <thead><tr><th>Classe</th><th>Stato</th><th>Peso</th><th>Aula base?</th><th></th></tr></thead>
         <tbody>
           {#each editing.class_prefs as c, i}
             <tr>
               <td>
                 <input list="cls-{i}" bind:value={c.class_name} class="w-full px-2 py-1 border border-ink-200 rounded"/>
                 <datalist id="cls-{i}">{#each allClasses as cn}<option value={cn}></option>{/each}</datalist>
+              </td>
+              <td class="w-36">
+                <select bind:value={c.state} class="w-full px-2 py-1 border border-ink-200 rounded">
+                  <option value="preferred">Preferita (soft)</option>
+                  <option value="allowed">Ammessa</option>
+                  <option value="enforced">Obbligatoria (HARD)</option>
+                  <option value="forbidden">Vietata (HARD)</option>
+                </select>
               </td>
               <td class="w-24"><input type="number" bind:value={c.weight} class="w-full px-2 py-1 border border-ink-200 rounded"/></td>
               <td class="w-20 text-center"><input type="checkbox" bind:checked={c.is_home}/></td>

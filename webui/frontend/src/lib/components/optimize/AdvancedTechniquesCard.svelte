@@ -126,15 +126,14 @@
   }
 </script>
 
-<div class="card p-5 space-y-4" data-testid="advanced-techniques-card">
-  <div class="flex items-baseline gap-3 flex-wrap">
-    <h2>Tecniche avanzate</h2>
-    <span class="text-xs text-ink-500 max-w-2xl">
-      ALNS, VNS, Hall's theorem pre-check e Column Generation. Vedere
-      <code>docs/optimization_strategies.md</code> per dettagli e
-      quando usarle.
-    </span>
-  </div>
+<!-- Senza card propria: il titolo e la cornice li mette il <Panel>
+     "Tecniche avanzate" che avvolge questo componente in /optimize. -->
+<div class="space-y-4" data-testid="advanced-techniques-card">
+  <p class="text-[11.5px] text-ink-400 max-w-[76ch]">
+    ALNS, VNS, Hall's theorem pre-check e Column Generation. Vedere
+    <code>docs/optimization_strategies.md</code> per dettagli e
+    quando usarle.
+  </p>
 
   <!-- Hall pre-check -->
   <div class="border border-ink-200 rounded p-3 bg-ink-50/40">

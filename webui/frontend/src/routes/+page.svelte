@@ -3,7 +3,11 @@
   import { api } from '$lib/api';
   import { humanMetricsLine } from '$lib/metrics_labels';
   import { confirmDialog } from '$lib/confirm';
-  import { datasetState, datasetEverLoaded, flash, refreshDataset, bumpMutation } from '$lib/stores';
+  import { datasetState, datasetEverLoaded, flash, refreshDataset, bumpMutation,
+           workingHoursConfig, loadWorkingHoursConfig } from '$lib/stores';
+  import { statoTappe } from '$lib/tappe';
+  import PageHero from '$lib/components/PageHero.svelte';
+  import Panel from '$lib/components/Panel.svelte';
   import RunLogPanel from '$lib/components/RunLogPanel.svelte';
   import OnboardingChecklist from '$lib/components/dashboard/OnboardingChecklist.svelte';
   import EntityGraph from '$lib/components/dashboard/EntityGraph.svelte';
@@ -37,6 +41,9 @@
   let runId = null;
 
   onMount(async () => {
+    // Le quattro card di tappa hanno bisogno delle Ore per sapere se la
+    // tappa 1 e' completa: il layout non le carica.
+    if ($workingHoursConfig == null) loadWorkingHoursConfig();
     try {
       availableProfiles = await api.get('/api/dataset/available-profiles');
       // Default to the first available profile so the bind:value matches
@@ -49,6 +56,11 @@
       flash('Errore caricando profili: ' + e.message, 'error');
     }
   });
+
+  // Il percorso in quattro tappe, con lo stato calcolato dai dati reali
+  // (stessa logica dei nove passi del checklist: vedi $lib/tappe).
+  $: tappe = statoTappe($datasetState, $workingHoursConfig);
+  $: tappaCorrente = tappe.find((t) => t.corrente) ?? null;
 
   async function importPickle() {
     if (!importProfile) {
@@ -166,235 +178,298 @@
     onEnd();
     setTimeout(stopRunPolling, 4000);
   }
+
+  // Le sette righe del riquadro "Scuola attiva", nell'ordine del design.
+  $: statRows = [
+    ['Classi',    $datasetState.classes],
+    ['Docenti',   $datasetState.teachers],
+    ['Materie',   $datasetState.subjects],
+    ['Aule',      $datasetState.classrooms],
+    ['Studenti',  $datasetState.students ?? 0],
+    ['Cattedre',  $datasetState.assignments],
+    ['Soluzioni', $datasetState.solutions],
+  ];
 </script>
 
+<PageHero
+  eyebrow={null}
+  title="Il tuo orario, in quattro tappe"
+  description={tappaCorrente
+    ? `Sei alla tappa ${tappaCorrente.n}. Ogni tappa raccoglie le pagine che servono: puoi tornare indietro in qualsiasi momento senza perdere il lavoro fatto.`
+    : 'Tutte le tappe sono complete: la scuola ha un orario. Da qui puoi rigenerarlo, modificarlo o gestire assenze e supplenze.'} />
+
 <div class="space-y-6">
-  <section class="card p-5">
-    <div class="flex items-baseline justify-between">
-      <h1>Dashboard</h1>
-      <button class="btn-danger !text-xs !px-2 !py-1" on:click={clearAll}>Reset DB</button>
+  <!-- ========== Il percorso + la scuola attiva ========== -->
+  <section class="grid gap-4 lg:grid-cols-[1fr_270px] items-start">
+    <div class="grid gap-3.5 sm:grid-cols-2 xl:grid-cols-4">
+      {#each tappe as t}
+        <a href={t.href}
+           class="card relative flex flex-col gap-1 overflow-hidden p-4 pt-[18px]
+                  transition-colors hover:border-ink-300 focus-ring
+                  {t.corrente ? 'border-[1.5px] border-accent-500' : ''}
+                  {!t.completa && !t.corrente
+                     ? 'border-dashed border-line-dash bg-paper-soft' : ''}"
+           data-testid="tappa-card"
+           data-tappa={t.n}>
+          <!-- Barra superiore: verde = fatta, oro = in corso, niente = da fare -->
+          {#if t.completa}
+            <span class="absolute inset-x-0 top-0 h-[3px] bg-[#2f6b3e]" aria-hidden="true"></span>
+          {:else if t.corrente}
+            <span class="absolute inset-x-0 top-0 h-[3px] bg-gold" aria-hidden="true"></span>
+          {/if}
+
+          <div class="flex items-center gap-2">
+            {#if t.completa}
+              <span class="inline-flex h-[17px] w-[17px] shrink-0 items-center
+                           justify-center rounded-full bg-[#e6f0e8] text-[10px]
+                           text-[#2f6b3e]" aria-hidden="true">✓</span>
+            {:else}
+              <span class="inline-flex h-[17px] w-[17px] shrink-0 items-center
+                           justify-center rounded-full text-[10px] font-medium
+                           {t.corrente ? 'bg-accent-100 text-accent-700'
+                                       : 'bg-ink-100 text-ink-400'}"
+                    aria-hidden="true">{t.n}</span>
+            {/if}
+            <span class="eyebrow">
+              {t.corrente ? 'Tappa corrente' : `Tappa ${t.n}`}
+            </span>
+          </div>
+
+          <h2 class="!text-[15px]">{t.label}</h2>
+          <p class="text-[11.5px] leading-snug text-ink-400">{t.blurb}</p>
+          <p class="mt-1 font-mono text-[10.5px] tabular-nums
+                    {t.corrente ? 'text-accent-500 font-medium' : 'text-ink-300'}">
+            {t.corrente ? 'Continua →' : t.meta}
+          </p>
+        </a>
+      {/each}
     </div>
-    <p class="text-sm text-ink-500 mt-1">
-      Punto di partenza: importa un dataset esistente da <code>experiments/</code>
-      o genera una scuola fittizia. Da qui poi puoi modificare CRUD,
-      lanciare l'ottimizzazione, e visualizzare l'orario.
-    </p>
+
+    <div class="card p-4" data-testid="scuola-attiva">
+      <h2 class="!text-[15px]">Scuola attiva</h2>
+      <dl class="mt-3 space-y-1">
+        {#each statRows as [label, value]}
+          <div class="flex items-baseline justify-between border-b border-ink-100 pb-1">
+            <dt class="text-[11.5px] text-ink-500">{label}</dt>
+            {#if $datasetEverLoaded}
+              <dd class="font-mono text-[12.5px] tabular-nums">{value}</dd>
+            {:else}
+              <dd aria-hidden="true">
+                <span class="inline-block h-3 w-6 animate-pulse rounded bg-ink-200"></span>
+              </dd>
+            {/if}
+          </div>
+        {/each}
+      </dl>
+
+      {#if $datasetState.active_solution}
+        {@const sol = $datasetState.active_solution}
+        {@const feasible = sol.metrics?.feasible}
+        <div class="mt-3 space-y-1.5">
+          {#if feasible != null}
+            <span class={feasible ? 'pill-green' : 'pill-red'}
+                  title="Fattibilita della soluzione attiva rispetto ai vincoli hard">
+              {feasible ? '✓ Fattibile' : '✗ Non fattibile'}
+            </span>
+          {/if}
+          <p class="text-[11.5px] text-ink-500">
+            {sol.name} <span class="text-ink-300">({sol.kind})</span>
+          </p>
+          <p class="font-mono text-[11px] text-ink-500">obj={sol.obj_value}</p>
+          {#if humanMetricsLine(sol.metrics)}
+            <p class="text-[11px] leading-snug text-ink-400">{humanMetricsLine(sol.metrics)}</p>
+          {/if}
+        </div>
+      {:else}
+        <p class="mt-3 text-[11.5px] text-ink-400">
+          Nessuna soluzione attiva.
+        </p>
+      {/if}
+    </div>
   </section>
 
   <OnboardingChecklist />
-
-  <DbImportExportCard />
-
-  <ConstraintsImportExportCard />
-
-  <section class="grid md:grid-cols-2 gap-6">
-    <div class="card p-5" data-testid="dashboard-import-card">
-      <h2 class="mb-3">1) Importa un profilo gia\` calcolato</h2>
-      <div class="space-y-3">
-        <div class="field">
-          <label>Profilo</label>
-          {#if availableProfiles.length === 0}
-            <div class="flex items-center gap-3" data-testid="dashboard-no-profiles">
-              <DecorIcon name="building" size={44} class="shrink-0 opacity-80" />
-              <p class="text-xs text-ink-500 italic">
-                Nessun profilo precalcolato trovato in
-                <code>engine/scripts/data/&lt;profile&gt;/</code>.
-                Genera una scuola fittizia qui sotto per popolare il DB.
-              </p>
-            </div>
-          {:else}
-            <select bind:value={importProfile}
-                    data-testid="dashboard-import-profile-select">
-              {#each availableProfiles as p}
-                <option value={p.name}
-                        data-testid="dashboard-import-profile-option">{p.name}{p.has_optimized_solution ? '  (con soluzione ottimizzata)' : ''}</option>
-              {/each}
-            </select>
-          {/if}
-        </div>
-        <label class="flex items-center gap-2 text-sm">
-          <input type="checkbox" bind:checked={useOptimized} />
-          Usa la soluzione ottimizzata se disponibile
-        </label>
-
-        <div class="space-y-1 border border-ink-200 rounded p-2 bg-ink-50">
-          <div class="text-xs font-semibold text-ink-500 mb-1">
-            Pool dati da generare insieme al profilo:
-          </div>
-          <label class="flex items-center gap-2 text-sm">
-            <input type="checkbox" bind:checked={importCurricula}/>
-            Indirizzi (curricula): seed dei monte-ore mock + linkaggio classi
-          </label>
-          <label class="flex items-center gap-2 text-sm">
-            <input type="checkbox" bind:checked={importClassrooms}/>
-            Aule: una per classe + lab/palestre/biblioteca proporzionali
-          </label>
-          <label class="flex items-center gap-2 text-sm">
-            <input type="checkbox" bind:checked={importStudents}/>
-            Studenti: ~22 per classe (Faker, deterministico)
-          </label>
-        </div>
-
-        <div class="flex items-center gap-3">
-          <Button variant="primary"
-                  loading={busyImport}
-                  disabled={availableProfiles.length === 0}
-                  onclick={importPickle}
-                  data-testid="dashboard-import-btn">
-            Importa
-          </Button>
-          <button class="btn" on:click={autoGenerateClassrooms}>
-            Rigenera solo aule
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <div class="card p-5" data-testid="dashboard-mock-card">
-      <h2 class="mb-3">2) Genera scuola di test</h2>
-      <div class="grid grid-cols-2 gap-3">
-        <div class="field">
-          <label>Profilo</label>
-          <select bind:value={mockProfile}
-                  data-testid="dashboard-mock-profile-select">
-            <option value="small">small</option>
-            <option value="medium">medium</option>
-            <option value="big">big</option>
-            <option value="huge">huge</option>
-            <option value="superhuge">superhuge</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>Modalita</label>
-          <select bind:value={mockMode}>
-            <option value="aggregated">aggregated</option>
-            <option value="tight">tight</option>
-            <option value="legacy">legacy</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>Margin (%)</label>
-          <input type="number" min="0" max="1" step="0.01" bind:value={mockMargin}/>
-        </div>
-        <div class="field">
-          <label>Ore-cattedra base</label>
-          <input type="number" bind:value={baseMaxHours}/>
-        </div>
-      </div>
-      <div class="mt-4">
-        <Button variant="primary" loading={busyMock} onclick={generateMock}>
-          Genera
-        </Button>
-        <span class="text-xs text-ink-500 ml-2">
-          Sostituisce classi/docenti del DB.
-        </span>
-      </div>
-    </div>
-  </section>
 
   {#if runId}
     <RunLogPanel {runId} title="Output run #{runId}" onEnd={onEndAndStop} />
   {/if}
 
-  <section class="card p-5">
-    <h2 class="mb-2">Stato corrente</h2>
-    {#snippet stat(value, label)}
-      <div class="card !shadow-none p-3">
-        {#if $datasetEverLoaded}
-          <div class="text-3xl font-semibold">{value}</div>
-        {:else}
-          <div class="text-3xl font-semibold flex justify-center" aria-hidden="true">
-            <span class="inline-block w-8 h-7 rounded bg-ink-200 animate-pulse"></span>
+  <!-- ========== Strumenti: aperti solo quando servono ========== -->
+  <section class="space-y-3">
+    <p class="eyebrow">Strumenti — servono raramente</p>
+
+    <Panel id="carica-scuola" open={true}
+           title="Carica o genera una scuola"
+           subtitle="importa un profilo o crea una scuola fittizia">
+      <div class="grid gap-6 md:grid-cols-2">
+        <div data-testid="dashboard-import-card">
+          <div class="mb-3 flex items-baseline gap-2">
+            <span class="font-mono text-[11px] text-ink-300">01</span>
+            <h3>Importa un profilo già calcolato</h3>
           </div>
-        {/if}
-        <div class="text-xs text-ink-500">{label}</div>
-      </div>
-    {/snippet}
-    <div class="grid grid-cols-2 md:grid-cols-7 gap-3 text-center">
-      {@render stat($datasetState.classes, 'Classi')}
-      {@render stat($datasetState.teachers, 'Docenti')}
-      {@render stat($datasetState.subjects, 'Materie')}
-      {@render stat($datasetState.classrooms, 'Aule')}
-      {@render stat($datasetState.students ?? 0, 'Studenti')}
-      {@render stat($datasetState.assignments, 'Cattedre')}
-      {@render stat($datasetState.solutions, 'Soluzioni')}
-    </div>
-    {#if $datasetState.active_solution}
-      {@const sol = $datasetState.active_solution}
-      {@const feasible = sol.metrics?.feasible}
-      <div class="mt-4 text-sm flex items-center gap-2 flex-wrap">
-        <span>Soluzione attiva:
-          <strong>{sol.name}</strong> ({sol.kind})</span>
-        {#if feasible != null}
-          <span class="pill"
-                class:pill-green={feasible}
-                class:pill-red={!feasible}
-                title="Fattibilita della soluzione attiva rispetto ai vincoli hard">
-            {feasible ? '✓ Fattibile' : '✗ Non fattibile'}
-          </span>
-        {/if}
-        <span class="text-ink-500">obj=<code>{sol.obj_value}</code></span>
-        {#if humanMetricsLine(sol.metrics)}
-          <span class="text-ink-500 text-xs">{humanMetricsLine(sol.metrics)}</span>
-        {/if}
-      </div>
-    {/if}
-  </section>
+          <div class="space-y-3">
+            <div class="field">
+              <label>Profilo</label>
+              {#if availableProfiles.length === 0}
+                <div class="flex items-center gap-3" data-testid="dashboard-no-profiles">
+                  <DecorIcon name="building" size={44} class="shrink-0 opacity-80" />
+                  <p class="text-xs text-ink-500 italic">
+                    Nessun profilo precalcolato trovato in
+                    <code>engine/scripts/data/&lt;profile&gt;/</code>.
+                    Genera una scuola fittizia qui accanto per popolare il DB.
+                  </p>
+                </div>
+              {:else}
+                <select bind:value={importProfile}
+                        data-testid="dashboard-import-profile-select">
+                  {#each availableProfiles as p}
+                    <option value={p.name}
+                            data-testid="dashboard-import-profile-option">{p.name}{p.has_optimized_solution ? '  (con soluzione ottimizzata)' : ''}</option>
+                  {/each}
+                </select>
+              {/if}
+            </div>
+            <label class="flex items-center gap-2 text-[12.5px]">
+              <input type="checkbox" bind:checked={useOptimized} />
+              Usa la soluzione ottimizzata se disponibile
+            </label>
 
-  <!-- ========== Network graph (toggleable) ========== -->
-  <section class="card p-5">
-    <div class="flex items-baseline gap-3 flex-wrap">
-      <h2>Grafo della scuola</h2>
-      <span class="text-xs text-ink-500 max-w-2xl">
-        Visualizza la struttura: in modalita' "Classi" ogni classe e' un
-        nodo e gli archi rappresentano docenti condivisi (lo spessore e'
-        proporzionale al numero di docenti in comune); in modalita'
-        "Docenti" ogni docente e' un nodo e gli archi rappresentano
-        classi condivise.
-      </span>
-      <button
-        class="btn ml-auto !text-xs"
-        on:click={() => (showGraph = !showGraph)}
-        aria-expanded={showGraph}
-      >
-        {showGraph ? 'Nascondi grafo' : 'Visualizza grafo'}
-      </button>
-    </div>
+            <div class="space-y-1 rounded-lg border border-ink-200 bg-paper-band p-2.5">
+              <div class="eyebrow mb-1.5">Pool dati da generare insieme al profilo</div>
+              <label class="flex items-center gap-2 text-[12.5px]">
+                <input type="checkbox" bind:checked={importCurricula}/>
+                Indirizzi (curricula): seed dei monte-ore mock + linkaggio classi
+              </label>
+              <label class="flex items-center gap-2 text-[12.5px]">
+                <input type="checkbox" bind:checked={importClassrooms}/>
+                Aule: una per classe + lab/palestre/biblioteca proporzionali
+              </label>
+              <label class="flex items-center gap-2 text-[12.5px]">
+                <input type="checkbox" bind:checked={importStudents}/>
+                Studenti: ~22 per classe (Faker, deterministico)
+              </label>
+            </div>
 
-    {#if showGraph}
-      <div class="mt-4 flex items-center gap-2">
-        <div class="inline-flex rounded-md overflow-hidden border border-ink-200 text-xs">
-          <button
-            class="px-3 py-1.5 transition-colors"
-            class:bg-accent-500={graphMode === 'classes'}
-            class:text-white={graphMode === 'classes'}
-            class:bg-white={graphMode !== 'classes'}
-            on:click={() => (graphMode = 'classes')}
-            aria-pressed={graphMode === 'classes'}
-          >
-            Classi (nodi)
-          </button>
-          <button
-            class="px-3 py-1.5 border-l border-ink-200 transition-colors"
-            class:bg-accent-500={graphMode === 'teachers'}
-            class:text-white={graphMode === 'teachers'}
-            class:bg-white={graphMode !== 'teachers'}
-            on:click={() => (graphMode = 'teachers')}
-            aria-pressed={graphMode === 'teachers'}
-          >
-            Docenti (nodi)
-          </button>
+            <div class="flex items-center gap-3">
+              <Button variant="primary"
+                      loading={busyImport}
+                      disabled={availableProfiles.length === 0}
+                      onclick={importPickle}
+                      data-testid="dashboard-import-btn">
+                Importa
+              </Button>
+              <button class="btn" on:click={autoGenerateClassrooms}>
+                Rigenera solo aule
+              </button>
+            </div>
+          </div>
         </div>
-        <span class="text-xs text-ink-500">
+
+        <div data-testid="dashboard-mock-card">
+          <div class="mb-3 flex items-baseline gap-2">
+            <span class="font-mono text-[11px] text-ink-300">02</span>
+            <h3>Genera una scuola di test</h3>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div class="field">
+              <label>Profilo</label>
+              <select bind:value={mockProfile}
+                      data-testid="dashboard-mock-profile-select">
+                <option value="small">small</option>
+                <option value="medium">medium</option>
+                <option value="big">big</option>
+                <option value="huge">huge</option>
+                <option value="superhuge">superhuge</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Modalita</label>
+              <select bind:value={mockMode}>
+                <option value="aggregated">aggregated</option>
+                <option value="tight">tight</option>
+                <option value="legacy">legacy</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Margin (%)</label>
+              <input type="number" min="0" max="1" step="0.01" bind:value={mockMargin}/>
+            </div>
+            <div class="field">
+              <label>Ore-cattedra base</label>
+              <input type="number" bind:value={baseMaxHours}/>
+            </div>
+          </div>
+          <div class="mt-4 flex items-center gap-2.5">
+            <Button variant="primary" loading={busyMock} onclick={generateMock}>
+              Genera
+            </Button>
+            <span class="text-[11.5px] text-ink-300">
+              Sostituisce classi e docenti del DB.
+            </span>
+          </div>
+        </div>
+      </div>
+    </Panel>
+
+    <Panel id="backup-db" title="Backup del database"
+           subtitle="esporta o ripristina .zip">
+      <DbImportExportCard />
+    </Panel>
+
+    <Panel id="travaso-vincoli" title="Travaso vincoli"
+           subtitle="riporta i vincoli su un altro anno scolastico">
+      <ConstraintsImportExportCard />
+    </Panel>
+
+    <Panel id="grafo-scuola" title="Grafo della scuola"
+           subtitle="chi condivide cosa">
+      <p class="max-w-3xl text-[11.5px] leading-snug text-ink-400">
+        In modalita' "Classi" ogni classe e' un nodo e gli archi rappresentano
+        docenti condivisi (lo spessore e' proporzionale al numero di docenti in
+        comune); in modalita' "Docenti" ogni docente e' un nodo e gli archi
+        rappresentano classi condivise.
+      </p>
+
+      <div class="mt-3 flex flex-wrap items-center gap-2">
+        <div class="inline-flex overflow-hidden rounded-[7px] border border-ink-200 text-[11px]">
+          {#each [['classes', 'Classi (nodi)'], ['teachers', 'Docenti (nodi)']] as [mode, label], i}
+            <button type="button"
+                    class="px-3 py-1.5 transition-colors focus-ring
+                           {graphMode === mode ? 'bg-accent-500 text-white'
+                                               : 'bg-white text-ink-500 hover:bg-ink-50'}
+                           {i > 0 ? 'border-l border-ink-200' : ''}"
+                    aria-pressed={graphMode === mode}
+                    on:click={() => (graphMode = mode)}>{label}</button>
+          {/each}
+        </div>
+        <button class="btn !text-[11px]"
+                aria-expanded={showGraph}
+                on:click={() => (showGraph = !showGraph)}>
+          {showGraph ? 'Nascondi grafo' : 'Visualizza grafo'}
+        </button>
+        <span class="text-[11px] text-ink-300">
           {graphMode === 'classes'
             ? 'Archi spessi = molti docenti condivisi.'
             : 'Archi spessi = molte classi condivise.'}
         </span>
       </div>
 
-      <div class="mt-3">
-        <EntityGraph mode={graphMode} height={560} />
+      {#if showGraph}
+        <div class="mt-3">
+          <EntityGraph mode={graphMode} height={560} />
+        </div>
+      {/if}
+    </Panel>
+
+    <Panel id="zona-pericolosa" tone="danger" title="Zona pericolosa"
+           subtitle="operazioni non reversibili">
+      <div class="flex flex-wrap items-center gap-3">
+        <button class="btn-danger" on:click={clearAll}>Reset DB</button>
+        <span class="text-[11.5px] text-ink-500">
+          Cancella classi, docenti, aule, cattedre, vincoli e soluzioni.
+          Fai prima un backup dal pannello qui sopra.
+        </span>
       </div>
-    {/if}
+    </Panel>
   </section>
 </div>

@@ -1,5 +1,5 @@
 <script>
-  import DecorIcon from '$lib/components/DecorIcon.svelte';
+  import PageHero from '$lib/components/PageHero.svelte';
   import { confirmDialog } from '$lib/confirm';
   import { onMount } from 'svelte';
   import { api } from '$lib/api';
@@ -73,11 +73,17 @@
 </script>
 
 <div class="space-y-4" data-testid="coteaching-page">
-  <div class="flex items-baseline gap-3">
-    <h1 class="flex items-center gap-2"><DecorIcon name="teacher" size={26} class="shrink-0" /> Compresenze</h1>
-    <span class="text-sm text-ink-500" data-testid="coteaching-count">{rows.length} regole</span>
-    <button class="btn-primary ml-auto" on:click={newRule} data-testid="add-coteaching-btn">+ Nuova regola</button>
-  </div>
+  <PageHero title="Compresenze"
+            description="Due o piu' docenti nella stessa ora sulla stessa classe. Una regola HARD obbliga il solver a farli coincidere; una SOFT la penalizza soltanto.">
+    <svelte:fragment slot="chips">
+      <span class="pill" data-testid="coteaching-count">
+        <span class="num">{rows.length}</span> regole
+      </span>
+    </svelte:fragment>
+    <svelte:fragment slot="actions">
+      <button class="btn-primary" on:click={newRule} data-testid="add-coteaching-btn">+ Nuova regola</button>
+    </svelte:fragment>
+  </PageHero>
 
   <div class="card overflow-x-auto">
     <table class="tbl" data-testid="coteaching-table">

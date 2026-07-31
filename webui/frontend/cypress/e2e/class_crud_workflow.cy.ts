@@ -11,6 +11,7 @@
  */
 
 import { clearDataset } from '../support/seed';
+import { acceptConfirm } from '../support/confirm';
 
 const BACKEND = (Cypress.env('backendUrl') as string)
   || 'http://127.0.0.1:8000';
@@ -94,11 +95,12 @@ describe('Tab Classi CRUD workflow (UI-only)', () => {
     cy.contains(name, { timeout: 15000 }).should('be.visible');
 
     cy.intercept('DELETE', '**/api/classes/*').as('deleteClass');
-    cy.on('window:confirm', () => true);
 
     cy.contains('tr', name)
       .find('[data-testid="class-delete-btn"]')
       .click();
+    // Elimina apre ConfirmDialog, non window.confirm.
+    acceptConfirm();
     cy.wait('@deleteClass').its('response.statusCode')
       .should('be.oneOf', [200, 204]);
     cy.contains(name).should('not.exist');
@@ -118,7 +120,12 @@ describe('Tab Classi CRUD workflow (UI-only)', () => {
     cy.contains('tr', name)
       .find('[data-testid="class-edit-btn"]')
       .click();
-    cy.get('.weekly-calendar', { timeout: 10000 }).should('be.visible');
+    // scrollIntoView(): il calendario sta in fondo a una modale alta
+    // ~2000px dentro un wrapper `position: fixed`; nel viewport di
+    // default (1000x660) senza scroll `be.visible` non passa mai.
+    cy.get('.weekly-calendar', { timeout: 10000 })
+      .scrollIntoView()
+      .should('be.visible');
     cy.get('.cal-event').should('have.length.gte', 1);
   });
 });

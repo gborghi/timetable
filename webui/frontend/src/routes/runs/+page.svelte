@@ -1,5 +1,5 @@
 <script>
-  import DecorIcon from '$lib/components/DecorIcon.svelte';
+  import PageHero from '$lib/components/PageHero.svelte';
   import { confirmDialog } from '$lib/confirm';
   /**
    * Runs tab — global view of every optimization run launched in this
@@ -285,30 +285,26 @@
 </script>
 
 <div class="space-y-4" data-testid="runs-page">
-  <div class="flex items-baseline gap-3 flex-wrap">
-    <h1 class="flex items-center gap-2"><DecorIcon name="trophy" size={26} class="shrink-0" /> Runs</h1>
-    <span class="text-sm text-ink-500">{runs.length} run nel dataset</span>
-    <button class="btn !text-xs ml-auto" on:click={refresh} disabled={busy}
-            data-testid="runs-refresh-btn">
-      {busy ? '...' : 'refresh'}
-    </button>
-    <select class="text-sm px-2 py-1 border border-ink-200 rounded"
-            bind:value={limit} on:change={refresh}>
-      <option value={50}>50</option>
-      <option value={100}>100</option>
-      <option value={200}>200</option>
-      <option value={500}>500</option>
-    </select>
-  </div>
+  <PageHero title="Runs"
+            description="Storia di ogni esecuzione (mock-import, Phase A, Phase B, metaeuristiche, classroom-assignment, place-event). Doppio click su un'intestazione di colonna per aggiungerla al sort (max 3 livelli); click sulla freccia per invertire la direzione. Query DSL come nelle altre tab. Selezionando piu' righe ed eliminando, il delete si applica a tutto il batch.">
+    <svelte:fragment slot="chips">
+      <span class="pill"><span class="num">{runs.length}</span> run nel dataset</span>
+    </svelte:fragment>
 
-  <p class="text-xs text-ink-500">
-    Storia di ogni esecuzione (mock-import, Phase A, Phase B,
-    metaeuristiche, classroom-assignment, place-event). Doppio click su
-    un'intestazione di colonna per aggiungerla al sort (max 3 livelli);
-    click sulla freccia per invertire la direzione. Query DSL come nelle
-    altre tab. Selezionando piu' righe ed eliminando, il delete si
-    applica a tutto il batch.
-  </p>
+    <svelte:fragment slot="actions">
+      <button class="btn" on:click={refresh} disabled={busy}
+              data-testid="runs-refresh-btn">
+        {busy ? '...' : 'refresh'}
+      </button>
+      <select class="text-sm px-2 py-1 border border-ink-200 rounded"
+              bind:value={limit} on:change={refresh}>
+        <option value={50}>50</option>
+        <option value={100}>100</option>
+        <option value={200}>200</option>
+        <option value={500}>500</option>
+      </select>
+    </svelte:fragment>
+  </PageHero>
 
   <!-- Query bar -->
   <div class="card p-3 flex flex-wrap gap-2 items-end">

@@ -1,12 +1,13 @@
 <script>
-  import DecorIcon from '$lib/components/DecorIcon.svelte';
   import { confirmDialog } from '$lib/confirm';
   import { onMount } from 'svelte';
   import { api } from '$lib/api';
   import { flash } from '$lib/stores';
   import Modal from '$lib/components/Modal.svelte';
   import SortableQueryableList from '$lib/components/SortableQueryableList.svelte';
-  import { levelPill, levelLabel } from '$lib/constraint_levels';
+  import { levelPill, levelLabel, LEGEND_LEVELS, LEVEL_LABEL,
+           LEVEL_GLOSS, LEVEL_PILL_CLASS } from '$lib/constraint_levels';
+  import PageHero from '$lib/components/PageHero.svelte';
   import NewConstraintModal from '$lib/components/constraints/NewConstraintModal.svelte';
   import NewGeneralConstraintModal from '$lib/components/constraints/NewGeneralConstraintModal.svelte';
   import FeasibilityPanel from '$lib/components/constraints/FeasibilityPanel.svelte';
@@ -117,7 +118,10 @@
     searchEntityId = null;
     searchText = '';
     searchLevels = [];
-    searchResults = null;
+    // [] e non null: null chiuderebbe l'intero pannello (e' quello che
+    // fa il toggle 🔍 Ricerca), mentre Reset deve solo svuotare i
+    // filtri lasciando il pannello aperto.
+    searchResults = [];
   }
   // Master list for the entity dropdown -- depends on the chosen type.
   $: searchEntityOptions = (() => {
@@ -270,46 +274,63 @@
   };
 </script>
 
-<div class="space-y-4" data-testid="constraints-page">
-  <div class="flex items-baseline gap-3 flex-wrap">
-    <h1 class="flex items-center gap-2"><DecorIcon name="checklist" size={26} class="shrink-0" /> Vincoli</h1>
-    <button class="btn-primary ml-auto"
-            on:click={() => (newConstraintOpen = true)}
-            data-testid="new-constraint-btn">
-      + Nuovo vincolo
-    </button>
-    <button class="btn-primary"
-            on:click={() => (newDSLConstraintOpen = true)}
-            title="Vincolo espresso in DSL generico (forall/exists/count su lessons/teachers/...)"
-            data-testid="new-dsl-constraint-btn">
-      + Nuovo vincolo DSL
-    </button>
-    <button class="btn-primary"
-            on:click={() => (feasibilityOpen = !feasibilityOpen)}
-            title="Verifica se i vincoli HARD/ENFORCED sono compatibili tra loro; se non lo sono, individua il gruppo minimo in conflitto (analisi MUS)."
-            data-testid="feasibility-toggle-btn">
-      {feasibilityOpen ? 'Nascondi' : ''} Controllo fattibilità
-    </button>
-    <button class="btn"
-            on:click={() => searchResults === null ? (searchResults = []) : (searchResults = null)}
-            data-testid="constraints-search-toggle"
-            title="Ricerca avanzata: trova tutti i vincoli che coinvolgono un'entita' specifica">
-      🔍 Ricerca
-    </button>
-    <button class="btn" on:click={loadConflicts} disabled={conflictsBusy}>
-      {conflictsBusy ? 'cerco...' : 'Cerca conflitti'}
-    </button>
-    {#if conflicts !== null}
-      <button class="btn !text-xs" on:click={() => (showConflicts = !showConflicts)}>
-        {showConflicts ? 'nascondi' : 'mostra'} pannello
-        ({conflicts.length})
+<div data-testid="constraints-page">
+  <PageHero title="Vincoli"
+            description="Tutte le regole editabili: matrici di disponibilita', vincoli logici per docenti/classi/aule/indirizzi, preferenze materia-aula e docente-aula, regole di compresenza. Il livello decide se il solver deve o preferisce rispettarle.">
+    <svelte:fragment slot="chips">
+      <!-- Legenda dei livelli sempre visibile: senza, le sigle HARD /
+           SOFT / PREFERRED non dicono nulla a chi apre la pagina. -->
+      <span class="eyebrow mr-1">Livelli</span>
+      {#each LEGEND_LEVELS as lv}
+        <span class="inline-flex items-center gap-1.5">
+          <span class={LEVEL_PILL_CLASS[lv]}>{LEVEL_LABEL[lv]}</span>
+          <span class="text-[11px] text-ink-400">{LEVEL_GLOSS[lv]}</span>
+        </span>
+      {/each}
+    </svelte:fragment>
+
+    <svelte:fragment slot="actions">
+      <button class="btn-primary"
+              on:click={() => (newConstraintOpen = true)}
+              data-testid="new-constraint-btn">
+        + Nuovo vincolo
       </button>
-    {/if}
-  </div>
+      <button class="btn"
+              on:click={() => (newDSLConstraintOpen = true)}
+              title="Vincolo espresso in DSL generico (forall/exists/count su lessons/teachers/...)"
+              data-testid="new-dsl-constraint-btn">
+        + Nuovo vincolo DSL
+      </button>
+      <button class="btn"
+              on:click={() => (feasibilityOpen = !feasibilityOpen)}
+              title="Verifica se i vincoli HARD/ENFORCED sono compatibili tra loro; se non lo sono, individua il gruppo minimo in conflitto (analisi MUS)."
+              data-testid="feasibility-toggle-btn">
+        {feasibilityOpen ? 'Nascondi' : ''} Controllo fattibilità
+      </button>
+      <button class="btn"
+              on:click={() => searchResults === null ? (searchResults = []) : (searchResults = null)}
+              data-testid="constraints-search-toggle"
+              title="Ricerca avanzata: trova tutti i vincoli che coinvolgono un'entita' specifica">
+        🔍 Ricerca
+      </button>
+      <button class="btn" on:click={loadConflicts} disabled={conflictsBusy}>
+        {conflictsBusy ? 'cerco...' : 'Cerca conflitti'}
+      </button>
+      {#if conflicts !== null}
+        <button class="btn !text-xs" on:click={() => (showConflicts = !showConflicts)}>
+          {showConflicts ? 'nascondi' : 'mostra'} pannello
+          ({conflicts.length})
+        </button>
+      {/if}
+    </svelte:fragment>
+  </PageHero>
+
+  <div class="space-y-4">
 
   {#if feasibilityOpen}
-    <div class="card p-4 border-2 border-accent-500/30 bg-accent-500/5">
-      <h2 class="mb-2">Controllo di fattibilità</h2>
+    <div class="card p-4 border-accent-200 bg-accent-50">
+      <span class="eyebrow">Diagnostica</span>
+      <h2 class="mt-1 mb-2">Controllo di fattibilità</h2>
       <FeasibilityPanel onChanged={async () => {
         if (listRef) await listRef.reload();
       }}/>
@@ -317,9 +338,10 @@
   {/if}
 
   {#if searchResults !== null}
-    <div class="card p-4 border-2 border-blue-300 bg-blue-50/40">
-      <h2 class="mb-2">🔍 Ricerca vincoli che coinvolgono un'entita'</h2>
-      <p class="text-xs text-ink-500 mb-3">
+    <div class="card p-4 border-accent-200 bg-paper-band">
+      <span class="eyebrow">Ricerca trasversale</span>
+      <h2 class="mt-1 mb-2">Vincoli che coinvolgono un'entita'</h2>
+      <p class="text-[11.5px] text-ink-400 mb-3 max-w-[76ch]">
         Cerca trasversalmente fra TUTTE le sorgenti di vincoli (matrici,
         logici, preferenze aule, coteach, DSL generici), trovando ogni
         vincolo che <strong>menziona</strong> l'entita' scelta -- a
@@ -371,8 +393,8 @@
         </div>
       </div>
 
-      <div class="flex gap-2 text-xs items-center mb-2">
-        <span class="text-ink-500">Livelli:</span>
+      <div class="flex flex-wrap gap-2.5 text-[11.5px] items-center mb-2">
+        <span class="eyebrow">Livelli</span>
         {#each ['hard', 'soft', 'preferred', 'enforced', 'allowed', 'forbidden'] as lv}
           <label class="flex items-center gap-1">
             <input type="checkbox" value={lv}
@@ -383,7 +405,8 @@
       </div>
 
       {#if searchResults && searchResults.length}
-        <table class="tbl text-xs w-full">
+        <table class="tbl text-xs w-full"
+               data-testid="search-results-table">
           <thead>
             <tr>
               <th>Kind</th><th>Origine</th><th>Scope</th>
@@ -441,11 +464,16 @@
   {/if}
 
   {#if dslConstraints.length > 0}
-    <details class="card p-3 bg-ink-50/40" open data-testid="dsl-constraints-table">
-      <summary class="cursor-pointer text-sm font-medium">
-        Vincoli DSL generici ({dslConstraints.length})
+    <details class="card p-4 border-l-[3px] border-l-gold" open
+             data-testid="dsl-constraints-table">
+      <summary class="cursor-pointer list-none">
+        <span class="eyebrow">Regole globali</span>
+        <span class="block font-serif text-[15px] font-semibold mt-0.5">
+          Vincoli DSL generici
+          <span class="num text-ink-300 font-normal">({dslConstraints.length})</span>
+        </span>
       </summary>
-      <table class="tbl text-xs w-full mt-2">
+      <table class="tbl text-xs w-full mt-3">
         <thead>
           <tr>
             <th>#</th><th>Etichetta</th><th>Livello</th>
@@ -514,16 +542,6 @@
     </div>
   {/if}
 
-  <p class="text-xs text-ink-500">
-    Lista di tutti i vincoli editabili (matrici di disponibilita,
-    vincoli logici per docenti/classi/aule/indirizzi, preferenze
-    materia-aula e docente-aula non default, regole di compresenza).
-    I colori riflettono il tipo: <span class="pill-red">HARD</span>,
-    <span class="pill-amber">SOFT</span>,
-    <span class="pill-blue">PREFERRED</span>,
-    <span class="pill-c-enforced">ENFORCED</span>.
-  </p>
-
   <SortableQueryableList
     bind:this={listRef}
     endpoint="/api/monitor/constraints"
@@ -571,6 +589,7 @@
       </td>
     </tr>
   </SortableQueryableList>
+  </div>
 </div>
 
 <Modal open={!!editing} title={editing ? `Modifica ${editing.kind} #${editing.id}` : ''}

@@ -1,5 +1,5 @@
 <script>
-  import DecorIcon from '$lib/components/DecorIcon.svelte';
+  import PageHero from '$lib/components/PageHero.svelte';
   import { confirmDialog } from '$lib/confirm';
   import { onMount } from 'svelte';
   import { api } from '$lib/api';
@@ -202,21 +202,21 @@
 </script>
 
 <div class="space-y-4" data-testid="absences-page">
-  <div class="flex items-baseline gap-3 flex-wrap">
-    <h1 class="flex items-center gap-2"><DecorIcon name="coffee" size={26} class="shrink-0" /> Assenze e supplenze</h1>
-    <div class="ml-auto flex items-center gap-2">
-      <button class="btn !text-xs" on:click={() => shiftWeek(-1)}
+  <PageHero title="Assenze e supplenze"
+            description="La settimana vista dal lato della copertura: si registrano le assenze e si assegnano i supplenti sulle ore rimaste scoperte, lavorando sulla soluzione attiva.">
+    <svelte:fragment slot="actions">
+      <button class="btn" on:click={() => shiftWeek(-1)}
               data-testid="absences-prev-week">&lt; settimana prec.</button>
       <input type="date" bind:value={weekStart} on:change={load}
              class="px-2 py-1 border border-ink-200 rounded text-sm"
              title="Lunedi della settimana"
              data-testid="absences-week-input"/>
-      <button class="btn !text-xs" on:click={() => shiftWeek(1)}
+      <button class="btn" on:click={() => shiftWeek(1)}
               data-testid="absences-next-week">settimana succ. &gt;</button>
-      <button class="btn !text-xs" on:click={() => { weekStart = mondayOf(new Date()); load(); }}
+      <button class="btn" on:click={() => { weekStart = mondayOf(new Date()); load(); }}
               data-testid="absences-today">oggi</button>
-    </div>
-  </div>
+    </svelte:fragment>
+  </PageHero>
 
   {#if !coverage}
     <p class="text-sm text-ink-500">Caricamento...</p>

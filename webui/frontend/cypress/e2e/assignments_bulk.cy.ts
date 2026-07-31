@@ -22,6 +22,7 @@
 
 import { seedMiniScenario, seedAssignments } from
   '../support/seed';
+import { acceptConfirm } from '../support/confirm';
 
 const BACKEND = (Cypress.env('backendUrl') as string)
   || 'http://127.0.0.1:8000';
@@ -68,8 +69,6 @@ describe('/assignments bulk actions', () => {
   });
 
   it('bulk delete removes the selected rows', () => {
-    cy.on('window:confirm', () => true);
-
     // Initial count -- snapshot via API.
     cy.request(`${BACKEND}/api/assignments`).then((r) => {
       const before = (r.body.items ?? r.body).length;
@@ -88,6 +87,9 @@ describe('/assignments bulk actions', () => {
     cy.intercept('POST', '**/api/assignments/bulk/delete')
       .as('bulkDelete');
     cy.get('[data-testid="bulk-delete-btn"]').click();
+    // La cancellazione in blocco passa da ConfirmDialog, non
+    // window.confirm: senza questo la POST non parte mai.
+    acceptConfirm();
     cy.wait('@bulkDelete').its('request.body.ids')
       .should('have.length', 2);
 

@@ -15,8 +15,8 @@ export const BUTTON_VARIANTS: Record<ButtonVariant, string> = {
   primary: 'btn-primary',
   secondary: 'btn',
   danger: 'btn-danger',
-  ghost: 'px-3 py-1.5 text-sm rounded-md hover:bg-ink-100 focus-ring',
-  icon: 'p-1.5 rounded-md hover:bg-ink-100 focus-ring inline-flex items-center justify-center',
+  ghost: 'px-3 py-1.5 text-[12.5px] rounded-[7px] text-ink-500 hover:bg-ink-100 hover:text-ink-900 focus-ring',
+  icon: 'p-1.5 rounded-[7px] text-ink-500 hover:bg-ink-100 hover:text-ink-900 focus-ring inline-flex items-center justify-center',
 };
 
 /** Resolve a variant to its base class, falling back to `primary`. */

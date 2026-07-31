@@ -24,6 +24,7 @@
 
 import { clearDataset, seedSmallProfileAndRunPhaseA, waitForRun } from
   '../support/seed';
+import { acceptConfirm } from '../support/confirm';
 
 const BACKEND = (Cypress.env('backendUrl') as string)
   || 'http://127.0.0.1:8000';
@@ -280,7 +281,10 @@ describe('/schedule calendar -- with active solution (Phase A+B)', () => {
       return;
     }
     cy.intercept('POST', `**/api/lessons/${a.id}/move`).as('moveLesson');
-    cy.intercept('DELETE', `**/api/lessons/${b.id}`).as('deleteConflict');
+    // La risoluzione del conflitto manda un solo POST
+    // /api/lessons/bulk-delete con tutti gli id in conflitto, non N
+    // DELETE /api/lessons/<id>.
+    cy.intercept('POST', '**/api/lessons/bulk-delete').as('deleteConflict');
     simulateDragDrop(
       `[data-testid="sched-lesson-${a.id}"]`,
       `[data-testid="sched-slot-${b.day}-${b.hour}"]`,
@@ -357,7 +361,11 @@ describe('/schedule calendar -- with active solution (Phase A+B)', () => {
         return;
       }
       cy.intercept('POST', `**/api/lessons/${a.id}/move`).as('moveLesson');
-      cy.intercept('DELETE', `**/api/lessons/${b.id}`).as('deleteConflict');
+      // La risoluzione del conflitto manda un solo POST
+      // /api/lessons/bulk-delete con tutti gli id in conflitto, non N
+      // DELETE /api/lessons/<id>.
+      cy.intercept('POST', '**/api/lessons/bulk-delete')
+        .as('deleteConflict');
       simulateDragDrop(
         `[data-testid="sched-lesson-${a.id}"]`,
         `[data-testid="sched-slot-${b.day}-${b.hour}"]`,
@@ -494,7 +502,6 @@ describe('/schedule calendar -- with active solution (Phase A+B)', () => {
 
   // ----- Svincola action -----
   it('ACTION: Svincola sends event to pool, removes from calendar', () => {
-    cy.on('window:confirm', () => true);
     getLessons().then((lessons) => {
       const t = lessons[0];
       cy.intercept('POST', `**/api/lessons/${t.id}/unschedule`)
@@ -503,6 +510,8 @@ describe('/schedule calendar -- with active solution (Phase A+B)', () => {
         .click({ force: true });
       cy.get('[data-testid="schedule-actions-modal"]').should('be.visible');
       cy.get('[data-testid="schedule-action-unschedule"]').click();
+      // Svincola/Elimina passano da ConfirmDialog, non window.confirm.
+      acceptConfirm();
       cy.wait('@unschedule').its('response.statusCode')
         .should('eq', 200);
       cy.get('@getLessons.all').its('length').should('be.gte', 1);
@@ -511,7 +520,6 @@ describe('/schedule calendar -- with active solution (Phase A+B)', () => {
 
   // ----- Elimina action -----
   it('ACTION: Elimina removes the event via DELETE', () => {
-    cy.on('window:confirm', () => true);
     getLessons().then((lessons) => {
       // Pick a lesson the previous tests haven't touched (later ids).
       const t = lessons[lessons.length - 1];
@@ -521,6 +529,7 @@ describe('/schedule calendar -- with active solution (Phase A+B)', () => {
         .click({ force: true });
       cy.get('[data-testid="schedule-actions-modal"]').should('be.visible');
       cy.get('[data-testid="schedule-action-delete"]').click();
+      acceptConfirm();
       cy.wait('@deleteLesson').its('response.statusCode')
         .should('eq', 200);
     });

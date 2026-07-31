@@ -11,62 +11,137 @@
   --brand-accent:    #9c4a1c;  /* terra di siena */
   --brand-bg:        #f7f1de;  /* avorio */
   --brand-fg:        #1a1612;  /* nero caldo */
+
+  /* Sistema del redesign. Stessi valori dei token Tailwind
+     (tailwind.config.js): usa le utility `text-ink-500`, `border-ink-200`,
+     `bg-paper` dove puoi, queste variabili dove serve CSS puro
+     (gradienti, box-shadow, valori calcolati). */
+  --ink:     #1a1612;
+  --ink2:    #6b6355;
+  --ink3:    #9b9384;
+  --line:    #e5e0d4;
+  --line2:   #f1ece2;
+  --paper:   #f5f2ea;
+  --band:    #fbf9f3;
+  --card:    #ffffff;
+  --pri:     #1e3a5f;
+  --gold:    #c9a23a;
+  --siena:   #9c4a1c;
+
+  /* Densita': scalata dal toggle compatta/comfort in +layout.svelte. */
+  --pad-card: 16px;
+  --pad-row:  7px;
 }
-@media (prefers-color-scheme: dark) {
-  :root {
-    --brand-primary:   #88a5d8;  /* indaco chiaro */
-    --brand-secondary: #f0c869;  /* oro chiaro */
-    --brand-accent:    #d57a4c;  /* terra di siena chiara */
-    --brand-bg:        #1a2330;
-    --brand-fg:        #f7f1de;
-  }
+
+/* Comfort: stessa griglia, piu' aria. Compatta e' il default (:root). */
+[data-density='comfort'] {
+  --pad-card: 22px;
+  --pad-row:  11px;
 }
+
+/* Dark mode: rimandata. Quando arrivera' bastera' popolare questo blocco
+   con i valori della direzione 1d del design
+   (--ink:#f2ede1 --ink2:#a9a291 --ink3:#7d7768 --line:#2e3540
+    --line2:#252b34 --paper:#171c23 --card:#1d232b --pri:#88a5d8
+    --gold:#f0c869) e attivarlo da un toggle esplicito, non da
+   prefers-color-scheme: meta' dei colori dell'app sono ancora scritti
+   come utility Tailwind e non seguirebbero le variabili.
+[data-theme='dark'] { ... } */
 
 @layer base {
   html { -webkit-text-size-adjust: 100%; }
-  body { font-feature-settings: 'cv11', 'ss01'; }
-  h1 { @apply text-2xl font-semibold tracking-tight; }
-  h2 { @apply text-xl font-semibold tracking-tight; }
-  h3 { @apply text-lg font-semibold; }
+  /* Il design lavora a 13px di base. Restiamo su rem=16px (le spaziature
+     Tailwind sono in rem: cambiare la radice rimpicciolirebbe tutto) e
+     abbassiamo solo il testo che non ha una classe text-*. */
+  body { font-size: 13px; line-height: 1.55; }
+  /* Titoli in Source Serif: e' il tratto piu' riconoscibile del redesign
+     e arriva a tutte le pagine senza toccarle. */
+  h1 { @apply font-serif text-[30px] font-semibold tracking-[-0.015em] leading-[1.1]; }
+  h2 { @apply font-serif text-[19px] font-semibold tracking-[-0.01em]; }
+  h3 { @apply font-serif text-[15px] font-semibold; }
 }
 
 @layer components {
+  /* --- tipografia di servizio del redesign --------------------------- */
+  /* Occhiello: mono, minuscolo, spaziato. Apre ogni fascia e ogni
+     sezione ("TAPPA 1 - ANAGRAFICA", "STRUMENTI"). */
+  .eyebrow {
+    @apply font-mono text-[10px] font-medium uppercase leading-none
+           tracking-[0.11em] text-ink-300;
+  }
+  /* Numeri e identificatori: sempre in mono, cosi' le colonne di cifre
+     si allineano e i codici si distinguono dal testo. */
+  .num { @apply font-mono tabular-nums; }
+
+  /* --- bottoni ------------------------------------------------------- */
   .btn {
-    @apply inline-flex items-center gap-2 px-3 py-1.5 rounded-md
-           text-sm font-medium border border-ink-200 bg-white
-           hover:bg-ink-100 active:bg-ink-200 transition-colors
+    @apply inline-flex items-center gap-2 px-[13px] py-[7px] rounded-[7px]
+           text-[12.5px] font-normal border border-ink-200 bg-white
+           text-ink-500 hover:bg-ink-50 hover:text-ink-900
+           active:bg-ink-100 transition-colors
            disabled:opacity-50 disabled:cursor-not-allowed;
   }
   .btn-primary {
-    @apply btn bg-accent-500 text-white border-accent-500
-           hover:bg-accent-600 active:bg-accent-600;
+    @apply btn rounded-lg bg-accent-500 text-white border-accent-500
+           font-medium hover:bg-accent-600 hover:text-white
+           active:bg-accent-600;
   }
   .btn-danger {
-    @apply btn bg-red-500 text-white border-red-500
-           hover:bg-red-600 active:bg-red-700;
+    @apply btn bg-white text-siena border-[#f0d6d0] font-medium
+           hover:bg-[#fdf4f2] hover:text-siena active:bg-[#f9e9e5];
   }
+  /* Alias storici usati in una ventina di punti (monitor, schedule,
+     diagnostics, feasibility panel). Non erano mai stati definiti in
+     app.css: quei bottoni finivano a video come testo nudo. */
+  .btn-red { @apply btn-danger; }
+  .btn-amber {
+    @apply btn bg-white text-[#8a6412] border-[#ecdcb4] font-medium
+           hover:bg-[#fdf8ec] hover:text-[#8a6412] active:bg-[#f8f0dc];
+  }
+  /* Bottone "aggiungi" tratteggiato (nuovo docente, nuova riga, ...) */
+  .btn-dashed {
+    @apply btn border-dashed border-line-dash bg-transparent text-ink-300
+           hover:bg-white hover:text-ink-500;
+  }
+
+  /* --- superfici ----------------------------------------------------- */
   .card {
-    @apply bg-white border border-ink-200 rounded-lg shadow-sm;
+    @apply bg-white border border-ink-200 rounded-card;
+    box-shadow: 0 1px 2px rgb(26 22 18 / 4%);
   }
+  /* Fascia introduttiva della pagina (vedi PageHero.svelte). */
+  .hero-band {
+    @apply border-b border-ink-200;
+    background: linear-gradient(#ffffff, var(--band));
+  }
+
+  /* --- form ---------------------------------------------------------- */
   .field {
-    @apply flex flex-col gap-1 text-sm;
+    @apply flex flex-col gap-1 text-[12.5px];
   }
   .field input, .field select, .field textarea {
-    @apply px-2 py-1.5 rounded-md border border-ink-200
+    @apply px-2.5 py-1.5 rounded-lg border border-ink-200
            bg-white text-ink-900 focus:outline-none
-           focus:ring-2 focus:ring-accent-500/40 focus:border-accent-500;
+           focus:ring-2 focus:ring-accent-500/25 focus:border-accent-500;
   }
   .field label, label.field-label {
-    @apply text-xs font-medium text-ink-500;
+    @apply text-[11px] font-medium text-ink-500;
   }
+
+  /* --- pill ---------------------------------------------------------- */
+  /* gap e non lo spazio del markup: essendo un flex container, lo
+     spazio fra <span class="num">3</span> e "classi" verrebbe mangiato
+     e i chip numerici si leggerebbero "3classi". */
   .pill {
-    @apply inline-flex items-center px-2 py-0.5 text-xs
-           rounded-full bg-ink-100 text-ink-700;
+    @apply inline-flex items-center gap-[0.32em] px-[9px] py-[3px]
+           text-[10.5px] rounded-full bg-[#eae4d5] text-ink-500;
   }
-  .pill-green { @apply pill bg-emerald-100 text-emerald-800; }
-  .pill-red   { @apply pill bg-red-100 text-red-800; }
-  .pill-amber { @apply pill bg-amber-100 text-amber-800; }
-  .pill-blue  { @apply pill bg-sky-100 text-sky-800; }
+  .pill-green { @apply pill bg-[#e6f0e8] text-[#2f6b3e] font-medium; }
+  .pill-red   { @apply pill bg-[#fecaca] text-[#991b1b] font-medium; }
+  .pill-amber { @apply pill bg-[#fde68a] text-[#92400e] font-medium; }
+  .pill-blue  { @apply pill bg-[#dbe6f4] text-pri font-medium; }
+  /* Pill numerica: conteggi e metriche nella fascia e nell'header. */
+  .pill-num   { @apply pill font-mono text-[11px] tabular-nums; }
   /* Constraint-level pills: same shape as .pill but with the
      dedicated palette tokens defined in tailwind.config.js. Use
      these instead of inline `style="background:...;color:..."`
@@ -82,15 +157,21 @@
     @apply outline-none ring-2 ring-accent-500 ring-offset-2;
   }
   table.tbl {
-    @apply w-full text-sm border-collapse;
+    @apply w-full text-[12.5px] border-collapse;
   }
   table.tbl th {
-    @apply text-left text-xs uppercase tracking-wide text-ink-500
-           border-b border-ink-200 px-2 py-1;
+    @apply text-left font-mono text-[10px] font-medium uppercase
+           leading-[1.3] tracking-[0.08em] text-ink-300
+           border-b border-ink-200 px-2.5;
+    padding-top: var(--pad-row);
+    padding-bottom: var(--pad-row);
   }
   table.tbl td {
-    @apply border-b border-ink-100 px-2 py-1.5 align-top;
+    @apply border-b border-ink-100 px-2.5 align-top;
+    padding-top: var(--pad-row);
+    padding-bottom: var(--pad-row);
   }
+  table.tbl tbody tr:hover { @apply bg-paper-band; }
 }
 
 .timetable-grid {
@@ -112,7 +193,7 @@
   .timetable-grid > .cell { min-height: 56px; padding: 4px; }
 }
 .dragging { opacity: 0.4; }
-.drop-target { outline: 2px dashed #3a6df0; outline-offset: -2px; }
+.drop-target { outline: 2px dashed var(--pri); outline-offset: -2px; }
 .drop-target-bad { outline: 2px dashed #dc2626; outline-offset: -2px; }
 
 /* Skip link: hidden until focused by keyboard, then jumps to main */
@@ -121,15 +202,15 @@
   left: 8px;
   top: -40px;
   z-index: 1000;
-  background: #0f172a;
+  background: var(--ink);
   color: #fff;
   padding: 8px 12px;
-  border-radius: 6px;
+  border-radius: 7px;
   font-weight: 600;
 }
 .skip-link:focus {
   top: 8px;
-  outline: 2px solid #3a6df0;
+  outline: 2px solid var(--gold);
   outline-offset: 2px;
 }
 
@@ -147,13 +228,13 @@
 .tt-pop {
   z-index: 1100;
   max-width: 260px;
-  background: #0f172a;
-  color: #f8fafc;
-  font-size: 0.78rem;
-  line-height: 1.35;
+  background: var(--ink);
+  color: #f7f1de;
+  font-size: 11.5px;
+  line-height: 1.4;
   padding: 7px 10px;
   border-radius: 8px;
-  box-shadow: 0 6px 24px rgba(15, 23, 42, 0.28);
+  box-shadow: 0 6px 24px rgb(26 22 18 / 22%);
   pointer-events: none;
   opacity: 0;
   transform: translateY(2px);
@@ -161,13 +242,8 @@
 }
 .tt-pop--shown { opacity: 1; transform: translateY(0); }
 .tt-pop--shown-instant { opacity: 1; transform: none; transition: none; }
-@media (prefers-color-scheme: dark) {
-  .tt-pop {
-    background: #e2e8f0;
-    color: #0f172a;
-    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
-  }
-}
+/* Nessuna variante scura: l'app e' light-only finche' non arriva la
+   direzione 1d (vedi il blocco dark in cima al file). */
 
 /* Inline spinner for <Button loading> (and any async control). */
 .btn-spinner {

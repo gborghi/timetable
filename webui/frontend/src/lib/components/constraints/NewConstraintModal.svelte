@@ -162,27 +162,24 @@
     level = levelsForKind[0].value;
   }
 
-  function showWeight() {
-    return level === 'soft' || level === 'preferred';
-  }
+  // Stato derivato, non funzioni chiamate dal markup: un
+  // `disabled={!step1Valid()}` non si aggiornerebbe mai, perche'
+  // l'espressione dipende solo dall'identificatore `step1Valid` e non
+  // dalle variabili lette nel corpo della funzione -- l'"Avanti" del
+  // primo passo restava disabilitato anche dopo aver scelto il docente.
+  $: showWeight = level === 'soft' || level === 'preferred';
 
   // Validators per step
-  function step1Valid() {
-    if (scope === 'subject_room') {
-      return ownerId != null && !!subject;
-    }
-    if (scope === 'teacher_room') {
-      return ownerId != null && ownerId2 != null;
-    }
-    return ownerId != null;
-  }
-  function step3Valid() {
-    if (kind === 'matrix_slot') return DAYS.includes(day) && HOURS.includes(hour);
-    if (kind === 'logical') return !!expression && expression.trim().length > 0;
-    if (kind === 'room_pref') return true;
-    if (kind === 'coteach') return !!subject && nTeachers >= 2;
-    return false;
-  }
+  $: step1Valid =
+    scope === 'subject_room' ? (ownerId != null && !!subject)
+    : scope === 'teacher_room' ? (ownerId != null && ownerId2 != null)
+    : ownerId != null;
+  $: step3Valid =
+    kind === 'matrix_slot' ? (DAYS.includes(day) && HOURS.includes(hour))
+    : kind === 'logical' ? (!!expression && expression.trim().length > 0)
+    : kind === 'room_pref' ? true
+    : kind === 'coteach' ? (!!subject && nTeachers >= 2)
+    : false;
 
   // Owner display helpers
   $: ownerName = (() => {
@@ -233,7 +230,7 @@
 
   $: payload = {
     scope, kind, level,
-    weight: showWeight() ? Number(weight) : null,
+    weight: showWeight ? Number(weight) : null,
     owner_id: ownerId,
     owner_id_2: scope === 'teacher_room' ? ownerId2 : null,
     day: kind === 'matrix_slot' ? day : null,
@@ -344,7 +341,7 @@
         {/if}
       </div>
     {:else if step === 2}
-      <div class="space-y-2">
+      <div class="space-y-2" data-testid="wizard-step-2">
         <div class="text-xs text-ink-500">Livello del vincolo</div>
         {#each levelsForKind as l}
           <label class="flex items-start gap-2 text-sm">
@@ -355,7 +352,7 @@
             </span>
           </label>
         {/each}
-        {#if showWeight()}
+        {#if showWeight}
           <div class="field mt-3">
             <label>Peso (penalty SOFT)</label>
             <input type="number" bind:value={weight}/>
@@ -474,14 +471,14 @@
         {#if step === 1}
           <button class="btn-primary" on:click={() => step = 2}
                   data-testid="wizard-next"
-                  disabled={!step1Valid()}>Avanti</button>
+                  disabled={!step1Valid}>Avanti</button>
         {:else if step === 2}
           <button class="btn-primary" on:click={() => step = 3}
                   data-testid="wizard-next">Avanti</button>
         {:else if step === 3}
           <button class="btn-primary" on:click={() => step = 4}
                   data-testid="wizard-next"
-                  disabled={!step3Valid()}>Avanti</button>
+                  disabled={!step3Valid}>Avanti</button>
         {:else if step === 4 && !createdResult}
           <button class="btn-primary" on:click={submit}
                   data-testid="wizard-submit"
