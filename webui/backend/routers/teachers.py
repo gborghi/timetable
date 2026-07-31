@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from .. import models, schemas
 from ..db import get_db
@@ -105,6 +105,32 @@ def _classroom_prefs_for_teacher(db, teacher_id: int
     return out
 
 
+def _classroom_prefs_by_teacher(
+        db) -> dict[int, list[schemas.TeacherClassroomPrefIn]]:
+    """`_classroom_prefs_for_teacher` per TUTTI i docenti in due query.
+
+    Chiamata una volta per docente, quella funzione ne costa due a
+    testa (l'elenco aule + le preferenze del singolo): su una scuola da
+    180 docenti sono 356 query, ed e\` la parte grossa dei 21s che
+    `test_full_tab_cycle_within_budget` misurava su `/api/teachers`.
+    Le collezioni `selectinload`-abili non bastano: qui non c'e\` una
+    relationship da caricare, c'e\` una query esplicita.
+    """
+    rooms = {r.id: r for r in db.query(models.Classroom).all()}
+    out: dict[int, list[schemas.TeacherClassroomPrefIn]] = {}
+    for r in db.query(models.TeacherClassroomPreference).all():
+        room = rooms.get(r.classroom_id)
+        if room is None:
+            continue
+        out.setdefault(r.teacher_id, []).append(
+            schemas.TeacherClassroomPrefIn(
+                classroom_name=room.name,
+                state=r.state or "allowed",
+                weight=float(r.weight or 0.0),
+            ))
+    return out
+
+
 def _apply_teacher_classroom_prefs(db, teacher_id: int,
                                    prefs) -> None:
     db.query(models.TeacherClassroomPreference).filter(
@@ -130,7 +156,8 @@ def _apply_teacher_classroom_prefs(db, teacher_id: int,
         ))
 
 
-def _to_out(t: models.Teacher, db=None) -> schemas.TeacherOut:
+def _to_out(t: models.Teacher, db=None,
+            classroom_prefs=None) -> schemas.TeacherOut:
     # Decode preferred_free_days_json (defensive — best-effort).
     import json as _json
     pfd_list: list[schemas.FreeDayPref] = []
@@ -191,8 +218,12 @@ def _to_out(t: models.Teacher, db=None) -> schemas.TeacherOut:
         unavailability=_autofill_free_day_cells(t, list(t.unavailability)),
         mandatory_free_days=[m.day for m in t.mandatory_free_days],
         compatible_classes=[c.class_name for c in t.compatible_classes],
-        classroom_prefs=(_classroom_prefs_for_teacher(db, t.id)
-                         if db is not None else []),
+        # `classroom_prefs` gia\` pronte = chiamata da una lista, che le
+        # ha precaricate in blocco; None = chiamata singola, si paga la
+        # coppia di query per questo docente soltanto.
+        classroom_prefs=(classroom_prefs if classroom_prefs is not None
+                         else (_classroom_prefs_for_teacher(db, t.id)
+                               if db is not None else [])),
         free_day_priorities=free_day_priorities,
     )
 
@@ -208,7 +239,19 @@ def list_teachers(q: str | None = Query(None,
                   limit: int | None = Query(None, ge=0, le=10000),
                   offset: int | None = Query(None, ge=0),
                   db: Session = Depends(get_db)):
-    rows = db.query(models.Teacher).order_by(models.Teacher.name).all()
+    # `_to_out` legge sei collezioni per docente: senza eager-loading
+    # sono 6 query a riga, ed e\` la lentezza che
+    # `test_full_tab_cycle_within_budget` sorveglia. `selectinload` le
+    # raccoglie in sei query totali.
+    rows = (db.query(models.Teacher)
+            .options(selectinload(models.Teacher.subjects),
+                     selectinload(models.Teacher.unavailability),
+                     selectinload(models.Teacher.mandatory_free_days),
+                     selectinload(models.Teacher.compatible_classes),
+                     selectinload(models.Teacher.compresenza_hours),
+                     selectinload(models.Teacher.free_day_preferences))
+            .order_by(models.Teacher.name).all())
+    prefs_by_teacher = _classroom_prefs_by_teacher(db)
     # Compute extra denormalized fields for the DSL
     n_classes_by_t: dict[int, int] = {}
     sched_by_t: dict[str, int] = {}
@@ -224,7 +267,9 @@ def list_teachers(q: str | None = Query(None,
             sched_by_t[l.teacher_name] = sched_by_t.get(l.teacher_name, 0) + 1
     out = []
     for t in rows:
-        d = _to_out(t, db).model_dump()
+        d = _to_out(t, db,
+                    classroom_prefs=prefs_by_teacher.get(t.id, [])
+                    ).model_dump()
         d["n_classes"] = n_classes_by_t.get(t.id, 0)
         d["scheduled_hours"] = sched_by_t.get(t.name, 0)
         d["soft_penalty_total"] = sum(
