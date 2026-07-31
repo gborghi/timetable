@@ -95,10 +95,64 @@ def classroom_unavailability_to_dsl(classroom_name: str, day: int,
             f' and l.day == {int(day)} and l.hour == {int(hour)}: false')
 
 
+def _configured_hours_by_day(db, models) -> dict[int, set[int]]:
+    """Map legacy day number -> set of legacy hour numbers configured
+    as active in Tab Ore.
+
+    Used to decide whether a set of per-cell unavailabilities covers a
+    whole day. Falls back to the legacy 6x6 grid (days 1..6, hours
+    8..13) when the DB carries no WorkingDay rows, which is the shape
+    every pre-Tab-Ore dataset uses."""
+    by_day: dict[int, set[int]] = {}
+    for d in db.query(models.WorkingDay).all():
+        if not getattr(d, "is_active", True):
+            continue
+        legacy = getattr(d, "legacy_day_number", None)
+        if legacy is None:
+            continue
+        hours = {int(s.legacy_hour_number) for s in (d.slots or [])
+                 if getattr(s, "legacy_hour_number", None) is not None}
+        if hours:
+            by_day[int(legacy)] = hours
+    if not by_day:
+        by_day = {d: set(range(8, 14)) for d in range(1, 7)}
+    return by_day
+
+
+def teacher_day_capacity_to_dsl(teacher_name: str, day: int,
+                                  n: int) -> str:
+    """Per-(teacher, day) hour ceiling, as the canonical pragma
+    ``teacher_day_capacity("<name>", d, n)``.
+
+    ``n`` is the day's configured hours minus the teacher's HARD
+    unavailable ones. Registered ``level="both"``: at Phase B it is a
+    redundant cut over the slot vars, at Phase A it is the only form
+    in which per-cell unavailability can reach the day distribution."""
+    return (f'teacher_day_capacity('
+            f'{_quote(teacher_name)}, {int(day)}, {int(n)})')
+
+
+def teacher_unavailable_day_to_dsl(teacher_name: str, day: int) -> str:
+    """Whole-day teacher unavailability, as the canonical pragma
+    ``teacher_unavailable_day("<name>", d)``.
+
+    Emitted as a pragma rather than as the equivalent verbose
+    ``count l in lessons ... == 0`` form because the verbose form
+    quantifies over ``lessons`` -- i.e. over the slot model -- and is
+    therefore compilable only at Phase B. The pragma is registered
+    ``level="both"``, so the same rule also reaches Phase A, where it
+    becomes ``day_count == 0`` for that (teacher, day)."""
+    return (f'teacher_unavailable_day('
+            f'{_quote(teacher_name)}, {int(day)})')
+
+
 def teacher_mandatory_free_day_to_dsl(teacher_name: str, day: int) -> str:
-    """All-day-off rule: the teacher has zero lessons on the given day."""
-    return (f'count l in lessons where l.teacher == {_quote(teacher_name)}'
-            f' and l.day == {int(day)} == 0')
+    """All-day-off rule: the teacher has zero lessons on the given day.
+
+    Same shape as :func:`teacher_unavailable_day_to_dsl` -- a
+    mandatory free day IS a whole-day unavailability, so both go
+    through the one pragma that Phase A can honor."""
+    return teacher_unavailable_day_to_dsl(teacher_name, day)
 
 
 def teacher_at_least_n_free_days_to_dsl(teacher_name: str, n: int) -> str:
@@ -180,6 +234,119 @@ def cattedra_max_per_day_to_dsl(teacher_name: str, class_name: str,
     return (
         f'cattedra_max_per_day({_quote(teacher_name)}, '
         f'{_quote(class_name)}, {_quote(subject)}, {int(n)})')
+
+
+def special_room_capacity_to_dsl(db) -> list[tuple[str, str]]:
+    r"""Un pragma per ogni tipo di aula speciale effettivamente
+    richiesto da qualche materia. Ritorna ``[(kind, dsl), ...]``.
+
+    Perche\` esiste. ``Subject.required_kind`` obbliga una materia a
+    finire in un'aula di quel tipo, ma i POSTI di quelle aule li
+    conosce solo lo step aule, che gira dopo la fase orario e non puo\`
+    piu\` spostare niente. Una scuola con due palestre da due classi
+    ciascuna si ritrova quindi con orari che mettono quattro classi in
+    palestra alla stessa ora e uno step aule che fallisce senza dire
+    perche\`. Qui il tetto viene calcolato dai dati e passato alla fase
+    orario, che puo\` ancora rimediare.
+
+    Posti = per ogni aula di quel tipo, ``multi_class_max`` se e\`
+    multi-classe, altrimenti 1.
+
+    Emette solo per i tipi che hanno almeno una materia con
+    ``required_kind``: una scuola che non usa la funzionalita\` non
+    vede cambiare nulla. Se un tipo e\` richiesto ma NON esiste
+    nessuna aula di quel tipo il pragma non viene emesso -- sarebbe un
+    tetto a 0 che rende la fase orario infattibile, e la diagnosi
+    giusta ("hai chiesto la palestra e non hai palestre") deve
+    arrivare dallo step aule, non da un INFEASIBLE opaco.
+
+    PLESSI. Il tetto globale non basta quando le classi sono vincolate
+    a una sede: due palestre da due posti in due sedi diverse danno un
+    tetto globale di 4, ma quattro classi della stessa sede non ci
+    stanno lo stesso. Per ogni sede si emette percio\` anche un tetto
+    ristretto alle sue classi
+    (``subjects_max_concurrent_classes_in``), usando i posti delle sole
+    aule di quella sede. Le due forme convivono: quella globale e\` un
+    rilassamento valido dell'insieme di quelle per plesso, e resta
+    utile quando qualche classe non e\` vincolata a nessuna sede.
+    """
+    try:
+        from webui.backend import models  # type: ignore
+    except ImportError:  # pragma: no cover - path juggling in tests
+        from backend import models  # type: ignore
+
+    subs_by_kind: dict[str, list[str]] = {}
+    for s in db.query(models.Subject).all():
+        kind = (getattr(s, "required_kind", None) or "").strip()
+        if kind:
+            subs_by_kind.setdefault(kind, []).append(s.name)
+    if not subs_by_kind:
+        return []
+
+    seats_by_kind: dict[str, int] = {}
+    for r in db.query(models.Classroom).all():
+        kind = (r.kind or "standard").strip()
+        if kind not in subs_by_kind:
+            continue
+        seats = (int(r.multi_class_max or 1) if r.multi_class else 1)
+        seats_by_kind[kind] = seats_by_kind.get(kind, 0) + max(0, seats)
+
+    out: list[tuple[str, str]] = []
+    for kind, subs in sorted(subs_by_kind.items()):
+        seats = seats_by_kind.get(kind, 0)
+        if seats <= 0:
+            continue
+        args = [str(seats)] + [_quote(s) for s in sorted(subs)]
+        out.append(
+            (kind, f'subjects_max_concurrent_classes({", ".join(args)})')
+        )
+
+    # --- Tetti per plesso (vedi il docstring) ---
+    seats_by_kind_plesso: dict[tuple[str, int], int] = {}
+    for r in db.query(models.Classroom).all():
+        kind = (r.kind or "standard").strip()
+        if kind not in subs_by_kind or r.plesso_id is None:
+            continue
+        seats = (int(r.multi_class_max or 1) if r.multi_class else 1)
+        key = (kind, int(r.plesso_id))
+        seats_by_kind_plesso[key] = (
+            seats_by_kind_plesso.get(key, 0) + max(0, seats))
+    if not seats_by_kind_plesso:
+        return out
+
+    # Classi inchiodate a una sede. Solo le policy che valgono per
+    # tutta la settimana o per l'intera giornata: con 'any' la classe
+    # puo\` cambiare sede e non appartiene a nessun sottoinsieme.
+    classes_by_plesso: dict[int, list[str]] = {}
+    class_name_by_id = {c.id: c.name
+                        for c in db.query(models.SchoolClass).all()}
+    for p in db.query(models.PlessoEntityPolicy).all():
+        if (p.entity_kind != "class" or p.entity_id is None
+                or p.plesso_id is None):
+            continue
+        if p.policy not in ("single_plesso_total", "single_plesso_per_day"):
+            continue
+        nm = class_name_by_id.get(int(p.entity_id))
+        if nm:
+            classes_by_plesso.setdefault(int(p.plesso_id), []).append(nm)
+
+    for kind, subs in sorted(subs_by_kind.items()):
+        for plesso_id, cls in sorted(classes_by_plesso.items()):
+            seats = seats_by_kind_plesso.get((kind, plesso_id), 0)
+            if seats <= 0 or not cls:
+                # Nessuna aula di quel tipo in questa sede: il tetto
+                # sarebbe 0. Non lo emettiamo per la stessa ragione del
+                # caso globale -- la diagnosi utile la da\` lo step aule.
+                continue
+            if len(cls) <= seats:
+                continue  # non puo\` mordere
+            args = ([str(seats), _quote(",".join(sorted(cls)))]
+                    + [_quote(s) for s in sorted(subs)])
+            out.append((
+                kind,
+                f'subjects_max_concurrent_classes_in({", ".join(args)})',
+            ))
+    return out
 
 
 def subject_pair_must_to_dsl(class_name: str, subject: str) -> str:
@@ -454,16 +621,25 @@ def seed_implicit_hardcoded(
 
     # --- HARD-B: motorie pair (must_pair) ---
     if enforce_motorie_pair:
+        try:
+            from engine import cpsat_v2_timetable as _cv2  # type: ignore
+        except ImportError:
+            import cpsat_v2_timetable as _cv2  # type: ignore
+        want = _cv2.subject_key("Scienzemotorie")
         for cl in classes:
             # Only emit the pragma when the class actually has a
             # Scienzemotorie cattedra; otherwise the pragma is a
-            # no-op but still valid DSL.
-            has_motorie = any(
-                "Scienzemotorie" in p.get("classi", {}).get(cl, {})
-                for p in profs.values())
-            if has_motorie:
-                out.append(subject_pair_must_to_dsl(
-                    cl, "Scienzemotorie"))
+            # no-op but still valid DSL. Match on the canonical key
+            # and emit the school's own spelling -- an exact-literal
+            # match silently skipped every school naming the subject
+            # "Scienze motorie". See ``cv2.subject_key``.
+            motorie = next(
+                (s for p in profs.values()
+                 for s in p.get("classi", {}).get(cl, {})
+                 if _cv2.subject_key(s) == want),
+                None)
+            if motorie is not None:
+                out.append(subject_pair_must_to_dsl(cl, motorie))
 
     # --- HARD-A: Mat/Ita pair_exists ---
     if enforce_math_italian_pair:
@@ -580,6 +756,52 @@ def load_all_dsl_constraints(db,
             "weight": 0 if is_hard else int(r.soft_penalty or 100),
             "label": f"Docente {n} non disp. {r.day}-{r.hour}",
         })
+
+    # 1b. Per-(teacher, day) CAPACITY, DERIVED from the per-cell rows
+    # above. Those rows name an hour, so they compile only against the
+    # slot model -- Phase A, which has no hour dimension, never sees
+    # them. Their consequence, though, survives the loss of that
+    # dimension: a teacher blocked for k of the day's h configured
+    # slots can work at most h - k hours that day. "At most n hours on
+    # day d" is precisely what Phase A's prof_day_load speaks.
+    #
+    # This is what stops Phase A from handing the per-day Phase B a day
+    # distribution that no arrangement of hours can satisfy -- the case
+    # of a part-time or a completamento su altra scuola, whose absence
+    # a school enters cell by cell rather than as a
+    # TeacherMandatoryFreeDay. When k == h the capacity is 0 and the
+    # more legible whole-day pragma is emitted instead.
+    hours_by_day = _configured_hours_by_day(db, models)
+    hard_cells: dict[int, dict[int, set[int]]] = {}
+    for r in db.query(models.TeacherUnavailability).all():
+        if r.state == "hard":
+            hard_cells.setdefault(r.teacher_id, {})\
+                .setdefault(int(r.day), set()).add(int(r.hour))
+    for tid in sorted(hard_cells):
+        n = teachers.get(tid)
+        if not n:
+            continue
+        for day in sorted(hours_by_day):
+            configured = hours_by_day[day]
+            blocked = configured & hard_cells[tid].get(day, set())
+            if not blocked:
+                continue
+            capacity = len(configured) - len(blocked)
+            if capacity <= 0:
+                expr = teacher_unavailable_day_to_dsl(n, day)
+                label = f"Docente {n} non disp. tutto il giorno {day}"
+            else:
+                expr = teacher_day_capacity_to_dsl(n, day, capacity)
+                label = (f"Docente {n} max {capacity}h il giorno {day} "
+                         f"({len(blocked)}h non disp.)")
+            out.append({
+                "source": "teacher_day_capacity",
+                "scope_kind": "teacher", "scope_id": tid,
+                "expression": expr,
+                "is_hard": True,
+                "weight": 0,
+                "label": label,
+            })
 
     # 2. ClassUnavailability
     for r in db.query(models.ClassUnavailability).all():
@@ -742,6 +964,18 @@ def load_all_dsl_constraints(db,
                     "label": (f"Coteach {cl_name}/"
                               f"{g.subject} ({len(t_names)} doc.)"),
                 })
+
+    # 5b. Capienza delle aule speciali (posti-classe per tipo).
+    # Vincolo di scuola, non di entita': lo scope resta None.
+    for kind, clause in special_room_capacity_to_dsl(db):
+        out.append({
+            "source": "special_room_capacity",
+            "scope_kind": None, "scope_id": None,
+            "expression": clause,
+            "is_hard": True,
+            "weight": 0,
+            "label": f"Capienza aule '{kind}'",
+        })
 
     # 6. LogicalUnavailability (already DSL, just pass through)
     for r in db.query(models.LogicalUnavailability).all():

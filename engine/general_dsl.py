@@ -1166,6 +1166,26 @@ def _eval_call(node: Call, env, world):
                 "no_same_class_consecutive_days richiede 1 argomento "
                 "(classe)")
         return _eval_no_same_class_consecutive_days(world, str(pos[0]))
+    if name == "subjects_max_concurrent_classes":
+        if len(pos) < 2:
+            raise DSLError(
+                "subjects_max_concurrent_classes richiede almeno 2 "
+                "argomenti (n, materia...)")
+        return _eval_subjects_max_concurrent_classes(
+            world, [str(x) for x in pos[1:]], int(pos[0]))
+    if name == "subjects_max_concurrent_classes_in":
+        # Come sopra, ma il tetto vale solo per un sottoinsieme di
+        # classi (secondo argomento, elenco separato da virgole). Serve
+        # ai plessi: i posti di una sede contro le sole classi di
+        # quella sede.
+        if len(pos) < 3:
+            raise DSLError(
+                "subjects_max_concurrent_classes_in richiede almeno 3 "
+                "argomenti (n, classi, materia...)")
+        return _eval_subjects_max_concurrent_classes(
+            world, [str(x) for x in pos[2:]], int(pos[0]),
+            only_classes=[c.strip() for c in str(pos[1]).split(",")
+                          if c.strip()])
     if name == "slot_after_hour_penalty":
         # SOFT pragma; as a boolean predicate it is 'satisfied' iff NO
         # lesson occupies a slot at/after the threshold hour. The trailing
@@ -1461,6 +1481,34 @@ def _eval_cattedra_max_per_day(world: dict, t: str, cl: str,
             continue
         by_day[int(d)] = by_day.get(int(d), 0) + 1
     return all(c <= n for c in by_day.values())
+
+
+def _eval_subjects_max_concurrent_classes(world: dict, subjects,
+                                          n: int,
+                                          only_classes=None) -> bool:
+    """Per ogni (giorno, ora), il numero di classi DISTINTE con lezione
+    in una delle ``subjects`` non supera ``n``.
+
+    Le classi si contano una volta sola: due docenti in compresenza
+    sulla stessa ora occupano un posto, non due.
+
+    ``only_classes``, se valorizzato, restringe il conteggio a quelle
+    classi: e\` cosi\` che si esprime un tetto PER PLESSO (i posti di
+    quella sede contro le sole classi che stanno in quella sede).
+    """
+    want = {str(s) for s in subjects}
+    scope = {str(c) for c in only_classes} if only_classes else None
+    by_slot: dict[tuple, set] = {}
+    for l in world.get("lessons", []):
+        if str(l.get("subject")) not in want:
+            continue
+        if scope is not None and str(l.get("class")) not in scope:
+            continue
+        d, h = l.get("day"), l.get("hour")
+        if d is None or h is None:
+            continue
+        by_slot.setdefault((int(d), int(h)), set()).add(l.get("class"))
+    return all(len(cs) <= n for cs in by_slot.values())
 
 
 def _eval_subject_pair(world: dict, cl: str, subj: str) -> bool:

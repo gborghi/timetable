@@ -464,6 +464,8 @@ PRAGMA_LEVEL: dict[str, str] = {
     "subject_pair_exists": "phase_b",
     "class_day_load_in": "phase_b",
     "classroom_capacity_ok": "phase_b",
+    "subjects_max_concurrent_classes": "phase_b",
+    "subjects_max_concurrent_classes_in": "phase_b",
     "class_sixth_penalty": "phase_b",
     "teacher_buchi_penalty": "phase_b",
     "slot_after_hour_penalty": "phase_b",
@@ -483,6 +485,16 @@ PRAGMA_LEVEL: dict[str, str] = {
     # silently drop these rules).
     "teacher_at_least_n_free_days": "both",
     "teacher_preferred_free_day_penalty": "both",
+    # Teacher day-capacity pragmas. A per-cell (day, hour)
+    # unavailability cannot be expressed at Phase A, which has no hour
+    # dimension -- but its CONSEQUENCE can: a teacher blocked for k of
+    # the day's h configured slots can work at most h - k hours that
+    # day, and "at most n hours on day d" is exactly what Phase A's
+    # prof_day_load speaks. Hence "both". Without these, Phase A
+    # distributes hours onto days the teacher cannot absorb them and
+    # hands the per-day Phase B a day_count it cannot place.
+    "teacher_day_capacity": "both",
+    "teacher_unavailable_day": "both",
 }
 
 
@@ -983,6 +995,16 @@ class DSLConstraintCompiler:
     #                                            classroom_for_slot +
     #                                            classroom_capacity +
     #                                            class_n_students)
+    #   subjects_max_concurrent_classes(     -- HARD: at most n classes
+    #     n, subj...)                           have a lesson of one of
+    #                                           `subj` in the same
+    #                                           (day, hour). Models the
+    #                                           seats of the special
+    #                                           rooms those subjects
+    #                                           require, which the room
+    #                                           step alone discovers
+    #                                           only after Phase B has
+    #                                           already committed.
     #   teacher_at_least_n_free_days(t, n)   -- HARD: teacher has at
     #                                            least n weekdays with
     #                                            zero lessons (CCNL
@@ -1195,6 +1217,41 @@ class DSLConstraintCompiler:
                 return True
             self._compile_classroom_capacity_ok()
             return True
+        if name == "subjects_max_concurrent_classes":
+            if len(arg_values) < 2:
+                self.diagnostics.append(
+                    "subjects_max_concurrent_classes expects "
+                    "(n, subject...)")
+                return True
+            try:
+                n_max = int(arg_values[0])
+            except (TypeError, ValueError):
+                self.diagnostics.append(
+                    "subjects_max_concurrent_classes: first arg must "
+                    f"be an int, got {arg_values[0]!r}")
+                return True
+            subs = [str(v) for v in arg_values[1:]]
+            self._compile_subjects_max_concurrent_classes(subs, n_max)
+            return True
+        if name == "subjects_max_concurrent_classes_in":
+            if len(arg_values) < 3:
+                self.diagnostics.append(
+                    "subjects_max_concurrent_classes_in expects "
+                    "(n, classes, subject...)")
+                return True
+            try:
+                n_max = int(arg_values[0])
+            except (TypeError, ValueError):
+                self.diagnostics.append(
+                    "subjects_max_concurrent_classes_in: first arg "
+                    f"must be an int, got {arg_values[0]!r}")
+                return True
+            only = [c.strip() for c in str(arg_values[1]).split(",")
+                    if c.strip()]
+            subs = [str(v) for v in arg_values[2:]]
+            self._compile_subjects_max_concurrent_classes(
+                subs, n_max, only_classes=only)
+            return True
         # ---- Phase A (day_count IntVar) pragmas ----
         if name == "class_day_load_in_day_count":
             if len(arg_values) < 2:
@@ -1272,6 +1329,29 @@ class DSLConstraintCompiler:
             t = str(arg_values[0])
             n = int(arg_values[1])
             self._compile_teacher_at_least_n_free_days(t, n)
+            return True
+        if name == "teacher_unavailable_day":
+            # HARD: teacher cannot work at all on the given day.
+            # Args: (teacher_name, day).
+            if len(arg_values) != 2:
+                self.diagnostics.append(
+                    "teacher_unavailable_day expects (teacher, day)")
+                return True
+            t = str(arg_values[0])
+            d = _normalize_day_value(arg_values[1]) or int(arg_values[1])
+            self._compile_teacher_unavailable_day(t, d)
+            return True
+        if name == "teacher_day_capacity":
+            # HARD: teacher works at most n hours on the given day,
+            # n = configured hours of the day - HARD unavailable ones.
+            # Args: (teacher_name, day, n).
+            if len(arg_values) != 3:
+                self.diagnostics.append(
+                    "teacher_day_capacity expects (teacher, day, n)")
+                return True
+            t = str(arg_values[0])
+            d = _normalize_day_value(arg_values[1]) or int(arg_values[1])
+            self._compile_teacher_day_capacity(t, d, int(arg_values[2]))
             return True
         if name == "teacher_preferred_free_day_penalty":
             # SOFT priority preference: pay weight if teacher works
@@ -1819,6 +1899,99 @@ class DSLConstraintCompiler:
             f"classroom_capacity_ok: forced {n_forced} slot(s) to 0 "
             f"({'HARD' if self.is_hard else 'SOFT'})")
 
+    def _compile_subjects_max_concurrent_classes(self, subjects: list,
+                                                 n_max: int,
+                                                 only_classes=None):
+        """HARD: in ogni (giorno, ora) al massimo ``n_max`` classi
+        hanno lezione in una delle materie ``subjects``.
+
+        A cosa serve. Le materie con un'aula obbligatoria (Scienze
+        motorie -> palestra) competono per un numero finito di posti,
+        ma quel numero vive nello step aule, che gira DOPO ed e\`
+        costretto a prendere l'orario come dato. Cosi\` la fase orario
+        puo\` mettere quattro classi in palestra alle 9 di martedi\`
+        quando i posti sono due, e l'errore emerge solo alla fine come
+        un INFEASIBLE senza spiegazione. Questo pragma porta il tetto
+        dei posti dentro la fase orario, dove puo\` ancora spostare le
+        lezioni.
+
+        ``only_classes``, se valorizzato, restringe il conteggio a
+        quelle classi. Serve ai plessi: i posti di UNA sede contro le
+        sole classi vincolate a quella sede. Senza, il tetto e\` la
+        somma dei posti di tutte le sedi e non morde -- due palestre da
+        due posti in due sedi diverse danno un tetto globale di 4, ma
+        quattro classi della stessa sede non ci stanno lo stesso.
+        Entrambe le forme sono condizioni necessarie valide e possono
+        convivere: quella globale e\` un rilassamento di quelle per
+        plesso.
+
+        Resta un limite, nella direzione sicura (il vincolo e\` una
+        condizione NECESSARIA, non sufficiente): sotto decomposizione
+        ogni sotto-problema vede solo le proprie classi, quindi il
+        tetto e\` applicato per cluster e l'unione dei cluster puo\`
+        superarlo.
+
+        In entrambi i casi lo step aule resta l'arbitro esatto. Un
+        taglio valido e conservativo vale comunque piu\` di nessun
+        taglio: elimina proprio i casi grossolani (3-4 classi su 2
+        posti) che sono la norma quando l'orario e\` cieco al vincolo.
+
+        Una classe conta UNA volta anche con piu\` docenti sullo stesso
+        slot (compresenza): l'indicatore e\` un OR sui suoi slot, non
+        una somma.
+        """
+        want = {str(s) for s in subjects}
+        scope = {str(c) for c in only_classes} if only_classes else None
+        # Forma globale e forme per plesso convivono nello stesso
+        # modello: senza un progressivo i nomi delle variabili
+        # collidono e il log del solver diventa illeggibile.
+        self._smcc_seq = getattr(self, "_smcc_seq", 0) + 1
+        seq = self._smcc_seq
+        by_slot: dict = {}
+        for k in self.slot:
+            _t, cl, s, d, h = k
+            if str(s) not in want:
+                continue
+            if scope is not None and str(cl) not in scope:
+                continue
+            by_slot.setdefault((int(d), int(h)), {}).setdefault(
+                cl, []).append(self.slot[k])
+        if not by_slot:
+            self.diagnostics.append(
+                "subjects_max_concurrent_classes: skipped, no slot "
+                f"matches {sorted(want)}"
+                + (f" within {len(scope)} class(es)" if scope else ""))
+            return
+        n_slots = 0
+        for (d, h), per_class in sorted(by_slot.items()):
+            if len(per_class) <= n_max:
+                # Meno classi candidate dei posti: il vincolo non puo\`
+                # mordere, non sporchiamo il modello.
+                continue
+            inds = []
+            for cl, vars_ in sorted(per_class.items()):
+                if len(vars_) == 1:
+                    inds.append(vars_[0])
+                    continue
+                b = self.model.NewBoolVar(
+                    f"_dsl_smcc{seq}_{cl}_{d}_{h}")
+                self.model.AddMaxEquality(b, vars_)
+                inds.append(b)
+            if self.is_hard:
+                self.model.Add(sum(inds) <= n_max)
+            else:
+                # SOFT: paghiamo ogni classe eccedente il tetto.
+                over = self.model.NewIntVar(
+                    0, len(inds), f"_dsl_smcc{seq}_over_{d}_{h}")
+                self.model.Add(over >= sum(inds) - n_max)
+                self.soft_cost_terms.append((self.soft_weight, over))
+            n_slots += 1
+        self.diagnostics.append(
+            f"subjects_max_concurrent_classes: capped {n_slots} slot(s) "
+            f"at {n_max} class(es) for {sorted(want)} "
+            + (f"within {len(scope)} class(es) " if scope else "")
+            + f"({'HARD' if self.is_hard else 'SOFT'})")
+
     # ============================================================
     # Phase A pragmas (operate on day_count IntVars)
     # ============================================================
@@ -2203,6 +2376,58 @@ class DSLConstraintCompiler:
             return
         cap = len(full_week) - int(n)
         self.model.Add(sum(busy_vars) <= cap)
+
+    def _compile_teacher_day_capacity(self, t: str, d: int, n: int):
+        """HARD: teacher ``t`` works at most ``n`` hours on day ``d``.
+
+        ``n`` is meant to be *hours of the day minus HARD-unavailable
+        hours*: a teacher blocked for 2 of the 6 configured slots on a
+        day can do at most 4 hours that day, whichever 4 they end up
+        being. That bound is the strongest statement about per-cell
+        unavailability that survives the loss of the hour dimension,
+        which is why this pragma is registered ``level="both"``:
+
+          * Phase B / monolithic -- ``sum_{c,s,h} slot[t,c,s,d,h] <= n``
+            (redundant there, since the per-cell rules already forbid
+            the individual hours, but it is a valid cut);
+          * Phase A -- ``prof_day_load[t,d] <= n``, which is the whole
+            point. Phase A owns the day distribution and had no way to
+            know a day was partly or wholly unavailable, so it could
+            hand the per-day Phase B a day_count that no arrangement of
+            hours can satisfy. The symptom was the no-holes relaxation
+            fallback firing, not an error message.
+
+        The Phase A bound goes through ``_prof_day_load_intvar`` so it
+        reuses the exclusion-aware IntVar ``solve_phase_a`` pre-loads
+        into the cache (sostegno / codoc / parallel-secondary /
+        group exclusions), rather than re-summing raw ``day_count``.
+
+        ``n`` is clamped at 0. A teacher with no decision variable for
+        ``d`` needs no constraint; a diagnostic is recorded so a
+        misspelled name stays greppable."""
+        d, n = int(d), max(0, int(n))
+        touched = False
+        slot_vars = [self.slot[k] for k in self._by_t.get(t, [])
+                     if int(k[3]) == d]
+        if slot_vars:
+            self.model.Add(sum(slot_vars) <= n)
+            touched = True
+        if any(pp == t and int(dd) == d
+               for (pp, _cl, _s, dd) in self.day_count):
+            self.model.Add(self._prof_day_load_intvar(t, d) <= n)
+            touched = True
+        if not touched:
+            self.diagnostics.append(
+                f"teacher_day_capacity({t!r}, {d}, {n}): no decision "
+                f"variable for that (teacher, day); nothing to bound")
+
+    def _compile_teacher_unavailable_day(self, t: str, d: int):
+        """HARD: teacher ``t`` cannot work at all on day ``d``.
+
+        The degenerate case of :meth:`_compile_teacher_day_capacity`
+        with a capacity of zero -- a mandatory free day, or a day whose
+        every configured slot is HARD-unavailable."""
+        self._compile_teacher_day_capacity(t, d, 0)
 
     def _compile_teacher_preferred_free_day_penalty(
             self, t: str, d: int, w: int):

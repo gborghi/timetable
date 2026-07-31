@@ -43,6 +43,18 @@ The single most important fact up front:
    > evaluator and the CP compiler (HARD → forbid-pair `BoolOr`; SOFT → weighted
    > co-selection penalty).
 
+   > **`subjects_max_concurrent_classes(n, subj…)`** — at most `n` distinct
+   > classes hold a lesson of one of `subj` in the same `(day, hour)`. Emitted
+   > automatically by `dsl_translator.special_room_capacity_to_dsl` from
+   > `Subject.required_kind` + the seat count of the rooms of that kind, and
+   > only for schools that actually set `required_kind`. It exists because the
+   > seats of special rooms otherwise live *only* in the classroom step, which
+   > runs after Phase B and cannot move anything: without it a school with two
+   > 2-class gyms gets timetables that put four classes in the gym at 9:00 and
+   > an unexplained `NO_ELIGIBLE` at the very end. Deliberately a **necessary,
+   > not sufficient** condition — it ignores plessi, and under decomposition the
+   > cap applies per cluster. The classroom step remains the exact arbiter.
+
 2. **Post-hoc verification** (`dsl_cp_gate.verify_dsl_hard`). The general DSL
    evaluator can check **any** grammar expression against a finished solution.
    This drives (a) the monolithic week's no-good refinement loop, (b) the
