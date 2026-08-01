@@ -133,7 +133,8 @@ def solve_day(day: int, profs: dict, dc_value: dict, *,
               class_flags=None,
               support_assignments: list | None = None,
               parallel_groups: list | None = None,
-              plessi_ctx=None):
+              plessi_ctx=None,
+              dsl_hard_expressions: list | None = None):
     """Risolve il sotto-problema CP-SAT del giorno `day`.
 
     Riusa `cpsat_v2_timetable.solve_phase_b_for_day`. Le ore
@@ -160,6 +161,8 @@ def solve_day(day: int, profs: dict, dc_value: dict, *,
         group_assignments=group_assignments,
         special_room_ctx=special_room_ctx,
         class_flags=class_flags,
+        via_dsl=bool(dsl_hard_expressions),
+        dsl_hard_expressions=dsl_hard_expressions or None,
     )
 
 
@@ -179,7 +182,15 @@ def _worker_solve_day(args):
     support_assignments = None
     parallel_groups = None
     plessi_ctx = None
-    if len(args) == 14:
+    dsl_hard_expressions = None
+    if len(args) == 15:
+        (day, profs_path, dc_path, time_limit, workers,
+         enforce_no_holes, locked_slots_for_day,
+         coteach_groups, group_assignments,
+         special_room_ctx, class_flags,
+         support_assignments, parallel_groups, plessi_ctx,
+         dsl_hard_expressions) = args
+    elif len(args) == 14:
         (day, profs_path, dc_path, time_limit, workers,
          enforce_no_holes, locked_slots_for_day,
          coteach_groups, group_assignments,
@@ -227,6 +238,7 @@ def _worker_solve_day(args):
         support_assignments=support_assignments,
         parallel_groups=parallel_groups,
         plessi_ctx=plessi_ctx,
+        dsl_hard_expressions=dsl_hard_expressions,
     )
     dt = time.time() - t0
     return day, out, int(status), dt
@@ -257,7 +269,8 @@ def run_temporal_pipeline(profs_path: str, *,
                           class_day_load_allowed=None,
                           support_assignments=None,
                           parallel_groups=None,
-                          plessi_ctx=None):
+                          plessi_ctx=None,
+                          dsl_hard_expressions=None):
     """Orchestra master + day-solvers paralleli + ricucitura.
 
     Parameters
@@ -394,7 +407,8 @@ def run_temporal_pipeline(profs_path: str, *,
                                class_flags,
                                support_assignments,
                                parallel_groups,
-                               plessi_ctx)): d
+                               plessi_ctx,
+                               dsl_hard_expressions)): d
                     for d in DAYS
                 }
                 done_args_iter = (as_completed(futures, timeout=day_timeout)
@@ -447,6 +461,7 @@ def run_temporal_pipeline(profs_path: str, *,
                 support_assignments=support_assignments,
                 parallel_groups=parallel_groups,
                 plessi_ctx=plessi_ctx,
+                dsl_hard_expressions=dsl_hard_expressions,
             )
             dt = time.time() - t
             days_per_day[d] = dt

@@ -1086,20 +1086,34 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
             if _special_room_ctx:
                 print(f"[phase_b] aule speciali: capienza per kind "
                       f"{_special_room_ctx[1]}")
+            # HARD DSL rule expression strings, loaded ONCE (used both to
+            # force the monolithic per-day path below and to feed its
+            # verify + no-good gate). None => no hard DSL => zero drift.
+            try:
+                with SessionLocal() as _db_h:
+                    _dsl_hard = _load_dsl_hard_expressions(_db_h)
+            except Exception:
+                _dsl_hard = None
             # Audit H8/H10: the spectral stages model NONE of special-room
             # capacity, plessi commuting, coteach, sostegno or intra-class
             # parallel (disjoint class subsets can't see a global per-slot cap
             # or a shared-teacher rule). When any is present, fall back to the
             # monolithic per-day path (which does model them) instead of only
             # warning and shipping a violation the validator then rejects.
+            # Audit H6: a HARD DSL rule the CP compiler cannot emit is only
+            # enforced (verify + no-good) on the monolithic per-day path, so
+            # its presence also forces monolithic -- the spectral stages
+            # would silently ship a timetable that violates it.
             _needs_mono = (bool(_special_room_ctx) or bool(_plessi_ctx)
                            or bool(coteach_groups)
                            or bool(support_assignments)
-                           or bool(parallel_groups))
+                           or bool(parallel_groups)
+                           or bool(_dsl_hard))
             if _needs_mono and use_decomposition and len(classes) >= 8:
                 print("[phase_b] decomposizione spettrale disattivata: "
                       "aule speciali / plessi / coteach / sostegno / parallel "
-                      "non decomponibili per cluster -> per-day monolitico")
+                      "/ HARD DSL non decomponibili per cluster "
+                      "-> per-day monolitico")
 
             if (use_decomposition and len(classes) >= 8
                     and not group_assignments and not _needs_mono):
@@ -1212,12 +1226,7 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                 # diagnostic and delegated to the metaheuristic post-pass.
                 # When there are no HARD DSL rules ``via_dsl`` stays False and
                 # the call is byte-identical to the pre-wiring path (zero
-                # drift on non-DSL runs).
-                try:
-                    with SessionLocal() as _db_h:
-                        _dsl_hard = _load_dsl_hard_expressions(_db_h)
-                except Exception:
-                    _dsl_hard = None
+                # drift on non-DSL runs). ``_dsl_hard`` was loaded once above.
                 _dsl_sink: list[str] = []
                 for d in DAYS:
                     raise_if_cancelled(rid)
@@ -1230,7 +1239,7 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                         parallel_groups=parallel_groups or None,
                         group_assignments=group_assignments or None,
                         via_dsl=bool(_dsl_hard),
-                        extra_dsl_expressions=_dsl_hard or None,
+                        dsl_hard_expressions=_dsl_hard or None,
                         plessi_ctx=_plessi_ctx,
                         special_room_ctx=_special_room_ctx,
                         class_flags=_class_flags,
@@ -5093,6 +5102,9 @@ def run_decomposition_temporal(*, time_a: float = 60.0,
             support_assignments = engine_io.support_assignments_from_db(_db_co)
             parallel_groups = engine_io.parallel_groups_for_solver(_db_co)
             _t_plessi = cv2.build_plessi_ctx(_db_co)
+            # Audit H6: HARD DSL rules the CP compiler cannot emit; threaded
+            # into each per-day solve's verify + no-good gate.
+            _t_dsl_hard = _load_dsl_hard_expressions(_db_co)
         if locked_snap:
             print(f"[temporal] native lock path: {len(locked_snap)} "
                   f"locked lessons fed to solver")
@@ -5124,6 +5136,7 @@ def run_decomposition_temporal(*, time_a: float = 60.0,
             support_assignments=support_assignments or None,
             parallel_groups=parallel_groups or None,
             plessi_ctx=_t_plessi,
+            dsl_hard_expressions=_t_dsl_hard,
         )
         update_run(rid, progress=0.85)
 
@@ -5289,6 +5302,9 @@ def run_decomposition_curriculum(*, time_a: float = 60.0,
             import cpsat_v2_timetable as _cv2  # type: ignore
             _special_room = _cv2.build_special_room_ctx(_db_co)
             _plessi = _cv2.build_plessi_ctx(_db_co)
+            # Audit H6: HARD DSL rules the CP compiler cannot emit force the
+            # monolithic per-day path + verify/no-good gate (see metis).
+            _curr_dsl_hard = _load_dsl_hard_expressions(_db_co)
         if locked_snap:
             print(f"[curriculum] native lock path: {len(locked_snap)} "
                   f"locked lessons fed to solver")
@@ -5312,6 +5328,7 @@ def run_decomposition_curriculum(*, time_a: float = 60.0,
             class_day_load_allowed=class_day_load_allowed,
             special_room_ctx=_special_room,
             plessi_ctx=_plessi,
+            dsl_hard_expressions=_curr_dsl_hard,
         )
         update_run(rid, progress=0.85)
         full_solution = result["full_solution"]
@@ -5441,6 +5458,10 @@ def run_decomposition_metis(*, time_a: float = 60.0,
             import cpsat_v2_timetable as _cv2  # type: ignore
             _special_room = _cv2.build_special_room_ctx(_db_co)
             _plessi = _cv2.build_plessi_ctx(_db_co)
+            # Audit H6: HARD DSL rules the CP compiler cannot emit. When
+            # present, the loop is forced onto the monolithic per-day path
+            # and each day is verify + no-good refined against them.
+            _metis_dsl_hard = _load_dsl_hard_expressions(_db_co)
         if locked_snap:
             print(f"[metis] native lock path: {len(locked_snap)} "
                   f"locked lessons fed to solver")
@@ -5464,6 +5485,7 @@ def run_decomposition_metis(*, time_a: float = 60.0,
             class_day_load_allowed=class_day_load_allowed,
             special_room_ctx=_special_room,
             plessi_ctx=_plessi,
+            dsl_hard_expressions=_metis_dsl_hard,
         )
         update_run(rid, progress=0.85)
         full_solution = result["full_solution"]

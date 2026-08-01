@@ -582,7 +582,8 @@ def solve_monolithic_day(day, profs, triples, dc_value,
                          group_assignments=None,
                          plessi_ctx=None,
                          special_room_ctx=None,
-                         class_flags=None):
+                         class_flags=None,
+                         dsl_hard_expressions=None):
     """Monolithic fallback for a single day. Forwards
     `locked_slots_for_day`, `coteach_groups`, `support_assignments`,
     `parallel_groups`, `group_assignments` to cv2.solve_phase_b_for_day.
@@ -591,7 +592,13 @@ def solve_monolithic_day(day, profs, triples, dc_value,
     as a fallback when stages A/B/C fail, AND as the canonical path
     when group_assignments are present (the spectral stages don't
     yet model group_slot vars; routing the day through the monolithic
-    solver guarantees C3 invariants are honored)."""
+    solver guarantees C3 invariants are honored).
+
+    `dsl_hard_expressions` (audit H6): HARD DSL rule strings the CP
+    compiler may not be able to emit. When present, the day solve runs
+    the verify + no-good refinement gate so the produced day complies
+    with them (the per-cluster stages cannot -- they only see a class
+    subset). None => zero drift."""
     classes, _, class_profs = cv2.build_indices(profs)
     out, status = cv2.solve_phase_b_for_day(
         day, profs, classes, triples, class_profs, dc_value,
@@ -605,6 +612,8 @@ def solve_monolithic_day(day, profs, triples, dc_value,
         plessi_ctx=plessi_ctx,
         special_room_ctx=special_room_ctx,
         class_flags=class_flags,
+        via_dsl=bool(dsl_hard_expressions),
+        dsl_hard_expressions=dsl_hard_expressions or None,
     )
     return out, status
 

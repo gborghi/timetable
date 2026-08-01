@@ -74,9 +74,11 @@ def test_hard_check_ctx_supplies_all_keys(app_with_temp_db):
     """Tutte le chiavi devono esserci: le quattro tabelle "legittimo
     doppio slot" (sostegno/compresenza/parallel/gruppi) + `class_flags`
     (08b: gli invariant per-classe che la card puo' rilassare) +
-    `special_room_ctx` (finding 34: capienza palestra/lab). Ometterne
-    una sposta quale situazione legittima viene letta come conflitto o
-    disattiva un HARD."""
+    `special_room_ctx` (finding 34: capienza palestra/lab) +
+    `dsl_hard_expressions` (audit H6: le regole HARD DSL che il compiler
+    non emette, verificate post-hoc da is_hard_feasible e usate per il
+    fail-closed dell'attivazione). Ometterne una sposta quale situazione
+    legittima viene letta come conflitto o disattiva un HARD."""
     from backend import optimization as opt
 
     _app, TestSession = app_with_temp_db
@@ -84,7 +86,8 @@ def test_hard_check_ctx_supplies_all_keys(app_with_temp_db):
         ctx = opt._hard_check_ctx(db)
     assert set(ctx) == {"support_assignments", "coteach_groups",
                         "parallel_groups", "group_assignments",
-                        "class_flags", "special_room_ctx"}
+                        "class_flags", "special_room_ctx",
+                        "dsl_hard_expressions"}
 
 
 # ----------------------------------------------------------------------

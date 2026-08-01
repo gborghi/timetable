@@ -259,6 +259,7 @@ def solve_with_metis_decomposition(
     class_day_load_allowed: dict | None = None,
     special_room_ctx=None,
     plessi_ctx=None,
+    dsl_hard_expressions: list | None = None,
 ):
     """Pipeline end-to-end: METIS k-way partitioning + Stage A/B/C/mono.
 
@@ -309,4 +310,5 @@ def solve_with_metis_decomposition(
         class_day_load_allowed=class_day_load_allowed,
         special_room_ctx=special_room_ctx,
         plessi_ctx=plessi_ctx,
+        dsl_hard_expressions=dsl_hard_expressions,
     )

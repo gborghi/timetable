@@ -1298,6 +1298,7 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
                           db=None,
                           via_dsl=False,
                           extra_dsl_expressions=None,
+                          dsl_hard_expressions=None,
                           return_objective=False,
                           plessi_ctx=None,
                           special_room_ctx=None,
@@ -1747,8 +1748,15 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
     # (``t, cl, s, day, h``); the existing 4-tuple ``slot`` dict is
     # not mutated.
     dsl_diagnostics: list[str] = []
+    # HARD DSL expressions the CP compiler could NOT emit natively (audit
+    # H6/H12). Populated by the compile pass below; drives the post-solve
+    # verify + no-good refinement gate. Empty => the model already enforces
+    # every hard rule (or there are none) => the byte-identical single-shot
+    # solve runs unchanged.
+    _noncompilable_hard: list[str] = []
     if via_dsl and (db is not None
-                     or extra_dsl_expressions):
+                     or extra_dsl_expressions
+                     or dsl_hard_expressions):
         try:
             # Reuse the SAME ``compiler`` (and ``slot_5``) built above for
             # the structural soft objective. HARD DSL rules add constraints
@@ -1796,6 +1804,58 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
                     dsl_diagnostics.append(
                         f"compile_failed_extra:{type(exc).__name__}:{exc}")
 
+            # HARD DSL rules to ENFORCE via the post-solve gate (audit
+            # H6/H12). Compile each onto the model (compilable fragment ->
+            # native constraints) AND detect which ones the compiler could
+            # not fully emit, by watching the compiler diagnostics grow. A
+            # rule that raises or adds a diagnostic is non-compilable: the
+            # model does NOT enforce it, so it must be verified + no-good
+            # refined after the solve. Compilable hard rules are already
+            # native constraints -> no gate round is ever spent on them
+            # (this keeps the single-shot path byte-identical when every
+            # hard rule compiles). Dedup against ``extra_dsl_expressions``
+            # so a caller passing the same list twice does not double-add
+            # the constraints; the shared rule is still probed for
+            # compilability on a throwaway model so it is gated if needed.
+            _already = set(extra_dsl_expressions or [])
+
+            def _is_noncompilable(_expr: str) -> bool:
+                """True if the compiler cannot fully emit ``_expr``.
+
+                Compiles onto a THROWAWAY model over the current slot keys
+                (never touches the real model) and reports whether any
+                diagnostic was produced or an exception raised.
+                """
+                try:
+                    _pm = cp_model.CpModel()
+                    _ps = {k: _pm.NewBoolVar(f"probe_{i}")
+                           for i, k in enumerate(slot_5.keys())}
+                    _pc = _d2c.DSLConstraintCompiler(
+                        _pm, _ps, config=_csm.ConstraintConfig(),
+                        classroom_for_slot=None, plessi_data=None)
+                    _pc.compile(_expr)
+                    return len(_pc.diagnostics) > 0
+                except Exception:  # noqa: BLE001 - unparseable => non-compilable
+                    return True
+
+            for expr in (dsl_hard_expressions or []):
+                if expr not in _already:
+                    _before = len(compiler.diagnostics)
+                    _sh, _sw = compiler.is_hard, compiler.soft_weight
+                    compiler.is_hard, compiler.soft_weight = True, 0
+                    try:
+                        compiler.compile(expr)
+                        if len(compiler.diagnostics) > _before:
+                            _noncompilable_hard.append(expr)
+                    except Exception as exc:  # noqa: BLE001
+                        _noncompilable_hard.append(expr)
+                        dsl_diagnostics.append(
+                            f"compile_failed_hard:{type(exc).__name__}:{exc}")
+                    finally:
+                        compiler.is_hard, compiler.soft_weight = _sh, _sw
+                elif _is_noncompilable(expr):
+                    _noncompilable_hard.append(expr)
+
             # B2: SOFT DSL rows (and any soft extras) may have appended new
             # (weight, var) pairs to ``compiler.soft_cost_terms`` after the
             # structural-soft objective was set above. CP-SAT's
@@ -1828,7 +1888,70 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
     solver.parameters.linearization_level = 1
 
     _solvercfg.configure_solver(solver)
-    status = solver.Solve(model)
+
+    # ---- DSL HARD-rule refinement gate (audit H6/H12) ----
+    # When at least one hard DSL rule could NOT be compiled natively, the
+    # model does not enforce it. Mirror the proven week path
+    # (dsl_cp_gate.solve_with_dsl_refinement): solve -> verify the
+    # non-compilable hard rules on the produced day -> if any violated and
+    # budget remains, forbid the exact assignment (no-good) and re-solve.
+    # Only the non-compilable rules are verified: compilable ones are
+    # already native constraints, so re-checking them is redundant AND a
+    # day-projected re-check of a compiled rule could disagree with the
+    # compiler and spend a wasted round. Adding no-goods to THIS model and
+    # re-solving is sound: unlike MonolithicSolver.build() the model here
+    # is built once and only grown between solves.
+    _gate_active = bool(via_dsl and _noncompilable_hard)
+    if _gate_active:
+        try:
+            from . import dsl_cp_gate as _gate  # type: ignore
+        except ImportError:
+            import dsl_cp_gate as _gate  # type: ignore
+        _max_iters = 8
+        _unsatisfied: list[str] = []
+        status = None
+        for _it in range(_max_iters):
+            status = solver.Solve(model)
+            if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+                break                                  # infeasible: give up
+            _produced = {
+                (p, cl, subj, day, h): solver.Value(slot[(p, cl, subj, h)])
+                for (p, cl, subj, _) in triples_active
+                for h in HOURS
+            }
+            _unsatisfied = _gate.verify_dsl_hard(
+                _produced, profs, _noncompilable_hard, day=day)
+            if not _unsatisfied:
+                break                                  # fully compliant
+            _gate.add_nogood(model, slot_5, _produced)
+        else:
+            # Budget exhausted with the last solve still violating. Respect
+            # PITANTUM_DSL_GATE_STRICT (same semantics as the week gate):
+            # strict (default) fails closed -- a day whose HARD DSL cannot
+            # be satisfied returns no solution, so the run degrades exactly
+            # like a genuine infeasibility (coverage drops, not activated).
+            # STRICT=0 keeps the last (violating) solution for inspection;
+            # is_hard_feasible still refuses to activate it.
+            dsl_diagnostics.extend(
+                "compile_failed:" + e + ":refinement:exhausted"
+                for e in _unsatisfied)
+            _strict = os.environ.get(
+                "PITANTUM_DSL_GATE_STRICT", "1"
+            ).strip().lower() not in ("0", "false", "no", "off")
+            if log:
+                print(f"[phaseB.day{day}] DSL gate: budget esaurito, "
+                      f"{len(_unsatisfied)} regola/e HARD non soddisfatta/e"
+                      + (" -> fail-closed" if _strict else
+                         " -> keep-partial"))
+            if _strict:
+                if diagnostics_sink is not None:
+                    diagnostics_sink.extend(dsl_diagnostics)
+                if return_objective:
+                    return None, status, None
+                return None, status
+    else:
+        status = solver.Solve(model)
+
     if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         # Se infeasible per via dei "no holes" stretti, segnaliamo
         # (in produzione qui andrebbe un repair che muove un'ora

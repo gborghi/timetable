@@ -70,9 +70,17 @@ def run_partitioned_pipeline(
     class_day_load_allowed: dict | None = None,
     special_room_ctx=None,
     plessi_ctx=None,
+    dsl_hard_expressions: list | None = None,
 ):
     """Run the canonical Stage A/B/C/monolithic loop on a precomputed
     cluster partition.
+
+    `dsl_hard_expressions` (audit H6): when non-empty, HARD DSL rules the
+    CP compiler cannot emit are present. The per-cluster stages (A/B/C)
+    only ever see a class subset, so they cannot enforce a global DSL
+    rule; the whole loop is therefore forced onto the monolithic per-day
+    path (like the groups/special-room cases) and the expressions are
+    threaded into `solve_monolithic_day`'s verify + no-good gate.
 
     Parameters
     ----------
@@ -176,7 +184,8 @@ def run_partitioned_pipeline(
     force_mono_for_groups = (
         bool(group_assignments) or bool(special_room_ctx)
         or bool(coteach_groups) or bool(support_assignments)
-        or bool(parallel_groups) or bool(plessi_ctx))
+        or bool(parallel_groups) or bool(plessi_ctx)
+        or bool(dsl_hard_expressions))
 
     for d in DAYS:
         t = time.time()
@@ -191,6 +200,7 @@ def run_partitioned_pipeline(
                 group_assignments=group_assignments,
                 special_room_ctx=special_room_ctx,
                 plessi_ctx=plessi_ctx,
+                dsl_hard_expressions=dsl_hard_expressions,
             )
             if mono_out is None:
                 failed_days.append(d)
@@ -222,6 +232,7 @@ def run_partitioned_pipeline(
                 group_assignments=group_assignments,
                 special_room_ctx=special_room_ctx,
                 plessi_ctx=plessi_ctx,
+                dsl_hard_expressions=dsl_hard_expressions,
             )
             if mono_out is None:
                 failed_days.append(d)
@@ -278,6 +289,7 @@ def run_partitioned_pipeline(
                     group_assignments=group_assignments,
                     special_room_ctx=special_room_ctx,
                     plessi_ctx=plessi_ctx,
+                    dsl_hard_expressions=dsl_hard_expressions,
                 )
                 if mono_out is None:
                     failed_days.append(d)

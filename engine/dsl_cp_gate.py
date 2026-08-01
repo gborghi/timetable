@@ -48,21 +48,34 @@ def _gd():
     return gd
 
 
-def _build_world(sol, profs):
+def _build_world(sol, profs, *, day=None):
     """Build the general_dsl ``world`` dict from an in-memory solution.
 
     Delegates to ``metaheuristics._build_world_from_sol`` so the world
     shape is identical to the one the metaheuristic universal solver
     feeds the evaluator.
+
+    When ``day`` is not ``None`` the world's ``days`` table is projected
+    to that single day. This is REQUIRED on the per-day CP path: a
+    per-day solve only carries one day's lessons, but the DSL evaluator's
+    per-day pragmas (e.g. ``class_day_load_in``) iterate over EVERY day
+    in ``world["days"]`` -- with the full 6-day table, the five absent
+    days each read an empty class load and a "load must be in {4,5,6}"
+    rule would spuriously report VIOLATED. Projecting to the solved day
+    makes verification correct for the slice the per-day model owns.
     """
     try:
         from . import metaheuristics as mh  # type: ignore
     except ImportError:
         import metaheuristics as mh  # type: ignore
-    return mh._build_world_from_sol(sol, profs)
+    world = mh._build_world_from_sol(sol, profs)
+    if day is not None:
+        world = dict(world)
+        world["days"] = [{"index": int(day), "name": ""}]
+    return world
 
 
-def verify_dsl_hard(sol, profs, hard_exprs):
+def verify_dsl_hard(sol, profs, hard_exprs, *, day=None):
     """Return the list of hard-DSL expression strings VIOLATED by ``sol``.
 
     Each expression is parsed and evaluated against the world built from
@@ -70,11 +83,16 @@ def verify_dsl_hard(sol, profs, hard_exprs):
     False`` means the rule is violated. Expressions that cannot be
     parsed or evaluated are skipped (they cannot be verified here and
     are warned about elsewhere) rather than crashing the gate.
+
+    ``day`` (per-day CP path only): project the evaluation world to that
+    single day so per-day pragmas are checked against the slice the
+    per-day model actually owns (see ``_build_world``). ``None`` (the
+    week / whole-solution path) keeps the full-week world unchanged.
     """
     if not hard_exprs:
         return []
     gd = _gd()
-    world = _build_world(sol, profs)
+    world = _build_world(sol, profs, day=day)
     violated = []
     for e in hard_exprs:
         try:

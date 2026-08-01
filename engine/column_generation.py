@@ -416,6 +416,7 @@ def _completion_solver(initial_sol: dict, profs: dict, dc_value: dict,
                        group_assignments: list | None = None,
                        special_room_ctx=None,
                        class_flags=None,
+                       dsl_hard_expressions: list | None = None,
                        ) -> dict | None:
     """Completion solver. When the master LP assembly leaves any
     (cl, subj, day) under-covered, this routine simply runs the
@@ -451,6 +452,8 @@ def _completion_solver(initial_sol: dict, profs: dict, dc_value: dict,
             group_assignments=group_assignments,
             special_room_ctx=special_room_ctx,
             class_flags=class_flags,
+            via_dsl=bool(dsl_hard_expressions),
+            dsl_hard_expressions=dsl_hard_expressions or None,
         )
         if out is None:
             return None
@@ -4575,6 +4578,7 @@ def run_column_generation(profs: dict, dc_value: dict,
             workers=completion_workers,
             special_room_ctx=special_room_ctx,
             class_flags=class_flags,
+            dsl_hard_expressions=dsl_hard_expressions,
             locked_by_day=locked_by_day,
             coteach_groups=coteach_groups,
             support_assignments=support_assignments,
