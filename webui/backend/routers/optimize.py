@@ -409,6 +409,8 @@ def launch_phase_b(payload: schemas.PhaseBRunIn):
         rooms_prefer_home=payload.rooms_prefer_home,
         cp_sat_scope=payload.cp_sat_scope,
         phase_a_mode=payload.phase_a_mode,
+        joint_vars=(payload.joint_vars.model_dump()
+                    if payload.joint_vars else None),
     )
     return {"run_id": rid}
 

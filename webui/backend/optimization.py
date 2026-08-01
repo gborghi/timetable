@@ -735,6 +735,69 @@ def sostegno_assignment(db: Session, teacher_name: str, student_id: int,
     return True, "ok", new
 
 
+def _norm_joint_vars(jv: dict | None) -> dict | None:
+    r"""Normalize the API's joint-vars selection into the internal shape,
+    or ``None`` when joint room optimization is off (so every existing
+    call path stays byte-identical). The UI ships two sections -- decision
+    blocks and objective terms; here only ``room`` (joint on/off) and the
+    per-term toggles matter, and unknown/absent keys default to ON.
+
+    Returns ``{"exclude": set, "obj_home_room": bool, ...}`` where
+    ``exclude`` are the schedule-side objective terms to drop
+    (``sixth`` / ``buchi`` / ``day_load``) and ``obj_*`` gate the
+    room-side objective terms fed to ``add_joint_room_vars``.
+    """
+    if not jv or not jv.get("enabled"):
+        return None
+    obj = jv.get("obj") or {}
+    return {
+        "enabled": True,
+        "obj_home_room": bool(obj.get("home_room", True)),
+        "obj_room_pref": bool(obj.get("room_pref", True)),
+        "obj_special_overflow": bool(obj.get("special_overflow", True)),
+        "obj_plessi": bool(obj.get("plessi", True)),
+        "exclude": {
+            name for name in ("sixth", "buchi", "day_load")
+            if not obj.get(name, True)
+        },
+    }
+
+
+def _add_joint_rooms(model, slot, ctx: dict, jv: dict, *, plessi_data=None):
+    r"""Fold room vars into an existing week ``slot`` model (joint). Builds
+    per-cell occupancy indicators from the slot vars, then calls
+    ``classroom_assignment.add_joint_room_vars``. Returns
+    ``(x, obj_terms, info)``; ``obj_terms`` are folded into the schedule
+    objective so the room soft goals influence WHERE lessons land.
+    """
+    try:
+        import classroom_assignment as ca  # type: ignore
+    except ImportError:
+        from engine import classroom_assignment as ca  # type: ignore
+    cell_to_keys, cell_lessons = engine_io.joint_cells_from_slot_keys(
+        slot.keys(), ctx)
+    cell_occ: dict = {}
+    for cell, keys in cell_to_keys.items():
+        vars_ = [slot[k] for k in keys]
+        if len(vars_) == 1:
+            cell_occ[cell] = vars_[0]
+        else:
+            # OR indicator: occ == 1 iff any co-teacher slot is placed.
+            occ = model.NewBoolVar(f"jocc_{cell[0]}_{cell[1]}_{cell[2]}_{cell[3]}")
+            for v in vars_:
+                model.Add(occ >= v)
+            model.Add(occ <= sum(vars_))
+            cell_occ[cell] = occ
+    return ca.add_joint_room_vars(
+        model, cell_occ, cell_lessons, ctx["classrooms"],
+        plessi_data=plessi_data,
+        want_home_bonus=jv["obj_home_room"],
+        want_room_pref=jv["obj_room_pref"],
+        want_overflow=jv["obj_special_overflow"],
+        want_plessi=jv["obj_plessi"],
+    )
+
+
 # ----------------------------------------------------------------------
 # Step 3: Phase B (decomposed) — uses decomposition_spectral_v2
 # ----------------------------------------------------------------------
@@ -748,7 +811,8 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                 rooms_time_limit_s: float = 30.0,
                 rooms_prefer_home: bool = True,
                 cp_sat_scope: str = "day",
-                phase_a_mode: str = "always") -> int:
+                phase_a_mode: str = "always",
+                joint_vars: dict | None = None) -> int:
     # Phase 3 -- enforce the same (cp_sat_scope, phase_a_mode)
     # cross-field rules as PhaseBRunIn so direct callers (full
     # pipeline, programmatic harness, tests) get the same guard. The
@@ -761,6 +825,22 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
         raise ValueError(
             f"phase_a_mode must be 'always' / 'skip' / 'soft_hint', "
             f"got {phase_a_mode!r}")
+    # Joint (day,hour,room): room vars are a GLOBAL per-slot resource that
+    # does not decompose along the teacher partition, so joint optimization
+    # is coherent only on the monolithic WEEK path (same reason special-room
+    # capacity lives there, never in the spectral stages). Enabling it forces
+    # week scope + no decomposition, and turns on the rooms extraction step
+    # (the joint coupling guarantees that step now succeeds for every lesson).
+    _jv = _norm_joint_vars(joint_vars)
+    if _jv is not None:
+        if cp_sat_scope != "week":
+            print("[phase_b] joint rooms richiede scope settimanale: "
+                  "forzo cp_sat_scope='week'")
+            cp_sat_scope = "week"
+        if phase_a_mode == "always":
+            phase_a_mode = "soft_hint"
+        use_decomposition = False
+        optimize_rooms = True
     if cp_sat_scope == "day" and phase_a_mode != "always":
         raise ValueError(
             "cp_sat_scope='day' requires phase_a_mode='always'")
@@ -776,7 +856,8 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                   rooms_time_limit_s=rooms_time_limit_s,
                   rooms_prefer_home=rooms_prefer_home,
                   cp_sat_scope=cp_sat_scope,
-                  phase_a_mode=phase_a_mode)
+                  phase_a_mode=phase_a_mode,
+                  joint_vars=_jv)
     _preflight_lock_check()
     run_id = create_run("phase_b", "Schedulazione orario", None, params)
 
@@ -881,6 +962,7 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                 potenziamento_assignments=potenziamento_assignments,
                 parallel_groups=parallel_groups,
                 group_assignments=group_assignments,
+                joint_vars=_jv,
             )
             update_run(rid, progress=0.90, current_step="phase_b")
         else:
@@ -1225,7 +1307,8 @@ def _solve_phase_b_week(*, rid: int, ws: str, profs: dict,
                           support_assignments: list | None,
                           potenziamento_assignments: list | None,
                           parallel_groups: list | None,
-                          group_assignments: list | None) -> dict:
+                          group_assignments: list | None,
+                          joint_vars: dict | None = None) -> dict:
     """Phase 3 -- single CP-SAT call covering the whole week via
     ``MonolithicSolver(scope=None)``.
 
@@ -1333,6 +1416,17 @@ def _solve_phase_b_week(*, rid: int, ws: str, profs: dict,
     except Exception:
         _week_class_flags = None
 
+    # Joint (day,hour,room): placement-independent room metadata, built
+    # once. Room vars are folded into the week model so the schedule is
+    # constrained to be room-feasible (capacity / required_kind / home)
+    # while it still chooses hours. None when joint is off -> model
+    # unchanged. Plessi in the joint model is deferred to a later stage;
+    # plessi commuting is still enforced by the downstream rooms step.
+    _joint_room_ctx = None
+    if joint_vars is not None:
+        with SessionLocal() as _db_jr:
+            _joint_room_ctx = engine_io.joint_room_ctx_from_db(_db_jr)
+
     def _build_week_solver(forbidden):
         """Build the monolithic week-scope solver from scratch and
         return ``(solver, cp_solver, status_name)`` after solving.
@@ -1404,8 +1498,27 @@ def _solve_phase_b_week(*, rid: int, ws: str, profs: dict,
             for fsol in forbidden:
                 _gate.add_nogood(solver.model, solver.slot, fsol)
 
-        # Soft cost as objective.
-        obj_terms, _ = solver.compute_soft_cost_expr(mode="default")
+        # Soft cost as objective. Joint mode may drop schedule-side terms
+        # (sixth / buchi / day_load) the user excluded from optimization.
+        _excl = joint_vars["exclude"] if joint_vars else None
+        obj_terms, _ = solver.compute_soft_cost_expr(
+            mode="default", exclude=_excl)
+        obj_terms = list(obj_terms)
+
+        # Joint room vars: fold room assignment into THIS schedule model so
+        # the solver may move a lesson to another hour to keep it room-
+        # feasible, and add the room soft goals (home / pref / overflow)
+        # the user left enabled.
+        if _joint_room_ctx is not None:
+            _jx, _jt, _jinfo = _add_joint_rooms(
+                solver.model, solver.slot, _joint_room_ctx, joint_vars)
+            obj_terms.extend(_jt)
+            solver._joint_room_x = _jx  # for optional direct extraction
+            print(f"[phaseB.week] joint rooms: {_jinfo['n_room_vars']} "
+                  f"var aula, {len(_jinfo['no_room_cells'])} celle senza "
+                  f"aula ammissibile, plessi(commute={_jinfo['n_plessi_commute']}"
+                  f",policy={_jinfo['n_plessi_policy']})")
+
         if obj_terms:
             solver.model.Minimize(sum(obj_terms))
 

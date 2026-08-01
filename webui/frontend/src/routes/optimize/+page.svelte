@@ -39,6 +39,18 @@
     //   week + skip      OR  week + soft_hint
     cp_sat_scope: 'day',
     phase_a_mode: 'always',
+    // Joint (giorno,ora,aula): quando enabled, le var aula entrano nel
+    // modello di schedulazione (il backend forza scope=week + no
+    // decomposizione + estrazione aule). `obj` e' la lista di variabili
+    // da ottimizzare: sfilare una spunta la ESCLUDE dall'obiettivo.
+    joint_vars: {
+      enabled: false,
+      obj: {
+        buchi: true, sixth: true, day_load: true,
+        home_room: true, room_pref: true, special_overflow: true,
+        plessi: true,
+      },
+    },
   };
 
   // Client-side coercion: keep (cp_sat_scope, phase_a_mode) in a
@@ -519,6 +531,76 @@
             Preferisci aula della classe
           </label>
         </div>
+      </div>
+      <div class="mt-3 p-3 rounded border border-brand-200 bg-brand-50/40 space-y-2">
+        <label class="flex items-center gap-2 text-sm font-medium">
+          <input type="checkbox" bind:checked={step3.joint_vars.enabled}/>
+          Ottimizzazione congiunta aule (joint giorno/ora/aula)
+        </label>
+        <p class="text-xs text-ink-500">
+          Le aule entrano nel modello di schedulazione: il solutore puo'
+          spostare una lezione a un'altra ora per tenerla in un'aula
+          ammissibile (palestra piena, capienza, plesso), invece di
+          assegnare le aule a orario congelato. Forza lo scope Settimana
+          intera (monolitico) e disattiva la decomposizione spettrale.
+        </p>
+        {#if step3.joint_vars.enabled}
+          <div class="grid grid-cols-2 gap-4 pt-1">
+            <div class="space-y-1">
+              <p class="text-xs font-semibold text-ink-600">
+                Blocchi decisionali
+              </p>
+              <label class="flex items-center gap-2 text-sm text-ink-400">
+                <input type="checkbox" checked disabled/> Cattedre (congelate)
+              </label>
+              <label class="flex items-center gap-2 text-sm text-ink-400">
+                <input type="checkbox" checked disabled/>
+                Orario giorno/ora (libero)
+              </label>
+              <label class="flex items-center gap-2 text-sm">
+                <input type="checkbox" bind:checked={step3.joint_vars.enabled}/>
+                Aule (libere &rarr; joint)
+              </label>
+            </div>
+            <div class="space-y-1">
+              <p class="text-xs font-semibold text-ink-600">
+                Obiettivi da ottimizzare
+              </p>
+              <label class="flex items-center gap-2 text-sm">
+                <input type="checkbox" bind:checked={step3.joint_vars.obj.buchi}/>
+                Buchi prof
+              </label>
+              <label class="flex items-center gap-2 text-sm">
+                <input type="checkbox" bind:checked={step3.joint_vars.obj.sixth}/>
+                6&ordf; ora
+              </label>
+              <label class="flex items-center gap-2 text-sm">
+                <input type="checkbox"
+                       bind:checked={step3.joint_vars.obj.day_load}/>
+                Carico giornaliero
+              </label>
+              <label class="flex items-center gap-2 text-sm">
+                <input type="checkbox"
+                       bind:checked={step3.joint_vars.obj.home_room}/>
+                Home-room (aula della classe)
+              </label>
+              <label class="flex items-center gap-2 text-sm">
+                <input type="checkbox"
+                       bind:checked={step3.joint_vars.obj.room_pref}/>
+                Preferenze aula (materia/classe)
+              </label>
+              <label class="flex items-center gap-2 text-sm">
+                <input type="checkbox"
+                       bind:checked={step3.joint_vars.obj.special_overflow}/>
+                Overflow aule speciali
+              </label>
+              <label class="flex items-center gap-2 text-sm">
+                <input type="checkbox" bind:checked={step3.joint_vars.obj.plessi}/>
+                Plessi commuting
+              </label>
+            </div>
+          </div>
+        {/if}
       </div>
       <button class="btn-primary mt-3" on:click={launchPhaseB}>Avvia Phase B</button>
     </div>

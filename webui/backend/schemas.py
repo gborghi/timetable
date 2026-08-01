@@ -550,6 +550,32 @@ class AddEventOut(BaseModel):
     details: dict[str, Any] = Field(default_factory=dict)
 
 
+class JointObjIn(BaseModel):
+    """Objective-term toggles for the joint (day,hour,room) solver. Each
+    False EXCLUDES that variable from the optimization; the HARD surface
+    is untouched. Schedule-side terms (buchi/sixth/day_load) map to
+    ``compute_soft_cost_expr(exclude=...)``; room-side terms map to the
+    ``want_*`` flags of ``add_joint_room_vars``."""
+    # schedule-side
+    buchi: bool = True
+    sixth: bool = True
+    day_load: bool = True
+    # room-side
+    home_room: bool = True
+    room_pref: bool = True
+    special_overflow: bool = True
+    plessi: bool = True
+
+
+class JointVarsIn(BaseModel):
+    """Decision-block selection for the joint solver. ``enabled`` is the
+    ``room`` block toggle: on = room vars join the schedule solve (forces
+    monolithic week scope). The ``assignment`` block stays frozen and the
+    ``slot`` block stays free in this stage."""
+    enabled: bool = False
+    obj: JointObjIn = Field(default_factory=JointObjIn)
+
+
 class PhaseBRunIn(BaseModel):
     k: int = 4
     time_a: float = 60.0
@@ -582,6 +608,11 @@ class PhaseBRunIn(BaseModel):
     #               on the week solver's day_count_for_hint vars (warm
     #               start, not enforced). Only valid with cp_sat_scope="week".
     phase_a_mode: str = "always"
+    # Joint (day,hour,room) optimization. When ``joint_vars.enabled`` the
+    # room vars join the schedule model (monolithic week scope is forced
+    # server-side) and the rooms extraction step is turned on. None/absent
+    # or ``enabled=False`` leaves every existing path unchanged.
+    joint_vars: JointVarsIn | None = None
 
     @model_validator(mode="after")
     def _validate_scope_and_phase_a_mode(self) -> "PhaseBRunIn":

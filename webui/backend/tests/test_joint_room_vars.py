@@ -156,3 +156,66 @@ def test_cell_meta_propagates_kind_home_forbidden():
     assert meta["home_room"] == "A1"
     assert meta["forbidden_rooms"] == {"Lab"}
     assert meta["teacher"] == "Rossi"
+
+
+# --- _add_joint_rooms wiring (cell_occ from slot vars) ----------------
+from backend.optimization import _add_joint_rooms, _norm_joint_vars  # noqa: E402
+
+
+def _gym_ctx():
+    return {
+        "classrooms": [
+            {"name": "Palestra", "kind": "palestra",
+             "multi_class": True, "multi_class_max": 1, "multi_class_pref": 1},
+            {"name": "A1", "kind": "standard"},
+            {"name": "A2", "kind": "standard"},
+        ],
+        "required_kind_by_subj": {"Scienze motorie": "palestra"},
+        "home_by_class": {}, "forbidden_by_class": {},
+        "shares": lambda t, d, h: False,
+    }
+
+
+def test_add_joint_rooms_couples_schedule_and_rooms():
+    """End-to-end wiring: a fake week `slot` where two classes each take PE
+    in one of two hours; the single gym must push them into different hours
+    through the joint room coupling."""
+    m = cp_model.CpModel()
+    slot = {}
+    for cl in ("1A", "1B"):
+        hv = []
+        for h in (8, 9):
+            v = m.NewBoolVar(f"{cl}_{h}")
+            slot[(f"T{cl}", cl, "Scienze motorie", 1, h)] = v
+            hv.append(v)
+        m.Add(sum(hv) == 1)
+    jv = _norm_joint_vars({"enabled": True})
+    x, obj_terms, info = _add_joint_rooms(m, slot, _gym_ctx(), jv)
+    if obj_terms:
+        m.Minimize(sum(obj_terms))
+    s = cp_model.CpSolver()
+    assert s.Solve(m) in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+
+    def hour_of(cl):
+        return 8 if s.Value(slot[(f"T{cl}", cl, "Scienze motorie", 1, 8)]) \
+            else 9
+    assert hour_of("1A") != hour_of("1B")
+    assert info["n_room_vars"] > 0
+
+
+def test_add_joint_rooms_coteacher_or_indicator():
+    """Two co-teachers on the same cell share ONE room (the occupancy OR
+    indicator collapses them into a single room request)."""
+    m = cp_model.CpModel()
+    v = m.NewBoolVar("placed")
+    slot = {
+        ("Titolare", "1A", "Matematica", 1, 8): v,
+        ("Codoc", "1A", "Matematica", 1, 8): v,   # same cell, co-teacher
+    }
+    m.Add(v == 1)
+    jv = _norm_joint_vars({"enabled": True})
+    x, obj_terms, info = _add_joint_rooms(m, slot, _gym_ctx(), jv)
+    s = cp_model.CpSolver()
+    assert s.Solve(m) in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+    chosen = [rn for (cell, rn), var in x.items() if s.Value(var) == 1]
+    assert len(chosen) == 1  # exactly one room for the shared cell
