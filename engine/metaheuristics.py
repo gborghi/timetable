@@ -418,6 +418,23 @@ def is_hard_feasible(sol, profs, verbose=False,
                     if verbose: print(f"  HC viol: prof {p} d{d}")
                     return False
 
+    # Audit H11: min_free_days floor -- each teacher must have at least
+    # profs[t]["min_free_days"] weekdays with zero lessons. Enforced HARD by
+    # the week/day solvers but dropped on decomposition, and the validator had
+    # no check for it, so a decomposition run that violated it shipped
+    # feasible=True. Check it here (the whole-week solution is visible) so it
+    # fails closed like every other HARD.
+    for p in profs_set:
+        _mfd = int((profs.get(p, {}) or {}).get("min_free_days", 0) or 0)
+        if _mfd <= 0:
+            continue
+        _busy_days = sum(1 for d in DAYS if pd_h.get((p, d)))
+        if (len(DAYS) - _busy_days) < _mfd:
+            if verbose:
+                print(f"  min_free_days viol: prof {p} "
+                      f"free={len(DAYS) - _busy_days} < {_mfd}")
+            return False
+
     # H_A: Mat/Ita doppia consecutiva del prof in classe (almeno 1
     # nella settimana, qualunque materia stesso prof).
     _pair_flag = {"Matematica": "dual_math", "Italiano": "dual_italian"}
