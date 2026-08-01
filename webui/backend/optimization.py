@@ -977,8 +977,9 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
         # initialisation the week path raised UnboundLocalError at the
         # ``_gate_coverage`` call and discarded a fully solved timetable.
         dc_value: dict | None = None
+        _joint_room_map: dict | None = None
         if cp_sat_scope == "week":
-            full_solution: dict = _solve_phase_b_week(
+            full_solution, _joint_room_map = _solve_phase_b_week(
                 rid=rid, ws=ws, profs=profs, classes=classes,
                 triples=triples, class_profs=class_profs,
                 phase_a_mode=phase_a_mode,
@@ -1249,13 +1250,23 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
         # No point assigning rooms to a timetable we won't activate.
         if optimize_rooms and make_active:
             update_run(rid, progress=0.95, current_step="rooms")
-            print("[phaseB] running joint classroom-assignment step")
+            print("[phaseB] running classroom-assignment step")
             try:
-                rooms_metrics = _apply_rooms_to_solution(
-                    sid, time_limit_s=rooms_time_limit_s,
-                    workers=workers, prefer_home=rooms_prefer_home,
-                    log_prefix="phaseB.rooms", log=False,
-                )
+                # Joint runs: write the joint week solve's OWN room assignment
+                # (captured from its room vars) so the joint room objective
+                # (home / continuity) reaches the output. Fall back to the
+                # standalone solver+greedy only if that map is missing or can't
+                # cover every lesson.
+                rooms_metrics = {}
+                if _jv is not None and _joint_room_map:
+                    rooms_metrics = _apply_joint_room_map(
+                        sid, _joint_room_map, log_prefix="phaseB.rooms") or {}
+                if not rooms_metrics or rooms_metrics.get("rooms_joint") is not True:
+                    rooms_metrics = _apply_rooms_to_solution(
+                        sid, time_limit_s=rooms_time_limit_s,
+                        workers=workers, prefer_home=rooms_prefer_home,
+                        log_prefix="phaseB.rooms", log=False,
+                    )
             except Exception as e:  # noqa: BLE001
                 print(f"[phaseB] rooms step failed: {e}")
                 rooms_metrics = {"rooms_error": str(e)}
@@ -1455,6 +1466,11 @@ def _solve_phase_b_week(*, rid: int, ws: str, profs: dict,
     if joint_vars is not None:
         with SessionLocal() as _db_jr:
             _joint_room_ctx = engine_io.joint_room_ctx_from_db(_db_jr)
+    # Holder for the joint room assignment captured from the winning solve
+    # (mutated by _solve_once / the single-shot path). solve_with_dsl_
+    # refinement always returns the LAST solve_once's solution, so the last
+    # capture matches the returned schedule.
+    _jrm_holder: dict = {"map": None}
 
     def _build_week_solver(forbidden):
         """Build the monolithic week-scope solver from scratch and
@@ -1598,6 +1614,7 @@ def _solve_phase_b_week(*, rid: int, ws: str, profs: dict,
         if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
             return None, status_name
         sol = {k: 1 for k, v in solver.slot.items() if cp_solver.Value(v)}
+        _jrm_holder["map"] = _room_map_from_joint_x(solver, cp_solver)
         return sol, status_name
 
     if hard_exprs:
@@ -1660,7 +1677,7 @@ def _solve_phase_b_week(*, rid: int, ws: str, profs: dict,
                     f"Regole violate: {'; '.join(unsatisfied[:5])}"
                     + (" ..." if len(unsatisfied) > 5 else "")
                 )
-        return full_solution
+        return full_solution, _jrm_holder["map"]
 
     # Default path (no hard DSL): single-shot build + solve, byte-identical
     # to the legacy behaviour (no verify, no refinement, no extra solve).
@@ -1680,7 +1697,8 @@ def _solve_phase_b_week(*, rid: int, ws: str, profs: dict,
     # produces: {(t, cl, subj, d, h): 1}.
     full_solution = {
         k: 1 for k, v in solver.slot.items() if cp_solver.Value(v)}
-    return full_solution
+    _jrm_holder["map"] = _room_map_from_joint_x(solver, cp_solver)
+    return full_solution, _jrm_holder["map"]
 
 
 # ----------------------------------------------------------------------
@@ -4023,6 +4041,70 @@ def run_place_event(event_ids: list[int], lock_mode: str = "all_others_locked",
 
     start_thread(run_id, target)
     return run_id
+
+
+def _room_map_from_joint_x(solver, cp_solver) -> dict | None:
+    r"""Extract ``{(class, subject, day, hour) -> room_name}`` from the joint
+    room vars stashed on the week solver (``solver._joint_room_x``, set by
+    ``_add_joint_rooms``). Returns None when the solver carried no joint room
+    vars (non-joint run). Covers non-rider cells; riders inherit downstream.
+    """
+    x = getattr(solver, "_joint_room_x", None)
+    if not x:
+        return None
+    rm: dict = {}
+    for (cell, rn), var in x.items():
+        try:
+            if cp_solver.Value(var) == 1:
+                rm[cell] = rn
+        except Exception:  # noqa: BLE001
+            pass
+    return rm
+
+
+def _apply_joint_room_map(sid: int, room_map: dict,
+                          *, log_prefix: str = "rooms.joint") -> dict | None:
+    r"""Write the JOINT week solve's OWN room assignment (captured from its
+    room vars) onto solution ``sid`` -- so the joint room objective
+    (home / continuity) reaches the output, instead of re-solving with the
+    standalone solver + greedy fallback (which discards it).
+
+    ``room_map`` covers non-rider cells; compresenza riders inherit the room
+    of a host cell in the same ``(class, day, hour)``. Returns metrics, or
+    ``None`` when some lesson can't be roomed (coverage gap) so the caller
+    falls back to the standalone step rather than leaving it roomless.
+    """
+    with SessionLocal() as db:
+        lessons = engine_io.lessons_for_classroom_step(db, sid)
+    host_room: dict = {}
+    for (cl, _subj, d, h), rn in room_map.items():
+        host_room.setdefault((cl, d, h), rn)
+    final = dict(room_map)
+    unroomed = 0
+    for L in lessons:
+        key = (L["class"], L["subject"], int(L["day"]), int(L["hour"]))
+        if key in final:
+            continue
+        inh = host_room.get((L["class"], int(L["day"]), int(L["hour"])))
+        if inh:
+            final[key] = inh
+        else:
+            unroomed += 1
+    if unroomed:
+        print(f"[{log_prefix}] {unroomed}/{len(lessons)} lessons have no "
+              f"joint room; falling back to standalone room step")
+        return None
+    with SessionLocal() as db:
+        n = engine_io.apply_room_mapping(db, sid, final)
+    print(f"[{log_prefix}] {n}/{len(lessons)} lessons roomed from the joint "
+          f"solve's own room vars (home/continuity preserved)")
+    return {
+        "rooms_assigned": n,
+        "rooms_total_lessons": len(lessons),
+        "rooms_exact_status": "JOINT",
+        "rooms_fallback": False,
+        "rooms_joint": True,
+    }
 
 
 def _apply_rooms_to_solution(sid: int, *, time_limit_s: float,
