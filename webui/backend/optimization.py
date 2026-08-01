@@ -5025,6 +5025,7 @@ def run_decomposition_temporal(*, time_a: float = 60.0,
             import cpsat_v2_timetable as cv2  # type: ignore
             _t_class_flags = engine_io.class_flags_from_db(_db_co)
             _t_special_room = cv2.build_special_room_ctx(_db_co)
+            _t_cdl = engine_io.class_day_load_allowed_from_db(_db_co)
         if locked_snap:
             print(f"[temporal] native lock path: {len(locked_snap)} "
                   f"locked lessons fed to solver")
@@ -5052,6 +5053,7 @@ def run_decomposition_temporal(*, time_a: float = 60.0,
             group_assignments=group_assignments or None,
             special_room_ctx=_t_special_room,
             class_flags=_t_class_flags,
+            class_day_load_allowed=_t_cdl,
         )
         update_run(rid, progress=0.85)
 

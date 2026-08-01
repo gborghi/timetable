@@ -86,7 +86,8 @@ def pre_distribute_hours(profs: dict, *, time_limit: float = 60.0,
                          workers: int = 8, log: bool = False,
                          locked_day_count: dict | None = None,
                          coteach_groups: list | None = None,
-                         group_assignments: list | None = None):
+                         group_assignments: list | None = None,
+                         class_day_load_allowed: dict | None = None):
     """Master CP-SAT che distribuisce le ore-cattedra fra i giorni.
 
     Riusa esattamente `cpsat_v2_timetable.solve_phase_a`, che e' il
@@ -114,6 +115,7 @@ def pre_distribute_hours(profs: dict, *, time_limit: float = 60.0,
         locked_day_count=locked_day_count,
         coteach_groups=coteach_groups,
         group_assignments=group_assignments,
+        class_day_load_allowed=class_day_load_allowed,
     )
 
 
@@ -236,7 +238,8 @@ def run_temporal_pipeline(profs_path: str, *,
                           coteach_groups: list | None = None,
                           group_assignments: list | None = None,
                           special_room_ctx=None,
-                          class_flags=None):
+                          class_flags=None,
+                          class_day_load_allowed=None):
     """Orchestra master + day-solvers paralleli + ricucitura.
 
     Parameters
@@ -309,7 +312,8 @@ def run_temporal_pipeline(profs_path: str, *,
             profs, time_limit=time_a, workers=8, log=False,
             locked_day_count=locked_day_count,
             coteach_groups=coteach_groups,
-            group_assignments=group_assignments)
+            group_assignments=group_assignments,
+            class_day_load_allowed=class_day_load_allowed)
     except Exception as e:
         return {
             'full_solution': {},
