@@ -178,6 +178,7 @@ def solve_with_curriculum_decomposition(
     group_assignments: list | None = None,
     class_day_load_allowed: dict | None = None,
     special_room_ctx=None,
+    plessi_ctx=None,
 ):
     """Pipeline end-to-end: partition by curriculum + Stage A/B/C/mono.
 
@@ -230,4 +231,5 @@ def solve_with_curriculum_decomposition(
         group_assignments=group_assignments,
         class_day_load_allowed=class_day_load_allowed,
         special_room_ctx=special_room_ctx,
+        plessi_ctx=plessi_ctx,
     )

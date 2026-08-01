@@ -69,6 +69,7 @@ def run_partitioned_pipeline(
     group_assignments: list | None = None,
     class_day_load_allowed: dict | None = None,
     special_room_ctx=None,
+    plessi_ctx=None,
 ):
     """Run the canonical Stage A/B/C/monolithic loop on a precomputed
     cluster partition.
@@ -166,7 +167,16 @@ def run_partitioned_pipeline(
     # is_hard_feasible then rejected the whole timetable). The monolithic
     # per-day solve sees every class that day, so force it when a
     # special-room ctx is present, exactly like the groups case.
-    force_mono_for_groups = bool(group_assignments) or bool(special_room_ctx)
+    # Audit H9/H10/H7: the per-cluster stages (A/B/C) model NONE of coteach,
+    # sostegno, intra-class parallel, or plessi commuting either -- disjoint
+    # class subsets can't see a shared teacher's compresenza, a support shadow,
+    # or a global plesso rule. Force the monolithic per-day path (which does
+    # model them, via solve_monolithic_day) whenever any is present, exactly
+    # like the groups/special-room cases.
+    force_mono_for_groups = (
+        bool(group_assignments) or bool(special_room_ctx)
+        or bool(coteach_groups) or bool(support_assignments)
+        or bool(parallel_groups) or bool(plessi_ctx))
 
     for d in DAYS:
         t = time.time()
@@ -180,6 +190,7 @@ def run_partitioned_pipeline(
                 parallel_groups=parallel_groups,
                 group_assignments=group_assignments,
                 special_room_ctx=special_room_ctx,
+                plessi_ctx=plessi_ctx,
             )
             if mono_out is None:
                 failed_days.append(d)
@@ -210,6 +221,7 @@ def run_partitioned_pipeline(
                 parallel_groups=parallel_groups,
                 group_assignments=group_assignments,
                 special_room_ctx=special_room_ctx,
+                plessi_ctx=plessi_ctx,
             )
             if mono_out is None:
                 failed_days.append(d)
@@ -265,6 +277,7 @@ def run_partitioned_pipeline(
                     parallel_groups=parallel_groups,
                     group_assignments=group_assignments,
                     special_room_ctx=special_room_ctx,
+                    plessi_ctx=plessi_ctx,
                 )
                 if mono_out is None:
                     failed_days.append(d)

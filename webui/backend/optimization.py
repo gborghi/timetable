@@ -5261,6 +5261,7 @@ def run_decomposition_curriculum(*, time_a: float = 60.0,
                 engine_io.class_day_load_allowed_from_db(_db_co))
             import cpsat_v2_timetable as _cv2  # type: ignore
             _special_room = _cv2.build_special_room_ctx(_db_co)
+            _plessi = _cv2.build_plessi_ctx(_db_co)
         if locked_snap:
             print(f"[curriculum] native lock path: {len(locked_snap)} "
                   f"locked lessons fed to solver")
@@ -5283,6 +5284,7 @@ def run_decomposition_curriculum(*, time_a: float = 60.0,
             group_assignments=group_assignments or None,
             class_day_load_allowed=class_day_load_allowed,
             special_room_ctx=_special_room,
+            plessi_ctx=_plessi,
         )
         update_run(rid, progress=0.85)
         full_solution = result["full_solution"]
@@ -5411,6 +5413,7 @@ def run_decomposition_metis(*, time_a: float = 60.0,
                 engine_io.class_day_load_allowed_from_db(_db_co))
             import cpsat_v2_timetable as _cv2  # type: ignore
             _special_room = _cv2.build_special_room_ctx(_db_co)
+            _plessi = _cv2.build_plessi_ctx(_db_co)
         if locked_snap:
             print(f"[metis] native lock path: {len(locked_snap)} "
                   f"locked lessons fed to solver")
@@ -5433,6 +5436,7 @@ def run_decomposition_metis(*, time_a: float = 60.0,
             group_assignments=group_assignments or None,
             class_day_load_allowed=class_day_load_allowed,
             special_room_ctx=_special_room,
+            plessi_ctx=_plessi,
         )
         update_run(rid, progress=0.85)
         full_solution = result["full_solution"]
