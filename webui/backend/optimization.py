@@ -3000,6 +3000,7 @@ def run_full_pipeline(profile: str,
                     _d_class_flags = engine_io.class_flags_from_db(_db_d)
                     _d_cdl = engine_io.class_day_load_allowed_from_db(_db_d)
                     _d_special = cv2.build_special_room_ctx(_db_d)
+                    _d_plessi = cv2.build_plessi_ctx(_db_d)
                 _d_locked_by_day = _locked_slots_by_day(_d_locked)
                 _d_locked_dc = _locked_day_count_from_snapshot(_d_locked)
 
@@ -3031,6 +3032,9 @@ def run_full_pipeline(profile: str,
                         special_room_ctx=_d_special,
                         class_flags=_d_class_flags,
                         class_day_load_allowed=_d_cdl,
+                        support_assignments=_d_support or None,
+                        parallel_groups=_d_parallel or None,
+                        plessi_ctx=_d_plessi,
                     )
                     state["full_solution"] = res["full_solution"]
                     state["dc_value"] = res["dc_value"]
@@ -3087,6 +3091,7 @@ def run_full_pipeline(profile: str,
                         group_assignments=_d_groups or None,
                         class_day_load_allowed=_d_cdl,
                         special_room_ctx=_d_special,
+                        plessi_ctx=_d_plessi,
                         **kwargs,
                     )
                     state["full_solution"] = res["full_solution"]
@@ -5069,6 +5074,9 @@ def run_decomposition_temporal(*, time_a: float = 60.0,
             _t_class_flags = engine_io.class_flags_from_db(_db_co)
             _t_special_room = cv2.build_special_room_ctx(_db_co)
             _t_cdl = engine_io.class_day_load_allowed_from_db(_db_co)
+            support_assignments = engine_io.support_assignments_from_db(_db_co)
+            parallel_groups = engine_io.parallel_groups_for_solver(_db_co)
+            _t_plessi = cv2.build_plessi_ctx(_db_co)
         if locked_snap:
             print(f"[temporal] native lock path: {len(locked_snap)} "
                   f"locked lessons fed to solver")
@@ -5097,6 +5105,9 @@ def run_decomposition_temporal(*, time_a: float = 60.0,
             special_room_ctx=_t_special_room,
             class_flags=_t_class_flags,
             class_day_load_allowed=_t_cdl,
+            support_assignments=support_assignments or None,
+            parallel_groups=parallel_groups or None,
+            plessi_ctx=_t_plessi,
         )
         update_run(rid, progress=0.85)
 
