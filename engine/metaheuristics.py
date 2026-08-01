@@ -1220,6 +1220,12 @@ def run_tabu(sol, profs, dc_value, time_budget_s,
             new_sol = move_fn(cur, profs, dc_value, rng, locks=locks,
                               group_assignments=group_assignments,
                               class_flags=class_flags,
+                              # Audit H4: without special_room_ctx the atomic
+                              # move's own is_hard_feasible gate could not see
+                              # the palestra/lab cap, so Tabu (and ILS, which
+                              # drives run_tabu) reintroduced finding-34
+                              # overflow that run_meta then activated. Pass it.
+                              special_room_ctx=special_room_ctx,
                               dsl_hard_expressions=dsl_hard_expressions)
             if new_sol is None:
                 continue
