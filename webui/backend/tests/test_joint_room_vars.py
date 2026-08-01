@@ -295,3 +295,41 @@ def test_parse_room_continuity_pragmas():
     ]
     got = engine_io.parse_room_continuity_pragmas(exprs)
     assert got == {"1A": "day", "2B": "soft", "3C": "week"}
+
+
+# --- eligible-room pruning (Stage 3.5) --------------------------------
+def test_candidate_rooms_prune_ordinary_not_special():
+    """candidate_rooms restricts an ORDINARY cell to its class pool; a
+    special-kind (gym) cell keeps its required-kind rooms; a disjoint pool
+    never prunes to empty."""
+    m = cp_model.CpModel()
+    rooms = [
+        {"name": "A1", "kind": "standard"}, {"name": "A2", "kind": "standard"},
+        {"name": "A3", "kind": "standard"},
+        {"name": "Palestra", "kind": "palestra"},
+    ]
+    ordinary = ("1A", "Matematica", 1, 8)
+    gym = ("1A", "Scienze motorie", 1, 9)
+    disjoint = ("1B", "Storia", 1, 8)
+    occ = {ordinary: 1, gym: 1, disjoint: 1}
+    meta = {
+        ordinary: {"class": "1A", "subject": "Matematica", "day": 1,
+                   "hour": 8, "required_kind": ""},
+        gym: {"class": "1A", "subject": "Scienze motorie", "day": 1,
+              "hour": 9, "required_kind": "palestra"},
+        disjoint: {"class": "1B", "subject": "Storia", "day": 1,
+                   "hour": 8, "required_kind": ""},
+    }
+    cand = {"1A": ["A1", "A2"], "1B": ["Zzz"]}  # 1B pool disjoint from rooms
+    x, _obj, info = ca.add_joint_room_vars(
+        m, occ, meta, rooms, candidate_rooms=cand)
+    ord_rooms = {rn for (c, rn) in x if c == ordinary}
+    gym_rooms = {rn for (c, rn) in x if c == gym}
+    dis_rooms = {rn for (c, rn) in x if c == disjoint}
+    assert ord_rooms == {"A1", "A2"}          # pruned to pool
+    assert gym_rooms == {"Palestra"}          # special: required-kind kept
+    # Disjoint pool -> full eligible. NB _can_host lets an ordinary lesson
+    # into any room (incl. the gym); the pruning is exactly what keeps a
+    # pooled class out of it -- here 1B has no usable pool so it falls back.
+    assert dis_rooms == {"A1", "A2", "A3", "Palestra"}
+    assert info["no_room_cells"] == []

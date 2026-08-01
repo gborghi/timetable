@@ -1276,6 +1276,59 @@ def parse_room_continuity_pragmas(expressions) -> dict:
     return out
 
 
+def joint_candidate_rooms_from_db(db: Session, *, k_alternates: int = 2) -> dict:
+    r"""Prune the joint room search: ``{class_name -> [candidate standard
+    room names]}`` for ORDINARY lessons.
+
+    The naive joint model makes one var per (cell, eligible room); with ~60
+    interchangeable standard rooms that is ~1.5M vars (~20 GB) on a 60-class
+    school. Each ordinary lesson only ever needs a room *of its own kind, in
+    its own plesso*, and continuity means a class really wants ONE room --
+    so we hand each class a small pool: a deterministic HOME room (a
+    per-plesso class<->room bijection, always feasible) plus ``k_alternates``
+    neighbours for the solver to swap into. Special-kind lessons (gym/lab)
+    are NOT pruned here -- they keep their required-kind rooms.
+
+    Returns ``{}`` when there is nothing to prune (no standard rooms / no
+    plesso pins), so the caller falls back to full eligibility.
+    """
+    from collections import defaultdict
+    id2name = {c.id: c.name for c in db.query(models.SchoolClass).all()}
+    class_plesso: dict[str, int] = {}
+    for p in db.query(models.PlessoEntityPolicy).all():
+        if (getattr(p, "entity_kind", None) == "class"
+                and getattr(p, "policy", None) in (
+                    "single_plesso_total", "single_plesso_per_day")
+                and p.entity_id in id2name and p.plesso_id):
+            class_plesso[id2name[p.entity_id]] = int(p.plesso_id)
+    std_by_plesso: dict[int, list[str]] = defaultdict(list)
+    for r in db.query(models.Classroom).all():
+        if (r.kind or "standard") == "standard" and r.plesso_id is not None:
+            std_by_plesso[int(r.plesso_id)].append(r.name)
+    if not class_plesso or not std_by_plesso:
+        return {}
+    for pl in std_by_plesso:
+        std_by_plesso[pl].sort()
+    classes_by_plesso: dict[int, list[str]] = defaultdict(list)
+    for cl, pl in class_plesso.items():
+        classes_by_plesso[pl].append(cl)
+    out: dict[str, list[str]] = {}
+    for pl, classes in classes_by_plesso.items():
+        rooms_p = std_by_plesso.get(pl, [])
+        if not rooms_p:
+            continue
+        classes = sorted(classes)
+        n = len(rooms_p)
+        for i, cl in enumerate(classes):
+            # HOME = bijection slot (wraps if classes > rooms, which would
+            # already be an over-capacity plesso the preflight flags).
+            pool = [rooms_p[i % n]]
+            for j in range(1, k_alternates + 1):
+                pool.append(rooms_p[(i + j) % n])
+            out[cl] = sorted(set(pool))
+    return out
+
+
 def joint_room_ctx_from_db(db: Session) -> dict:
     r"""Placement-INDEPENDENT room metadata for the joint (day,hour,room)
     solver -- everything ``classroom_assignment.add_joint_room_vars``
@@ -1300,6 +1353,7 @@ def joint_room_ctx_from_db(db: Session) -> dict:
         "forbidden_by_class": dict(pins["forbidden"]),
         "shares": compresenza_resolver(db),
         "continuity_dsl": room_continuity_from_dsl(db),
+        "candidate_rooms": joint_candidate_rooms_from_db(db),
     }
 
 

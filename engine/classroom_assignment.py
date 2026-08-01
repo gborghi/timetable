@@ -479,6 +479,7 @@ def add_joint_room_vars(
     *,
     soft_weights: dict[str, float] | None = None,
     plessi_data=None,
+    candidate_rooms: dict | None = None,
     want_home_bonus: bool = True,
     want_room_pref: bool = True,
     want_overflow: bool = True,
@@ -524,6 +525,17 @@ def add_joint_room_vars(
     no_room_cells: list[tuple] = []
     for cell, L in cell_lessons.items():
         elig = [r["name"] for r in rooms if _can_host(r, L)]
+        # Pruning: restrict an ORDINARY lesson to its class' candidate pool
+        # (home + a few alternates in-plesso) so the model does not carry a
+        # var per (cell, every interchangeable room). Special-kind lessons
+        # (gym/lab) keep their required-kind rooms. Never prune to empty --
+        # if the pool intersects nothing, keep the full eligible set.
+        if candidate_rooms and not (L.get("required_kind") or ""):
+            pool = candidate_rooms.get(L.get("class") or "")
+            if pool:
+                pruned = [rn for rn in elig if rn in pool]
+                if pruned:
+                    elig = pruned
         eligible[cell] = elig
         if not elig:
             no_room_cells.append(cell)

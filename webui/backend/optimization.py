@@ -798,6 +798,7 @@ def _add_joint_rooms(model, slot, ctx: dict, jv: dict, *, plessi_data=None):
     x, obj_terms, info = ca.add_joint_room_vars(
         model, cell_occ, cell_lessons, ctx["classrooms"],
         plessi_data=plessi_data,
+        candidate_rooms=ctx.get("candidate_rooms"),
         want_home_bonus=jv["obj_home_room"],
         want_room_pref=jv["obj_room_pref"],
         want_overflow=jv["obj_special_overflow"],
