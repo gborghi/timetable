@@ -43,7 +43,27 @@ import os
 import pickle
 import sys
 import time
+import multiprocessing as _mp
 from concurrent.futures import ProcessPoolExecutor, as_completed
+
+
+def _pool_ctx():
+    """Force a ``fork`` start method for the per-day pool where available.
+
+    macOS/Windows default to ``spawn``, which re-imports the caller's
+    ``__main__`` -- that raises "an attempt has been made to start a new
+    process before the current process has finished its bootstrapping phase"
+    whenever the engine is driven from an unguarded script or test (the webui
+    backend, a proper module, is unaffected, but drivers/harnesses trip on
+    it). ``fork`` copies the already-bootstrapped parent, sidestepping the
+    re-import. Falls back to the platform default when fork is unavailable.
+    """
+    try:
+        if "fork" in _mp.get_all_start_methods():
+            return _mp.get_context("fork")
+    except Exception:  # noqa: BLE001
+        pass
+    return None
 from typing import Any
 
 # Make sibling modules importable when this file is run from
@@ -338,7 +358,8 @@ def run_temporal_pipeline(profs_path: str, *,
                   f"{cpsat_workers_per_day} cp-sat workers/day)")
 
         try:
-            with ProcessPoolExecutor(max_workers=n_workers) as ex:
+            with ProcessPoolExecutor(max_workers=n_workers,
+                                     mp_context=_pool_ctx()) as ex:
                 futures = {
                     ex.submit(_worker_solve_day,
                               (d, profs_pkl, dc_pkl,
