@@ -5214,6 +5214,8 @@ def run_decomposition_curriculum(*, time_a: float = 60.0,
             parallel_groups = engine_io.parallel_groups_for_solver(_db_co)
             group_assignments = engine_io.group_assignments_for_solver(
                 _db_co)
+            class_day_load_allowed = (
+                engine_io.class_day_load_allowed_from_db(_db_co))
         if locked_snap:
             print(f"[curriculum] native lock path: {len(locked_snap)} "
                   f"locked lessons fed to solver")
@@ -5234,6 +5236,7 @@ def run_decomposition_curriculum(*, time_a: float = 60.0,
             support_assignments=support_assignments or None,
             parallel_groups=parallel_groups or None,
             group_assignments=group_assignments or None,
+            class_day_load_allowed=class_day_load_allowed,
         )
         update_run(rid, progress=0.85)
         full_solution = result["full_solution"]
@@ -5358,6 +5361,8 @@ def run_decomposition_metis(*, time_a: float = 60.0,
             parallel_groups = engine_io.parallel_groups_for_solver(_db_co)
             group_assignments = engine_io.group_assignments_for_solver(
                 _db_co)
+            class_day_load_allowed = (
+                engine_io.class_day_load_allowed_from_db(_db_co))
         if locked_snap:
             print(f"[metis] native lock path: {len(locked_snap)} "
                   f"locked lessons fed to solver")
@@ -5378,6 +5383,7 @@ def run_decomposition_metis(*, time_a: float = 60.0,
             support_assignments=support_assignments or None,
             parallel_groups=parallel_groups or None,
             group_assignments=group_assignments or None,
+            class_day_load_allowed=class_day_load_allowed,
         )
         update_run(rid, progress=0.85)
         full_solution = result["full_solution"]

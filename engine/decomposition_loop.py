@@ -67,6 +67,7 @@ def run_partitioned_pipeline(
     support_assignments: list | None = None,
     parallel_groups: list | None = None,
     group_assignments: list | None = None,
+    class_day_load_allowed: dict | None = None,
 ):
     """Run the canonical Stage A/B/C/monolithic loop on a precomputed
     cluster partition.
@@ -141,6 +142,7 @@ def run_partitioned_pipeline(
             support_assignments=support_assignments,
             parallel_groups=parallel_groups,
             group_assignments=group_assignments,
+            class_day_load_allowed=class_day_load_allowed,
         )
     elapsed_master = time.time() - t0
 
