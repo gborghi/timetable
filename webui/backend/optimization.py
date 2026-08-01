@@ -862,9 +862,38 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
     # (the joint coupling guarantees that step now succeeds for every lesson).
     _jv = _norm_joint_vars(joint_vars)
     if _jv is not None:
+        # Auto-off at scale: the joint room vars (~rooms x cells) blow up the
+        # monolithic model on big schools -- verified fine at 60 classes,
+        # UNKNOWN at 90 -- while the standalone exact room solver on the week
+        # schedule stays cheap and OPTIMAL there. Above the threshold, degrade
+        # to the classic week solve + separate exact rooms (which DOES scale:
+        # ~170s / 100% / exact on 90 classes) instead of a path that can't
+        # finish. Tune via PITANTUM_JOINT_MAX_CLASSES.
+        try:
+            with SessionLocal() as _db_n:
+                _n_classes = _db_n.query(models.SchoolClass).count()
+        except Exception:  # noqa: BLE001
+            _n_classes = 0
+        _joint_cap = int(os.environ.get("PITANTUM_JOINT_MAX_CLASSES", "75")
+                         or 75)
+        if _n_classes > _joint_cap:
+            print(f"[phase_b] joint rooms disattivato: {_n_classes} classi > "
+                  f"{_joint_cap} (il modello joint non scala); uso il week "
+                  f"classico + assegnazione aule esatta separata")
+            _jv = None
+    if _jv is not None:
         if cp_sat_scope != "week":
             print("[phase_b] joint rooms richiede scope settimanale: "
                   "forzo cp_sat_scope='week'")
+            cp_sat_scope = "week"
+        if phase_a_mode == "always":
+            phase_a_mode = "soft_hint"
+        use_decomposition = False
+        optimize_rooms = True
+    elif joint_vars is not None and (joint_vars or {}).get("enabled"):
+        # Joint was requested but auto-disabled above: still give the caller
+        # the scalable equivalent -- classic week solve + separate exact rooms.
+        if cp_sat_scope != "week":
             cp_sat_scope = "week"
         if phase_a_mode == "always":
             phase_a_mode = "soft_hint"
