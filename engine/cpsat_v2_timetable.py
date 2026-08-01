@@ -485,7 +485,8 @@ def solve_phase_a(profs, classes, triples, class_profs,
                   potenziamento_assignments=None,
                   parallel_groups=None,
                   group_assignments=None,
-                  class_flags=None):
+                  class_flags=None,
+                  class_day_load_allowed=None):
     """Risolve Phase A. Se `locked_day_count` e\` valorizzato, e\` un
     dict (prof, class, subject, day) -> int che impone un FLOOR sul
     numero di ore di quella cattedra nel giorno indicato. Le ore non
@@ -706,6 +707,17 @@ def solve_phase_a(profs, classes, triples, class_profs,
             # the ``class_day_load_in_day_count`` DSL pragma; the
             # compiler's cl_day_load cache is pre-populated with this
             # IntVar so the pragma uses the same (excluded-set) load.
+            # User-authored ``class_day_load_in(cl, ...)`` GeneralConstraints
+            # (e.g. the year-1/2 free-day rotation: per-day load in {0,6})
+            # are HARD too, but they never reached Phase A -- only the
+            # monolithic week gate enforced them, so every decomposition
+            # engine silently produced free-day-violating timetables. Apply
+            # them directly on this IntVar's domain here, so Phase A (and
+            # thus ALL decomposition schedulers that share it) honour them.
+            _allow = (class_day_load_allowed or {}).get(cl)
+            if _allow:
+                model.AddAllowedAssignments(
+                    [load], [[int(v)] for v in sorted(_allow)])
 
     # SOFT (4): minimizziamo il totale degli slot di 6^a ora occupati
     # nella scuola, cioe\` il numero di (cl, d) con load == 6.

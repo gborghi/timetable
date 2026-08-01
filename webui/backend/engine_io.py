@@ -1276,6 +1276,50 @@ def parse_room_continuity_pragmas(expressions) -> dict:
     return out
 
 
+def class_day_load_allowed_from_db(db: Session) -> dict:
+    r"""``{class_name -> set(allowed per-day loads)}`` parsed from the
+    user's ``class_day_load_in("<cl>", v1, v2, ...)`` general-DSL
+    constraints (a HARD Phase-A day-count rule -- e.g. the year-1/2
+    free-day rotation ``class_day_load_in("1A", 0, 6)`` = each weekday has
+    0 or 6 hours, so with 30 weekly hours exactly one day is free).
+
+    These are enforced by the monolithic week gate but were never applied
+    to ``solve_phase_a``, so every decomposition engine dropped them. Feed
+    the result to ``cpsat_v2_timetable.solve_phase_a(class_day_load_allowed=...)``
+    so Phase A (and thus all decomposition schedulers) honour them.
+    """
+    try:
+        rows = db.query(models.GeneralConstraint).all()
+    except Exception:
+        return {}
+    return parse_class_day_load_pragmas(
+        getattr(r, "expression", "") or "" for r in rows)
+
+
+def parse_class_day_load_pragmas(expressions) -> dict:
+    r"""Pure parser: scan DSL ``expressions`` for
+    ``class_day_load_in(<class>, <v>...)`` and return
+    ``{class -> {allowed int loads}}`` (intersection when a class is
+    named more than once -- every rule must hold)."""
+    import re
+    out: dict[str, set] = {}
+    for expr in expressions:
+        for m in re.finditer(
+                r"class_day_load_in\(\s*([^,]+?)\s*,\s*([^)]+)\)", expr or ""):
+            cl = m.group(1).strip().strip("'\"").strip()
+            vals = set()
+            for tok in m.group(2).split(","):
+                tok = tok.strip()
+                try:
+                    vals.add(int(tok))
+                except ValueError:
+                    pass
+            if not cl or not vals:
+                continue
+            out[cl] = (out[cl] & vals) if cl in out else vals
+    return {k: v for k, v in out.items() if v}
+
+
 def joint_candidate_rooms_from_db(db: Session, *, k_alternates: int = 2) -> dict:
     r"""Prune the joint room search: ``{class_name -> [candidate standard
     room names]}`` for ORDINARY lessons.

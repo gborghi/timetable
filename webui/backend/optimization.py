@@ -1030,6 +1030,7 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
             # toggles are consistent from the day distribution onward.
             with SessionLocal() as _db_pa:
                 _pa_class_flags = engine_io.class_flags_from_db(_db_pa)
+                _pa_cdl = engine_io.class_day_load_allowed_from_db(_db_pa)
             dc_value = cv2.solve_phase_a(
                 profs, classes, triples, class_profs,
                 time_limit=time_a, workers=workers, log=log,
@@ -1040,6 +1041,7 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                 parallel_groups=parallel_groups or None,
                 group_assignments=group_assignments or None,
                 class_flags=_pa_class_flags,
+                class_day_load_allowed=_pa_cdl,
             )
             with open(os.path.join(ws, "phase_a_dc.pkl"), "wb") as f:
                 pickle.dump(dc_value, f)
@@ -1419,6 +1421,7 @@ def _solve_phase_b_week(*, rid: int, ws: str, profs: dict,
               f"(time_limit={time_a}s)")
         with SessionLocal() as _db_pa:  # 08b: Phase-A pragmas per-class
             _pa_class_flags = engine_io.class_flags_from_db(_db_pa)
+            _pa_cdl = engine_io.class_day_load_allowed_from_db(_db_pa)
         try:
             dc_value = cv2.solve_phase_a(
                 profs, classes, triples, class_profs,
@@ -1430,6 +1433,7 @@ def _solve_phase_b_week(*, rid: int, ws: str, profs: dict,
                 parallel_groups=parallel_groups or None,
                 group_assignments=group_assignments or None,
                 class_flags=_pa_class_flags,
+                class_day_load_allowed=_pa_cdl,
             )
         except cv2.PhaseAError as exc:
             # A hint that cannot be computed is a missing hint, not a
@@ -2774,6 +2778,7 @@ def run_full_pipeline(profile: str,
                     _plessi_ctx = cv2.build_plessi_ctx(_db_ctx)
                     _special_room_ctx = cv2.build_special_room_ctx(_db_ctx)
                     _class_flags = engine_io.class_flags_from_db(_db_ctx)
+                    _cdl = engine_io.class_day_load_allowed_from_db(_db_ctx)
                 _pb_scope = (pb_kwargs or {}).get("cp_sat_scope", "day")
                 # WEEK scope runs its own Phase A internally (soft_hint); the
                 # decomposition/per-day branches need dc_value up front.
@@ -2782,6 +2787,7 @@ def run_full_pipeline(profile: str,
                     time_limit=(pb_kwargs or {}).get("time_a", 60),
                     workers=workers, log=False,
                     class_flags=_class_flags,
+                    class_day_load_allowed=_cdl,
                 )
                 state["dc_value"] = dc_value
                 full_solution: dict = {}
