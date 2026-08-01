@@ -68,6 +68,7 @@ def run_partitioned_pipeline(
     parallel_groups: list | None = None,
     group_assignments: list | None = None,
     class_day_load_allowed: dict | None = None,
+    special_room_ctx=None,
 ):
     """Run the canonical Stage A/B/C/monolithic loop on a precomputed
     cluster partition.
@@ -158,7 +159,14 @@ def run_partitioned_pipeline(
     # group_slot vars and would silently drop the group hours. Force
     # the monolithic per-day path for the whole loop -- still benefits
     # from the cached `dc_value` master, just skips the stages.
-    force_mono_for_groups = bool(group_assignments)
+    #
+    # Same for special-room (gym/lab) capacity: it is a GLOBAL per-(day,
+    # hour) cap over ALL classes, which the per-cluster stages cannot see
+    # (verified: metis put 7 classes in a 6-slot palestra hour, and
+    # is_hard_feasible then rejected the whole timetable). The monolithic
+    # per-day solve sees every class that day, so force it when a
+    # special-room ctx is present, exactly like the groups case.
+    force_mono_for_groups = bool(group_assignments) or bool(special_room_ctx)
 
     for d in DAYS:
         t = time.time()
@@ -171,6 +179,7 @@ def run_partitioned_pipeline(
                 support_assignments=support_assignments,
                 parallel_groups=parallel_groups,
                 group_assignments=group_assignments,
+                special_room_ctx=special_room_ctx,
             )
             if mono_out is None:
                 failed_days.append(d)
@@ -200,6 +209,7 @@ def run_partitioned_pipeline(
                 support_assignments=support_assignments,
                 parallel_groups=parallel_groups,
                 group_assignments=group_assignments,
+                special_room_ctx=special_room_ctx,
             )
             if mono_out is None:
                 failed_days.append(d)
@@ -254,6 +264,7 @@ def run_partitioned_pipeline(
                     support_assignments=support_assignments,
                     parallel_groups=parallel_groups,
                     group_assignments=group_assignments,
+                    special_room_ctx=special_room_ctx,
                 )
                 if mono_out is None:
                     failed_days.append(d)
