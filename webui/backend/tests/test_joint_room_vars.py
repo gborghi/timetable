@@ -107,3 +107,52 @@ def test_no_eligible_room_forbids_placement():
     assert s.Solve(m) in (cp_model.OPTIMAL, cp_model.FEASIBLE)
     assert s.Value(occ[cell]) == 0
     assert cell in info["no_room_cells"]
+
+
+# --- joint cell builder (rider exclusion) -----------------------------
+from backend import engine_io  # noqa: E402
+
+
+def _ctx(shares_of):
+    """ctx with a `shares(teacher,d,h)` predicate driven by a name set."""
+    return {
+        "classrooms": [],
+        "required_kind_by_subj": {"Scienze motorie": "palestra"},
+        "home_by_class": {"1A": "A1"},
+        "forbidden_by_class": {"1A": {"Lab"}},
+        "shares": lambda t, d, h: t in shares_of,
+    }
+
+
+def test_rider_dropped_when_host_present():
+    """A sostegno cell (compresenza teacher) in the same class+slot as an
+    ordinary lesson is a rider: it inherits the host room, so it must NOT
+    get its own room cell."""
+    keys = [
+        ("Rossi", "1A", "Matematica", 1, 8),      # host
+        ("Ada", "1A", "Sostegno", 1, 8),          # rider (Ada shares)
+    ]
+    cell_to_keys, cell_lessons = engine_io.joint_cells_from_slot_keys(
+        keys, _ctx({"Ada"}))
+    assert ("1A", "Matematica", 1, 8) in cell_lessons
+    assert ("1A", "Sostegno", 1, 8) not in cell_lessons
+    assert ("1A", "Sostegno", 1, 8) not in cell_to_keys
+
+
+def test_rider_keeps_own_room_without_host():
+    """No host in the same class+slot -> the sharing teacher books its own
+    room (matches compresenza_resolver's caveat)."""
+    keys = [("Ada", "1A", "Sostegno", 1, 8)]
+    cell_to_keys, cell_lessons = engine_io.joint_cells_from_slot_keys(
+        keys, _ctx({"Ada"}))
+    assert ("1A", "Sostegno", 1, 8) in cell_lessons
+
+
+def test_cell_meta_propagates_kind_home_forbidden():
+    keys = [("Rossi", "1A", "Scienze motorie", 1, 8)]
+    _, cell_lessons = engine_io.joint_cells_from_slot_keys(keys, _ctx(set()))
+    meta = cell_lessons[("1A", "Scienze motorie", 1, 8)]
+    assert meta["required_kind"] == "palestra"
+    assert meta["home_room"] == "A1"
+    assert meta["forbidden_rooms"] == {"Lab"}
+    assert meta["teacher"] == "Rossi"

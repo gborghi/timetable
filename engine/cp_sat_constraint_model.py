@@ -987,10 +987,19 @@ class ConstraintModel:
     # ============================================================
 
     def compute_soft_cost_expr(self, *, mode: str = "default",
+                                  exclude: set | None = None,
                                   ) -> tuple[list, list]:
         """Return ``(obj_terms, aux_vars)`` -- a list of CP-SAT
         objective contributions and the auxiliary BoolVars/IntVars
         introduced.
+
+        ``exclude`` (optional) drops named schedule-side objective
+        components so the joint solver can let the user exclude a
+        variable from the optimization without touching the HARD
+        surface. Recognised names: ``"sixth"`` (6a ora), ``"buchi"``
+        (teacher gaps), ``"day_load"`` (weekly five/one day
+        distribution). An empty/absent set is the legacy path and stays
+        byte-identical to it.
 
         ``mode`` selects the soft-cost formula:
 
@@ -1026,12 +1035,15 @@ class ConstraintModel:
             raise ValueError(
                 f"compute_soft_cost_expr: unknown mode={mode!r}; "
                 "expected 'default' or 'phase_b_per_day'")
+        exclude = set(exclude or ())
         obj_terms: list = []
         aux_vars: list = []
         if not self.hours:
             return obj_terms, aux_vars
         # ----- Sixth-hour penalty -----
-        if mode == "default":
+        if "sixth" in exclude:
+            pass  # user excluded the 6a-ora term from the objective
+        elif mode == "default":
             # Per-slot at SIXTH_HOUR -- matches _cost_of_pattern's
             # per-slot accounting in meta.compute_soft. Delegated to
             # ``soft_costs.sixth_slot_pairs`` (single source of truth);
@@ -1064,16 +1076,39 @@ class ConstraintModel:
         # inline equivalent of ``slots_for_teacher_day_hour``; the
         # greedy-base ``self.fixed_load`` is threaded through; five/one
         # are gated to mode='default'.
-        bt, ba = soft_costs.buchi_and_daydist_terms(
-            self.model, self.slot, self.teachers_in_scope(), self.days,
-            self.hours,
-            buchi_weight=(PENALTY_BUCHI if mode == "default"
-                          else PENALTY_BUCHI_PD),
-            five_weight=PENALTY_FIVE, one_weight=PENALTY_ONE,
-            include_five_one=(mode == "default"),
-            fixed_load=self.fixed_load)
-        obj_terms.extend(bt)
-        aux_vars.extend(ba)
+        want_buchi = "buchi" not in exclude
+        want_dayload = (mode == "default") and ("day_load" not in exclude)
+        buchi_w = PENALTY_BUCHI if mode == "default" else PENALTY_BUCHI_PD
+        if want_buchi and (want_dayload == (mode == "default")):
+            # Nothing excluded from this block -> exact legacy call
+            # (byte-identical objective ordering).
+            bt, ba = soft_costs.buchi_and_daydist_terms(
+                self.model, self.slot, self.teachers_in_scope(), self.days,
+                self.hours,
+                buchi_weight=buchi_w,
+                five_weight=PENALTY_FIVE, one_weight=PENALTY_ONE,
+                include_five_one=(mode == "default"),
+                fixed_load=self.fixed_load)
+            obj_terms.extend(bt)
+            aux_vars.extend(ba)
+        else:
+            # Selective: emit only the requested sub-terms via the
+            # separable pair encoders (same shared _buchi_daydist_vars).
+            if want_buchi:
+                bp, ba = soft_costs.buchi_pairs(
+                    self.model, self.slot, self.teachers_in_scope(),
+                    self.days, self.hours, weight=buchi_w,
+                    fixed_load=self.fixed_load)
+                obj_terms.extend(w * v for w, v in bp)
+                aux_vars.extend(ba)
+            if want_dayload:
+                fp, fa = soft_costs.five_one_pairs(
+                    self.model, self.slot, self.teachers_in_scope(),
+                    self.days, self.hours,
+                    five_weight=PENALTY_FIVE, one_weight=PENALTY_ONE,
+                    fixed_load=self.fixed_load)
+                obj_terms.extend(w * v for w, v in fp)
+                aux_vars.extend(fa)
         return obj_terms, aux_vars
 
     def add_subject_pair_constraint(

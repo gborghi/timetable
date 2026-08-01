@@ -1226,6 +1226,90 @@ def compresenza_resolver(db: Session):
     return _shares
 
 
+def joint_room_ctx_from_db(db: Session) -> dict:
+    r"""Placement-INDEPENDENT room metadata for the joint (day,hour,room)
+    solver -- everything ``classroom_assignment.add_joint_room_vars``
+    needs that does NOT depend on where lessons land.
+
+    Unlike :func:`lessons_for_classroom_step` (which reads a materialized
+    solution), this is built before Phase B has decided the timetable, so
+    the joint model can constrain the schedule to be room-feasible while
+    it is still choosing hours. Returns a dict with the classroom dicts,
+    ``required_kind`` per subject, the HARD ``home_room`` / ``forbidden``
+    per class (from the ``room_policy`` preset), and the compresenza
+    ``shares`` predicate used to drop rider cells.
+    """
+    pins = room_pins_from_db(db)
+    return {
+        "classrooms": classrooms_dicts_from_db(db),
+        "required_kind_by_subj": {
+            s.name: (s.required_kind or "")
+            for s in db.query(models.Subject).all()
+        },
+        "home_by_class": dict(pins["pin"]),
+        "forbidden_by_class": dict(pins["forbidden"]),
+        "shares": compresenza_resolver(db),
+    }
+
+
+def joint_cells_from_slot_keys(slot_keys, ctx: dict):
+    r"""Turn the schedule model's ``slot`` keys ``(teacher, class,
+    subject, day, hour)`` into the two maps the joint room primitive
+    consumes: ``cell_to_keys`` ``{(cl,subj,d,h) -> [slot_keys]}`` and
+    ``cell_lessons`` ``{(cl,subj,d,h) -> lesson_meta}``.
+
+    Compresenza RIDER cells are dropped (they inherit the host's room
+    downstream, exactly as the standalone solver's ``compresenza_map``
+    does). A cell is a rider only when *all* its teachers share a room
+    AND there is a non-rider host cell in the same ``(class, day,
+    hour)`` -- without a host the lesson books its own room, matching
+    ``compresenza_resolver``'s own caveat.
+    """
+    from collections import defaultdict
+    shares = ctx["shares"]
+    req_kind = ctx["required_kind_by_subj"]
+    home = ctx["home_by_class"]
+    forbidden = ctx["forbidden_by_class"]
+
+    cell_to_keys: dict[tuple, list] = defaultdict(list)
+    cell_teachers: dict[tuple, list] = defaultdict(list)
+    for key in slot_keys:
+        t, cl, s, d, h = key
+        cell = (cl, s, int(d), int(h))
+        cell_to_keys[cell].append(key)
+        cell_teachers[cell].append(t)
+
+    # Candidate riders: every teacher on the cell is in compresenza there.
+    candidate_rider = {
+        cell for cell, ts in cell_teachers.items()
+        if ts and all(shares(t, cell[2], cell[3]) for t in ts)
+    }
+    # Promote to TRUE rider only when a host shares the (class, day, hour).
+    riders: set = set()
+    by_class_slot: dict[tuple, list] = defaultdict(list)
+    for cell in cell_teachers:
+        by_class_slot[(cell[0], cell[2], cell[3])].append(cell)
+    for cells in by_class_slot.values():
+        if any(c not in candidate_rider for c in cells):
+            riders.update(c for c in cells if c in candidate_rider)
+
+    cell_lessons: dict[tuple, dict] = {}
+    for cell, ts in cell_teachers.items():
+        if cell in riders:
+            continue
+        cl, s, d, h = cell
+        cell_lessons[cell] = {
+            "class": cl, "subject": s, "day": d, "hour": h,
+            "required_kind": req_kind.get(s, "") or "",
+            "home_room": home.get(cl, "") or "",
+            "forbidden_rooms": forbidden.get(cl, set()),
+            "teacher": ts[0] if ts else "",
+            "co_teachers": list(ts[1:]),
+        }
+    out_keys = {c: ks for c, ks in cell_to_keys.items() if c not in riders}
+    return out_keys, cell_lessons
+
+
 def lessons_for_classroom_step(db: Session, solution_id: int,
                                *, pins: dict | None = None) -> list[dict]:
     r"""Convert lessons in the active solution to the shape expected by
