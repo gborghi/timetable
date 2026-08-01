@@ -1006,6 +1006,9 @@ def _swap_two_lessons_same_prof(sol, profs, dc_value, rng, locks=None,
                                  *, group_assignments=None,
                                  class_flags=None,
                                  special_room_ctx=None,
+                                 coteach_groups=None,
+                                 support_assignments=None,
+                                 parallel_groups=None,
                                  dsl_hard_expressions=None):
     """Tenta uno swap di 2 slot dello stesso prof (cambia hour).
     Restituisce nuova_sol o None se non valida.
@@ -1036,6 +1039,9 @@ def _swap_two_lessons_same_prof(sol, profs, dc_value, rng, locks=None,
                     group_assignments=group_assignments,
                     class_flags=class_flags,
                     special_room_ctx=special_room_ctx,
+                    coteach_groups=coteach_groups,
+                    support_assignments=support_assignments,
+                    parallel_groups=parallel_groups,
                     dsl_hard_expressions=dsl_hard_expressions):
                 return new_sol
             return None
@@ -1046,6 +1052,9 @@ def _move_lesson_to_empty_slot(sol, profs, dc_value, rng, locks=None,
                                 *, group_assignments=None,
                                 class_flags=None,
                                 special_room_ctx=None,
+                                coteach_groups=None,
+                                support_assignments=None,
+                                parallel_groups=None,
                                 dsl_hard_expressions=None):
     """Sposta una singola lezione (p, cl, s, d, h) a (p, cl, s, d, h')
     con h' libero per il prof e per la classe.
@@ -1071,6 +1080,9 @@ def _move_lesson_to_empty_slot(sol, profs, dc_value, rng, locks=None,
                     group_assignments=group_assignments,
                     class_flags=class_flags,
                     special_room_ctx=special_room_ctx,
+                    coteach_groups=coteach_groups,
+                    support_assignments=support_assignments,
+                    parallel_groups=parallel_groups,
                     dsl_hard_expressions=dsl_hard_expressions):
                 return new_sol
     return None
@@ -1080,6 +1092,9 @@ def _swap_two_lessons_same_class(sol, profs, dc_value, rng, locks=None,
                                   *, group_assignments=None,
                                   class_flags=None,
                                   special_room_ctx=None,
+                                  coteach_groups=None,
+                                  support_assignments=None,
+                                  parallel_groups=None,
                                   dsl_hard_expressions=None):
     """Swap fra due lezioni della stessa classe (potenzialmente prof
     diversi) in slot diversi nello stesso giorno.
@@ -1108,6 +1123,9 @@ def _swap_two_lessons_same_class(sol, profs, dc_value, rng, locks=None,
                     group_assignments=group_assignments,
                     class_flags=class_flags,
                     special_room_ctx=special_room_ctx,
+                    coteach_groups=coteach_groups,
+                    support_assignments=support_assignments,
+                    parallel_groups=parallel_groups,
                     dsl_hard_expressions=dsl_hard_expressions):
                 return new_sol
     return None
@@ -1158,6 +1176,9 @@ def run_sa(sol, profs, dc_value, time_budget_s,
                           group_assignments=group_assignments,
                           class_flags=class_flags,
                           special_room_ctx=special_room_ctx,
+                          coteach_groups=coteach_groups,
+                          support_assignments=support_assignments,
+                          parallel_groups=parallel_groups,
                           dsl_hard_expressions=dsl_hard_expressions)
         if new_sol is None:
             T *= alpha
@@ -1226,6 +1247,9 @@ def run_tabu(sol, profs, dc_value, time_budget_s,
                               # drives run_tabu) reintroduced finding-34
                               # overflow that run_meta then activated. Pass it.
                               special_room_ctx=special_room_ctx,
+                              coteach_groups=coteach_groups,
+                              support_assignments=support_assignments,
+                              parallel_groups=parallel_groups,
                               dsl_hard_expressions=dsl_hard_expressions)
             if new_sol is None:
                 continue
