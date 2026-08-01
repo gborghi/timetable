@@ -2984,6 +2984,25 @@ def run_full_pipeline(profile: str,
                 t_ric = float(pb.get("time_ricucitura", 60))
                 t_mono = float(pb.get("time_mono", 120))
 
+                # Audit H5: the decomp tokens forwarded ONLY time budgets --
+                # dropping locks, coteach, sostegno, parallel, groups,
+                # special-room capacity, per-class flags and the free-day
+                # rule. Dropped HARDs the validator checks now fail-closed
+                # (H1), but dropped LOCKS are checked by nothing, so a locked
+                # lesson silently moved. Build the full context once and feed
+                # it to whichever engine accepts it.
+                with SessionLocal() as _db_d:
+                    _d_locked = _read_locked_lessons(_db_d)
+                    _d_coteach = engine_io.coteach_groups_for_solver(_db_d)
+                    _d_support = engine_io.support_assignments_from_db(_db_d)
+                    _d_parallel = engine_io.parallel_groups_for_solver(_db_d)
+                    _d_groups = engine_io.group_assignments_for_solver(_db_d)
+                    _d_class_flags = engine_io.class_flags_from_db(_db_d)
+                    _d_cdl = engine_io.class_day_load_allowed_from_db(_db_d)
+                    _d_special = cv2.build_special_room_ctx(_db_d)
+                _d_locked_by_day = _locked_slots_by_day(_d_locked)
+                _d_locked_dc = _locked_day_count_from_snapshot(_d_locked)
+
                 if method == "temporal":
                     import decomposition_temporal as dec_t  # type: ignore
                     # Persist profs to a temp pickle so the
@@ -3005,6 +3024,13 @@ def run_full_pipeline(profile: str,
                         enforce_no_holes=bool(
                             pb.get("enforce_no_holes", True)),
                         log_progress=False,
+                        locked_day_count=_d_locked_dc or None,
+                        locked_by_day=_d_locked_by_day or None,
+                        coteach_groups=_d_coteach or None,
+                        group_assignments=_d_groups or None,
+                        special_room_ctx=_d_special,
+                        class_flags=_d_class_flags,
+                        class_day_load_allowed=_d_cdl,
                     )
                     state["full_solution"] = res["full_solution"]
                     state["dc_value"] = res["dc_value"]
@@ -3053,6 +3079,14 @@ def run_full_pipeline(profile: str,
                         time_per_cluster=t_cluster,
                         time_ricucitura=t_ric, time_mono=t_mono,
                         workers=workers, log=False,
+                        locked_day_count=_d_locked_dc or None,
+                        locked_by_day=_d_locked_by_day or None,
+                        coteach_groups=_d_coteach or None,
+                        support_assignments=_d_support or None,
+                        parallel_groups=_d_parallel or None,
+                        group_assignments=_d_groups or None,
+                        class_day_load_allowed=_d_cdl,
+                        special_room_ctx=_d_special,
                         **kwargs,
                     )
                     state["full_solution"] = res["full_solution"]
