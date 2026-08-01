@@ -471,6 +471,178 @@ def solve_classroom_assignment(
     return out, solver.StatusName(status)
 
 
+def add_joint_room_vars(
+    model,
+    cell_occ: dict[tuple, Any],
+    cell_lessons: dict[tuple, dict],
+    classrooms: list[dict],
+    *,
+    soft_weights: dict[str, float] | None = None,
+    plessi_data=None,
+    want_home_bonus: bool = True,
+    want_room_pref: bool = True,
+    want_overflow: bool = True,
+    want_plessi: bool = True,
+) -> tuple[dict, list, dict]:
+    r"""Fonde l'assegnazione delle aule dentro un modello di orario GIA\`
+    esistente -- il modello *joint* (giorno, ora, aula) in un solo solve.
+
+    ``cell_occ[(cl, subj, d, h)]`` e\` l'indicatore di occupazione della
+    cella prodotto dal modello di orario (una BoolVar dello scheduler, o
+    il letterale ``1`` per una cella fissata da un lock): e\` questo che
+    rende la scelta dell'aula CONGIUNTA con quella dello slot. Per ogni
+    cella emettiamo le var aula con ``sum_r x[cell, r] == cell_occ[cell]``,
+    cosi\` una lezione consuma un'aula solo quando e\` davvero collocata li\`,
+    e il solutore puo\` spostare una lezione a un'altra ora per soddisfare
+    un vincolo di aula / plesso / capienza (cosa che il passo aule
+    sequenziale, a orario congelato, non puo\` fare).
+
+    ``cell_lessons[(cl, subj, d, h)]`` porta i metadati che ``_can_host``
+    consuma (``home_room``, ``forbidden_rooms``, ``required_kind``,
+    ``n_students``, ``teacher``, ``co_teachers``). Le celle in compresenza
+    (``shares_room``) NON vanno passate: ereditano a valle l'aula
+    dell'ospite, esattamente come nel solutore aule standalone.
+
+    Ritorna ``(x, obj_terms, info)``. ``obj_terms`` sono termini di
+    MINIMIZZAZIONE (i bonus sono gia\` negati) che il chiamante folda nel
+    proprio obiettivo; i flag ``want_*`` permettono di escludere un
+    singolo termine dall'ottimizzazione senza toccare i vincoli HARD.
+    """
+    soft = dict(soft_weights or {})
+    soft.setdefault("home_bonus", 20.0)
+    soft.setdefault("subject_pref_bonus", 10.0)
+    soft.setdefault("class_pref_bonus", 10.0)
+    soft.setdefault("multi_class_overflow", 30.0)
+
+    rooms = [_normalize_classroom(r) for r in classrooms]
+    room_by_name = {r["name"]: r for r in rooms}
+
+    # HARD eligibility per cella; una cella senza aule ammissibili non puo\`
+    # mai essere occupata -> forziamo occ == 0 (vincolo joint: non
+    # collocare li\` una lezione che nessuna aula puo\` ospitare).
+    eligible: dict[tuple, list[str]] = {}
+    no_room_cells: list[tuple] = []
+    for cell, L in cell_lessons.items():
+        elig = [r["name"] for r in rooms if _can_host(r, L)]
+        eligible[cell] = elig
+        if not elig:
+            no_room_cells.append(cell)
+
+    x: dict[tuple, Any] = {}
+    for cell, occ in cell_occ.items():
+        elig = eligible.get(cell, [])
+        if not elig:
+            # Nessuna aula: la cella non puo\` essere occupata.
+            model.Add(occ == 0)
+            continue
+        for rn in elig:
+            x[(cell, rn)] = model.NewBoolVar(f"jx_{rn}_{cell}")
+        # Esattamente un'aula SE la cella e\` occupata, zero altrimenti.
+        model.Add(sum(x[(cell, rn)] for rn in elig) == occ)
+
+    # Capienza per (aula, giorno, ora): al piu\` multi_class_max celle.
+    by_slot: dict[tuple[str, int, int], list[tuple]] = defaultdict(list)
+    for (cell, rn) in x:
+        _cl, _s, d, h = cell
+        by_slot[(rn, d, h)].append(cell)
+    overflow_terms: list[Any] = []
+    for (rn, d, h), cells in by_slot.items():
+        room = room_by_name[rn]
+        max_c = room["multi_class_max"] if room["multi_class"] else 1
+        terms = [x[(c, rn)] for c in cells]
+        model.Add(sum(terms) <= max_c)
+        pref = max(1, int(room["multi_class_pref"]))
+        if want_overflow and pref < max_c:
+            ov = model.NewIntVar(0, max_c - pref, f"jov_{rn}_{d}_{h}")
+            model.Add(ov >= sum(terms) - pref)
+            overflow_terms.append(
+                int(soft["multi_class_overflow"] *
+                    room["multi_class_pref_weight"]) * ov
+            )
+
+    # Bonus SOFT (negati, il modello minimizza): home-room + preferenze.
+    bonus_terms: list[Any] = []
+    if want_home_bonus or want_room_pref:
+        for (cell, rn), var in x.items():
+            cl, subj, _d, _h = cell
+            room = room_by_name[rn]
+            b = 0.0
+            if want_home_bonus and cl in room["is_home_for"]:
+                b += soft["home_bonus"]
+            if want_room_pref and subj in room["subject_pref_weight"]:
+                b += float(room["subject_pref_weight"][subj]) * \
+                     soft["subject_pref_bonus"] / 10.0
+            if want_room_pref and cl in room["class_pref_weight"]:
+                b += float(room["class_pref_weight"][cl]) * \
+                     soft["class_pref_bonus"] / 10.0
+            if b:
+                bonus_terms.append(-int(round(b)) * var)
+
+    # Plessi (commuting + policy): riusa gli stessi helper del solutore
+    # standalone, che ragionano su ``x`` e ``eligible`` -- validi anche qui
+    # perche\` una cella non occupata ha ``sum_r x == 0`` (nessun plesso).
+    n_pl_commute = 0
+    n_pl_policy = 0
+    if (want_plessi and plessi_data is not None
+            and getattr(plessi_data, "classroom_to_plesso", None)):
+        teacher_for_lesson: dict[tuple, list[str]] = {}
+        for cell, L in cell_lessons.items():
+            t_list = teacher_for_lesson.setdefault(cell, [])
+            if L.get("teacher"):
+                t_list.append(L["teacher"])
+            for ct in L.get("co_teachers") or []:
+                if ct and ct not in t_list:
+                    t_list.append(ct)
+        days_set = sorted({c[2] for c in cell_occ})
+        hours_set = sorted({c[3] for c in cell_occ})
+        try:
+            from plessi_constraints import (  # type: ignore
+                add_plesso_commuting_constraints_classroom_assignment,
+                add_plesso_entity_policy_constraints_classroom_assignment,
+                add_plesso_commuting_constraints_class_kind,
+                add_plesso_entity_policy_constraints_class_kind,
+            )
+        except ImportError:
+            from engine.plessi_constraints import (  # type: ignore
+                add_plesso_commuting_constraints_classroom_assignment,
+                add_plesso_entity_policy_constraints_classroom_assignment,
+                add_plesso_commuting_constraints_class_kind,
+                add_plesso_entity_policy_constraints_class_kind,
+            )
+        n_pl_commute = (
+            add_plesso_commuting_constraints_classroom_assignment(
+                model, x, eligible, plessi_data,
+                teacher_for_lesson=teacher_for_lesson,
+                days=days_set, hours=hours_set,
+            )
+            + add_plesso_commuting_constraints_class_kind(
+                model, x, eligible, plessi_data,
+                days=days_set, hours=hours_set,
+            )
+        )
+        n_pl_policy = (
+            add_plesso_entity_policy_constraints_classroom_assignment(
+                model, x, eligible, plessi_data,
+                teacher_for_lesson=teacher_for_lesson,
+                days=days_set,
+            )
+            + add_plesso_entity_policy_constraints_class_kind(
+                model, x, eligible, plessi_data,
+                days=days_set,
+            )
+        )
+
+    obj_terms = list(overflow_terms) + list(bonus_terms)
+    info = {
+        "n_cells": len(cell_occ),
+        "n_room_vars": len(x),
+        "no_room_cells": no_room_cells,
+        "n_plessi_commute": n_pl_commute,
+        "n_plessi_policy": n_pl_policy,
+    }
+    return x, obj_terms, info
+
+
 def _plesso_pins(plessi_data) -> dict[tuple[str, int], int]:
     r"""``{('class'|'teacher', entity_id) -> plesso_id}`` per le policy
     che inchiodano un'entita\` a un plesso preciso."""
