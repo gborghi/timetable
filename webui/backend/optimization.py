@@ -1505,6 +1505,25 @@ def _solve_phase_b_week(*, rid: int, ws: str, profs: dict,
         solver.add_all_hard_constraints()
         solver.add_class_no_overlap()
 
+        # Per-teacher HARD caps that MonolithicSolver.build() emits but the
+        # piecemeal week path never did: cap daily load at 5h (mirrors
+        # MAX_PROF_HOURS_PER_DAY / the is_hard_feasible H_C "no 6-hour band"
+        # check) + the min-free-days floor. Without these the week solver
+        # could return a timetable its OWN validator (is_hard_feasible)
+        # rejects -- feasible=False, never activated (audit finding 24). The
+        # soft prof-day-load penalty usually hid it; the joint room coupling
+        # perturbed the schedule enough to expose it (a prof landing on 6h).
+        _mx = csm.PHASE_A_MAX_PROF_HOURS_PER_DAY
+        for _t in sorted(solver.profs):
+            _qt = '"' + str(_t).replace('\\', '\\\\').replace('"', '\\"') + '"'
+            solver.add_dsl_constraint(
+                f'teacher_max_per_day({_qt}, {_mx})', level="phase_b")
+            _nf = int(solver.profs.get(_t, {}).get("min_free_days", 1) or 0)
+            if _nf > 0:
+                solver.add_dsl_constraint(
+                    f'teacher_at_least_n_free_days({_qt}, {_nf})',
+                    level="phase_b")
+
         if _special_room_ctx:
             n_sr = cv2.add_special_room_capacity_phase_b(
                 solver.model, solver.slot, _special_room_ctx, day=None)
