@@ -760,10 +760,13 @@ def _norm_joint_vars(jv: dict | None) -> dict | None:
         "obj_room_pref": bool(obj.get("room_pref", True)),
         "obj_special_overflow": bool(obj.get("special_overflow", True)),
         "obj_plessi": bool(obj.get("plessi", True)),
-        "exclude": {
+        # sorted list (not a set): this dict lands in the run's params
+        # which are json.dumps'd by create_run; consumers use `in` / set(),
+        # both fine on a list.
+        "exclude": sorted(
             name for name in ("sixth", "buchi", "day_load")
             if not obj.get(name, True)
-        },
+        ),
     }
 
 
