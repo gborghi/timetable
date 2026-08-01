@@ -1842,6 +1842,15 @@ def _hard_check_ctx(db) -> dict[str, Any]:
             # ce ne siano viene rifiutata, coerentemente col CP-SAT e con
             # le metaeuristiche. None quando non c'e' nulla da vincolare.
             "special_room_ctx": _build_special_room_ctx_safe(db),
+            # Audit H2: without the DB DSL HARD rules the validator is
+            # blind to every GeneralConstraint / LogicalUnavailability /
+            # per-cell unavailability (expressed as DSL), so a decomposition
+            # or meta run that drops one still reported feasible=True and
+            # (audit H1) activated a rule-violating timetable. Feed the same
+            # HARD expressions the week gate uses; is_hard_feasible evaluates
+            # them post-hoc on the produced solution. None when there are
+            # none, keeping the historical fast path.
+            "dsl_hard_expressions": _load_dsl_hard_expressions(db),
         }
     except Exception:
         # Meglio il comportamento storico che nessun controllo HARD.
@@ -2155,7 +2164,7 @@ def run_meta(stage: str, budget_s: float, workers: int, log: bool,
                 kind=stage,
                 obj_value=float(v),
                 metrics={**m, "feasible": feasible},
-                make_active=True,
+                make_active=feasible,
             )
             # Native-lock path: the meta runners honoured the locks
             # via `locks=`; only re-apply classroom_name / cotaught_with.
@@ -2928,7 +2937,7 @@ def run_full_pipeline(profile: str,
                         kind="phase_b",
                         obj_value=float(v),
                         metrics={**m, "feasible": feasible},
-                        make_active=True,
+                        make_active=feasible,
                     )
                 state.update(full_solution=full_solution, sid=sid,
                              obj=float(v),
@@ -3075,7 +3084,7 @@ def run_full_pipeline(profile: str,
                         obj_value=float(v),
                         metrics={**m, "feasible": feasible,
                                  **state.get("metrics", {})},
-                        make_active=True,
+                        make_active=feasible,
                     )
                 state["sid"] = sid
                 state["obj"] = float(v)
@@ -3258,7 +3267,7 @@ def run_full_pipeline(profile: str,
                         kind=step,
                         obj_value=float(v),
                         metrics={**m, "feasible": feasible},
-                        make_active=True,
+                        make_active=feasible,
                     )
                 state.update(full_solution=new_sol, sid=sid,
                              obj=float(v),
@@ -5120,7 +5129,7 @@ def run_decomposition_temporal(*, time_a: float = 60.0,
                          "parallel": result["parallel"],
                          "failed_days": failed_days,
                          "status": status},
-                make_active=True,
+                make_active=feasible,
             )
             # Native-lock path: solver placed the lessons; only
             # re-apply classroom_name + cotaught_with attributes.
@@ -5287,7 +5296,7 @@ def run_decomposition_curriculum(*, time_a: float = 60.0,
                          "cluster_sizes": result["cluster_sizes"],
                          "bridges_count": result["bridges_count"],
                          "failed_days": failed_days, "status": status},
-                make_active=True,
+                make_active=feasible,
             )
             n_touched = _apply_locked_classrooms(db, sid, locked_snap)
             if n_touched:
@@ -5437,7 +5446,7 @@ def run_decomposition_metis(*, time_a: float = 60.0,
                          "cluster_sizes": result["cluster_sizes"],
                          "bridges_count": result["bridges_count"],
                          "failed_days": failed_days, "status": status},
-                make_active=True,
+                make_active=feasible,
             )
             n_touched = _apply_locked_classrooms(db, sid, locked_snap)
             if n_touched:
