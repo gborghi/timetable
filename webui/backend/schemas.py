@@ -94,6 +94,11 @@ class SubjectBase(BaseModel):
     name: str
     pretty_name: str | None = None
     notes: str | None = None
+    # HARD: lessons of this subject must land in a room of this `kind`
+    # (e.g. 'palestra', 'lab_fisica'); NULL = any room. This is the only
+    # way to force a subject into the gym/lab; previously it was settable
+    # only by writing the DB directly (finding 29).
+    required_kind: str | None = None
     distribute_days_weight: float = 0.0
     dual_hours_weight: float = 0.0
     no_sixth_hour_weight: float = 0.0
@@ -128,6 +133,11 @@ class UnavailabilitySlot(BaseModel):
     state: str = "hard"
     soft_penalty: int = 100
     reason: str | None = None
+    # True for cells the API *derived* for display (free-day autofill),
+    # which are NOT stored in the DB. The write path drops these so a
+    # plain round-trip (GET then PUT) does not persist them as real HARD
+    # constraints (finding 03).
+    synthetic: bool = False
 
 
 class FreeDayPref(BaseModel):
@@ -767,6 +777,10 @@ class ConstraintCreateIn(BaseModel):
     kind: str
     level: str = "hard"
     weight: int | None = None
+    # Finding 11: overwriting an existing HARD/ENFORCED cell with a weaker
+    # level is refused unless the caller explicitly opts in here, so a bulk
+    # load can't silently perforate a guaranteed free day.
+    force: bool = False
 
     # Owner identity (one or two depending on kind)
     owner_id: int | None = None

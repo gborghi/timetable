@@ -414,6 +414,8 @@ def _completion_solver(initial_sol: dict, profs: dict, dc_value: dict,
                        support_assignments: list | None = None,
                        parallel_groups: list | None = None,
                        group_assignments: list | None = None,
+                       special_room_ctx=None,
+                       class_flags=None,
                        ) -> dict | None:
     """Completion solver. When the master LP assembly leaves any
     (cl, subj, day) under-covered, this routine simply runs the
@@ -447,6 +449,8 @@ def _completion_solver(initial_sol: dict, profs: dict, dc_value: dict,
             support_assignments=support_assignments,
             parallel_groups=parallel_groups,
             group_assignments=group_assignments,
+            special_room_ctx=special_room_ctx,
+            class_flags=class_flags,
         )
         if out is None:
             return None
@@ -4230,6 +4234,8 @@ def run_column_generation(profs: dict, dc_value: dict,
                           rf_max_depth: int = 20,
                           rf_max_nodes: int = 1000,
                           dsl_hard_expressions: list | None = None,
+                          special_room_ctx=None,
+                          class_flags=None,
                           ) -> tuple[dict | None, dict]:
     """Iterative Column Generation with master LP + diversified
     pattern enrichment + integer recovery + completion fallback.
@@ -4567,6 +4573,8 @@ def run_column_generation(profs: dict, dc_value: dict,
             sol, profs, dc_value,
             time_limit=completion_time_limit,
             workers=completion_workers,
+            special_room_ctx=special_room_ctx,
+            class_flags=class_flags,
             locked_by_day=locked_by_day,
             coteach_groups=coteach_groups,
             support_assignments=support_assignments,

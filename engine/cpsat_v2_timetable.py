@@ -136,6 +136,31 @@ DAY_HOURS_MIN = 4                              # almeno 4 ore al giorno per clas
 DAY_HOURS_MAX = 6                              # max 6 (= len HOURS)
 MAX_PROF_HOURS_PER_DAY = 5                     # HARD (C): max 5 ore prof/giorno
 
+# The seven per-class HARD invariants (finding 08b). Canonical keys, shared
+# by every solver via ``class_enforces`` so the class-card toggles behave
+# identically on the per-day, week (MonolithicSolver), decomposition,
+# column-generation and metaheuristic paths.
+CLASS_FLAG_KEYS = (
+    "no_holes", "entry_at_8", "exit_after_12",
+    "dual_math", "dual_italian", "motorie_pairs", "max_6_per_day",
+)
+
+
+def class_enforces(class_flags, cl, key, default=True) -> bool:
+    """Whether a per-class HARD invariant is active for ``cl`` (08b).
+
+    ``class_flags`` is ``{class_name -> {flag_key -> bool}}`` (from
+    ``engine_io.class_flags_from_db``). A missing map, class or key falls
+    back to ``default`` (the global behaviour), so every solver stays
+    byte-identical for classes the school never touched.
+    """
+    if not class_flags:
+        return default
+    entry = class_flags.get(cl)
+    if not entry:
+        return default
+    return bool(entry.get(key, default))
+
 
 def _ensure_dsl_imports_available() -> None:
     """Bootstrap sys.path so ``dsl_to_cpsat`` can ``import general_dsl``
@@ -196,7 +221,8 @@ def find_prof_subject(profs, cl, subject):
     return find_prof_subject_named(profs, cl, subject)[0]
 
 
-def add_consecutive_constraints_phase_b(model, slot, day, profs, dc_value):
+def add_consecutive_constraints_phase_b(model, slot, day, profs, dc_value,
+                                        class_flags=None):
     r"""Aggiunge i vincoli HARD su Phase B per quel giorno:
       A) per ogni classe, se il prof di Mat/Ita ha >= 2 ore quel
          giorno (sommate su tutte le materie), almeno una coppia
@@ -207,12 +233,18 @@ def add_consecutive_constraints_phase_b(model, slot, day, profs, dc_value):
          consecutive.
     """
     classes_in_day = {k[1] for k in slot.keys()}
+    # Per-class HARD-invariant gates (finding 08b): dual_math / dual_italian
+    # / motorie_pairs. class_flags=None keeps every pair (global default).
+    _pair_flag = {"Matematica": "dual_math", "Italiano": "dual_italian",
+                  "Scienzemotorie": "motorie_pairs"}
     for cl in classes_in_day:
         for subject, mode in [
             ("Matematica", "pair_exists"),
             ("Italiano", "pair_exists"),
             ("Scienzemotorie", "must_pair"),
         ]:
+            if not class_enforces(class_flags, cl, _pair_flag[subject], True):
+                continue
             p = find_prof_subject(profs, cl, subject)
             if p is None or cl not in profs[p]["classi"]:
                 continue
@@ -293,6 +325,7 @@ def build_phase_a_pragmas(
     cl_day_load_classes,
     triples_by_prof,
     day_count_keys,
+    class_flags=None,
 ):
     """Emit the canonical list of Phase A DSL pragmas for the given
     Phase A state. Mirrors the HARD/SOFT surface of the legacy
@@ -342,7 +375,11 @@ def build_phase_a_pragmas(
     cl_day_load_classes = set(cl_day_load_classes)
     day_count_keys = set(day_count_keys)
     # 1. cl_day_load -- one pragma per class with a cl_day_load entry.
+    #    Per-class gate on max_6_per_day (finding 08b): the day-load band
+    #    {0,4,5,6} caps the day at 6, so the toggle governs this pragma.
     for cl in sorted(cl_day_load_classes):
+        if not class_enforces(class_flags, cl, "max_6_per_day", True):
+            continue
         pragmas.append(
             f'class_day_load_in_day_count({cl!r}, 0, 4, 5, 6)'
         )
@@ -376,8 +413,12 @@ def build_phase_a_pragmas(
     # cross-subject form is no longer the contract -- the user
     # explicit rule is "stesso prof stessa materia devono avere la
     # coppia di ore").
+    _pa_pair_flag = {"Matematica": "dual_math", "Italiano": "dual_italian"}
     for cl in sorted(classes):
         for subject in ("Matematica", "Italiano"):
+            if not class_enforces(class_flags, cl,
+                                  _pa_pair_flag[subject], True):
+                continue
             want = subject_key(subject)
             for p in sorted(profs):
                 cmap = profs[p].get("classi", {}) or {}
@@ -399,6 +440,8 @@ def build_phase_a_pragmas(
     # 5. subject_day_count_in -- per class with a Scienzemotorie
     # cattedra in day_count, restrict daily count to {0, 2}.
     for cl in sorted(classes):
+        if not class_enforces(class_flags, cl, "motorie_pairs", True):
+            continue
         p, subj = find_prof_subject_named(profs, cl, "Scienzemotorie")
         if p is None:
             continue
@@ -441,7 +484,8 @@ def solve_phase_a(profs, classes, triples, class_profs,
                   support_assignments=None,
                   potenziamento_assignments=None,
                   parallel_groups=None,
-                  group_assignments=None):
+                  group_assignments=None,
+                  class_flags=None):
     """Risolve Phase A. Se `locked_day_count` e\` valorizzato, e\` un
     dict (prof, class, subject, day) -> int che impone un FLOOR sul
     numero di ore di quella cattedra nel giorno indicato. Le ore non
@@ -943,6 +987,7 @@ def solve_phase_a(profs, classes, triples, class_profs,
         triples_by_prof={p: list(lst)
                           for p, lst in triples_by_prof.items()},
         day_count_keys=day_count.keys(),
+        class_flags=class_flags,
     )
     for _src in _pragmas:
         _compiler.compile(_src)
@@ -1108,6 +1153,128 @@ def build_plessi_ctx(db):
     return (pl, pins)
 
 
+def build_class_flags(db):
+    """``{class_name -> {flag_key -> bool}}`` from SchoolClass (finding 08b),
+    mirroring engine_io.class_flags_from_db so a caller that only has a db
+    session (decomposition, column generation, the day fallback) can obtain
+    the per-class overrides without the backend threading them. Returns
+    None on any error so the solver keeps the global behaviour."""
+    try:
+        from backend import models  # type: ignore
+    except ImportError:
+        return None
+    try:
+        out: dict[str, dict[str, bool]] = {}
+        for c in db.query(models.SchoolClass).all():
+            out[c.name] = {
+                "no_holes": bool(getattr(c, "hard_no_holes", True)),
+                "entry_at_8": bool(getattr(c, "hard_entry_at_8", True)),
+                "exit_after_12": bool(getattr(c, "hard_exit_after_12", True)),
+                "dual_math": bool(getattr(c, "hard_dual_math", True)),
+                "dual_italian": bool(getattr(c, "hard_dual_italian", True)),
+                "motorie_pairs": bool(getattr(c, "hard_motorie_pairs", True)),
+                "max_6_per_day": bool(getattr(c, "hard_max_6_per_day", True)),
+            }
+        return out or None
+    except Exception:
+        return None
+
+
+def build_special_room_ctx(db):
+    """``(subject_required_kind, kind_capacity)`` per il solver di giornata.
+
+    Phase B decide l'orario prima che le aule esistano, e finora ignorava
+    quante aule speciali ci sono: metteva sette classi in palestra alla
+    stessa ora pur avendone due (finding 34). Nessuna assegnazione di
+    aule puo' poi rimediare -- le ore sono congelate.
+
+    `subject_required_kind`: {materia -> kind} per le sole materie con
+    `required_kind` valorizzato. `kind_capacity`: {kind -> classi
+    contemporanee massime} = somma di `multi_class_max` sulle aule di quel
+    kind. Includiamo solo i kind con capienza >= 1 e con almeno una
+    materia che li richiede: un kind senza aule e' un problema di dati che
+    il preflight segnala, non qualcosa che deve rendere INFEASIBLE la
+    Phase B. Ritorna ``None`` quando non c'e' nulla da vincolare, cosi' il
+    chiamante salta il blocco senza casi speciali.
+    """
+    try:
+        from backend import models  # type: ignore
+    except ImportError:
+        return None
+    try:
+        subj_kind = {
+            s.name: s.required_kind
+            for s in db.query(models.Subject).all()
+            if getattr(s, "required_kind", None)
+        }
+        if not subj_kind:
+            return None
+        needed_kinds = set(subj_kind.values())
+        kind_cap: dict[str, int] = {}
+        for r in db.query(models.Classroom).all():
+            k = getattr(r, "kind", None)
+            if k not in needed_kinds:
+                continue
+            kind_cap[k] = kind_cap.get(k, 0) + int(
+                getattr(r, "multi_class_max", 1) or 1)
+    except Exception:
+        return None
+    kind_cap = {k: c for k, c in kind_cap.items() if c >= 1}
+    subj_kind = {s: k for s, k in subj_kind.items() if k in kind_cap}
+    if not subj_kind or not kind_cap:
+        return None
+    return (subj_kind, kind_cap)
+
+
+def add_special_room_capacity_phase_b(model, slot, ctx, *, day=None) -> int:
+    """HARD: al piu' ``kind_capacity[R]`` classi possono avere una materia
+    che richiede il kind ``R`` nella stessa cella oraria (finding 34).
+
+    ``slot`` e' la vista 5-tuple ``(teacher, class, subject, day, hour) ->
+    BoolVar``. Passa ``day`` per il solver di giornata (filtra su quel
+    giorno); ``day=None`` (solver settimanale monolitico) considera tutti
+    i giorni, raggruppando comunque per (kind, giorno, ora).
+
+    Contiamo l'occupazione **per (classe, cella)**, non per (docente,
+    cella): una compresenza o una codocenza mette due docenti nella stessa
+    cella della stessa classe, e la palestra la occupa una volta sola. Per
+    ogni classe con piu' var concorrenti creiamo un indicatore OR (``occ
+    >= var``); per il caso comune (una var sola) usiamo direttamente la
+    var. Il vincolo si emette solo quando le classi candidate superano la
+    capienza. Ritorna il numero di vincoli emessi.
+    """
+    subj_kind, kind_cap = ctx
+    if not subj_kind or not kind_cap:
+        return 0
+    from collections import defaultdict
+    buckets: dict[tuple[str, int, int], dict[str, list]] = defaultdict(
+        lambda: defaultdict(list))
+    for (p, cl, s, d, h), var in slot.items():
+        if day is not None and d != day:
+            continue
+        r_kind = subj_kind.get(s)
+        if r_kind is None or r_kind not in kind_cap:
+            continue
+        buckets[(r_kind, d, h)][cl].append(var)
+    n = 0
+    for (r_kind, d, h), per_class in buckets.items():
+        cap = kind_cap[r_kind]
+        if len(per_class) <= cap:
+            continue  # can never exceed capacity -> no constraint needed
+        occ_terms = []
+        for cl, vars_ in per_class.items():
+            if len(vars_) == 1:
+                occ_terms.append(vars_[0])
+            else:
+                occ = model.NewBoolVar(f"specroom_{r_kind}_{cl}_d{d}_h{h}")
+                for v in vars_:
+                    model.Add(occ >= v)
+                occ_terms.append(occ)
+        model.Add(sum(occ_terms) <= cap)
+        n += 1
+    return n
+
+
 def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
                           dc_value, time_limit=10, workers=4, log=False,
                           enforce_no_holes=True,
@@ -1121,6 +1288,8 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
                           extra_dsl_expressions=None,
                           return_objective=False,
                           plessi_ctx=None,
+                          special_room_ctx=None,
+                          class_flags=None,
                           *,
                           diagnostics_sink=None):
     r"""Risolve il sotto-problema di un singolo giorno.
@@ -1226,9 +1395,10 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
     coteach_members_by_cl_subj: dict[
         tuple[str, str], list[str]] = {}
     coteach_n_by_day: dict[int, int] = {}        # group_id -> n_hours_today
+    # SOFT coteach penalty terms (finding 38): (weight, mismatch_var) pairs
+    # folded into the soft objective below.
+    _soft_coteach_terms: list = []
     for g in coteach_groups:
-        if not g.get("required"):
-            continue
         gid = g["group_id"]
         gcl = g["class_name"]
         gsub = g["subject"]
@@ -1237,6 +1407,24 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
         usable = [t for t in gteachers
                   if (t, gcl, gsub, HOURS[0]) in slot]
         if len(usable) < 2:
+            continue
+        if not g.get("required"):
+            # SOFT compresenza: don't FORCE coincidence -- pay a penalty for
+            # each hour where the principal and a codoc differ on this
+            # (class, subject). The DSL/week path already models this as a
+            # weighted rule; this brings the native per-day path in line so a
+            # 'preferibile' compresenza actually biases the solver instead of
+            # being silently dropped.
+            weight = int(g.get("weight", 100) or 100)
+            principal = usable[0]
+            for t in usable[1:]:
+                for h in HOURS:
+                    pk = slot[(principal, gcl, gsub, h)]
+                    ck = slot[(t, gcl, gsub, h)]
+                    mism = model.NewBoolVar(f"cosoft_{gid}_{t}_{day}_{h}")
+                    model.Add(mism >= pk - ck)     # mism >= |pk - ck|
+                    model.Add(mism >= ck - pk)
+                    _soft_coteach_terms.append((weight, mism))
             continue
         n_today = int(dc_value.get(("__coday__", gid, day), 0))
         coteach_n_by_day[gid] = n_today
@@ -1299,6 +1487,19 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
             home_classes_today.update(
                 group_home_classes.get((p, cl, ss), []))
     cls_in_day = cls_with_direct_triples | home_classes_today
+    # Per-class overrides of the ex-officio HARD invariants (finding 08b).
+    # If not passed, build from db when available (covers decomposition /
+    # column-generation callers that only thread the session). A class
+    # absent from the map keeps the global default, so every untouched
+    # class behaves exactly as before; only a class whose toggle was turned
+    # off on its card differs.
+    if class_flags is None and db is not None:
+        class_flags = build_class_flags(db)
+    _cflags = class_flags or {}
+
+    def _cf(cl_name: str, key: str, default: bool) -> bool:
+        return bool(_cflags.get(cl_name, {}).get(key, default))
+
     present_per_class = {}
     pr_per_cl_h: dict[tuple[str, int], Any] = {}
     for cl in cls_in_day:
@@ -1360,22 +1561,30 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
         # not subject to the curriculum no-holes / 4-hours-min logic.
         if cl not in cls_with_direct_triples:
             continue
-        if enforce_no_holes:
-            # se la classe ha lezione, parte alle 8
+        # Per-class gates (finding 08b): `no_holes` (non-increasing
+        # presence) and `entry_at_8` (first hour occupied when the class
+        # has any lesson) default to the global `enforce_no_holes` so
+        # untouched classes are unchanged.
+        _enf_no_holes = _cf(cl, "no_holes", enforce_no_holes)
+        _enf_entry8 = _cf(cl, "entry_at_8", enforce_no_holes)
+        if _enf_no_holes or _enf_entry8:
             any_present = model.NewBoolVar(f"ap_{cl}_{day}")
             model.AddMaxEquality(any_present, present)
-            model.Add(present[0] >= any_present)
-            # non crescente
-            for i in range(len(present) - 1):
-                model.Add(present[i + 1] <= present[i])
+            if _enf_entry8:
+                # se la classe ha lezione, parte alle 8
+                model.Add(present[0] >= any_present)
+            if _enf_no_holes:
+                # non crescente
+                for i in range(len(present) - 1):
+                    model.Add(present[i + 1] <= present[i])
 
         # HARD (2) "uscita non prima delle 12:00":
         # se la classe ha lezione (= cl in cls_in_day), allora la 4^a
         # ora deve essere occupata (h=11). Sotto no-holes questo e\`
         # gia\` implicato da Phase A (cl_day_load >= 4); qui lo
         # imponiamo esplicitamente per coprire anche il fallback
-        # no-holes rilassato.
-        if 11 in HOURS:
+        # no-holes rilassato. Gated per-class su `exit_after_12` (08b).
+        if 11 in HOURS and _cf(cl, "exit_after_12", True):
             h11_idx = HOURS.index(11)
             model.Add(present[h11_idx] == 1)
 
@@ -1423,7 +1632,7 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
     # HARD (A)+(B): Mat/Ita doppia consecutiva (se >=2 ore quel
     # giorno) e Scienzemotorie sempre a coppie consecutive.
     add_consecutive_constraints_phase_b(
-        model, slot, day, profs, dc_value
+        model, slot, day, profs, dc_value, class_flags=class_flags
     )
 
     # SOFT objective (B1): the structural soft cost -- SOFT (4) "sixth
@@ -1464,6 +1673,10 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
         classroom_for_slot=None,
         plessi_data=None,
     )
+    # SOFT coteach penalties (finding 38) join the soft accumulator so both
+    # the initial Minimize and the via_dsl re-minimize below include them.
+    if _soft_coteach_terms:
+        compiler.soft_cost_terms.extend(_soft_coteach_terms)
 
     # ---- Plessi: dove sta il docente, ora per ora ----
     # `plessi_data=None` qui sopra non e\` una svista: il compiler DSL
@@ -1488,6 +1701,19 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
         )
         if log and n_pl:
             print(f"[phaseB.day{day}] plessi: {n_pl} vincoli")
+
+    # ---- Aule speciali: quante palestre/laboratori esistono ----
+    # Senza questo, la fase oraria puo' mettere piu' classi in palestra di
+    # quante palestre esistano nello stesso slot; la fase aule non puo'
+    # rimediare a ore congelate (finding 34). No-op se nessuna materia ha
+    # `required_kind` o mancano le aule speciali.
+    if special_room_ctx is None and db is not None:
+        special_room_ctx = build_special_room_ctx(db)
+    if special_room_ctx:
+        n_sr = add_special_room_capacity_phase_b(
+            model, slot_5, special_room_ctx, day=day)
+        if log and n_sr:
+            print(f"[phaseB.day{day}] aule speciali: {n_sr} vincoli capienza")
 
     _soft_classes = sorted({k[1] for k in slot})
     for _src in _dt.build_soft_pragmas(

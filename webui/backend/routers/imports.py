@@ -181,6 +181,44 @@ def _split_csv_field(s: Any) -> list[str]:
 # ---------- per-entity importers ----------
 
 
+_DAY_TO_INT = {
+    "monday": 1, "tuesday": 2, "wednesday": 3, "thursday": 4,
+    "friday": 5, "saturday": 6, "sunday": 7,
+    "lunedi": 1, "lunedì": 1, "martedi": 2, "martedì": 2,
+    "mercoledi": 3, "mercoledì": 3, "giovedi": 4, "giovedì": 4,
+    "venerdi": 5, "venerdì": 5, "sabato": 6, "domenica": 7,
+    "lun": 1, "mar": 2, "mer": 3, "gio": 4, "ven": 5, "sab": 6, "dom": 7,
+    "1": 1, "2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7,
+}
+
+
+def _day_to_int(v: Any) -> int | None:
+    return _DAY_TO_INT.get(str(v or "").strip().lower())
+
+
+def _resolve_plesso(db: Session, name: Any):
+    """Find-or-create a Plesso by display name (finding 06). New plessi get
+    a short unique `code` derived from the name (the column is required and
+    unique), so a school can name its sites in the classroom sheet without
+    pre-creating them."""
+    name = str(name or "").strip()
+    if not name:
+        return None
+    p = db.query(models.Plesso).filter(models.Plesso.name == name).first()
+    if p is not None:
+        return p
+    base = "".join(ch for ch in name.upper() if ch.isalnum())[:16] or "PL"
+    code, i = base, 1
+    while db.query(models.Plesso).filter(models.Plesso.code == code).first():
+        suffix = str(i)
+        code = base[:16 - len(suffix)] + suffix
+        i += 1
+    p = models.Plesso(name=name, code=code)
+    db.add(p)
+    db.flush()
+    return p
+
+
 def _import_teachers(db: Session, rows: Iterable[dict],
                      mode: str) -> schemas.ImportReport:
     rep = schemas.ImportReport(ok=True, entity="teachers")
@@ -242,6 +280,19 @@ def _import_teachers(db: Session, rows: Iterable[dict],
             ).delete()
             for s in subjs:
                 db.add(models.TeacherSubject(teacher_id=t.id, subject=s))
+        # Finding 05: the free_day STRING alone is inert -- the solver reads
+        # TeacherMandatoryFreeDay. Translate the imported day into a HARD
+        # mandatory free day (add if missing) so an imported "Sabato"
+        # actually keeps Saturday empty instead of being silently ignored.
+        fd_int = _day_to_int(t.free_day)
+        if fd_int is not None:
+            has_mfd = db.query(models.TeacherMandatoryFreeDay).filter(
+                models.TeacherMandatoryFreeDay.teacher_id == t.id,
+                models.TeacherMandatoryFreeDay.day == fd_int,
+            ).first()
+            if has_mfd is None:
+                db.add(models.TeacherMandatoryFreeDay(
+                    teacher_id=t.id, day=fd_int))
         if is_update:
             rep.n_updated += 1
         else:
@@ -279,6 +330,11 @@ def _import_subjects(db: Session, rows: Iterable[dict],
                                                 "peso_doppia"), 0.0)
         s.no_sixth_hour_weight = _norm_float(_pick(r, "no_sixth_hour_weight",
                                                    "peso_no_6ora"), 0.0)
+        # HARD room-kind requirement (e.g. 'palestra'). Blank leaves it
+        # NULL = any room (finding 29). Import lets a school force the gym
+        # without touching the DB by hand.
+        rk = _pick(r, "required_kind", "aula_richiesta", "tipo_aula")
+        s.required_kind = str(rk).strip() or None if rk else None
         if not is_update:
             db.add(s)
         if is_update:
@@ -414,6 +470,13 @@ def _import_classrooms(db: Session, rows: Iterable[dict],
         room.multi_class_max = _norm_int(_pick(r, "multi_class_max",
                                                "multi_classe_max"), 1)
         room.notes = _pick(r, "notes", "note")
+        # Finding 06: locate the room in its site. A blank cell leaves the
+        # plesso unchanged (NULL = default site); a name find-or-creates the
+        # Plesso so a multi-site school can load its rooms in one sheet.
+        plesso_field = _pick(r, "plesso", "sede", "plesso_name")
+        if plesso_field not in (None, ""):
+            p = _resolve_plesso(db, plesso_field)
+            room.plesso_id = p.id if p else None
         if not is_update:
             db.add(room)
             db.flush()
@@ -763,6 +826,126 @@ def _import_groups(db: Session, rows: Iterable[dict],
     return rep
 
 
+def _import_assignments(db: Session, rows: Iterable[dict],
+                        mode: str) -> schemas.ImportReport:
+    """Bulk-load cattedre (teacher -> class/group + subject).
+
+    Reuses ``optimization.manual_assignment`` per row so the import gets
+    the SAME merit checks as the manual endpoint (subject in the class'
+    curriculum, teacher qualified for the subject, cattedra-hours
+    overflow) -- exactly the checks the audit praised (finding 02). For a
+    class target the weekly hours come from the curriculum (ClassSubject),
+    so the `hours` column is only needed for group targets.
+
+    Sostegno is NOT loaded here: a support cattedra follows a pupil, not a
+    class subject, and has its own path via the students importer
+    (`sostegno` / `ore_sostegno` columns). `replace` mode therefore wipes
+    only curricular (non-support) assignments and leaves sostegno intact.
+    """
+    from .. import optimization  # lazy: avoids a heavy import at module load
+
+    rep = schemas.ImportReport(ok=True, entity="assignments")
+    if mode == "replace":
+        db.query(models.Assignment).filter(
+            models.Assignment.is_support == False  # noqa: E712
+        ).delete()
+        db.commit()
+    for r in rows:
+        rep.n_total_rows += 1
+        if _is_blank_row(r):
+            rep.n_skipped += 1
+            continue
+        teacher = _pick(r, "teacher", "teacher_name", "docente", "insegnante")
+        subject = _pick(r, "subject", "materia")
+        cls = _pick(r, "class", "class_name", "classe")
+        group = _pick(r, "group", "group_name", "gruppo")
+        hours_raw = _pick(r, "hours", "ore")
+        locked = _norm_bool(_pick(r, "locked", "bloccata"), True)
+        if not teacher or not subject or not (cls or group):
+            rep.n_skipped += 1
+            rep.errors.append(
+                f"riga {rep.n_total_rows}: servono docente, materia e "
+                f"classe (o gruppo)")
+            continue
+        target_kind = "group" if group else "class"
+        hours = (_norm_int(hours_raw, 0)
+                 if hours_raw not in (None, "") else None)
+        try:
+            ok, reason, _obj = optimization.manual_assignment(
+                db, class_name=str(cls or ""), subject=str(subject),
+                teacher_name=str(teacher), locked=locked,
+                target_kind=target_kind,
+                group_name=str(group) if group else None,
+                hours=hours,
+            )
+        except Exception as e:  # keep importing the rest of the file
+            ok, reason = False, str(e)
+        if ok:
+            rep.n_inserted += 1  # upsert: counted as processed
+        else:
+            rep.n_skipped += 1
+            who = cls or group
+            rep.errors.append(
+                f"riga {rep.n_total_rows} ({teacher}/{who}/{subject}): "
+                f"{reason}")
+    db.commit()
+    return rep
+
+
+def _import_teacher_unavailability(db: Session, rows: Iterable[dict],
+                                   mode: str) -> schemas.ImportReport:
+    """Import teacher (day, hour) unavailability cells (finding 07).
+
+    One row per cell: teacher, day (name or 1..6), hour (8..13), optional
+    state ('hard'|'soft') and soft_penalty. Upsert on (teacher, day, hour).
+    `replace` wipes all unavailability first. This is the granular data a
+    school already keeps in a grid; previously it could only be typed cell
+    by cell in the UI.
+    """
+    rep = schemas.ImportReport(ok=True, entity="teacher_unavailability")
+    if mode == "replace":
+        db.query(models.TeacherUnavailability).delete()
+        db.commit()
+    teachers = {t.name: t for t in db.query(models.Teacher).all()}
+    for r in rows:
+        rep.n_total_rows += 1
+        if _is_blank_row(r):
+            rep.n_skipped += 1
+            continue
+        tname = _pick(r, "teacher", "teacher_name", "docente", "insegnante")
+        day = _pick(r, "day", "giorno")
+        hour = _pick(r, "hour", "ora")
+        if not tname or day in (None, "") or hour in (None, ""):
+            rep.n_skipped += 1
+            rep.errors.append(
+                f"riga {rep.n_total_rows}: servono docente, giorno e ora")
+            continue
+        t = teachers.get(str(tname))
+        if t is None:
+            rep.n_skipped += 1
+            rep.errors.append(
+                f"riga {rep.n_total_rows}: docente {tname} inesistente")
+            continue
+        d = _day_to_int(day) or _norm_int(day, 0)
+        h = _norm_int(hour, 0)
+        st = str(_pick(r, "state", "stato") or "hard").strip().lower()
+        if st not in ("hard", "soft"):
+            st = "hard"
+        row = db.query(models.TeacherUnavailability).filter_by(
+            teacher_id=t.id, day=d, hour=h).first()
+        if row is None:
+            row = models.TeacherUnavailability(teacher_id=t.id, day=d, hour=h)
+            db.add(row)
+            rep.n_inserted += 1
+        else:
+            rep.n_updated += 1
+        row.state = st
+        row.soft_penalty = _norm_int(_pick(r, "soft_penalty", "penalita"), 100)
+        row.reason = _pick(r, "reason", "motivo") or "import"
+    db.commit()
+    return rep
+
+
 _IMPORTERS = {
     "teachers": _import_teachers,
     "subjects": _import_subjects,
@@ -771,6 +954,8 @@ _IMPORTERS = {
     "curricula": _import_curricula,
     "students": _import_students,
     "groups": _import_groups,
+    "assignments": _import_assignments,
+    "teacher_unavailability": _import_teacher_unavailability,
 }
 
 
@@ -836,10 +1021,31 @@ _TEMPLATES: dict[str, list[tuple[str, Any]]] = {
     "subjects": [
         ("name", "Matematica"),
         ("pretty_name", "Matematica"),
+        ("required_kind", ""),
         ("distribute_days_weight", 1.0),
         ("dual_hours_weight", 0.5),
         ("no_sixth_hour_weight", 0.0),
         ("notes", ""),
+    ],
+    "teacher_unavailability": [
+        ("teacher", "Mario Rossi"),
+        ("day", "Lunedi"),
+        ("hour", 8),
+        ("state", "hard"),
+        ("soft_penalty", 100),
+        ("reason", ""),
+    ],
+    "assignments": [
+        ("teacher", "Mario Rossi"),
+        ("class", "1A"),
+        ("subject", "Matematica"),
+        # For a class target the hours come from the curriculum; fill
+        # `hours` only for an inter-class group target (leave `class`
+        # blank and set `group`). Sostegno is loaded via the students
+        # template, not here.
+        ("hours", ""),
+        ("group", ""),
+        ("locked", "no"),
     ],
     "classes": [
         ("name", "1A"),
@@ -862,6 +1068,7 @@ _TEMPLATES: dict[str, list[tuple[str, Any]]] = {
         ("multi_class", "no"),
         ("multi_class_max", 1),
         ("aula_base", "1A"),
+        ("plesso", ""),
         ("tags", "matematica,scientifico"),
         ("notes", ""),
     ],

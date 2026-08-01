@@ -1,0 +1,20 @@
+{
+  "profile": "liceo60",
+  "seed": 0,
+  "schema_version": 1,
+  "schedule_label": "Liceo E. Torricelli \u2014 60 classi (audit, orario gia calcolato)",
+  "precomputed": true,
+  "n_classes": 60,
+  "n_teachers": 132,
+  "n_subjects": 17,
+  "n_assignments": 694,
+  "n_plessi": 2,
+  "n_classrooms": 66,
+  "n_classrooms_palestra": 2,
+  "n_classrooms_lab": 0,
+  "n_classrooms_auditorium": 0,
+  "n_working_days": 6,
+  "n_working_hour_slots": 36,
+  "n_lessons": 2115,
+  "has_optimized_solution": true
+}

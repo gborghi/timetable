@@ -164,6 +164,8 @@ def run_vns(sol, profs, dc_value, time_budget_s,
             support_assignments=None,
             parallel_groups=None,
             group_assignments=None,
+            class_flags=None,   # 08b: is_hard_feasible auto-builds via db
+            special_room_ctx=None,  # finding 34: palestra/lab capienza
             db=None,
             dsl_hard_expressions=None,
             soft_rules=None,
@@ -214,6 +216,8 @@ def run_vns(sol, profs, dc_value, time_budget_s,
                         support_assignments=support_assignments,
                         parallel_groups=parallel_groups,
                         group_assignments=group_assignments,
+                        class_flags=class_flags,
+                        special_room_ctx=special_room_ctx,
                         dsl_hard_expressions=dsl_hard_expressions,
                         db=db):
                     history.append(dict(stage=name,

@@ -237,8 +237,9 @@ def test_plesso_commuting_per_teacher_filter():
         assert '"Rossi"' in c, c
 
 
-def test_plesso_commuting_class_kind_raises_not_implemented():
-    """class-kind rule raises until the class-side helper lands."""
+def test_plesso_commuting_class_kind_now_supported():
+    """class-kind rule now produces DSL clauses bound on l.class
+    (finding 15): the class-side helper has landed."""
     from dsl_translator import plesso_commuting_rule_to_dsl
     from plessi_constraints import CommutingRule
     rule = CommutingRule(
@@ -247,5 +248,6 @@ def test_plesso_commuting_class_kind_raises_not_implemented():
         min_gap_hours=1, allowed_break_only=False,
         break_start_hour=None, break_end_hour=None,
         symmetric=True, priority=0)
-    with pytest.raises(NotImplementedError):
-        plesso_commuting_rule_to_dsl(rule)
+    clauses = plesso_commuting_rule_to_dsl(rule)
+    assert len(clauses) == 2  # symmetric
+    assert all("l2.class == l1.class" in c for c in clauses)

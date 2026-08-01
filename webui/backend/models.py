@@ -696,6 +696,17 @@ class Lesson(Base):
         comment="comma-separated list of additional teacher names sharing "
                 "this lesson"
     )
+    # Per-slot pin (finding 26): True means THIS lesson's (day, hour) is
+    # immovable -- Phase B / metaheuristics keep it exactly where it is on a
+    # re-solve. This is the "immovable hour" concept, deliberately distinct
+    # from Assignment.locked ("confirmed cattedra": don't reassign the
+    # teacher, but the hours may still be re-placed). Defaults False so a
+    # plain regeneration is free to move everything.
+    locked: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="0", nullable=False,
+        comment="finding 26: immovable slot pin, distinct from "
+                "Assignment.locked (confirmed cattedra)"
+    )
     solution: Mapped["Solution"] = relationship(back_populates="lessons")
 
     # Composite indexes covering the hot lookup patterns used by

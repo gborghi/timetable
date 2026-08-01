@@ -121,7 +121,8 @@ def import_profile(payload: schemas.ImportPickleIn):
 @router.get("/available-profiles")
 def list_profiles():
     profiles = []
-    for name in ("small", "medium", "big", "huge", "superhuge", "mega"):
+    for name in ("small", "medium", "big", "huge", "superhuge", "mega",
+                 "liceo60"):
         school = _resolve_profile_pkl(name, f"school_{name}.pkl")
         if not school:
             continue

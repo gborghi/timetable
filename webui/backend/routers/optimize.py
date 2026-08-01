@@ -368,6 +368,16 @@ def list_phase_a_presets():
     ]
 
 
+@router.get("/scenario-presets")
+def list_scenario_presets():
+    """Named Phase-B scenario configurations. The engine is general; this
+    catalogue tells a school which scope/phase_a_mode combination fits its
+    staff so it doesn't hit the default 'day'+'always' trap on a part-time
+    or inclusive school (finding 20). The frontend renders it as a radio
+    list and copies the chosen `params` into the Phase-B run payload."""
+    return optimization.SCENARIO_PRESETS
+
+
 @router.post("/phase-a/validate-expression",
              response_model=schemas.ObjectiveValidateOut)
 def validate_phase_a_expression(payload: schemas.ObjectiveValidateIn):

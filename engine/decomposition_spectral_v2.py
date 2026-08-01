@@ -249,7 +249,8 @@ def add_plessi(model, slot, day, plessi_ctx, stage: str):
 
 def stage_a_bridges(day, profs, bridges, triples, dc_value,
                     time_limit, workers, log=False,
-                    locked_slots_for_day=None, plessi_ctx=None):
+                    locked_slots_for_day=None, plessi_ctx=None,
+                    class_flags=None):
     """Stage A: schedule bridge teachers' lessons on `day`.
 
     `locked_slots_for_day` (optional): iterable of (prof, class,
@@ -309,7 +310,7 @@ def stage_a_bridges(day, profs, bridges, triples, dc_value,
 
     # HARD A/B: Mat/Ita doppia consecutiva, Motorie a coppie.
     cv2.add_consecutive_constraints_phase_b(
-        model, slot, day, profs, dc_value
+        model, slot, day, profs, dc_value, class_flags=class_flags
     )
 
     add_plessi(model, slot, day, plessi_ctx, "A")
@@ -342,7 +343,7 @@ def stage_b_cluster_internals(cluster_classes, day, profs, bridges,
                               triples, dc_value, bridge_solution,
                               time_limit, workers, log=False,
                               locked_slots_for_day=None,
-                              plessi_ctx=None):
+                              plessi_ctx=None, class_flags=None):
     """Stage B: schedule the internal (non-bridge) profs of a single
     cluster on `day`, with bridges already placed by Stage A.
 
@@ -422,7 +423,7 @@ def stage_b_cluster_internals(cluster_classes, day, profs, bridges,
     # sono fissati e gli stessi vincoli sono stati gia\` applicati
     # in Stage A).
     cv2.add_consecutive_constraints_phase_b(
-        model, slot, day, profs, dc_value
+        model, slot, day, profs, dc_value, class_flags=class_flags
     )
 
     add_plessi(model, slot, day, plessi_ctx, "B")
@@ -455,7 +456,7 @@ def stage_c_ricucitura(day, profs, bridges, triples, dc_value,
                        fixed_internal_solution,
                        time_limit, workers, log=False,
                        locked_slots_for_day=None,
-                       plessi_ctx=None):
+                       plessi_ctx=None, class_flags=None):
     """Variabili: bridges (tutti) + internals NON in fixed_solution.
     Constraints: gli internals fissati hanno slot[k] == valore.
 
@@ -524,7 +525,7 @@ def stage_c_ricucitura(day, profs, bridges, triples, dc_value,
     # HARD A/B: applicato all'intero giorno (Stage C ha tutti i prof
     # in slot, quindi i vincoli sono pienamente espressi).
     cv2.add_consecutive_constraints_phase_b(
-        model, slot, day, profs, dc_value
+        model, slot, day, profs, dc_value, class_flags=class_flags
     )
 
     # Native locks: all locks for this day (bridges + non-fixed
@@ -579,7 +580,9 @@ def solve_monolithic_day(day, profs, triples, dc_value,
                          support_assignments=None,
                          parallel_groups=None,
                          group_assignments=None,
-                         plessi_ctx=None):
+                         plessi_ctx=None,
+                         special_room_ctx=None,
+                         class_flags=None):
     """Monolithic fallback for a single day. Forwards
     `locked_slots_for_day`, `coteach_groups`, `support_assignments`,
     `parallel_groups`, `group_assignments` to cv2.solve_phase_b_for_day.
@@ -600,6 +603,8 @@ def solve_monolithic_day(day, profs, triples, dc_value,
         parallel_groups=parallel_groups,
         group_assignments=group_assignments,
         plessi_ctx=plessi_ctx,
+        special_room_ctx=special_room_ctx,
+        class_flags=class_flags,
     )
     return out, status
 

@@ -219,6 +219,8 @@ def is_hard_feasible(sol, profs, verbose=False,
                      coteach_groups=None,
                      parallel_groups=None,
                      support_assignments=None,
+                     class_flags=None,
+                     special_room_ctx=None,
                      dsl_hard_expressions=None,
                      db=None):
     """Ritorna True se la soluzione rispetta tutti gli HARD.
@@ -253,6 +255,14 @@ def is_hard_feasible(sol, profs, verbose=False,
     """
     cls_set = sorted({c for p in profs.values() for c in p["classi"]})
     profs_set = sorted(profs.keys())
+    # 08b: when a db session is given but class_flags weren't precomputed,
+    # build them once here (this full-solution check is infrequent -- the
+    # hot per-move calls receive class_flags directly from the run loop).
+    if class_flags is None and db is not None:
+        try:
+            class_flags = cv2.build_class_flags(db)
+        except Exception:
+            class_flags = None
     # Build sets of (class, subject) keys whose multiple-Assignment
     # presence at the SAME slot is intentional (coteach + parallel
     # intra). For these the cl_count should treat all participants
@@ -379,14 +389,20 @@ def is_hard_feasible(sol, profs, verbose=False,
             if not direct:
                 continue
             hrs = sorted(direct | extra)
-            if hrs[0] != 8:
+            # Per-class HARD-invariant gates (finding 08b): a class whose
+            # card turned an invariant off must not be reported as
+            # violating it. class_flags=None keeps every check (default).
+            if cv2.class_enforces(class_flags, cl, "entry_at_8", True) \
+                    and hrs[0] != 8:
                 if verbose: print(f"  H2 viol: {cl} d{d} hrs[0]={hrs[0]}")
                 return False
-            for i, h in enumerate(hrs):
-                if h != hrs[0] + i:
-                    if verbose: print(f"  H1 viol: {cl} d{d} hrs={hrs}")
-                    return False
-            if 11 not in hrs:
+            if cv2.class_enforces(class_flags, cl, "no_holes", True):
+                for i, h in enumerate(hrs):
+                    if h != hrs[0] + i:
+                        if verbose: print(f"  H1 viol: {cl} d{d} hrs={hrs}")
+                        return False
+            if cv2.class_enforces(class_flags, cl, "exit_after_12", True) \
+                    and 11 not in hrs:
                 if verbose: print(f"  H3 viol: {cl} d{d} hrs={hrs}")
                 return False
 
@@ -404,8 +420,12 @@ def is_hard_feasible(sol, profs, verbose=False,
 
     # H_A: Mat/Ita doppia consecutiva del prof in classe (almeno 1
     # nella settimana, qualunque materia stesso prof).
+    _pair_flag = {"Matematica": "dual_math", "Italiano": "dual_italian"}
     for cl in cls_set:
         for subject in ("Matematica", "Italiano"):
+            if not cv2.class_enforces(class_flags, cl,
+                                      _pair_flag[subject], True):
+                continue
             p = cv2.find_prof_subject(profs, cl, subject)
             if p is None or cl not in profs[p]["classi"]:
                 continue
@@ -436,6 +456,8 @@ def is_hard_feasible(sol, profs, verbose=False,
     # del prof di motorie (in qualsiasi materia ma tipicamente
     # "Scienzemotorie") devono essere 0 o 2-consecutive.
     for cl in cls_set:
+        if not cv2.class_enforces(class_flags, cl, "motorie_pairs", True):
+            continue
         # Match on the canonical key AND index the solution with the
         # school's own spelling: a school naming it "Scienze motorie"
         # used to miss on both, so this check passed vacuously (empty
@@ -452,6 +474,40 @@ def is_hard_feasible(sol, profs, verbose=False,
                 continue
             if len(hrs) != 2 or hrs[1] != hrs[0] + 1:
                 if verbose: print(f"  HB viol: motorie {cl} d{d} hrs={hrs}")
+                return False
+
+    # H_room: capacita' delle aule speciali (palestra/lab). Il CP-SAT di
+    # Phase B la rispetta gia' (build_special_room_ctx / add_special_room_
+    # capacity_phase_b); le metaeuristiche devono rispettarla ANCHE qui,
+    # altrimenti una mossa pura (SA/TS/ILS) puo' spostare una lezione in
+    # uno slot dove il kind e' gia' pieno -- era il buco che faceva
+    # reintrodurre l'overflow palestra dopo il post-processing (finding
+    # 34, coerenza engine-wide). Contiamo per (kind, giorno, ora) le
+    # CLASSI distinte con una materia che richiede quel kind (compresenza/
+    # codocenza/sostegno della stessa classe occupano la palestra una
+    # volta sola). ``special_room_ctx`` = ``(subj_kind, kind_cap)``; None
+    # + db => auto-build una volta (le run loop lo passano gia' costruito
+    # per non ricostruirlo nel loop caldo).
+    if special_room_ctx is None and db is not None:
+        try:
+            special_room_ctx = cv2.build_special_room_ctx(db)
+        except Exception:
+            special_room_ctx = None
+    if special_room_ctx:
+        subj_kind, kind_cap = special_room_ctx
+        room_occ: dict[tuple[str, int, int], set[str]] = {}
+        for (p, cl, s, d, h), v in sol.items():
+            if v != 1:
+                continue
+            rk = subj_kind.get(s)
+            if rk is None or rk not in kind_cap:
+                continue
+            room_occ.setdefault((rk, d, h), set()).add(cl)
+        for (rk, d, h), classes in room_occ.items():
+            if len(classes) > kind_cap[rk]:
+                if verbose:
+                    print(f"  Hroom viol: {rk} d{d} h{h} "
+                          f"classi={len(classes)} > cap={kind_cap[rk]}")
                 return False
 
     # Task C3: validate group_assignments invariants when provided.
@@ -680,6 +736,8 @@ def _cp_repair(sol, profs, dc_value, free_keys, time_limit, workers=4,
                support_assignments=None,
                parallel_groups=None,
                group_assignments=None,
+               class_flags=None,   # 08b: PhaseBDaySolver loads it from db
+               special_room_ctx=None,  # finding 34: palestra/lab capienza
                db=None,
                via_dsl=False,
                extra_dsl_expressions=None):
@@ -734,6 +792,7 @@ def _cp_repair(sol, profs, dc_value, free_keys, time_limit, workers=4,
             class_profs=class_profs,
             db=db,
             extra_dsl_expressions=list(extra_dsl_expressions or []),
+            special_room_ctx=special_room_ctx,
         )
         out, _status = solver.solve(
             time_limit_s=float(time_limit),
@@ -786,6 +845,8 @@ def run_lns(sol, profs, dc_value, time_budget_s,
             support_assignments=None,
             parallel_groups=None,
             group_assignments=None,
+            class_flags=None,
+            special_room_ctx=None,
             db=None,
             via_dsl=False,
             extra_dsl_expressions=None,
@@ -885,6 +946,8 @@ def run_lns(sol, profs, dc_value, time_budget_s,
             support_assignments=support_assignments,
             parallel_groups=parallel_groups,
             group_assignments=group_assignments,
+            class_flags=class_flags,
+            special_room_ctx=special_room_ctx,
             db=db, via_dsl=via_dsl,
             extra_dsl_expressions=extra_dsl_expressions,
         )
@@ -902,6 +965,8 @@ def run_lns(sol, profs, dc_value, time_budget_s,
                 support_assignments=support_assignments,
                 parallel_groups=parallel_groups,
                 group_assignments=group_assignments,
+                class_flags=class_flags,
+                special_room_ctx=special_room_ctx,
                 dsl_hard_expressions=dsl_hard_expressions):
             log_entries.append(
                 (iter_count, op, "hard_violation", best_val, best_val)
@@ -939,6 +1004,8 @@ def run_lns(sol, profs, dc_value, time_budget_s,
 
 def _swap_two_lessons_same_prof(sol, profs, dc_value, rng, locks=None,
                                  *, group_assignments=None,
+                                 class_flags=None,
+                                 special_room_ctx=None,
                                  dsl_hard_expressions=None):
     """Tenta uno swap di 2 slot dello stesso prof (cambia hour).
     Restituisce nuova_sol o None se non valida.
@@ -967,6 +1034,8 @@ def _swap_two_lessons_same_prof(sol, profs, dc_value, rng, locks=None,
             if is_hard_feasible(
                     new_sol, profs,
                     group_assignments=group_assignments,
+                    class_flags=class_flags,
+                    special_room_ctx=special_room_ctx,
                     dsl_hard_expressions=dsl_hard_expressions):
                 return new_sol
             return None
@@ -975,6 +1044,8 @@ def _swap_two_lessons_same_prof(sol, profs, dc_value, rng, locks=None,
 
 def _move_lesson_to_empty_slot(sol, profs, dc_value, rng, locks=None,
                                 *, group_assignments=None,
+                                class_flags=None,
+                                special_room_ctx=None,
                                 dsl_hard_expressions=None):
     """Sposta una singola lezione (p, cl, s, d, h) a (p, cl, s, d, h')
     con h' libero per il prof e per la classe.
@@ -998,6 +1069,8 @@ def _move_lesson_to_empty_slot(sol, profs, dc_value, rng, locks=None,
             if is_hard_feasible(
                     new_sol, profs,
                     group_assignments=group_assignments,
+                    class_flags=class_flags,
+                    special_room_ctx=special_room_ctx,
                     dsl_hard_expressions=dsl_hard_expressions):
                 return new_sol
     return None
@@ -1005,6 +1078,8 @@ def _move_lesson_to_empty_slot(sol, profs, dc_value, rng, locks=None,
 
 def _swap_two_lessons_same_class(sol, profs, dc_value, rng, locks=None,
                                   *, group_assignments=None,
+                                  class_flags=None,
+                                  special_room_ctx=None,
                                   dsl_hard_expressions=None):
     """Swap fra due lezioni della stessa classe (potenzialmente prof
     diversi) in slot diversi nello stesso giorno.
@@ -1031,6 +1106,8 @@ def _swap_two_lessons_same_class(sol, profs, dc_value, rng, locks=None,
             if is_hard_feasible(
                     new_sol, profs,
                     group_assignments=group_assignments,
+                    class_flags=class_flags,
+                    special_room_ctx=special_room_ctx,
                     dsl_hard_expressions=dsl_hard_expressions):
                 return new_sol
     return None
@@ -1056,8 +1133,14 @@ def run_sa(sol, profs, dc_value, time_budget_s,
            group_assignments=None,
            db=None,
            dsl_hard_expressions=None,
+           class_flags=None,
+           special_room_ctx=None,
            soft_rules=None):
     rng = random.Random(123)
+    if class_flags is None and db is not None:  # 08b: build once per run
+        class_flags = cv2.build_class_flags(db)
+    if special_room_ctx is None and db is not None:  # finding 34: build once
+        special_room_ctx = cv2.build_special_room_ctx(db)
     best = dict(sol)
     cur = dict(sol)
     best_val, _ = compute_soft(best, profs, soft_rules=soft_rules)
@@ -1073,6 +1156,8 @@ def run_sa(sol, profs, dc_value, time_budget_s,
         move_fn = rng.choice(ATOMIC_MOVES)
         new_sol = move_fn(cur, profs, dc_value, rng, locks=locks,
                           group_assignments=group_assignments,
+                          class_flags=class_flags,
+                          special_room_ctx=special_room_ctx,
                           dsl_hard_expressions=dsl_hard_expressions)
         if new_sol is None:
             T *= alpha
@@ -1108,8 +1193,14 @@ def run_tabu(sol, profs, dc_value, time_budget_s,
              group_assignments=None,
              db=None,
              dsl_hard_expressions=None,
+             class_flags=None,
+             special_room_ctx=None,
              soft_rules=None):
     rng = random.Random(456)
+    if class_flags is None and db is not None:  # 08b: build once per run
+        class_flags = cv2.build_class_flags(db)
+    if special_room_ctx is None and db is not None:  # finding 34: build once
+        special_room_ctx = cv2.build_special_room_ctx(db)
     best = dict(sol)
     cur = dict(sol)
     best_val, _ = compute_soft(best, profs, soft_rules=soft_rules)
@@ -1128,6 +1219,7 @@ def run_tabu(sol, profs, dc_value, time_budget_s,
             move_fn = rng.choice(ATOMIC_MOVES)
             new_sol = move_fn(cur, profs, dc_value, rng, locks=locks,
                               group_assignments=group_assignments,
+                              class_flags=class_flags,
                               dsl_hard_expressions=dsl_hard_expressions)
             if new_sol is None:
                 continue
@@ -1178,6 +1270,8 @@ def _perturb(sol, profs, dc_value, rng,
              support_assignments=None,
              parallel_groups=None,
              group_assignments=None,
+             class_flags=None,
+             special_room_ctx=None,
              db=None,
              via_dsl=False,
              extra_dsl_expressions=None):
@@ -1203,6 +1297,8 @@ def _perturb(sol, profs, dc_value, rng,
         support_assignments=support_assignments,
         parallel_groups=parallel_groups,
         group_assignments=group_assignments,
+        class_flags=class_flags,
+        special_room_ctx=special_room_ctx,
         db=db, via_dsl=via_dsl,
         extra_dsl_expressions=extra_dsl_expressions,
     )
@@ -1218,6 +1314,8 @@ def run_ils(sol, profs, dc_value, time_budget_s,
             support_assignments=None,
             parallel_groups=None,
             group_assignments=None,
+            class_flags=None,
+            special_room_ctx=None,
             db=None,
             via_dsl=False,
             extra_dsl_expressions=None,
@@ -1254,6 +1352,8 @@ def run_ils(sol, profs, dc_value, time_budget_s,
                        support_assignments=support_assignments,
                        parallel_groups=parallel_groups,
                        group_assignments=group_assignments,
+                       class_flags=class_flags,
+                       special_room_ctx=special_room_ctx,
                        db=db,
                        dsl_hard_expressions=dsl_hard_expressions,
                        soft_rules=soft_rules)
@@ -1280,6 +1380,8 @@ def run_ils(sol, profs, dc_value, time_budget_s,
                 support_assignments=support_assignments,
                 parallel_groups=parallel_groups,
                 group_assignments=group_assignments,
+                class_flags=class_flags,
+                special_room_ctx=special_room_ctx,
                 db=db, via_dsl=via_dsl,
                 extra_dsl_expressions=extra_dsl_expressions,
                 dsl_hard_expressions=dsl_hard_expressions,
@@ -1294,6 +1396,8 @@ def run_ils(sol, profs, dc_value, time_budget_s,
                            support_assignments=support_assignments,
                            parallel_groups=parallel_groups,
                            group_assignments=group_assignments,
+                           class_flags=class_flags,
+                           special_room_ctx=special_room_ctx,
                            db=db, via_dsl=via_dsl,
                            extra_dsl_expressions=extra_dsl_expressions)
     if log:

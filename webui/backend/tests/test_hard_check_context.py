@@ -70,17 +70,21 @@ def test_support_with_context_is_feasible():
                               "subject": "Sostegno"}]) is True
 
 
-def test_hard_check_ctx_supplies_all_four_keys(app_with_temp_db):
-    """Le quattro chiavi devono esserci tutte: passarne tre su quattro
-    sposta soltanto quale delle situazioni legittime viene letta come
-    conflitto."""
+def test_hard_check_ctx_supplies_all_keys(app_with_temp_db):
+    """Tutte le chiavi devono esserci: le quattro tabelle "legittimo
+    doppio slot" (sostegno/compresenza/parallel/gruppi) + `class_flags`
+    (08b: gli invariant per-classe che la card puo' rilassare) +
+    `special_room_ctx` (finding 34: capienza palestra/lab). Ometterne
+    una sposta quale situazione legittima viene letta come conflitto o
+    disattiva un HARD."""
     from backend import optimization as opt
 
     _app, TestSession = app_with_temp_db
     with TestSession() as db:
         ctx = opt._hard_check_ctx(db)
     assert set(ctx) == {"support_assignments", "coteach_groups",
-                        "parallel_groups", "group_assignments"}
+                        "parallel_groups", "group_assignments",
+                        "class_flags", "special_room_ctx"}
 
 
 # ----------------------------------------------------------------------

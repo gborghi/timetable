@@ -21,6 +21,18 @@ DAY_TO_INT = {
 HOURS_FULL = list(range(8, 14))
 
 
+def _is_synthetic_cell(u) -> bool:
+    """A free-day autofill cell that must never be persisted (finding 03).
+
+    Primary signal is the explicit `synthetic` flag the GET decorator
+    sets; the reason-substring is a robust fallback for clients that
+    don't echo the flag and for cleaning rows a pre-fix client already
+    persisted (both autofill reasons carry the '(auto' marker)."""
+    if getattr(u, "synthetic", False):
+        return True
+    return "(auto" in (getattr(u, "reason", None) or "")
+
+
 def _autofill_free_day_cells(t: models.Teacher,
                              persisted: list[models.TeacherUnavailability]
                              ) -> list[schemas.UnavailabilitySlot]:
@@ -50,7 +62,8 @@ def _autofill_free_day_cells(t: models.Teacher,
                 out.append(schemas.UnavailabilitySlot(
                     day=fd, hour=h, state="hard",
                     soft_penalty=0,
-                    reason="giorno libero (auto, free_day legacy)"
+                    reason="giorno libero (auto, free_day legacy)",
+                    synthetic=True,
                 ))
                 autofilled.add((fd, h))
     # New: preferred_free_days_json
@@ -79,6 +92,7 @@ def _autofill_free_day_cells(t: models.Teacher,
                             day=d, hour=h, state=state,
                             soft_penalty=int(pen) if pen is not None else 0,
                             reason=f"giorno libero {label} preferenza (auto)",
+                            synthetic=True,
                         ))
                         autofilled.add((d, h))
         except Exception:
@@ -356,6 +370,13 @@ def _apply_payload(t: models.Teacher, p: schemas.TeacherIn,
     for s in dict.fromkeys(p.subjects):
         db.add(models.TeacherSubject(teacher_id=t.id, subject=s))
     for u in p.unavailability:
+        if _is_synthetic_cell(u):
+            # Derived free-day autofill: never persist it. The free day is
+            # enforced via `min_free_days` / `mandatory_free_days`, not via
+            # these display-only cells (finding 03). The reason-substring
+            # fallback also lets a re-save clean rows that a pre-fix client
+            # already persisted.
+            continue
         db.add(models.TeacherUnavailability(
             teacher_id=t.id, day=int(u.day), hour=int(u.hour),
             state=u.state if u.state in ("hard", "soft", "preferred", "enforced") else "hard",

@@ -54,6 +54,24 @@ def activate(sol_id: int, db: Session = Depends(get_db)):
     return {"ok": True}
 
 
+@router.post("/lessons/{lesson_id}/pin")
+def pin_lesson(lesson_id: int, locked: bool = True,
+               db: Session = Depends(get_db)):
+    """Pin/unpin a single lesson to its (day, hour) slot (finding 26).
+
+    This is the "immovable hour" a school wants when it likes one placement
+    and wants a re-solve to keep it -- distinct from confirming a cattedra
+    (`/api/assignments/{id}/lock`), which fixes WHO teaches but lets the
+    hours move. A pinned lesson is fed to Phase B / meta as a HARD slot and
+    survives regenerations."""
+    l = db.get(models.Lesson, lesson_id)
+    if l is None:
+        raise HTTPException(404, "lesson not found")
+    l.locked = bool(locked)
+    db.commit()
+    return {"ok": True, "id": lesson_id, "locked": l.locked}
+
+
 @router.delete("/solutions/{sol_id}")
 def delete_solution(sol_id: int, db: Session = Depends(get_db)):
     s = db.get(models.Solution, sol_id)

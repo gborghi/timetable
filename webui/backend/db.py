@@ -200,6 +200,15 @@ def _apply_lightweight_migrations() -> None:
             conn.execute(text(
                 "ALTER TABLE school_classes ADD COLUMN curriculum_id INTEGER"
             ))
+        # room_policy: added to models.py without a fallback, so every
+        # pre-existing DB threw `no such column: school_classes.room_policy`
+        # on any class query. NOT NULL DEFAULT 'ibrida' matches the model.
+        if insp.has_table("school_classes") \
+                and not has_column("school_classes", "room_policy"):
+            conn.execute(text(
+                "ALTER TABLE school_classes ADD COLUMN room_policy "
+                "VARCHAR(8) NOT NULL DEFAULT 'ibrida'"
+            ))
         # nickname columns and split-name columns
         nickname_targets = (
             "teachers", "students", "school_classes", "study_groups",
@@ -218,6 +227,14 @@ def _apply_lightweight_migrations() -> None:
                 conn.execute(text(
                     "ALTER TABLE teachers ADD COLUMN first_name VARCHAR(80)"
                 ))
+        # finding 26: per-slot pin on lessons, distinct from the cattedra
+        # lock on assignments. Mirrors alembic revision b7f1c0d2e3a4.
+        if insp.has_table("lessons") \
+                and not has_column("lessons", "locked"):
+            conn.execute(text(
+                "ALTER TABLE lessons ADD COLUMN locked BOOLEAN "
+                "NOT NULL DEFAULT 0"
+            ))
         # state column on classroom_subject_preferences
         if insp.has_table("classroom_subject_preferences") \
                 and not has_column("classroom_subject_preferences", "state"):

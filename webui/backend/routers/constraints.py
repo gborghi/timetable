@@ -61,6 +61,22 @@ def _slot_label(day: int, hour: int) -> str:
     return f"{days.get(day, '?')}{hour}"
 
 
+def _guard_downgrade(existing, new_level: str, force: bool) -> None:
+    """Finding 11: refuse to silently weaken a HARD/ENFORCED cell to a
+    softer level on upsert. A single-cell edit that really means it passes
+    ``force=true``; a bulk load that collides with a guaranteed free day
+    gets a 409 instead of quietly perforating it."""
+    strong = ("hard", "enforced")
+    if (existing is not None and not force
+            and getattr(existing, "state", None) in strong
+            and new_level not in strong):
+        raise HTTPException(
+            409,
+            f"la cella {_slot_label(existing.day, existing.hour)} e' gia' "
+            f"'{existing.state}': impostarla a '{new_level}' indebolirebbe "
+            f"un vincolo rigido. Rimanda con force=true se e' voluto.")
+
+
 @router.post("", response_model=schemas.ConstraintCreateOut)
 def create_constraint(payload: schemas.ConstraintCreateIn,
                        db: Session = Depends(get_db)):
@@ -93,6 +109,7 @@ def create_constraint(payload: schemas.ConstraintCreateIn,
                 models.TeacherUnavailability.day == int(payload.day),
                 models.TeacherUnavailability.hour == int(payload.hour),
             ).first()
+            _guard_downgrade(existing, level, payload.force)
             if existing is not None:
                 existing.state = level
                 existing.soft_penalty = weight
@@ -124,6 +141,7 @@ def create_constraint(payload: schemas.ConstraintCreateIn,
                 models.ClassUnavailability.day == int(payload.day),
                 models.ClassUnavailability.hour == int(payload.hour),
             ).first()
+            _guard_downgrade(existing, level, payload.force)
             if existing is not None:
                 existing.state = level
                 existing.soft_penalty = weight
@@ -155,6 +173,7 @@ def create_constraint(payload: schemas.ConstraintCreateIn,
                 models.ClassroomUnavailability.day == int(payload.day),
                 models.ClassroomUnavailability.hour == int(payload.hour),
             ).first()
+            _guard_downgrade(existing, level, payload.force)
             if existing is not None:
                 existing.state = level
                 existing.soft_penalty = weight

@@ -1061,6 +1061,31 @@ def replace_solution_lessons(db: Session, solution_id: int,
 # ---------- Classrooms ----------
 
 
+def class_flags_from_db(db: Session) -> dict[str, dict[str, bool]]:
+    """Per-class overrides of the seven ex-officio HARD invariants
+    (finding 08b): ``{class_name -> {no_holes, entry_at_8, exit_after_12,
+    dual_math, dual_italian, motorie_pairs, max_6_per_day}}``.
+
+    The SchoolClass columns default True (the historical global
+    behaviour), so a class the school never touched keeps every invariant;
+    only a class where a toggle was explicitly turned OFF differs. The
+    solver reads this and gates the matching per-class constraint, instead
+    of applying all seven to every class regardless of the class card.
+    """
+    out: dict[str, dict[str, bool]] = {}
+    for c in db.query(models.SchoolClass).all():
+        out[c.name] = {
+            "no_holes": bool(getattr(c, "hard_no_holes", True)),
+            "entry_at_8": bool(getattr(c, "hard_entry_at_8", True)),
+            "exit_after_12": bool(getattr(c, "hard_exit_after_12", True)),
+            "dual_math": bool(getattr(c, "hard_dual_math", True)),
+            "dual_italian": bool(getattr(c, "hard_dual_italian", True)),
+            "motorie_pairs": bool(getattr(c, "hard_motorie_pairs", True)),
+            "max_6_per_day": bool(getattr(c, "hard_max_6_per_day", True)),
+        }
+    return out
+
+
 def classrooms_dicts_from_db(db: Session) -> list[dict]:
     """Materialize classrooms with all their constraints, ready to feed
     classroom_assignment.solve_classroom_assignment()."""

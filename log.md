@@ -812,3 +812,391 @@ hanno quattro ore ciascuna e il pendolare ne tiene due per parte, cosi' il cambi
 di sede fuori intervallo e' *inevitabile*. Senza contesto la giornata si risolve
 (e viola), con il contesto e' INFEASIBLE. Su un'istanza libera il solver
 raggruppava le ore da solo e il confronto non avrebbe dimostrato nulla.
+
+## Residui dell'audit "Headmaster 60 classi": DSL compresenza, aule, preflight, preset (2026-07-31)
+Ripreso l'AUDIT.md della simulazione a 60 classi per chiudere i bloccanti
+residui. Tre erano gia' stati risolti nelle sessioni del 30 e del 31 (01
+sostegno-per-alunno, 31 `_hard_check_ctx`, 33-core + 36 compresenza in API, i
+plessi in Phase B, e il segno delle preferenze aula normalizzato con `abs()` in
+`engine_io`). Restava dell'altro, e vale la regola data dall'utente: **il motore
+resta generale; una configurazione sbagliata e' colpa di chi la sceglie, e la si
+affronta con preset e diagnostica, non cablando eccezioni nel solver.**
+
+**Finding 37 — compresenza DSL: `same_day` dove serviva l'uguaglianza di slot.**
+`coteach_group_to_dsl` dichiarava "slot-equality" nel commento ma emetteva
+`same_day(l1.slot, l2.slot)`: due docenti "in compresenza" lo stesso giorno a ore
+diverse passavano il gate. Ora emette
+`same_day(...) and hour(l1.slot) == hour(l2.slot)`. Verificato che il ramo nativo
+CP-SAT gia' era corretto (`==` sullo slot); il difetto viveva solo nel percorso
+gated. Test di parse+eval: ora l'ora diversa e' violazione, lo slot uguale passa.
+
+**Finding 35 — il ripiego aule.** Due residui, non i quattro dell'audit: 35c/35d
+(segno delle preferenze) erano gia' chiusi via `abs()` in `engine_io`. Restava
+(35a) il fallback greedy silenzioso e (35b) `plessi_data` passato in un solo
+chiamante su due. Ora entrambi i chiamanti passano `plessi_data` al greedy, e le
+metriche portano `rooms_exact_status` + `rooms_fallback`: un ripiego non legge
+piu' come "assegnazione riuscita".
+
+**Finding 38 — compresenza soft ignorata in silenzio.** Il solver non modella
+ancora la codocenza SOFT (`if not g.get("required"): continue`). Invece di
+lasciarla sparire, `run_phase_b` scrive un AVVISO nel log del run: N compresenze
+'preferibili' non sono imposte, impostale 'obbligatorie' per garantirle. Enforce
+soft vero resta un TODO d'obiettivo, ma non e' piu' muto.
+
+**Finding 14/18/30 — il preflight che mancava.** L'hall-check rispondeva "ok" a
+un problema insoddisfacibile per 10 docenti (18h su una classe: 3x(6-1)=15<18).
+Aggiunto `per_teacher_day_capacity_check`: aritmetica pura, legge i tetti veri
+dal motore (`MAX_PER_DAY_PROF_CL`, `MAX_PER_DAY_TRIPLE`) e i `min_free_days`, e
+per ogni cattedra che sfora nomina docente, classe, ore, capienza e cosa
+cambiare. **Nessun caso speciale per il sostegno**: un ADSS a tempo pieno ha
+`min_free_days=0` (modellazione corretta della realta'), ed e' quello che il
+messaggio dice di impostare. `ok` ora include queste violazioni.
+`test_hall_check_preflight.py`: 18h+1giorno-libero e' segnalato, 18h+0 e' feasibile.
+
+**Finding 20 — il preset che funziona, reso raggiungibile.** Il default
+('day'+'always') fissa la distribuzione della Fase A come uguaglianza HARD che la
+Fase B non regge quando i docenti hanno indisponibilita' vere; la Fase A non le
+vede. Il motore *sa gia'* risolvere in 'week'+'soft_hint' (l'audit lo ha
+dimostrato): mancava solo dirlo. Aggiunto `GET /api/optimize/scenario-presets`
+(`standard` vs `part_time_sostegno`) e, nel preflight, un avviso che indica il
+preset settimanale quando ci sono indisponibilita' HARD o giorni liberi
+obbligatori. Phase A NON e' stata riscritta per vedere le indisponibilita': era
+la strada del "cabla nel motore", che l'utente ha escluso.
+
+Verde: preflight (2), dsl_translator + coteach (34), plessi + classroom (61),
+ruff su webui pulito. Le prove end-to-end sulla simulazione a 60 classi non
+girano qui (solver lento); i preset e il preflight sono coperti da unit test.
+
+## Residui gravi dell'audit 60 classi: importer cattedre, celle sintetiche, required_kind, isolamento run, capienza palestre (2026-07-31)
+Secondo blocco di rilievi grave dal report "Headmaster 60 classi": 02, 03, 29, 32, 34.
+
+**02 -- l'importer delle cattedre esisteva nella docstring ma non nel registro.**
+Aggiunto `_import_assignments` a `_IMPORTERS` + template. Non riscrive la
+validazione: chiama `optimization.manual_assignment` per riga, quindi eredita gli
+stessi controlli di merito che l'audit aveva lodato (materia nel curricolo,
+docente abilitato, sforamento cattedra). Il sostegno NON passa di qui (segue
+l'alunno, ha il suo path via students); `replace` tocca solo le cattedre
+curricolari. `test_import_assignments_and_required_kind.py`.
+
+**03 -- le celle del giorno libero, sintetiche in GET, diventavano vincoli veri
+al salvataggio.** `_autofill_free_day_cells` decora la GET con 6 celle HARD per
+il giorno libero (comodita' di visualizzazione); un semplice GET->PUT le
+persisteva. Aggiunto il flag `synthetic` allo schema, marcate le due sorgenti di
+autofill, e in `_apply_payload` si scartano (per flag o per il marcatore `(auto`
+nel reason -- cosi' un re-save ripulisce anche le righe gia' corrotte da un
+client vecchio). Il giorno libero resta imposto da `min_free_days` /
+`mandatory_free_days`, non da queste celle. `test_teacher_free_day_roundtrip.py`.
+
+**29 -- `Subject.required_kind`, unico modo per obbligare la palestra, era
+DB-only.** Aggiunto a `SubjectBase` (create/update lo mappano gia' in blocco) e
+alla colonna `required_kind` del template + parser subjects. Ora si imposta da API
+e da import, senza scrivere il DB a mano.
+
+**32 -- i file di lavoro dei run non erano isolati per archivio.** `_runs_dir()`
+derivava dal path del sorgente: due istanze su DB diversi collidevano (run 7 di A
+sovrascriveva run 7 di B, il run_id e' un autoincrement per-DB). Ora la cartella
+e' `data/runs/<sha1(PITANTUM_DB_URL)[:12]>/`.
+
+**34 -- la fase oraria non sapeva quante palestre/laboratori esistono.** Nuovo
+`build_special_room_ctx` (materia->kind, kind->capienza = somma `multi_class_max`)
+e `add_special_room_capacity_phase_b`: per ogni (kind, giorno, ora) al piu'
+`capienza` classi con una materia di quel kind. Occupazione contata **per
+(classe, cella)** con un indicatore OR, cosi' compresenza/codocenza non doppiano.
+Vincolo emesso solo se le classi candidate superano la capienza; no-op se nessuna
+materia ha `required_kind`. Imposto dove un solo modello vede l'intero slot: lo
+scope **settimanale** (`_build_week_solver`, il percorso che l'audit usava) e il
+**monolitico per-giorno**. NON sugli stage della decomposizione spettrale:
+diversamente dai plessi (regola per-docente, disgiunta fra stage) la capienza e'
+un vincolo GLOBALE per-slot su tutte le classi, e la decomposizione le divide fra
+cluster -- un cap per-stage non vedrebbe la domanda cross-cluster. Per quel
+percorso resta il preset settimanale + un preflight strutturale
+(`special_room_capacity_check`: ore/settimana di un kind vs capienza*slot, la
+condizione necessaria). `test_special_room_capacity.py` (modello CP-SAT costruito:
+3 classi/2 palestre INFEASIBLE, compresenza non doppiata, preflight).
+
+Verde: 4 nuovi file di test + rigressione phase_b/plessi/teacher/import/coteach/dsl
+(47+11), ruff pulito sui file non-test. Anche qui l'end-to-end sul solver non gira
+qui: i vincoli sono validati su modelli CP-SAT costruiti a mano, non su un run.
+
+## Ultimi gravi dell'audit 60 classi: import free_day/plessi/indisponibilita', partial salvato, attivazione gated, lock cattedra vs ora (2026-07-31)
+Terzo blocco: 05, 06, 07, 17, 24, 26.
+
+**05 -- il free_day importato era inerte.** L'importer scriveva `Teacher.free_day`
+(stringa) ma il solver legge `TeacherMandatoryFreeDay` / `min_free_days`. Ora
+l'import traduce il giorno in un `TeacherMandatoryFreeDay` HARD (add-if-missing,
+niente doppioni al re-import). Mappa giorni IT/EN in `_day_to_int`.
+
+**06 -- l'importer aule non conosceva i plessi.** Aggiunta la colonna `plesso` al
+template + `_resolve_plesso` (find-or-create, con code unico derivato dal nome):
+una scuola su piu' sedi carica le aule in un foglio solo.
+
+**07 -- le indisponibilita' non si importavano.** Nuovo importer
+`teacher_unavailability` (una riga per cella: docente, giorno, ora, stato,
+penalita'), upsert su (docente, giorno, ora).
+
+**17 -- il parziale veniva buttato.** Nella chiusura di Phase B: si salva SEMPRE
+l'orario (anche parziale, non attivo) e si riporta in `metrics["uncovered"]`
+quali cattedre restano scoperte (`_uncovered_report`, peggiori prima) invece di
+una sola percentuale. In modalita' strict il run fallisce comunque (P0), ma
+l'orario e' salvato (id nel messaggio) e il messaggio nomina le cattedre scoperte
+invece di "aumenta i time limit".
+
+**24 -- si attivava un orario che il validatore boccia.** L'attivazione ora e'
+`make_active = feasible and complete`: un orario parziale o hard-infeasibile viene
+salvato ma NON attivato (e lo step aule non gira su un orario che non attiveremo).
+`metrics["activated"]` lo dichiara.
+
+**26 -- lock cattedra != lock ora.** `_read_locked_lessons` bloccava OGNI ora di
+una cattedra `Assignment.locked`: una scuola che caricava le 694 cattedre come
+`locked` (giusto: "non riassegnarle") si congelava l'intero orario e non poteva
+piu' rigenerare. Introdotta la colonna `Lesson.locked` (pin per-slot, "ora
+immobile"), con fallback SQLite in `db.py` + migrazione `b7f1c0d2e3a4`.
+`_read_locked_lessons` ora legge SOLO i `Lesson.locked`; `Assignment.locked`
+resta "cattedra confermata" e non congela nulla. `_apply_locked_classrooms`
+ri-marca i pin sulla nuova soluzione (il pin sopravvive alle rigenerazioni).
+Nuovo endpoint `POST /api/schedule/lessons/{id}/pin`. NB: il pulsante "lucchetto"
+del frontend punta ancora al lock cattedra (assignments) -- va ripuntato
+sull'endpoint del pin lezione (follow-up, non validabile senza browser qui).
+
+Verde: 05/06/07 (3), partial/attivazione (3), lock semantics (2), + rigressione
+native-locks/coverage/schedule/import; ruff pulito sui file non-test. Alembic
+head unico = b7f1c0d2e3a4. End-to-end solver non girato qui.
+
+## Cluster medio dell'audit 60 classi + validazione frontend in Safari (2026-07-31)
+Presi 11, 12, 15, 38, 19 (08b e 16 lasciati aperti, vedi sotto). Da qui in poi il
+frontend si valida in Safari via `safaridriver` + Selenium (l'utente ha abilitato
+"Allow Remote Automation" + `sudo safaridriver --enable`).
+
+**11 -- POST /api/constraints declassava hard->soft in silenzio.** Aggiunto
+`_guard_downgrade`: sovrascrivere una cella `hard`/`enforced` con un livello piu'
+debole ora da' 409, a meno di `force=true` (campo nuovo su `ConstraintCreateIn`).
+Un caricamento massivo non perfora piu' un giorno libero garantito; una modifica
+singola voluta passa `force`. Applicato ai tre rami matrix_slot (teacher/class/room).
+
+**12 -- /api/assignments/manual ignorava `hours`.** Per target classe le ore vengono
+dal curricolo; ora un `hours` incoerente e' RIFIUTATO con messaggio chiaro invece di
+essere ignorato. Un valore uguale (o assente) passa.
+
+**15 -- le regole di trasferimento plesso non valevano per le classi.**
+`plesso_commuting_rule_to_dsl` generalizzata a entity_kind in
+{teacher, class, group}: stessa clausola, legata su `l.class`/`l.group` (attributi
+gia' esposti dal mondo DSL). Aggiornato il vecchio test che ne asseriva il
+NotImplementedError.
+
+**38 -- compresenza soft "non imposta".** Scoperto che `load_all_dsl_constraints`
+GIA' emette la coteach soft come regola DSL soft pesata (`is_hard=False`,
+`weight=g.weight`) quando `include_soft=True`: e' quindi applicata come preferenza
+sui percorsi DSL (scope settimanale). Corretto l'avviso in run_phase_b (prima diceva
+"non imposta", ora dice "preferenza pesata via DSL, garantita su scope week"). Test
+sull'emissione.
+
+**19 -- nessuna informazione di avanzamento.** La colonna `runs.current_step` e il
+suo rendering frontend (runs list + dettaglio via `pipelineStepLabel`) esistevano
+gia'; solo il pipeline completo la popolava. Ora `run_phase_b` (day) e
+`_solve_phase_b_week` scrivono `current_step` a ogni milestone (`phase_a`,
+`phase_b`, `rooms`, poi `None` a fine), e `obj_value` e' scritto a fine. **Validato
+in Safari**: inserito un run fittizio (`current_step=phase_b`, progress 0.42,
+obj 151000), GET /runs/{id} lo espone, e la pagina di dettaglio mostra
+"Schedulazione orario (Phase B)". Run fittizio poi cancellato. L'avanzamento
+INTRA-solve (barra che si muove durante i 10 minuti) richiede una solution-callback
+CP-SAT: resta un follow-up.
+
+Verde: 26 test (nuovi + rigressione coteach/dsl), ruff pulito sui non-test.
+
+**Lasciati aperti, con motivo:**
+- **08b** (ex-officio: 7 vincoli HARD per classe non modificabili dalla scheda). NON
+  e' un bug ma una feature di configurazione: i 7 sono invarianti di motore
+  applicati GLOBALMENTE (no_holes, coppia mat/ita, coppia motorie, presenza H3,
+  carico 4-6, MAX_PER_DAY_TRIPLE, MAX_PER_DAY_PROF_CL). Renderli per-classe vuol
+  dire colonne nuove + config per-classe nel solver + UI + una run del solutore per
+  validare -- sproporzionato al "medio" e non validabile a fondo qui senza far
+  girare il solver. Alcuni knob per-classe esistono gia' (`hard_entry_at_8`,
+  `max_hours_per_day`).
+- **16** (cosmetico: /api/plessi e /api/assignments tornano array nudi invece di
+  `{items,total}`). Cambiare la forma romperebbe i consumatori frontend; l'audit
+  stesso lo classifica "solo da documentare".
+
+## 08b — i sette vincoli d'ufficio, per-classe: la scheda c'era gia', il solver no (2026-07-31)
+Sorpresa: `SchoolClass` ha GIA' le sette colonne per-classe (`hard_no_holes`,
+`hard_entry_at_8`, `hard_exit_after_12`, `hard_dual_math`, `hard_dual_italian`,
+`hard_motorie_pairs`, `hard_max_6_per_day`), sono GIA' nello schema `ClassBase` e
+GIA' modificabili dalla scheda classe (7 checkbox in `classes/+page.svelte:361-367`).
+Il rilievo "non modificabili dalla scheda" e' quindi gia' chiuso lato UI/API. Il
+buco vero: **il solver le ignora** -- applica gli invarianti globalmente via
+`ConstraintConfig`, non legge le colonne per-classe (grep a vuoto in engine + engine_io).
+
+Fatto: `engine_io.class_flags_from_db` esporta le 7 flag per classe (default True =
+comportamento storico). `solve_phase_b_for_day` accetta `class_flags` e chiude i
+tre vincoli applicati in quella funzione — `no_holes`, `entry_at_8` (parte alle 8),
+`exit_after_12` (presenza h11) — sul flag della singola classe, con default = flag
+globale, quindi ogni classe non toccata resta identica. `run_phase_b` costruisce le
+flag e le passa al ramo monolitico per-giorno.
+
+Validato: `test_class_flags_08b` (export + default + override + firma); round-trip
+API end-to-end (crea classe → PUT hard_no_holes=false → GET conferma →
+`class_flags_from_db` vede l'override → delete); `/classes` carica in Safari;
+rigressione phase_b/plessi/native-locks/special-room verde (47).
+
+**Resta aperto (follow-up onesto):** le altre 4 flag (dual_math, dual_italian,
+motorie_pairs, max_6_per_day) vivono nei generatori di pragma Phase A e nel modello
+settimanale, non in `solve_phase_b_for_day`; e la gating per-classe copre per ora il
+ramo **monolitico per-giorno**, non gli stage della decomposizione spettrale (il
+default per >=8 classi) ne' il solver settimanale — stesso limite di copertura del
+vincolo capienza palestre (finding 34). Il comportamento per-classe del solutore non
+e' validato da una run qui (solo plumbing + hand test). Estenderlo agli altri
+percorsi e alle 4 flag restanti e' il seguito.
+
+## 08b esteso a tutto il motore: un solo meccanismo per-classe, coerente ovunque (2026-07-31)
+Fatto il seguito: le 7 flag per-classe ora sono onorate da OGNI solutore, con un
+solo meccanismo condiviso.
+
+**Resolver unico.** `cpsat_v2_timetable.class_enforces(class_flags, cl, key,
+default)` + `build_class_flags(db)` (gemello di `engine_io.class_flags_from_db`,
+per i chiamati che hanno solo la sessione). `CLASS_FLAG_KEYS` come fonte unica dei
+nomi. class_flags=None => comportamento globale storico (zero-drift).
+
+**Punti di emissione gated, per-classe:**
+- **Seed DSL** (`dsl_translator.seed_implicit_hardcoded`, il generatore canonico
+  "zero-drift"): no_holes, class_day_load (max_6), h11 (exit_after_12), motorie,
+  Mat/Ita (dual_math/dual_italian per-materia). Copre il solver monolitico
+  settimanale e OO che consumano il seed. Zero-drift verificato.
+- **MonolithicSolver** (`cp_sat_constraint_model`): `ConstraintConfig.class_flags`
+  + `_class_enforces` + gate su `add_class_no_holes` (no_holes+entry_at_8),
+  `add_h3_presence_at_11` (exit_after_12), `add_subject_pair_constraint`
+  (flag_key motorie/dual_math/dual_italian). Copre settimanale + OO per-giorno,
+  su entrambi i rami (seed e legacy add_*).
+- **solve_phase_b_for_day** (per-giorno monolitico): no_holes/entry_at_8/
+  exit_after_12 + fallback `build_class_flags(db)` quando il chiamante passa solo
+  la sessione (decomposizione / column generation).
+- **is_hard_feasible** (metaeuristiche): gate su H1(no_holes)/H2(entry_at_8)/
+  H3(exit_after_12)/H_A(dual_math|dual_italian)/H_B(motorie) + auto-build da db
+  per i controlli full-solution.
+- **Operatori di mossa** (`_swap_two_lessons_same_prof`,
+  `_move_lesson_to_empty_slot`, `_swap_two_lessons_same_class`): param
+  `class_flags`, passato a is_hard_feasible; `run_sa`/`run_tabu` costruiscono
+  class_flags una volta da db e lo passano alle mosse (niente query per-mossa).
+
+**Wiring backend:** `_hard_check_ctx` include class_flags (tutte le chiamate a
+is_hard_feasible in optimization.py: coverage gate, mosse manuali); la config del
+solver settimanale porta `_week_class_flags`; la chiamata monolitica per-giorno
+riceve `_class_flags`.
+
+Verde: `test_class_flags_consistency` (resolver, is_hard_feasible rispetta il
+flag, seed zero-drift+gating, ConstraintConfig/MonolithicSolver), + 147 di
+rigressione (metaeuristiche, OO, coteach, dsl, plessi, locks, special-room), ruff
+pulito sui non-test.
+
+**Residui onesti:** i pragma di **Fase A** day_count (motorie 0-o-2/giorno, Mat/Ita
+">=1 giorno con 2h") nel percorso funzionale non sono gated per-classe (il seed
+canonico si'); e il **comportamento del solutore** con una flag spenta e' validato
+su emissione/feasibility e modelli costruiti a mano, non da una run completa.
+
+## 08b + 34: chiusi i buchi su decomposizione, temporale e column generation (2026-07-31)
+I gate per-classe (08b) e la capienza aule speciali (34) ora raggiungono OGNI
+percorso che colloca lezioni, non solo il monolitico.
+
+**Punto di leva unico: `add_consecutive_constraints_phase_b`.** Questo helper
+condiviso applica le coppie Mat/Ita/Motorie in `solve_phase_b_for_day` E nei tre
+stage spettrali. Gated per-classe una volta sola (dual_math/dual_italian/
+motorie_pairs) -> copre coppie ovunque.
+
+**Threading di class_flags / special_room_ctx** (mirroring plessi_ctx):
+- **Spettrale (default per >=8 classi):** stage A/B/C ricevono class_flags (per le
+  coppie); `solve_monolithic_day` (ricucitura, tutte le classi del giorno) riceve
+  class_flags + special_room_ctx. no_holes HARD e' nella ricucitura via
+  solve_phase_b_for_day (gated); negli stage e' SOFT (add_buchi_soft).
+- **Temporale:** `solve_day` + il worker `_worker_solve_day` (tuple a 11 elementi,
+  picklable) + `run_temporal_pipeline` portano class_flags + special_room_ctx.
+- **Column generation:** `run_column_generation` -> `_completion_solver`.
+- **Backend:** run_phase_b (stage + monolithic), run_column_generation e
+  run_decomposition_temporal costruiscono i ctx una volta e li passano.
+
+**Phase A:** `build_phase_a_pragmas` gated per-classe (day_load->max_6,
+subject_day_count_pair->dual_math/italian, subject_day_count_in->motorie);
+`solve_phase_a` porta class_flags, passato dai due percorsi Phase-A primari
+(day-scope + week hint).
+
+Verde: `test_class_flags_all_solvers` (ogni entry point accetta class_flags;
+special_room dove tutte le classi sono visibili; add_consecutive taglia la coppia
+motorie per la classe disattivata) + 138 di rigressione (advanced/metaeuristiche/
+OO/dsl/coteach/plessi/locks/special-room), ruff pulito.
+
+**Residui onesti:** (1) `special_room_ctx` NON entra negli stage spettrali per
+costruzione -- un cap globale per-slot non si decompone lungo la partizione dei
+docenti; vive nella ricucitura monolitica (stessa natura del limite). (2) Il
+blocco full-pipeline (run_full_pipeline) non costruisce i ctx (gli manca anche
+plessi): percorso separato, non toccato. (3) La coppia solve_phase_a di
+decomposizione/full-pipeline non porta class_flags (secondario: e' Phase-A
+day_count). (4) **Finding 38** soft coteach nel percorso NATIVO per-giorno resta
+un TODO d'obiettivo (imposto via DSL/week, non-silente nel nativo): e' un'aggiunta
+di termine soft all'obiettivo CP-SAT, non un gating, quindi non l'ho fatta alla
+cieca senza una run. Il comportamento del solutore coi flag spenti resta validato
+su emissione/feasibility/modelli costruiti, non da una run.
+
+## Chiusi gli ultimi due buchi: soft coteach nativo + ctx del full-pipeline (2026-07-31)
+**Full-pipeline (run_full_pipeline).** Lo step phase_b non costruiva NESSUN ctx --
+gli mancavano plessi, capienza aule speciali E i flag per-classe. Ora costruisce
+`_plessi_ctx` + `_special_room_ctx` + `_class_flags` una volta per step e li passa
+a: `solve_phase_a` (class_flags), gli stage spettrali A/B/C (plessi_ctx +
+class_flags), e il `solve_phase_b_for_day` monolitico (plessi + special_room +
+class_flags). Recupera anche i plessi che qui non erano MAI stati cablati.
+
+**Soft coteach nel percorso NATIVO (finding 38).** Prima `if not required:
+continue` -- la compresenza 'preferibile' spariva dal solver nativo per-giorno
+(era imposta solo via DSL/week). Ora nel loop coteach di `solve_phase_b_for_day`
+un gruppo soft genera un termine di penalita' per ogni (codocente, ora) dove il
+titolare e il codocente NON coincidono su quella (classe, materia): `mism >=
+|slot_titolare - slot_codoc|`, peso = `group.weight`. I termini entrano in
+`compiler.soft_cost_terms`, quindi sia il Minimize iniziale sia il re-Minimize
+via_dsl li includono. La coincidenza e' ammessa dal meccanismo busy_key (i due
+docenti sulla stessa materia condividono la chiave, contano come UNA occupazione
+di classe), quindi il termine puo' davvero azzerarsi: non forza come l'hard,
+sposta il solutore.
+
+Validato **a comportamento** (`test_soft_coteach_native`): risolvendo un giorno,
+il codocente da 2h finisce DENTRO le 4h del titolare (T2 sottoinsieme di T1) con
+soft coteach; l'hard continua a forzare la coincidenza. `test_class_flags_all_solvers`
+esteso; 113 + 37 di rigressione coteach/advanced/OO/dsl/plessi/locks/special-room
+verdi, ruff pulito.
+
+Con questo, 08b + 34 raggiungono ogni percorso (per-giorno, week, spettrale,
+temporale, column generation, full-pipeline) e la soft coteach e' imposta sia sul
+ramo DSL/week sia su quello nativo. Restano fuori solo, per costruzione, la
+capienza aule speciali dentro gli stage spettrali per-sottoinsieme (vive nella
+ricucitura). Il comportamento del solutore su scuola intera non e' comunque girato
+qui (solver lento).
+
+## Run end-to-end sulla scuola da 60 classi: convalida + due bug trovati (2026-07-31)
+Finalmente girato il solutore sulla `liceo60.db` (60 classi, 132 docenti, 694
+cattedre, 2115 lezioni) con il codice aggiornato.
+
+**Bug 1 (pre-esistente): `room_policy` senza fallback in db.py.** Ogni DB
+pre-esistente lanciava `no such column: school_classes.room_policy` -- la colonna
+era stata aggiunta a models.py senza l'ALTER in `_apply_lightweight_migrations`.
+Aggiunto (`NOT NULL DEFAULT 'ibrida'`).
+
+**Bug 2 (trovato dalla run): il meta ignorava `class_flags`.** `run_meta`
+costruiva `hard_ctx` e `c3_kwargs` SENZA class_flags. Le classi della simulazione
+hanno molti flag spenti (hard_dual_math=false, hard_motorie_pairs=false, ...): la
+Phase B li onorava, ma il meta ri-marcava quelle collocazioni come violazioni HARD
+-> "soluzione iniziale viola gli HARD" -> LNS degradato (nessun miglioramento,
+feasible:false). Aggiunto class_flags a hard_ctx + c3_kwargs, e threading in
+run_lns/ils/sa/tabu + alns/vns/lagrangian (le cui is_hard_feasible passano gia'
+db) + _cp_repair + `PhaseBDaySolver` (costruisce class_flags da db).
+
+**Risultati (Phase B week/soft_hint, poi LNS):**
+- Copertura **2115/2115 (100%)**, `feasible=True` col contesto pieno.
+- **Lezioni nell'edificio sbagliato: 0** (l'audit ne aveva 891 = 42%). Il ripiego
+  greedy ora onora i plessi (finding 35b) ed e' trasparente (finding 35a:
+  `rooms_fallback:True` nelle metriche).
+- **Slot con palestra in sovraccarico: 0** (finding 34).
+- **run 9 dell'audit** (che l'audit dava `feasible:false`) ora e' **feasible=True**
+  col contesto: e' la prova di finding 31 sui dati veri.
+- **LNS prima del fix:** obj 2070->2070, feasible:false, "viola gli HARD".
+  **Dopo il fix:** obj **2070->1960**, buchi **141->130**, feasible:True, zero
+  warning. Il meta ora migliora davvero.
+- Residuo: il solutore ESATTO delle aule resta INFEASIBLE (180/2115 senza aula) --
+  e' il residuo finding 33/34 (sostegno+palestre nel modello aule); il ripiego
+  colloca 1935/2115 rispettando i plessi.
+
+113 test meta verdi, ruff pulito. Migrata `liceo60.db` allo schema corrente.

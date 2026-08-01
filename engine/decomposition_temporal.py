@@ -106,7 +106,9 @@ def solve_day(day: int, profs: dict, dc_value: dict, *,
               enforce_no_holes: bool = True, log: bool = False,
               locked_slots_for_day: list | None = None,
               coteach_groups: list | None = None,
-              group_assignments: list | None = None):
+              group_assignments: list | None = None,
+              special_room_ctx=None,
+              class_flags=None):
     """Risolve il sotto-problema CP-SAT del giorno `day`.
 
     Riusa `cpsat_v2_timetable.solve_phase_b_for_day`. Le ore
@@ -131,6 +133,8 @@ def solve_day(day: int, profs: dict, dc_value: dict, *,
         locked_slots_for_day=locked_slots_for_day,
         coteach_groups=coteach_groups,
         group_assignments=group_assignments,
+        special_room_ctx=special_room_ctx,
+        class_flags=class_flags,
     )
 
 
@@ -145,7 +149,14 @@ def _worker_solve_day(args):
       - 7 elements: + locked_slots_for_day
       - 8 elements: + coteach_groups
     """
-    if len(args) == 9:
+    special_room_ctx = None
+    class_flags = None
+    if len(args) == 11:
+        (day, profs_path, dc_path, time_limit, workers,
+         enforce_no_holes, locked_slots_for_day,
+         coteach_groups, group_assignments,
+         special_room_ctx, class_flags) = args
+    elif len(args) == 9:
         (day, profs_path, dc_path, time_limit, workers,
          enforce_no_holes, locked_slots_for_day,
          coteach_groups, group_assignments) = args
@@ -177,6 +188,8 @@ def _worker_solve_day(args):
         locked_slots_for_day=locked_slots_for_day,
         coteach_groups=coteach_groups,
         group_assignments=group_assignments,
+        special_room_ctx=special_room_ctx,
+        class_flags=class_flags,
     )
     dt = time.time() - t0
     return day, out, int(status), dt
@@ -201,7 +214,9 @@ def run_temporal_pipeline(profs_path: str, *,
                           locked_day_count: dict | None = None,
                           locked_by_day: dict | None = None,
                           coteach_groups: list | None = None,
-                          group_assignments: list | None = None):
+                          group_assignments: list | None = None,
+                          special_room_ctx=None,
+                          class_flags=None):
     """Orchestra master + day-solvers paralleli + ricucitura.
 
     Parameters
@@ -331,7 +346,9 @@ def run_temporal_pipeline(profs_path: str, *,
                                enforce_no_holes,
                                (locked_by_day or {}).get(d, None),
                                coteach_groups,
-                               group_assignments)): d
+                               group_assignments,
+                               special_room_ctx,
+                               class_flags)): d
                     for d in DAYS
                 }
                 done_args_iter = (as_completed(futures, timeout=day_timeout)
@@ -379,6 +396,8 @@ def run_temporal_pipeline(profs_path: str, *,
                 locked_slots_for_day=(locked_by_day or {}).get(d, None),
                 coteach_groups=coteach_groups,
                 group_assignments=group_assignments,
+                special_room_ctx=special_room_ctx,
+                class_flags=class_flags,
             )
             dt = time.time() - t
             days_per_day[d] = dt

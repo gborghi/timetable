@@ -119,6 +119,11 @@ class ConstraintConfig:
     enforce_h3_presence_at_11: bool = True
     enforce_motorie_pair: bool = True
     enforce_math_italian_pair: bool = True
+    # Per-class HARD-invariant overrides (finding 08b):
+    # {class_name -> {flag_key -> bool}}. None = every class enforced (the
+    # historical global behaviour). Honoured by both the seed path and the
+    # legacy add_* methods below via ``cpsat_v2_timetable.class_enforces``.
+    class_flags: Any = None
     locks: list = field(default_factory=list)
     coteach_groups: list = field(default_factory=list)
     support_assignments: list = field(default_factory=list)
@@ -358,6 +363,16 @@ class ConstraintModel:
 
     def classes_in_scope(self) -> list:
         return sorted({k[1] for k in self.slot})
+
+    def _class_enforces(self, cl: str, key: str, default: bool = True) -> bool:
+        """Per-class HARD-invariant gate (finding 08b), shared with every
+        other solver via ``cpsat_v2_timetable.class_enforces``."""
+        try:
+            from . import cpsat_v2_timetable as _cv2  # type: ignore
+        except ImportError:
+            import cpsat_v2_timetable as _cv2  # type: ignore
+        return _cv2.class_enforces(
+            getattr(self.config, "class_flags", None), cl, key, default)
 
     def slots_for_teacher_day_hour(self, teacher: str, day: int,
                                     hour: int) -> list:
@@ -884,6 +899,12 @@ class ConstraintModel:
         classes = [c for c in self.classes_in_scope()
                     if c not in virtual]
         for cl in classes:
+            # Per-class gates (finding 08b): `no_holes` (contiguity) and
+            # `entry_at_8` (start at the first hour) default True.
+            _nh = self._class_enforces(cl, "no_holes")
+            _e8 = self._class_enforces(cl, "entry_at_8")
+            if not (_nh or _e8):
+                continue
             for d in self.days:
                 present_per_h = []
                 for h in self.hours:
@@ -904,11 +925,13 @@ class ConstraintModel:
                 # ap = OR(present); present[0] >= ap.
                 ap = self.model.NewBoolVar(f"ap_{cl}_{d}")
                 self.model.AddMaxEquality(ap, present_per_h)
-                self.model.Add(present_per_h[0] >= ap)
-                # Non-increasing: present[i+1] <= present[i].
-                for i in range(len(present_per_h) - 1):
-                    self.model.Add(
-                        present_per_h[i + 1] <= present_per_h[i])
+                if _e8:
+                    self.model.Add(present_per_h[0] >= ap)
+                if _nh:
+                    # Non-increasing: present[i+1] <= present[i].
+                    for i in range(len(present_per_h) - 1):
+                        self.model.Add(
+                            present_per_h[i + 1] <= present_per_h[i])
 
     def add_h3_presence_at_11(self):
         """If the class has any lessons that day, h=11 must be
@@ -932,6 +955,10 @@ class ConstraintModel:
         classes = [c for c in self.classes_in_scope()
                     if c not in virtual]
         for cl in classes:
+            # Per-class gate (finding 08b): h=11 presence == "uscita non
+            # prima delle 12", i.e. the exit_after_12 toggle.
+            if not self._class_enforces(cl, "exit_after_12"):
+                continue
             for d in self.days:
                 # Build the per-hour busy indicators ONCE per (cl, d):
                 # ``pr11`` reads the h=11 bucket and ``any_d`` reads
@@ -1050,7 +1077,7 @@ class ConstraintModel:
         return obj_terms, aux_vars
 
     def add_subject_pair_constraint(
-        self, subject_name: str, *, mode: str,
+        self, subject_name: str, *, mode: str, flag_key: str | None = None,
     ):
         """Add a "consecutive pair" constraint on a specific subject.
 
@@ -1083,6 +1110,10 @@ class ConstraintModel:
             classi = pdata.get("classi", {}) or {}
             want = _cv2.subject_key(subject_name)
             for class_name, subjs in classi.items():
+                # Per-class gate (finding 08b): skip the class whose card
+                # turned this pair invariant off (motorie / mat / ita).
+                if flag_key and not self._class_enforces(class_name, flag_key):
+                    continue
                 # The caller passes a literal ("Matematica",
                 # "Italiano", "Scienzemotorie") but the school names
                 # its subjects freely, so match on the canonical key
@@ -1183,15 +1214,15 @@ class ConstraintModel:
     def add_motorie_pair(self):
         """Scienzemotorie: 2 hours/day MUST be consecutive."""
         self.add_subject_pair_constraint(
-            "Scienzemotorie", mode="must_pair")
+            "Scienzemotorie", mode="must_pair", flag_key="motorie_pairs")
 
     def add_math_italian_pair(self):
         """Matematica + Italiano: when >= 2 hours/day, at least one
         consecutive pair of busy hours."""
         self.add_subject_pair_constraint(
-            "Matematica", mode="pair_exists")
+            "Matematica", mode="pair_exists", flag_key="dual_math")
         self.add_subject_pair_constraint(
-            "Italiano", mode="pair_exists")
+            "Italiano", mode="pair_exists", flag_key="dual_italian")
 
     def add_plessi_commuting_constraints(self):
         """Apply plessi commuting rules (teacher- and class-kind) to
@@ -1392,6 +1423,7 @@ class ConstraintModel:
                 enforce_class_day_load=False,
                 enforce_max_per_day_triple=False,
                 enforce_max_prof_hours_per_day=False,
+                class_flags=self.config.class_flags,
             )
             self.add_all_dsl_constraints(seeds)
         else:
@@ -1921,12 +1953,41 @@ class PhaseBDaySolver:
         config: ConstraintConfig | None = None,
         db: Any = None,
         extra_dsl_expressions: list | None = None,
+        special_room_ctx: Any = None,
     ):
         self.profs = profs
         self.dc_value = dc_value
         self.day = int(day)
         self.config = config or ConstraintConfig()
         self.db = db
+        # finding 34: capacita' aule speciali (palestra/lab). Il repair di
+        # giornata (metaheuristics._cp_repair) gira nel post-processing dove
+        # `db` NON e' passato (la sessione e' chiusa): senza questo ctx
+        # esplicito il CP di ricucitura ignorerebbe la capienza palestra e
+        # potrebbe reintrodurre l'overflow. Se None e db c'e', lo si
+        # ricostruisce; altrimenti si usa quello passato dal chiamante.
+        self.special_room_ctx = special_room_ctx
+        if self.special_room_ctx is None and db is not None:
+            try:
+                from . import cpsat_v2_timetable as _cv2  # type: ignore
+            except ImportError:
+                import cpsat_v2_timetable as _cv2  # type: ignore
+            try:
+                self.special_room_ctx = _cv2.build_special_room_ctx(db)
+            except Exception:
+                pass
+        # 08b: when a db is given but no explicit config, load the per-class
+        # HARD-invariant overrides so a day-repair (metaheuristics._cp_repair)
+        # honours the class-card toggles instead of re-enforcing everything.
+        if config is None and db is not None and self.config.class_flags is None:
+            try:
+                from . import cpsat_v2_timetable as _cv2  # type: ignore
+            except ImportError:
+                import cpsat_v2_timetable as _cv2  # type: ignore
+            try:
+                self.config.class_flags = _cv2.build_class_flags(db)
+            except Exception:
+                pass
         self.extra_dsl_expressions = list(extra_dsl_expressions or [])
         # Lazy-build the index only when callers don't provide one;
         # ``solve_phase_b_for_day`` happily re-derives ``classes`` /
@@ -2025,6 +2086,10 @@ class PhaseBDaySolver:
             via_dsl=via_dsl,
             extra_dsl_expressions=(
                 self.extra_dsl_expressions if via_dsl else None),
+            # finding 34: always pass the special-room capacity ctx, even
+            # when via_dsl=False (no db), so the day-repair respects the
+            # palestra/lab capienza in the post-processing path too.
+            special_room_ctx=self.special_room_ctx,
         )
         # Normalise status: the legacy function returns the CP-SAT
         # numeric status when infeasible and a dict when feasible.

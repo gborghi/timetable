@@ -89,9 +89,53 @@ def _gate_coverage(full_solution: dict, dc_value: dict | None, *,
         print(f"[{stage}][WARN] {msg}")
 
 
+def _uncovered_report(full_solution: dict,
+                      dc_value: dict | None) -> list[dict]:
+    """Which cattedre Phase A required but Phase B left (partly) unplaced.
+
+    Turns a bare coverage percentage into the actionable list the audit
+    asked for (finding 17): the (class, subject, day, teacher) cells with
+    missing hours, worst first. ``dc_value`` maps (p, cl, subj, day) ->
+    required hour-count. Returns [] when the required total is unknown.
+    """
+    if not dc_value:
+        return []
+    placed: dict[tuple, int] = defaultdict(int)
+    for (p, cl, s, d, h), val in full_solution.items():
+        if val:
+            placed[(p, cl, s, d)] += 1
+    out: list[dict] = []
+    for key, need in dc_value.items():
+        try:
+            p, cl, s, d = key
+        except Exception:
+            continue
+        got = placed.get((p, cl, s, d), 0)
+        if got < int(need):
+            out.append({"class": cl, "subject": s, "day": int(d),
+                        "teacher": p, "missing": int(need) - got})
+    out.sort(key=lambda r: -r["missing"])
+    return out
+
+
 def _runs_dir() -> str:
     here = os.path.dirname(os.path.abspath(__file__))
-    out = os.path.normpath(os.path.join(here, "..", "data", "runs"))
+    base = os.path.normpath(os.path.join(here, "..", "data", "runs"))
+    # Isolate run work-files per archive: two instances pointed at
+    # different databases (PITANTUM_DB_URL) must NOT share a workspace,
+    # or they silently overwrite each other's files (finding 32). The
+    # run_id is a per-DB autoincrement, so without this namespacing run 7
+    # of archive A and run 7 of archive B collide on disk. Namespace by a
+    # short stable hash of the resolved DB URL.
+    import hashlib
+    try:
+        from .db import DB_URL
+        # Not security-sensitive: just a stable per-DB directory name.
+        key = hashlib.sha1(
+            DB_URL.encode("utf-8"), usedforsecurity=False).hexdigest()[:12]
+    except Exception:
+        key = "default"
+    out = os.path.join(base, key)
     os.makedirs(out, exist_ok=True)
     return out
 
@@ -580,6 +624,16 @@ def manual_assignment(db: Session, class_name: str, subject: str,
         return (False,
                 f"La classe {class_name} non ha la materia {subject}",
                 None)
+    # Finding 12: for a class target the weekly hours come from the
+    # curriculum (ClassSubject). Silently ignoring a conflicting `hours`
+    # let the API accept one number and use another. Reject the mismatch
+    # instead of hiding it; a matching or omitted value passes through.
+    if hours is not None and int(hours) != int(csubj.hours_per_week):
+        return (False,
+                f"Le ore di {subject} in {class_name} vengono dal curricolo "
+                f"({csubj.hours_per_week}h); il parametro hours={int(hours)} "
+                f"e' incoerente. Rimuovilo o correggi il monte ore della "
+                f"classe.", None)
     t = db.query(models.Teacher).filter(
         models.Teacher.name == teacher_name
     ).first()
@@ -751,6 +805,20 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
         if coteach_groups:
             print(f"[phaseB] {len(coteach_groups)} coteach groups "
                   f"(shared mode)")
+            # Soft coteach (required=False) is applied as a weighted SOFT
+            # term via the DSL objective on the DSL-engaged paths (the
+            # weekly solver loads it through _apply_dsl_rules_to_week_solver;
+            # the per-day monolithic path only when hard DSL rules are also
+            # present). The NATIVE hardcoded per-day/decomposition path does
+            # not model it. Say so instead of pretending either extreme
+            # (finding 38): it is a preference, honoured where the DSL runs.
+            n_soft = sum(1 for g in coteach_groups if not g.get("required"))
+            if n_soft:
+                print(f"[phaseB] {n_soft} compresenze 'preferibili' (soft): "
+                      f"applicate come preferenza pesata dal livello DSL "
+                      f"(garantite sullo scope 'week'); la decomposizione "
+                      f"per giorno potrebbe non considerarle. Per un obbligo "
+                      f"pieno impostale come 'obbligatorie'.")
         if support_assignments:
             print(f"[phaseB] {len(support_assignments)} support "
                   f"(sostegno) assignments")
@@ -779,7 +847,10 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
               f"{len(triples)} triples")
         print(f"[phaseB] cp_sat_scope={cp_sat_scope!r} "
               f"phase_a_mode={phase_a_mode!r}")
-        update_run(rid, progress=0.05)
+        # Finding 19: name the current activity so the Runs UI stops
+        # showing a frozen bar with no step. The frontend maps these keys
+        # via pipeline_labels.js (unknown keys fall back to the raw text).
+        update_run(rid, progress=0.05, current_step="phase_a")
         # Phase A inside the timetable: day_count. Native locks are
         # passed both on the monolithic and on the decomposed path
         # (decomposed forwards them to the 4 stages below).
@@ -811,8 +882,13 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                 parallel_groups=parallel_groups,
                 group_assignments=group_assignments,
             )
-            update_run(rid, progress=0.90)
+            update_run(rid, progress=0.90, current_step="phase_b")
         else:
+            # 08b: per-class flags for Phase A's day_count pragmas too
+            # (motorie 0/2-per-day, Mat/Ita, day-load), so the class-card
+            # toggles are consistent from the day distribution onward.
+            with SessionLocal() as _db_pa:
+                _pa_class_flags = engine_io.class_flags_from_db(_db_pa)
             dc_value = cv2.solve_phase_a(
                 profs, classes, triples, class_profs,
                 time_limit=time_a, workers=workers, log=log,
@@ -822,10 +898,11 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                 potenziamento_assignments=potenziamento_assignments or None,
                 parallel_groups=parallel_groups or None,
                 group_assignments=group_assignments or None,
+                class_flags=_pa_class_flags,
             )
             with open(os.path.join(ws, "phase_a_dc.pkl"), "wb") as f:
                 pickle.dump(dc_value, f)
-            update_run(rid, progress=0.20)
+            update_run(rid, progress=0.20, current_step="phase_b")
 
             full_solution = {}
             # Task C3: spectral stages A/B/C don't model group_slot
@@ -844,6 +921,33 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
             if _plessi_ctx:
                 print(f"[phase_b] plessi attivi: "
                       f"{len(_plessi_ctx[1])} classi con sede nota")
+            # Special-room (gym/lab) capacity (finding 34). Built once.
+            # UNLIKE plessi (a per-teacher rule, disjoint across stages),
+            # this is a GLOBAL per-slot cap over ALL classes, so it is
+            # correct only where one model sees the whole slot: the
+            # monolithic per-day path below (and the week solver). The
+            # spectral stages decide disjoint class subsets, so a per-stage
+            # cap could not see cross-cluster demand -- it is deliberately
+            # NOT applied there. None -> no required_kind subjects.
+            try:
+                with SessionLocal() as _db_sr:
+                    _special_room_ctx = cv2.build_special_room_ctx(_db_sr)
+            except Exception:
+                _special_room_ctx = None
+            # Per-class overrides of the ex-officio HARD invariants (08b).
+            try:
+                with SessionLocal() as _db_cf:
+                    _class_flags = engine_io.class_flags_from_db(_db_cf)
+            except Exception:
+                _class_flags = None
+            if _special_room_ctx:
+                print(f"[phase_b] aule speciali: capienza per kind "
+                      f"{_special_room_ctx[1]}")
+                if use_decomposition and len(classes) >= 8:
+                    print("[phase_b] NB: la capienza aule speciali e' "
+                          "imposta solo su scope 'week' o senza "
+                          "decomposizione; con la decomposizione spettrale "
+                          "usa il preset settimanale per garantirla.")
 
             if (use_decomposition and len(classes) >= 8
                     and not group_assignments):
@@ -867,6 +971,7 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                         time_bridges, workers,
                         locked_slots_for_day=locked_by_day.get(d) or None,
                         plessi_ctx=_plessi_ctx,
+                        class_flags=_class_flags,
                     )
                     if out is None:
                         a_failed.append(d)
@@ -891,6 +996,7 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                             bridge_solutions[d], time_cluster, workers,
                             locked_slots_for_day=locked_by_day.get(d) or None,
                             plessi_ctx=_plessi_ctx,
+                            class_flags=_class_flags,
                         )
                         if out is None:
                             b_failed[d].add(k_id)
@@ -920,6 +1026,7 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                         time_ricucitura, workers,
                         locked_slots_for_day=locked_by_day.get(d) or None,
                         plessi_ctx=_plessi_ctx,
+                        class_flags=_class_flags,
                     )
                     if out is None:
                         c_failed.append(d)
@@ -937,6 +1044,8 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                         time_mono, workers,
                         locked_slots_for_day=locked_by_day.get(d) or None,
                         plessi_ctx=_plessi_ctx,
+                        special_room_ctx=_special_room_ctx,
+                        class_flags=_class_flags,
                     )
                     if out is not None:
                         full_solution = {
@@ -971,6 +1080,8 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                         via_dsl=bool(_dsl_hard),
                         extra_dsl_expressions=_dsl_hard or None,
                         plessi_ctx=_plessi_ctx,
+                        special_room_ctx=_special_room_ctx,
+                        class_flags=_class_flags,
                         diagnostics_sink=_dsl_sink,
                     )
                     if out is None and locked_by_day.get(d):
@@ -991,16 +1102,29 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
         v, m = meta.compute_soft(full_solution, profs)
         feasible = meta.is_hard_feasible(full_solution, profs, verbose=False,
                                          **_hard_check_ctx_fresh())
-        # P0 truthfulness: don't pass off a partial schedule as success.
-        _gate_coverage(full_solution, dc_value, stage="phase_b", metrics=m)
+        # Coverage + which cattedre are (partly) unplaced.
+        cov = _coverage_ratio(full_solution, dc_value)
+        if cov is not None:
+            m["coverage"] = round(cov, 4)
+        complete = cov is None or cov >= 0.999
+        uncovered = _uncovered_report(full_solution, dc_value)
+        if uncovered:
+            m["uncovered_count"] = sum(u["missing"] for u in uncovered)
+            m["uncovered"] = uncovered[:50]
+        # Findings 17 + 24: ALWAYS save the timetable (so a partial can be
+        # inspected instead of thrown away), but ACTIVATE it only when it is
+        # both complete AND hard-feasible. A silently-activated partial or a
+        # timetable the validator rejects is exactly what the audit flagged.
+        make_active = bool(feasible and complete)
         with SessionLocal() as db:
             sid = engine_io.import_solution_into_db(
                 db, full_solution,
-                name=f"Phase B run {rid}",
+                name=f"Phase B run {rid}"
+                     + ("" if make_active else " (parziale / non valido)"),
                 kind="phase_b",
                 obj_value=float(v),
                 metrics={**m, "feasible": feasible},
-                make_active=True,
+                make_active=make_active,
             )
             # Native-lock path (both monolithic and decomposed):
             # the solver placed the locked lessons; we only re-apply
@@ -1011,8 +1135,9 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                 print(f"[phaseB] re-applied classroom on "
                       f"{n_touched} locked lessons (native path)")
         rooms_metrics: dict[str, Any] = {}
-        if optimize_rooms:
-            update_run(rid, progress=0.95)
+        # No point assigning rooms to a timetable we won't activate.
+        if optimize_rooms and make_active:
+            update_run(rid, progress=0.95, current_step="rooms")
             print("[phaseB] running joint classroom-assignment step")
             try:
                 rooms_metrics = _apply_rooms_to_solution(
@@ -1024,9 +1149,28 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                 print(f"[phaseB] rooms step failed: {e}")
                 rooms_metrics = {"rooms_error": str(e)}
         update_run(rid, solution_id=sid, obj_value=float(v),
-                   metrics={**m, "feasible": feasible, **rooms_metrics},
-                   progress=1.0)
-        print(f"[phaseB] solution id={sid} obj={v} metrics={m} rooms={rooms_metrics}")
+                   metrics={**m, "feasible": feasible,
+                            "activated": make_active, **rooms_metrics},
+                   progress=1.0, current_step=None)
+        print(f"[phaseB] solution id={sid} obj={v} active={make_active} "
+              f"feasible={feasible} metrics={m} rooms={rooms_metrics}")
+        # P0 truthfulness (finding 17): a strict, INCOMPLETE run still fails
+        # so it never reads as success -- but the partial is already saved
+        # above (id=sid, non-active) for inspection, and the message names
+        # the worst-uncovered cattedre instead of only a percentage and a
+        # misleading "raise the time limit".
+        if not complete and _coverage_strict():
+            top = "; ".join(
+                f"{u['class']}/{u['subject']} g{u['day']} -{u['missing']}h"
+                for u in uncovered[:6])
+            raise RuntimeError(
+                f"phase_b: coverage {(cov or 0) * 100:.1f}% < 100% -- "
+                f"{m.get('uncovered_count', 0)} ore non collocate. Orario "
+                f"salvato (id={sid}) per ispezione ma NON attivato. "
+                f"Cattedre piu' scoperte: {top or 'n/d'}. Se e' strutturale "
+                f"(vedi hall-check / preflight) nessun aumento di tempo lo "
+                f"risolve: allenta i vincoli o correggi i dati."
+            )
 
     start_thread(run_id, target)
     return run_id
@@ -1121,6 +1265,8 @@ def _solve_phase_b_week(*, rid: int, ws: str, profs: dict,
     if phase_a_mode == "soft_hint":
         print(f"[phaseB.week] running Phase A for soft_hint "
               f"(time_limit={time_a}s)")
+        with SessionLocal() as _db_pa:  # 08b: Phase-A pragmas per-class
+            _pa_class_flags = engine_io.class_flags_from_db(_db_pa)
         try:
             dc_value = cv2.solve_phase_a(
                 profs, classes, triples, class_profs,
@@ -1131,6 +1277,7 @@ def _solve_phase_b_week(*, rid: int, ws: str, profs: dict,
                 potenziamento_assignments=potenziamento_assignments or None,
                 parallel_groups=parallel_groups or None,
                 group_assignments=group_assignments or None,
+                class_flags=_pa_class_flags,
             )
         except cv2.PhaseAError as exc:
             # A hint that cannot be computed is a missing hint, not a
@@ -1153,10 +1300,10 @@ def _solve_phase_b_week(*, rid: int, ws: str, profs: dict,
         if dc_value is not None:
             with open(os.path.join(ws, "phase_a_dc.pkl"), "wb") as f:
                 pickle.dump(dc_value, f)
-        update_run(rid, progress=0.20)
+        update_run(rid, progress=0.20, current_step="phase_a")
     else:
         # phase_a_mode == "skip"
-        update_run(rid, progress=0.10)
+        update_run(rid, progress=0.10, current_step="phase_a")
 
     # Native locks: turn the snapshot into 5-tuples (t, cl, s, d, h)
     # and apply them as slot==1 equalities. Computed once (lock-set is
@@ -1173,6 +1320,18 @@ def _solve_phase_b_week(*, rid: int, ws: str, profs: dict,
     # single-shot path runs (no verify, no refinement, no extra solve).
     with SessionLocal() as _db_h:
         hard_exprs = _load_dsl_hard_expressions(_db_h)
+
+    # Special-room (gym/lab) capacity for the whole week (finding 34).
+    # Built once; None when no subject carries a required_kind or there
+    # are no such rooms, in which case the week model is unchanged.
+    with SessionLocal() as _db_sr:
+        _special_room_ctx = cv2.build_special_room_ctx(_db_sr)
+    # Per-class HARD-invariant overrides for the week solver (finding 08b).
+    try:
+        with SessionLocal() as _db_cf:
+            _week_class_flags = engine_io.class_flags_from_db(_db_cf)
+    except Exception:
+        _week_class_flags = None
 
     def _build_week_solver(forbidden):
         """Build the monolithic week-scope solver from scratch and
@@ -1191,6 +1350,7 @@ def _solve_phase_b_week(*, rid: int, ws: str, profs: dict,
             enforce_h3_presence_at_11=True,
             enforce_motorie_pair=True,
             enforce_math_italian_pair=True,
+            class_flags=_week_class_flags,
             locks=[],  # native locks are added below via add_locks
             coteach_groups=list(coteach_groups or []),
             support_assignments=list(support_assignments or []),
@@ -1221,6 +1381,13 @@ def _solve_phase_b_week(*, rid: int, ws: str, profs: dict,
         solver.add_parallel_groups_intra_class()
         solver.add_all_hard_constraints()
         solver.add_class_no_overlap()
+
+        if _special_room_ctx:
+            n_sr = cv2.add_special_room_capacity_phase_b(
+                solver.model, solver.slot, _special_room_ctx, day=None)
+            if n_sr:
+                print(f"[phaseB.week] aule speciali: {n_sr} "
+                      f"vincoli capienza")
 
         if locks_5:
             print(f"[phaseB.week] applying {len(locks_5)} native locks")
@@ -1259,7 +1426,9 @@ def _solve_phase_b_week(*, rid: int, ws: str, profs: dict,
         print(f"[phaseB.week] status={status_name}")
         return solver, cp_solver, status, status_name
 
-    update_run(rid, progress=0.30)
+    # The monolithic week solve below is the long wait; label it so the UI
+    # shows 'Phase B' during it instead of a stale earlier step (finding 19).
+    update_run(rid, progress=0.30, current_step="phase_b")
 
     def _solve_once(forbidden):
         """Adapter for ``dsl_cp_gate.solve_with_dsl_refinement``: build +
@@ -1408,6 +1577,20 @@ def _load_dsl_hard_expressions(db) -> list[str] | None:
         return None
 
 
+def _build_special_room_ctx_safe(db):
+    """`cv2.build_special_room_ctx(db)` senza propagare eccezioni.
+
+    Ritorna ``(subj_kind, kind_cap)`` o ``None`` (nessuna aula speciale da
+    vincolare / errore di lettura). Usato da `_hard_check_ctx` per dare a
+    `is_hard_feasible` la stessa vista di capacita' aule speciali che ha il
+    CP-SAT di Phase B (finding 34)."""
+    try:
+        import cpsat_v2_timetable as cv2  # type: ignore
+        return cv2.build_special_room_ctx(db)
+    except Exception:
+        return None
+
+
 def _hard_check_ctx(db) -> dict[str, Any]:
     """Le tabelle che `is_hard_feasible` deve vedere per NON sbagliare.
 
@@ -1439,6 +1622,14 @@ def _hard_check_ctx(db) -> dict[str, Any]:
             "coteach_groups": engine_io.coteach_groups_for_solver(db),
             "parallel_groups": engine_io.parallel_groups_for_solver(db),
             "group_assignments": engine_io.group_assignments_for_solver(db),
+            # 08b: so is_hard_feasible doesn't flag a class as violating an
+            # invariant the school deliberately turned off on its card.
+            "class_flags": engine_io.class_flags_from_db(db),
+            # finding 34: capacita' aule speciali (palestra/lab). Cosi' una
+            # modifica manuale che mette piu' classi in palestra di quante
+            # ce ne siano viene rifiutata, coerentemente col CP-SAT e con
+            # le metaeuristiche. None quando non c'e' nulla da vincolare.
+            "special_room_ctx": _build_special_room_ctx_safe(db),
         }
     except Exception:
         # Meglio il comportamento storico che nessun controllo HARD.
@@ -1563,6 +1754,17 @@ def run_meta(stage: str, budget_s: float, workers: int, log: bool,
                 db)
             group_assignments_meta = engine_io.group_assignments_for_solver(
                 db)
+            # 08b: without this the meta's is_hard_feasible re-flags every
+            # class whose card relaxed an invariant, sees the baseline as
+            # "dirty", and degrades (no improvement + feasible:false).
+            class_flags_meta = engine_io.class_flags_from_db(db)
+            # finding 34: capacita' aule speciali (palestra/lab). Costruito
+            # QUI (sessione aperta) e passato materializzato, come
+            # class_flags: senza, le metaeuristiche (che non ricevono `db`)
+            # non vincolano la capienza palestra e reintroducono l'overflow
+            # che poi rende infeasible l'assegnazione aule. Vedi
+            # cpsat_v2_timetable.build_special_room_ctx.
+            special_room_ctx_meta = _build_special_room_ctx_safe(db)
             active = engine_io.get_active_solution(db)
             if active is None:
                 raise RuntimeError("Nessuna soluzione attiva; esegui prima "
@@ -1602,6 +1804,8 @@ def run_meta(stage: str, budget_s: float, workers: int, log: bool,
                 "coteach_groups": coteach_groups_meta,
                 "parallel_groups": parallel_groups_meta,
                 "group_assignments": group_assignments_meta,
+                "class_flags": class_flags_meta,
+                "special_room_ctx": special_room_ctx_meta,
             }
         # Native locks for the meta stage: the locked lesson keys
         # are passed to every algorithm via `locks=` so atomic
@@ -1655,6 +1859,8 @@ def run_meta(stage: str, budget_s: float, workers: int, log: bool,
                 support_assignments=support_assignments_meta or None,
                 parallel_groups=parallel_groups_meta or None,
                 group_assignments=group_assignments_meta or None,
+                class_flags=class_flags_meta,
+                special_room_ctx=special_room_ctx_meta,
                 soft_rules=soft_rules,
                 dsl_hard_expressions=dsl_hard_expressions,
             )
@@ -1770,6 +1976,51 @@ def run_meta(stage: str, budget_s: float, workers: int, log: bool,
 # ----------------------------------------------------------------------
 # Diagnostics / specialised stages (Hall, Column Generation)
 # ----------------------------------------------------------------------
+
+
+# Scenario presets for Phase B. The engine is fully general -- it can
+# already solve a part-time school via week scope + soft_hint -- but the
+# DEFAULT knobs ('day' + 'always') pin Phase A's day distribution as a
+# HARD equality that Phase B cannot satisfy once teachers have real
+# availability limits (audit finding 20). Rather than change what the
+# solver does, we name the configurations that work so a school can pick
+# one, instead of discovering the good mode by reading engine source.
+SCENARIO_PRESETS: list[dict[str, Any]] = [
+    {
+        "key": "standard",
+        "label": "Standard (decomposizione per giorno)",
+        "summary": (
+            "Scope 'day' + phase_a_mode 'always' con decomposizione. Veloce; "
+            "adatto a scuole con poche indisponibilita' orarie rigide."
+        ),
+        "params": {
+            "cp_sat_scope": "day",
+            "phase_a_mode": "always",
+            "use_decomposition": True,
+        },
+        "recommended_when": "Poche o nessuna indisponibilita' HARD.",
+    },
+    {
+        "key": "part_time_sostegno",
+        "label": "Part-time / sostegno (settimanale)",
+        "summary": (
+            "Scope 'week' + phase_a_mode 'soft_hint', senza decomposizione. "
+            "La distribuzione della Fase A diventa un suggerimento e il "
+            "solver ridistribuisce le ore rispettando indisponibilita' e "
+            "giorni liberi veri. Piu' lento ma robusto per la scuola statale "
+            "tipica (part-time, cattedre esterne, L.104, sostegno)."
+        ),
+        "params": {
+            "cp_sat_scope": "week",
+            "phase_a_mode": "soft_hint",
+            "use_decomposition": False,
+        },
+        "recommended_when": (
+            "Docenti part-time, cattedre esterne, molti giorni liberi "
+            "obbligatori o indisponibilita' HARD diffuse."
+        ),
+    },
+]
 
 
 def run_hall_check(*, n_samples: int = 256,
@@ -2083,6 +2334,12 @@ def run_column_generation(*, time_budget_s: float = 60.0,
                   f"keys pre-placed in patterns; completion solver "
                   f"receives per-day constraint set.")
         update_run(rid_inner, progress=0.1)
+        # 08b + 34: per-class flags and special-room capacity for the CG
+        # completion solver, built once.
+        import cpsat_v2_timetable as cv2  # type: ignore
+        with SessionLocal() as _dbcg:
+            _cg_class_flags = engine_io.class_flags_from_db(_dbcg)
+            _cg_special_room = cv2.build_special_room_ctx(_dbcg)
         with _progress_ticker(rid_inner, time_budget_s,
                                start=0.1, end=0.95):
             new_sol, info = cg.run_column_generation(
@@ -2097,6 +2354,8 @@ def run_column_generation(*, time_budget_s: float = 60.0,
                 support_assignments=support_assignments or None,
                 parallel_groups=parallel_groups or None,
                 group_assignments=group_assignments or None,
+                special_room_ctx=_cg_special_room,
+                class_flags=_cg_class_flags,
                 mode=mode,
                 granularity=granularity,
                 branching_strategy=branching_strategy,
@@ -2299,10 +2558,19 @@ def run_full_pipeline(profile: str,
                         "metti 'phase_a' prima nella pipeline."
                     )
                 classes, triples, class_profs = cv2.build_indices(profs)
+                # Build the per-run solver ctx ONCE for this phase_b step.
+                # The full-pipeline block used to build none, so plessi
+                # transfer-time (25/35), special-room capacity (34) and the
+                # per-class HARD toggles (08b) never reached its solvers.
+                with SessionLocal() as _db_ctx:
+                    _plessi_ctx = cv2.build_plessi_ctx(_db_ctx)
+                    _special_room_ctx = cv2.build_special_room_ctx(_db_ctx)
+                    _class_flags = engine_io.class_flags_from_db(_db_ctx)
                 dc_value = cv2.solve_phase_a(
                     profs, classes, triples, class_profs,
                     time_limit=(pb_kwargs or {}).get("time_a", 60),
                     workers=workers, log=False,
+                    class_flags=_class_flags,
                 )
                 state["dc_value"] = dc_value
                 full_solution: dict = {}
@@ -2325,6 +2593,8 @@ def run_full_pipeline(profile: str,
                         out, _st = dec.stage_a_bridges(
                             d, profs, bridges_set, triples, dc_value,
                             (pb_kwargs or {}).get("time_bridges", 30), workers,
+                            plessi_ctx=_plessi_ctx,
+                            class_flags=_class_flags,
                         )
                         if out is None:
                             a_failed.append(d)
@@ -2346,6 +2616,8 @@ def run_full_pipeline(profile: str,
                                 bridge_solutions[d],
                                 (pb_kwargs or {}).get("time_cluster", 20),
                                 workers,
+                                plessi_ctx=_plessi_ctx,
+                                class_flags=_class_flags,
                             )
                             if out is None:
                                 b_failed[d].add(k_id)
@@ -2371,6 +2643,8 @@ def run_full_pipeline(profile: str,
                             d, profs, bridges_set, triples, dc_value, succ,
                             (pb_kwargs or {}).get("time_ricucitura", 60),
                             workers,
+                            plessi_ctx=_plessi_ctx,
+                            class_flags=_class_flags,
                         )
                         if out is not None:
                             full_solution = {
@@ -2386,6 +2660,9 @@ def run_full_pipeline(profile: str,
                             dc_value,
                             time_limit=(pb_kwargs or {}).get("time_mono", 120),
                             workers=workers, log=False,
+                            plessi_ctx=_plessi_ctx,
+                            special_room_ctx=_special_room_ctx,
+                            class_flags=_class_flags,
                         )
                         if out is not None:
                             full_solution.update(out)
@@ -2887,6 +3164,10 @@ def _apply_locked_classrooms(db: Session, solution_id: int,
             l.classroom_name = snap["classroom_name"]
         if snap.get("cotaught_with"):
             l.cotaught_with = snap["cotaught_with"]
+        # Carry the pin forward: the snapshot only ever holds genuinely
+        # pinned lessons now, so the re-placed copy stays pinned across
+        # successive regenerations (finding 26 -- incremental work).
+        l.locked = True
         n_touched += 1
     return n_touched
 
@@ -3386,40 +3667,33 @@ def _log_room_pins(pins: dict, prefix: str = "rooms") -> None:
 
 
 def _read_locked_lessons(db: Session) -> list[dict]:
-    """Capture every Lesson belonging to a LOCKED Assignment in the
-    active solution, so we can restore them after a Phase B / meta run
-    that doesn't natively know about Assignment.locked. Returns a list
-    of dicts ready to be re-inserted into the new solution.
+    """Capture the individually PINNED lessons of the active solution
+    (``Lesson.locked``) so Phase B / meta keep them exactly where they are.
+
+    Finding 26: this used to pin every lesson of a LOCKED *Assignment*,
+    conflating "confirmed cattedra" (don't reassign the teacher) with
+    "immovable hour". The effect was that a school which correctly loaded
+    its cattedre as ``locked`` froze its whole timetable and could never
+    regenerate. Now only a genuine per-slot pin (``Lesson.locked``) is an
+    immovable slot; ``Assignment.locked`` no longer freezes any hour, so a
+    plain re-run is free to re-place everything.
     """
     active = engine_io.get_active_solution(db)
     if active is None:
         return []
-    locked_keys: set[tuple[str, str, str]] = set()
-    teachers = {t.id: t for t in db.query(models.Teacher).all()}
-    classes = {c.id: c for c in db.query(models.SchoolClass).all()}
-    for a in db.query(models.Assignment).filter(
-        models.Assignment.locked == True  # noqa: E712
-    ).all():
-        t = teachers.get(a.teacher_id)
-        c = classes.get(a.class_id)
-        if t is None or c is None:
-            continue
-        locked_keys.add((t.name, c.name, a.subject))
-    if not locked_keys:
-        return []
     out: list[dict] = []
     for l in db.query(models.Lesson).filter(
-        models.Lesson.solution_id == active.id
+        models.Lesson.solution_id == active.id,
+        models.Lesson.locked == True,  # noqa: E712
     ).all():
-        if (l.teacher_name, l.class_name, l.subject) in locked_keys:
-            out.append({
-                "teacher_name": l.teacher_name,
-                "class_name": l.class_name,
-                "subject": l.subject,
-                "day": l.day, "hour": l.hour,
-                "classroom_name": l.classroom_name,
-                "cotaught_with": l.cotaught_with,
-            })
+        out.append({
+            "teacher_name": l.teacher_name,
+            "class_name": l.class_name,
+            "subject": l.subject,
+            "day": l.day, "hour": l.hour,
+            "classroom_name": l.classroom_name,
+            "cotaught_with": l.cotaught_with,
+        })
     return out
 
 
@@ -3647,18 +3921,26 @@ def _apply_rooms_to_solution(sid: int, *, time_limit_s: float,
         locked_classrooms=locked_classrooms or None,
         plessi_data=plessi_data,
     )
-    if result is None:
+    rooms_fallback = result is None
+    if rooms_fallback:
         print(f"[{log_prefix}] CP-SAT infeasible ({status}); fallback greedy")
         # Greedy is now lock-aware (FU-2): forward the same
         # locked_classrooms list so the fallback honours every lock.
+        # It must also see `plessi_data`, or the fallback places lessons
+        # plesso-blind while the exact model would have honoured the
+        # single-plesso policies (finding 35b).
         result = greedy_classroom_assignment(
             lessons, rooms, prefer_home=prefer_home,
             locked_classrooms=locked_classrooms or None,
+            plessi_data=plessi_data,
         )
     with SessionLocal() as db:
         n_rooms = engine_io.apply_room_mapping(db, sid, result)
     print(f"[{log_prefix}] {n_rooms}/{len(lessons)} lessons got a room")
-    return {"rooms_assigned": n_rooms, "rooms_total_lessons": len(lessons)}
+    # Surface the exact-vs-fallback outcome so a silent greedy fallback
+    # stops reading as "assegnazione riuscita" (finding 35a).
+    return {"rooms_assigned": n_rooms, "rooms_total_lessons": len(lessons),
+            "rooms_exact_status": status, "rooms_fallback": rooms_fallback}
 
 
 def run_classroom_assignment(time_limit_s: float, workers: int, log: bool,
@@ -3715,7 +3997,8 @@ def run_classroom_assignment(time_limit_s: float, workers: int, log: bool,
             locked_classrooms=locked_classrooms or None,
             plessi_data=plessi_data,
         )
-        if result is None:
+        rooms_fallback = result is None
+        if rooms_fallback:
             print(f"[rooms] CP-SAT infeasible ({status}); fallback greedy")
             result = greedy_classroom_assignment(
                 lessons, rooms, prefer_home=prefer_home,
@@ -3724,8 +4007,12 @@ def run_classroom_assignment(time_limit_s: float, workers: int, log: bool,
             )
         with SessionLocal() as db:
             n = engine_io.apply_room_mapping(db, active.id, result)
+        # `rooms_fallback` tells the UI the exact solve was INFEASIBLE and
+        # what it holds is the approximate greedy placement, instead of the
+        # step reading as a clean success (finding 35a).
         update_run(rid, progress=1.0, metrics={
             "rooms_assigned": n, "lessons": len(lessons),
+            "rooms_exact_status": status, "rooms_fallback": rooms_fallback,
         })
         print(f"[rooms] {n}/{len(lessons)} lezioni hanno un'aula")
 
@@ -4424,6 +4711,10 @@ def run_decomposition_temporal(*, time_a: float = 60.0,
             coteach_groups = engine_io.coteach_groups_for_solver(_db_co)
             group_assignments = engine_io.group_assignments_for_solver(
                 _db_co)
+            # 08b + 34 for the temporal decomposition (per-day, all classes).
+            import cpsat_v2_timetable as cv2  # type: ignore
+            _t_class_flags = engine_io.class_flags_from_db(_db_co)
+            _t_special_room = cv2.build_special_room_ctx(_db_co)
         if locked_snap:
             print(f"[temporal] native lock path: {len(locked_snap)} "
                   f"locked lessons fed to solver")
@@ -4449,6 +4740,8 @@ def run_decomposition_temporal(*, time_a: float = 60.0,
             locked_by_day=locked_by_day or None,
             coteach_groups=coteach_groups or None,
             group_assignments=group_assignments or None,
+            special_room_ctx=_t_special_room,
+            class_flags=_t_class_flags,
         )
         update_run(rid, progress=0.85)
 

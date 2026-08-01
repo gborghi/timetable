@@ -402,12 +402,18 @@ def coteach_group_to_dsl(class_name: str, subject: str,
             f'forall l2 in lessons where l2.class == {_quote(class_name)}'
             f' and l2.subject == {_quote(subject)}'
             f' and l2.teacher == {_quote(t)}: '
-            f'same_day(l1.slot, l2.slot)')
+            # Slot-equality, NOT same-day: a compresenza means principal and
+            # codoc share the SAME (day, hour) cell. `same_day` alone would
+            # only force them onto the same weekday, letting the gate accept
+            # two teachers "co-teaching" at different hours (finding 37).
+            f'same_day(l1.slot, l2.slot)'
+            f' and hour(l1.slot) == hour(l2.slot)')
     return out
 
 
 def plesso_commuting_rule_to_dsl(
     rule, *, teacher_name: str | None = None,
+    entity_name: str | None = None,
 ) -> list[str]:
     """Translate one PlessoCommutingRule into a list of DSL strings.
 
@@ -434,15 +440,22 @@ def plesso_commuting_rule_to_dsl(
     Returns the list of DSL clause strings (one per directed plesso
     pair). For symmetric rules both directions are emitted.
 
-    Raises ``NotImplementedError`` for entity_kind in {'class',
-    'group'}; those use a slightly different structure (class-side
-    iteration) and can be added incrementally.
+    ``entity_kind`` may be 'teacher', 'class' or 'group' (finding 15): the
+    clause is identical except the pair is bound on that entity's lesson
+    attribute (``l.teacher`` / ``l.class`` / ``l.group``), all of which the
+    DSL lesson world exposes. So a class that moves to the gym in the other
+    site, or an articulated group, gets the same no-consecutive-move rule
+    as a commuting teacher. ``entity_name`` (or the legacy ``teacher_name``)
+    scopes a per-entity rule; omit it for a kind-wide rule.
     """
     kind = getattr(rule, "entity_kind", None) or rule.get("entity_kind")
-    if kind != "teacher":
+    _BIND_ATTR = {"teacher": "teacher", "class": "class", "group": "group"}
+    bind_attr = _BIND_ATTR.get(kind)
+    if bind_attr is None:
         raise NotImplementedError(
             f"plesso_commuting_rule_to_dsl: entity_kind={kind!r} "
-            "not yet supported (only 'teacher')")
+            "not supported (expected 'teacher' / 'class' / 'group')")
+    entity_name = entity_name or teacher_name
 
     def _attr(name, default=None):
         if hasattr(rule, name):
@@ -468,17 +481,16 @@ def plesso_commuting_rule_to_dsl(
     if symmetric:
         pairs.append((to_pl, from_pl))
 
-    # Teacher filter
-    if entity_id is not None and teacher_name:
-        l1_teacher = (
-            f' and l1.teacher == {_quote(teacher_name)}')
-        l2_teacher = (
-            f' and l2.teacher == {_quote(teacher_name)}')
+    # Entity filter (teacher / class / group -- finding 15). A per-entity
+    # rule pins the name; a kind-wide rule binds the pair to the SAME
+    # entity so only one teacher/class/group's own consecutive move is
+    # forbidden, never two different ones sharing a slot.
+    if entity_id is not None and entity_name:
+        l1_teacher = f' and l1.{bind_attr} == {_quote(entity_name)}'
+        l2_teacher = f' and l2.{bind_attr} == {_quote(entity_name)}'
     else:
-        # Kind-wide: pair shares a teacher (resolved via
-        # l1/l2 binding).
         l1_teacher = ''
-        l2_teacher = ' and l2.teacher == l1.teacher'
+        l2_teacher = f' and l2.{bind_attr} == l1.{bind_attr}'
 
     # Allowed break exception (only for allowed_break_only).
     if allowed_break_only and bs is not None and be is not None:
@@ -559,6 +571,7 @@ def seed_implicit_hardcoded(
     enforce_class_day_load: bool = True,
     enforce_max_per_day_triple: bool = True,
     enforce_max_prof_hours_per_day: bool = True,
+    class_flags: dict | None = None,
 ) -> list[str]:
     """Return the list of DSL strings that encode the legacy
     hardcoded HARD constraints for the given ``profs`` map.
@@ -579,6 +592,15 @@ def seed_implicit_hardcoded(
         classes = sorted({c for p in profs.values()
                           for c in p.get("classi", {})})
     classes = sorted(classes)
+
+    # Per-class HARD-invariant overrides (finding 08b): a class-card toggle
+    # turned off suppresses that class's clause here, so the seed the OO /
+    # week solver consumes matches the class card. class_flags=None keeps
+    # every clause (zero-drift with the pre-08b seed).
+    try:
+        from engine.cpsat_v2_timetable import class_enforces as _ce  # type: ignore
+    except ImportError:
+        from cpsat_v2_timetable import class_enforces as _ce  # type: ignore
 
     # --- per-cattedra cap (MAX_PER_DAY_TRIPLE) ---
     if enforce_max_per_day_triple:
@@ -601,17 +623,21 @@ def seed_implicit_hardcoded(
     # --- HARD-1 + HARD-2: cl_day_load in {0, 4, 5, 6} ---
     if enforce_class_day_load:
         for cl in classes:
-            out.append(class_day_load_in_to_dsl(
-                cl, list(class_day_load_allowed)))
+            if _ce(class_flags, cl, "max_6_per_day", True):
+                out.append(class_day_load_in_to_dsl(
+                    cl, list(class_day_load_allowed)))
 
     # --- enforce_no_holes per class ---
     if enforce_no_holes:
         for cl in classes:
-            out.append(class_no_holes_to_dsl(cl))
+            if _ce(class_flags, cl, "no_holes", True):
+                out.append(class_no_holes_to_dsl(cl))
 
     # --- HARD-3: presence at h=11 per class ---
     if enforce_h3_presence:
         for cl in classes:
+            if not _ce(class_flags, cl, "exit_after_12", True):
+                continue
             if h3_hour == 11:
                 out.append(class_h11_presence_to_dsl(cl))
             else:
@@ -633,6 +659,8 @@ def seed_implicit_hardcoded(
             # and emit the school's own spelling -- an exact-literal
             # match silently skipped every school naming the subject
             # "Scienze motorie". See ``cv2.subject_key``.
+            if not _ce(class_flags, cl, "motorie_pairs", True):
+                continue
             motorie = next(
                 (s for p in profs.values()
                  for s in p.get("classi", {}).get(cl, {})
@@ -641,10 +669,13 @@ def seed_implicit_hardcoded(
             if motorie is not None:
                 out.append(subject_pair_must_to_dsl(cl, motorie))
 
-    # --- HARD-A: Mat/Ita pair_exists ---
+    # --- HARD-A: Mat/Ita pair_exists (per-class, per-subject toggle) ---
     if enforce_math_italian_pair:
+        _flag_by_subj = {"Matematica": "dual_math", "Italiano": "dual_italian"}
         for cl in classes:
             for subj in ("Matematica", "Italiano"):
+                if not _ce(class_flags, cl, _flag_by_subj[subj], True):
+                    continue
                 has_subj = any(
                     subj in p.get("classi", {}).get(cl, {})
                     for p in profs.values())
