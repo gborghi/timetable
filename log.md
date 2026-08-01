@@ -1200,3 +1200,70 @@ db) + _cp_repair + `PhaseBDaySolver` (costruisce class_flags da db).
   colloca 1935/2115 rispettando i plessi.
 
 113 test meta verdi, ruff pulito. Migrata `liceo60.db` allo schema corrente.
+
+## ✅ DSL no-good gate sul solutore per-giorno (2026-08-01) — audit H6/H12
+
+**Il buco (H6).** Le regole HARD DSL *non compilabili* ma *valutabili* (es.
+`forall c in classes: count l in lessons where ... <= N` — `forall` su una
+sorgente diversa da `lessons`, o aggregati `count`/`sum` che `dsl_to_cpsat`
+non emette) erano applicate SOLO sul path monolitico settimanale
+(`_solve_phase_b_week` → `dsl_cp_gate.solve_with_dsl_refinement`). Il
+solutore per-giorno `cpsat_v2_timetable.solve_phase_b_for_day` compilava il
+frammento compilabile ma registrava le regole non compilabili come
+`compile_failed:` e le SALTAVA. Quindi su day scope, spectral, temporal,
+metis, curriculum e la ricucitura CG l'engine non riusciva a PRODURRE un
+orario conforme (fail-closed a valle in `is_hard_feasible`, ma nessuna
+soluzione valida generata).
+
+**La fix.** `solve_phase_b_for_day` avvolge ora il singolo `solver.Solve`
+in un loop verify + no-good (max 8 iter) che rispecchia il path
+settimanale, riusando `dsl_cp_gate.verify_dsl_hard` / `add_nogood`:
+- nuovo parametro `dsl_hard_expressions`: le regole HARD vengono compilate
+  (frammento compilabile → vincoli nativi) e si rileva quali il compiler
+  NON emette guardando il delta dei `compiler.diagnostics`. Il gate si
+  attiva SOLO se esiste ≥1 regola non compilabile → quando tutte compilano
+  (o non ce ne sono) il path single-shot resta byte-identico.
+- **riconciliazione della forma dello slot**: il `slot` per-giorno è a
+  4-tuple `(prof, class, subj, hour)` (day fisso), mentre `verify_dsl_hard`
+  / `add_nogood` / il world builder vogliono la 5-tuple. Si costruisce
+  `_produced` a 5-tuple aggiungendo il `day` fisso e si usa `slot_5` (già
+  presente) per il no-good, così il no-good vieta l'assegnamento esatto.
+- **day-projection**: `dsl_cp_gate.verify_dsl_hard`/`_build_world` accettano
+  `day=`; il world proietta `days` al solo giorno risolto. Senza, una
+  pragma per-giorno (`class_day_load_in`) sui 5 giorni assenti leggerebbe
+  load 0 e darebbe falsi positivi. Si verificano SOLO le regole non
+  compilabili (le compilabili sono già vincoli nativi).
+- fail-closed di default (`PITANTUM_DSL_GATE_STRICT`), keep-partial con 0.
+
+**Cablaggio (il gate raggiunge ogni path non-settimanale).**
+`dsl_hard_expressions` filato in: run_phase_b day path (+ ora forza il
+monolitico per-giorno quando esistono HARD DSL, come già per aule
+speciali/plessi/coteach), `solve_monolithic_day`,
+`decomposition_loop.run_partitioned_pipeline` (force-mono + forward a tutte
+le 4 chiamate), metis, curriculum, temporal (solve_day + worker 15-tuple +
+pipeline), e **CG completion** (`_completion_solver` → `solve_phase_b_for_day`,
+così H12 eredita il gate; prima la CG solo verificava e segnalava).
+
+**Validazione (solutore eseguito davvero, DB scratch isolati).**
+- 3 unit test nuovi (`test_dsl_gate_phase_b_day.py`): regola non
+  compilabile enforced col gate, invariato senza, fail-closed su
+  violazione forzata (lock). Verdi.
+- **Before/after diretto sui 90 dati veri**: 1A Matematica cade all'ora 8
+  (VIOLA) senza gate → all'ora 10 (PULITO) col gate, copertura invariata.
+- **Settimana assemblata (90 classi)**: regola non compilabile PULITA su
+  tutti i 6 giorni, 2700/2700 lezioni, ora 8 assente. `is_hard_feasible`
+  resta False per UN SOLO motivo — `min_free_days viol: prof Dis-132` — cioè
+  il floor giorni-liberi CROSS-DAY che la decomposizione per-giorno non
+  coordina (limite PRE-ESISTENTE, ortogonale al gate): azzerando
+  `min_free_days` la STESSA settimana gated è hard-feasible → attivabile.
+- Suite veloce verde + `ruff check webui/` pulito. Corretto un test
+  pre-esistente rotto (`test_hard_check_context`: la chiave
+  `dsl_hard_expressions` era già fornita da `_hard_check_ctx` da un audit
+  precedente ma l'assert non era stato aggiornato — falliva già su HEAD).
+
+**Residuo onesto.** (1) Il gate enforce solo regole *valutabili*: una regola
+HARD né compilabile né valutabile (`evaluate_safe` → True su errore) passa
+silenziosamente — è il residuo H6 noto. (2) Il floor cross-day
+`min_free_days` non è coordinato dalla decomposizione per-giorno (pre-esiste,
+non toccato qui): su scuole multi-giorno l'attivazione richiede week scope o
+un post-pass metaeuristico.
