@@ -1086,14 +1086,23 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
             if _special_room_ctx:
                 print(f"[phase_b] aule speciali: capienza per kind "
                       f"{_special_room_ctx[1]}")
-                if use_decomposition and len(classes) >= 8:
-                    print("[phase_b] NB: la capienza aule speciali e' "
-                          "imposta solo su scope 'week' o senza "
-                          "decomposizione; con la decomposizione spettrale "
-                          "usa il preset settimanale per garantirla.")
+            # Audit H8/H10: the spectral stages model NONE of special-room
+            # capacity, plessi commuting, coteach, sostegno or intra-class
+            # parallel (disjoint class subsets can't see a global per-slot cap
+            # or a shared-teacher rule). When any is present, fall back to the
+            # monolithic per-day path (which does model them) instead of only
+            # warning and shipping a violation the validator then rejects.
+            _needs_mono = (bool(_special_room_ctx) or bool(_plessi_ctx)
+                           or bool(coteach_groups)
+                           or bool(support_assignments)
+                           or bool(parallel_groups))
+            if _needs_mono and use_decomposition and len(classes) >= 8:
+                print("[phase_b] decomposizione spettrale disattivata: "
+                      "aule speciali / plessi / coteach / sostegno / parallel "
+                      "non decomponibili per cluster -> per-day monolitico")
 
             if (use_decomposition and len(classes) >= 8
-                    and not group_assignments):
+                    and not group_assignments and not _needs_mono):
                 import decomposition_spectral_v2 as dec  # type: ignore
                 M, classes_v, _ = dec.build_adjacency(profs)
                 labels, _ = dec.spectral_cluster(M, k)
@@ -2594,21 +2603,26 @@ def run_column_generation(*, time_budget_s: float = 60.0,
                   f"{_w.get('constraint')} non modellabile nel pricer "
                   f"(branch-and-price, cross-column) -- "
                   f"{_w.get('suggestion')}")
-        if new_sol is None or not info.get("feasible_after_assembly"):
+        if new_sol is None or not (info.get("feasible_after_assembly")
+                                   or info.get("feasible_after_completion")):
             update_run(rid_inner, progress=1.0,
                         metrics={**info, "feasible": False},
                         error="CG skeleton non ha trovato una "
                               "soluzione feasible (vedi warnings)")
             return
         v, m = meta.compute_soft(new_sol, profs)
+        # Audit H13: activate only if the produced timetable is actually
+        # hard-feasible with the full DSL-aware ctx -- not a hardcoded True.
+        _cg_feas = meta.is_hard_feasible(
+            new_sol, profs, **_hard_check_ctx_fresh())
         with SessionLocal() as db:
             sid = engine_io.import_solution_into_db(
                 db, new_sol,
                 name=f"CG run {rid_inner}",
                 kind="cg",
                 obj_value=float(v),
-                metrics={**m, **info, "feasible": True},
-                make_active=True,
+                metrics={**m, **info, "feasible": _cg_feas},
+                make_active=_cg_feas,
             )
             n_touched = _apply_locked_classrooms(db, sid, locked_snap)
             if n_touched:
@@ -3195,7 +3209,9 @@ def run_full_pipeline(profile: str,
                 except Exception as e:  # noqa: BLE001
                     print(f"[full] cg error: {e}")
                     continue
-                if new_sol is not None and info.get("feasible_after_assembly"):
+                if new_sol is not None and (
+                        info.get("feasible_after_assembly")
+                        or info.get("feasible_after_completion")):
                     v, m = meta.compute_soft(new_sol, state["profs"])
                     with SessionLocal() as db:
                         sid = engine_io.import_solution_into_db(
