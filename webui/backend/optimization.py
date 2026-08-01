@@ -750,8 +750,12 @@ def _norm_joint_vars(jv: dict | None) -> dict | None:
     if not jv or not jv.get("enabled"):
         return None
     obj = jv.get("obj") or {}
+    cont = jv.get("room_continuity") or "none"
+    if cont not in ("none", "day", "week", "soft"):
+        cont = "none"
     return {
         "enabled": True,
+        "room_continuity": cont,
         "obj_home_room": bool(obj.get("home_room", True)),
         "obj_room_pref": bool(obj.get("room_pref", True)),
         "obj_special_overflow": bool(obj.get("special_overflow", True)),
@@ -788,7 +792,7 @@ def _add_joint_rooms(model, slot, ctx: dict, jv: dict, *, plessi_data=None):
                 model.Add(occ >= v)
             model.Add(occ <= sum(vars_))
             cell_occ[cell] = occ
-    return ca.add_joint_room_vars(
+    x, obj_terms, info = ca.add_joint_room_vars(
         model, cell_occ, cell_lessons, ctx["classrooms"],
         plessi_data=plessi_data,
         want_home_bonus=jv["obj_home_room"],
@@ -796,6 +800,27 @@ def _add_joint_rooms(model, slot, ctx: dict, jv: dict, *, plessi_data=None):
         want_overflow=jv["obj_special_overflow"],
         want_plessi=jv["obj_plessi"],
     )
+
+    # Room-continuity (Stage 3): a global mode from the joint-vars picker,
+    # overlaid with per-class pragmas from the general DSL / stored presets.
+    # A pinned class (room_policy='fissa' / enforced) is already single-room
+    # HARD via _can_host, so the GLOBAL mode skips it; a per-class pragma
+    # still wins where it is explicitly named.
+    modes: dict = {}
+    g = (jv.get("room_continuity") or "none")
+    if g != "none":
+        pinned = set(ctx.get("home_by_class") or {})
+        for (cl, _s, _d, _h) in cell_lessons:
+            if cl not in pinned:
+                modes[cl] = g
+    for cl, mode in (ctx.get("continuity_dsl") or {}).items():
+        modes[cl] = mode  # explicit per-class pragma overrides the global
+    if modes:
+        cont_terms = ca.add_room_continuity_constraints(
+            model, x, cell_lessons, modes)
+        obj_terms = list(obj_terms) + list(cont_terms)
+        info["continuity_classes"] = len(modes)
+    return x, obj_terms, info
 
 
 # ----------------------------------------------------------------------

@@ -1275,6 +1275,20 @@ def _eval_call(node: Call, env, world):
         return _eval_free_day_choice_3way(
             world, str(pos[0]),
             [int(v) for v in pos[1:4]])
+    # ----- Room-continuity pragmas -----
+    # class_same_room_per_day / _per_week (HARD) and class_room_changes_min
+    # (SOFT) are ROOM constraints: room vars exist only in the joint
+    # (day,hour,room) solver, which enforces them as real CP-SAT
+    # constraints (see classroom_assignment.add_room_continuity_constraints,
+    # fed by engine_io.parse_room_continuity_pragmas). They are recognised
+    # here so a stored preset / typed rule does not raise on the post-hoc
+    # evaluator, but they are NOT post-hoc-checkable (the room kind needed
+    # to exempt gym/lab is not in the eval world) -> treated as satisfied.
+    if name in ("class_same_room_per_day", "class_same_room_per_week",
+                "class_room_changes_min"):
+        if len(pos) < 1:
+            raise DSLError(f"{name} richiede il nome della classe")
+        return True
     raise DSLError(f"funzione sconosciuta: {name!r}")
 
 

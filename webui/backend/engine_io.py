@@ -1226,6 +1226,56 @@ def compresenza_resolver(db: Session):
     return _shares
 
 
+_ROOM_CONTINUITY_PRAGMAS = (
+    ("class_same_room_per_day", "day"),
+    ("class_same_room_per_week", "week"),
+    ("class_room_changes_min", "soft"),
+)
+
+
+def room_continuity_from_dsl(db: Session) -> dict:
+    r"""Parse room-continuity pragmas out of the stored general-DSL
+    constraints and return ``{class_name -> "day" | "week" | "soft"}``.
+
+    The pragmas are the single mechanism the user asked for through TWO
+    doors: a saved ``GeneralConstraint`` row is a *preset*, and the same
+    text typed into the generic-DSL box is the ad-hoc form. Recognised:
+
+    * ``class_same_room_per_day(<class>)``  -> HARD same room within a day
+    * ``class_same_room_per_week(<class>)`` -> HARD same room all week
+    * ``class_room_changes_min(<class>)``   -> SOFT minimise room changes
+
+    A class named by more than one pragma keeps the strictest (day > week
+    > soft). Room vars only exist in the joint model, so these are applied
+    there (see ``classroom_assignment.add_room_continuity_constraints``);
+    unlike ordinary general-DSL rules they are NOT evaluated post-hoc.
+    """
+    try:
+        rows = db.query(models.GeneralConstraint).all()
+    except Exception:
+        return {}
+    return parse_room_continuity_pragmas(
+        getattr(r, "expression", "") or "" for r in rows)
+
+
+def parse_room_continuity_pragmas(expressions) -> dict:
+    r"""Pure parser (no DB): scan DSL ``expressions`` for the three
+    room-continuity pragmas and return ``{class -> mode}``, strictest
+    wins (day > week > soft)."""
+    import re
+    rank = {"day": 3, "week": 2, "soft": 1}
+    out: dict[str, str] = {}
+    for expr in expressions:
+        for name, mode in _ROOM_CONTINUITY_PRAGMAS:
+            for m in re.finditer(name + r"\(\s*([^)]+?)\s*\)", expr or ""):
+                cl = m.group(1).strip().strip("'\"").strip()
+                if not cl:
+                    continue
+                if cl not in out or rank[mode] > rank[out[cl]]:
+                    out[cl] = mode
+    return out
+
+
 def joint_room_ctx_from_db(db: Session) -> dict:
     r"""Placement-INDEPENDENT room metadata for the joint (day,hour,room)
     solver -- everything ``classroom_assignment.add_joint_room_vars``
@@ -1249,6 +1299,7 @@ def joint_room_ctx_from_db(db: Session) -> dict:
         "home_by_class": dict(pins["pin"]),
         "forbidden_by_class": dict(pins["forbidden"]),
         "shares": compresenza_resolver(db),
+        "continuity_dsl": room_continuity_from_dsl(db),
     }
 
 

@@ -45,6 +45,10 @@
     // da ottimizzare: sfilare una spunta la ESCLUDE dall'obiettivo.
     joint_vars: {
       enabled: false,
+      // Continuita' d'aula globale (classi non fissate). Override per
+      // classe via DSL/preset: class_same_room_per_day/_per_week/
+      // class_room_changes_min.
+      room_continuity: 'none',
       obj: {
         buchi: true, sixth: true, day_load: true,
         home_room: true, room_pref: true, special_overflow: true,
@@ -599,6 +603,24 @@
                 Plessi commuting
               </label>
             </div>
+          </div>
+          <div class="pt-2">
+            <label class="text-xs font-semibold text-ink-600">
+              Continuita' d'aula (classi non fissate)
+            </label>
+            <select class="mt-1 block w-full text-sm rounded border-ink-200"
+                    bind:value={step3.joint_vars.room_continuity}>
+              <option value="none">Nessuna (aula libera per ora)</option>
+              <option value="day">Stessa aula nello stesso giorno (HARD)</option>
+              <option value="week">Stessa aula tutta la settimana (HARD)</option>
+              <option value="soft">Minimizza i cambi d'aula (SOFT)</option>
+            </select>
+            <p class="text-xs text-ink-500 mt-1">
+              Le materie con aula obbligata (palestra/lab) restano esenti.
+              Override per singola classe via DSL/preset:
+              <code>class_same_room_per_day(1A)</code>,
+              <code>class_room_changes_min(1A)</code>.
+            </p>
           </div>
         {/if}
       </div>

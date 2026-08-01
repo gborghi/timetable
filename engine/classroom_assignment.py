@@ -643,6 +643,88 @@ def add_joint_room_vars(
     return x, obj_terms, info
 
 
+def add_room_continuity_constraints(
+    model,
+    x: dict,
+    cell_lessons: dict,
+    modes: dict,
+    *,
+    weight: int = 40,
+) -> list:
+    r"""Room-continuity requirements on the JOINT room vars ``x`` (from
+    :func:`add_joint_room_vars`). A class should change room as seldom as
+    possible: this models that as HARD or SOFT, per class.
+
+    ``modes`` is ``{class_name -> "day" | "week" | "soft"}``:
+
+    * ``"day"``  -- HARD: all the class' ORDINARY lessons in one day sit
+      in the SAME room (it may still change from day to day).
+    * ``"week"`` -- HARD: the same ordinary room for the WHOLE week (the
+      ``fissa`` preset, derived rather than pinned to a named room).
+    * ``"soft"`` -- SOFT: minimise the number of DISTINCT ordinary rooms
+      the class uses over the week (``weight`` per extra room).
+
+    Lessons carrying a ``required_kind`` (gym / lab) are EXEMPT: forcing
+    Scienze motorie into the class' ordinary room would be infeasible.
+    They are simply not tied to the class' continuity room -- the same
+    derogation ``room_policy='fissa'`` already grants via ``_can_host``.
+
+    Returns SOFT objective terms (minimised; empty for HARD-only modes),
+    which the caller folds into the joint objective.
+    """
+    if not modes:
+        return []
+    # Index x vars by class -> only ORDINARY cells (no required_kind).
+    by_class_day: dict[tuple, list] = defaultdict(list)   # (cl,d) -> [(cell,r,var)]
+    by_class: dict[str, list] = defaultdict(list)         # cl -> [(cell,r,var)]
+    rooms_by_class: dict[str, set] = defaultdict(set)
+    for (cell, rn), var in x.items():
+        cl, subj, d, h = cell
+        if cl not in modes:
+            continue
+        if (cell_lessons.get(cell, {}).get("required_kind") or ""):
+            continue  # special-kind lesson: exempt from ordinary continuity
+        by_class_day[(cl, d)].append((cell, rn, var))
+        by_class[cl].append((cell, rn, var))
+        rooms_by_class[cl].add(rn)
+
+    obj_terms: list = []
+    for cl, mode in modes.items():
+        rnames = sorted(rooms_by_class.get(cl, ()))
+        if len(rnames) <= 1:
+            continue  # 0/1 candidate room -> nothing to constrain
+        if mode == "day":
+            days = sorted({d for (c, d) in by_class_day if c == cl})
+            for d in days:
+                triples = by_class_day.get((cl, d), [])
+                if not triples:
+                    continue
+                use = {}
+                for rn in rnames:
+                    ur = model.NewBoolVar(f"crd_{cl}_{d}_{rn}")
+                    use[rn] = ur
+                for (cell, rn, var) in triples:
+                    model.Add(var <= use[rn])
+                model.Add(sum(use.values()) <= 1)
+        elif mode == "week":
+            use = {}
+            for rn in rnames:
+                ur = model.NewBoolVar(f"crw_{cl}_{rn}")
+                use[rn] = ur
+            for (cell, rn, var) in by_class.get(cl, []):
+                model.Add(var <= use[rn])
+            model.Add(sum(use.values()) <= 1)
+        elif mode == "soft":
+            use = {}
+            for rn in rnames:
+                ur = model.NewBoolVar(f"crs_{cl}_{rn}")
+                use[rn] = ur
+                obj_terms.append(int(weight) * ur)
+            for (cell, rn, var) in by_class.get(cl, []):
+                model.Add(var <= use[rn])
+    return obj_terms
+
+
 def _plesso_pins(plessi_data) -> dict[tuple[str, int], int]:
     r"""``{('class'|'teacher', entity_id) -> plesso_id}`` per le policy
     che inchiodano un'entita\` a un plesso preciso."""

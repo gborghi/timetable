@@ -219,3 +219,79 @@ def test_add_joint_rooms_coteacher_or_indicator():
     assert s.Solve(m) in (cp_model.OPTIMAL, cp_model.FEASIBLE)
     chosen = [rn for (cell, rn), var in x.items() if s.Value(var) == 1]
     assert len(chosen) == 1  # exactly one room for the shared cell
+
+
+# --- room continuity (Stage 3) ----------------------------------------
+def _mk_cell_x(m, cells_rooms):
+    """Build joint-style x vars: {(cell,room)->BoolVar} with exactly-one
+    room per cell. cells_rooms: {cell -> [room names]}."""
+    x = {}
+    for cell, rooms in cells_rooms.items():
+        vs = []
+        for rn in rooms:
+            v = m.NewBoolVar(f"x_{cell}_{rn}")
+            x[(cell, rn)] = v
+            vs.append(v)
+        m.Add(sum(vs) == 1)
+    return x
+
+
+def test_continuity_day_forces_same_room():
+    """Same room within a day (HARD): cell2 can only use B, so cell1 (which
+    could use A or B) is dragged to B too."""
+    m = cp_model.CpModel()
+    c1 = ("1A", "Matematica", 1, 8)
+    c2 = ("1A", "Storia", 1, 9)
+    x = _mk_cell_x(m, {c1: ["A", "B"], c2: ["B"]})
+    meta = {c1: {"required_kind": ""}, c2: {"required_kind": ""}}
+    obj = ca.add_room_continuity_constraints(m, x, meta, {"1A": "day"})
+    assert obj == []  # HARD -> no soft terms
+    s = cp_model.CpSolver()
+    assert s.Solve(m) in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+    assert s.Value(x[(c1, "B")]) == 1 and s.Value(x[(c1, "A")]) == 0
+
+
+def test_continuity_special_kind_is_exempt():
+    """A required_kind lesson (gym) is NOT tied to the ordinary room: the
+    class can be in room A for Matematica and in the gym for PE."""
+    m = cp_model.CpModel()
+    c1 = ("1A", "Matematica", 1, 8)
+    gym = ("1A", "Scienze motorie", 1, 9)
+    x = _mk_cell_x(m, {c1: ["A", "B"], gym: ["Palestra"]})
+    meta = {c1: {"required_kind": ""}, gym: {"required_kind": "palestra"}}
+    obj = ca.add_room_continuity_constraints(m, x, meta, {"1A": "day"})
+    s = cp_model.CpSolver()
+    assert s.Solve(m) in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+    assert s.Value(x[(gym, "Palestra")]) == 1  # gym unaffected
+
+
+def test_continuity_soft_minimizes_distinct_rooms():
+    """SOFT: minimizing distinct rooms puts both lessons in ONE room when
+    a shared room is eligible for both."""
+    m = cp_model.CpModel()
+    c1 = ("1A", "Matematica", 1, 8)
+    c2 = ("1A", "Storia", 1, 9)
+    x = _mk_cell_x(m, {c1: ["A", "B"], c2: ["A", "B"]})
+    meta = {c1: {"required_kind": ""}, c2: {"required_kind": ""}}
+    obj = ca.add_room_continuity_constraints(m, x, meta, {"1A": "soft"},
+                                             weight=40)
+    assert obj  # soft terms exist
+    m.Minimize(sum(obj))
+    s = cp_model.CpSolver()
+    assert s.Solve(m) in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+    r1 = "A" if s.Value(x[(c1, "A")]) else "B"
+    r2 = "A" if s.Value(x[(c2, "A")]) else "B"
+    assert r1 == r2  # one distinct room, not two
+
+
+def test_parse_room_continuity_pragmas():
+    """DSL/preset pragmas -> per-class continuity modes, strictest wins."""
+    exprs = [
+        "class_same_room_per_day(1A)",
+        "class_room_changes_min('2B')",
+        "class_same_room_per_week( 3C )",
+        # 1A named twice: day (strictest) must win over soft
+        "class_room_changes_min(1A)",
+    ]
+    got = engine_io.parse_room_continuity_pragmas(exprs)
+    assert got == {"1A": "day", "2B": "soft", "3C": "week"}

@@ -574,6 +574,12 @@ class JointVarsIn(BaseModel):
     ``slot`` block stays free in this stage."""
     enabled: bool = False
     obj: JointObjIn = Field(default_factory=JointObjIn)
+    # Room-continuity requirement applied globally to non-pinned classes.
+    #   "none" | "day" (same room within a day, HARD) |
+    #   "week" (same room all week, HARD) | "soft" (minimise room changes).
+    # Per-class overrides come from general-DSL / preset pragmas
+    # (class_same_room_per_day / _per_week / class_room_changes_min).
+    room_continuity: str = "none"
 
 
 class PhaseBRunIn(BaseModel):
