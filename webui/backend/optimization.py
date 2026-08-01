@@ -2774,7 +2774,10 @@ def run_full_pipeline(profile: str,
                     _plessi_ctx = cv2.build_plessi_ctx(_db_ctx)
                     _special_room_ctx = cv2.build_special_room_ctx(_db_ctx)
                     _class_flags = engine_io.class_flags_from_db(_db_ctx)
-                dc_value = cv2.solve_phase_a(
+                _pb_scope = (pb_kwargs or {}).get("cp_sat_scope", "day")
+                # WEEK scope runs its own Phase A internally (soft_hint); the
+                # decomposition/per-day branches need dc_value up front.
+                dc_value = None if _pb_scope == "week" else cv2.solve_phase_a(
                     profs, classes, triples, class_profs,
                     time_limit=(pb_kwargs or {}).get("time_a", 60),
                     workers=workers, log=False,
@@ -2782,7 +2785,36 @@ def run_full_pipeline(profile: str,
                 )
                 state["dc_value"] = dc_value
                 full_solution: dict = {}
-                if ((pb_kwargs or {}).get("use_decomposition", True)
+                if _pb_scope == "week":
+                    # The monolithic WEEK solve is the only engine that keeps
+                    # 100% coverage + honours the HARD DSL (free-day) rules at
+                    # scale; the full pipeline could not reach it before (it was
+                    # locked to decomposition/per-day). Classic week + separate
+                    # exact rooms (joint_vars=None) -- the scalable path.
+                    print("[full] phase_b: monolithic WEEK scope")
+                    ws = _run_workspace(rid)
+                    with SessionLocal() as _db_w:
+                        _lk = _read_locked_lessons(_db_w)
+                        _ct = engine_io.coteach_groups_for_solver(_db_w)
+                        _sa = engine_io.support_assignments_from_db(_db_w)
+                        _pa = engine_io.potenziamento_assignments_from_db(_db_w)
+                        _pg = engine_io.parallel_groups_for_solver(_db_w)
+                        _ga = engine_io.group_assignments_for_solver(_db_w)
+                    full_solution, _ = _solve_phase_b_week(
+                        rid=rid, ws=ws, profs=profs, classes=classes,
+                        triples=triples, class_profs=class_profs,
+                        phase_a_mode="soft_hint",
+                        time_a=(pb_kwargs or {}).get("time_a", 60),
+                        time_mono=(pb_kwargs or {}).get("time_mono", 120),
+                        workers=workers, log=False,
+                        locked_dc=_locked_day_count_from_snapshot(_lk),
+                        locked_by_day=_locked_slots_by_day(_lk),
+                        coteach_groups=_ct, support_assignments=_sa,
+                        potenziamento_assignments=_pa, parallel_groups=_pg,
+                        group_assignments=_ga,
+                        joint_vars=None,
+                    )
+                elif ((pb_kwargs or {}).get("use_decomposition", True)
                         and len(classes) >= 8):
                     M, classes_v, _ = dec.build_adjacency(profs)
                     k = (pb_kwargs or {}).get("k", 4)
