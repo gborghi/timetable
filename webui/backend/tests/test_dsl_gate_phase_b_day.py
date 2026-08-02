@@ -117,3 +117,40 @@ def test_gate_fails_closed_on_forced_violation():
         via_dsl=True, dsl_hard_expressions=[NONCOMPILABLE_HARD],
     )
     assert out_gated is None, f"expected fail-closed, got {out_gated}"
+
+
+# A HARD rule the CP compiler cannot emit AND general_dsl cannot parse: it
+# can be neither compiled natively nor certified by the evaluator -- the
+# audit H6 residual the True-on-error default used to let slip through.
+UNCERTIFIABLE_HARD = 'forall c in classes: count l in lessons where !! ::'
+
+
+def test_uncertifiable_hard_rule_fails_closed_on_day_path():
+    """A non-compilable HARD rule that also cannot be parsed/evaluated must
+    fail closed (return None), not silently ship: the day gate can neither
+    model it natively nor certify it, so accepting the solve would be the
+    silent-pass residual."""
+    cv2 = _cv2()
+    profs, classes, triples, class_profs, dc_value = _instance()
+
+    out, status = cv2.solve_phase_b_for_day(
+        1, profs, classes, triples, class_profs, dc_value,
+        time_limit=10, workers=1, class_flags=_FLAGS,
+        via_dsl=True, dsl_hard_expressions=[UNCERTIFIABLE_HARD],
+    )
+    assert out is None, f"expected fail-closed on uncertifiable HARD, got {out}"
+
+
+def test_validator_fails_closed_on_uncertifiable_hard_rule():
+    """``metaheuristics.is_hard_feasible`` must refuse to certify a solution
+    against a HARD rule it cannot parse/evaluate -- otherwise the activation
+    gate would green-light an unenforced HARD constraint."""
+    import metaheuristics as mh  # type: ignore
+    profs, classes, triples, class_profs, dc_value = _instance()
+    # A perfectly legal placement -- the only reason to reject is that the
+    # HARD rule is uncertifiable.
+    sol = {("T1", "1A", "Mat", 1, 9): 1}
+    assert mh.is_hard_feasible(
+        sol, profs, dsl_hard_expressions=[UNCERTIFIABLE_HARD]) is False
+    # Without the uncertifiable rule the same solution is feasible.
+    assert mh.is_hard_feasible(sol, profs, class_flags=_FLAGS) is True

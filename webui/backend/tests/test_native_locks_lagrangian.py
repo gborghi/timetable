@@ -1,25 +1,24 @@
-"""FU-5 — Lagrangian subgradient is lock-aware.
+"""Lagrangian subgradient: genuine bridge-coupling relaxation, lock-aware.
 
-The Lagrangian implementation is documented as a skeleton: it
-identifies bridge teachers across spectral clusters, performs a
-subgradient ascent on multipliers, and refines via inner SA. The
-multipliers themselves are tracked but do not yet feed back into a
-re-formulated primal (that would require restructuring CP-SAT).
+``run_lagrangian`` dualizes the cross-cluster bridge-teacher no-overlap
+coupling and PRICES it into each cluster's per-day CP objective
+(``solve_phase_b_for_day(..., lagrangian_penalties=...)``), so the
+multipliers genuinely steer where a bridge teacher's hours land. The
+subgradient is the real cross-cluster collision count; ascent drives it to
+a collision-free, HARD-feasible assembly.
 
-What FU-5 verifies:
-- The inner SA already honours `locks` (atoms 4-5 of the migration).
-- The subgradient computation now EXCLUDES locked slots from the
-  per-bridge violation count: if it didn't, the multipliers would
-  diverge against an unmovable floor.
-- Locks on a bridge teacher are reported as a `warnings` entry so
-  the caller has visibility into the skeleton's behaviour.
+What this verifies:
+- Locks on a bridge teacher are pinned natively in their cluster (the CP
+  solve receives them as ``locked_slots_for_day``) and therefore SURVIVE,
+  and the caller is told via a ``warnings`` entry.
+- The ascent actually resolves a genuine same-day bridge collision: it sees
+  the collision (``n_collisions > 0``), raises the multiplier
+  (``lambda_max > 0``), and converges to a collision-free feasible day.
 """
 from __future__ import annotations
 
 import os
 import sys
-
-import pytest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 BACKEND_DIR = os.path.dirname(HERE)
@@ -108,38 +107,72 @@ def test_lagrangian_locks_on_bridge_teacher_survive():
         f"{info['warnings']}")
 
 
-def test_lagrangian_subgradient_excludes_locked_slots():
-    """Drive the subgradient computation directly: with locks on a
-    bridge teacher, the violation count must NOT include those
-    slots. We compare the violation by inspecting the iterations
-    info: with all 4 ProfC slots free vs 2 of them locked, the
-    initial violation should be smaller in the locked case."""
+def _collision_school():
+    """Bridge teacher ProfC teaches 1A (cluster 0) AND 1B (cluster 1) with
+    hours on the SAME day -- so solving the clusters independently WILL
+    double-book ProfC unless the multipliers push them to disjoint hours."""
+    profs = {
+        "ProfC": {
+            "classi": {"1A": {"Sto": {"ore": 2}},
+                        "1B": {"Sto": {"ore": 2}}},
+            "min_free_days": 0,
+        },
+    }
+    dc_value = {("ProfC", "1A", "Sto", 1): 2,
+                ("ProfC", "1B", "Sto", 1): 2}
+    classes_clusters = {0: {"1A"}, 1: {"1B"}}
+    class_flags = {c: {"entry_at_8": False, "no_holes": False,
+                       "exit_after_12": False} for c in ("1A", "1B")}
+    # A deliberately COLLIDING seed: ProfC in both classes at 8,9.
+    sol = {("ProfC", "1A", "Sto", 1, 8): 1, ("ProfC", "1A", "Sto", 1, 9): 1,
+           ("ProfC", "1B", "Sto", 1, 8): 1, ("ProfC", "1B", "Sto", 1, 9): 1}
+    return profs, dc_value, sol, classes_clusters, class_flags
+
+
+def test_lagrangian_subgradient_resolves_bridge_collision():
+    """The multipliers genuinely drive the primal: a same-day bridge
+    collision is SEEN by the subgradient, raises the multiplier, and is
+    resolved into a collision-free, HARD-feasible day (the pre-fix skeleton
+    tracked lambda but never fed it back, so it could not do this)."""
     import lagrangian as lag_mod  # type: ignore
-    profs, dc_value, sol, cc = _build_initial_sol()
+    import metaheuristics as meta  # type: ignore
+    profs, dc_value, sol, cc, cf = _collision_school()
 
-    # Run with no locks: subgradient counts all 4 ProfC slots.
-    _, info_noloc = lag_mod.run_lagrangian(
-        sol, profs, dc_value,
-        time_budget_s=1.0, max_iter=1,
-        classes_clusters=cc, log=False, locks=None,
-    )
-    # The skeleton's `violation` is not exposed directly, but the
-    # multipliers reflect it: lambda_max after one step should be
-    # alpha_0 * sum_violation (alpha_0 default 1.0).
-    lam_max_noloc = info_noloc["iterations"][0]["lambda_max"]
+    # The colliding seed is not even hard-feasible (ProfC double-booked).
+    assert meta.is_hard_feasible(sol, profs, class_flags=cf) is False
 
-    # Now lock 2 of the 4 ProfC slots: subgradient should count 2
-    # less, lambda_max should be smaller.
-    locks = {("ProfC", "1A", "Sto", 1, 10),
-              ("ProfC", "1A", "Sto", 1, 11)}
-    _, info_loc = lag_mod.run_lagrangian(
+    out, info = lag_mod.run_lagrangian(
         sol, profs, dc_value,
-        time_budget_s=1.0, max_iter=1,
-        classes_clusters=cc, log=False, locks=locks,
+        time_budget_s=30.0, max_iter=8,
+        classes_clusters=cc, class_flags=cf, log=False,
     )
-    lam_max_loc = info_loc["iterations"][0]["lambda_max"]
-    # With 2 fewer counted slots, lambda_max with locks should be
-    # strictly smaller than without locks.
-    assert lam_max_loc < lam_max_noloc, (
-        f"lambda_max should decrease when locks reduce countable "
-        f"violations: noloc={lam_max_noloc} loc={lam_max_loc}")
+    assert info["n_bridges"] == 1
+    # Day 1 saw a real collision and the multiplier rose above zero.
+    day1 = [it for it in info["iterations"] if it["day"] == 1]
+    assert day1, "no day-1 ascent recorded"
+    assert day1[0]["n_collisions"] > 0, "the same-day bridge clash was missed"
+    assert max(it["lambda_max"] for it in day1) > 0, "lambda never rose"
+    # It converged and the reconstruction is accepted + hard-feasible.
+    assert 1 in info["converged_days"]
+    assert info["accepted"] is True
+    assert meta.is_hard_feasible(out, profs, class_flags=cf) is True
+    # ProfC no longer double-booked: at most one class per (day, hour).
+    busy = {}
+    for (p, cl, s, d, h), v in out.items():
+        if v and p == "ProfC":
+            busy.setdefault((d, h), set()).add(cl)
+    assert all(len(cls) == 1 for cls in busy.values()), busy
+
+
+def test_lagrangian_dual_bound_is_reported():
+    """A genuine relaxation exposes a Lagrangian dual bound (a lower bound on
+    the soft objective under the coupling) -- the skeleton never did."""
+    import lagrangian as lag_mod  # type: ignore
+    profs, dc_value, sol, cc, cf = _collision_school()
+    _out, info = lag_mod.run_lagrangian(
+        sol, profs, dc_value,
+        time_budget_s=30.0, max_iter=8,
+        classes_clusters=cc, class_flags=cf, log=False,
+    )
+    assert info["dual_bound"] is not None
+    assert isinstance(info["dual_bound"], (int, float))

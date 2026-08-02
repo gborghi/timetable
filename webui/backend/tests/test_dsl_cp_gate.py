@@ -141,3 +141,56 @@ def test_refinement_reports_unsatisfied_at_budget_exhaustion():
         solve_once, profs, [expr], max_iters=3)
     assert sol == bad
     assert unsatisfied == [expr]
+
+
+# ---- audit H6 residual: uncertifiable HARD rules must fail closed ----
+
+# A syntactically broken expression -- general_dsl.parse raises on it, so it
+# can be neither compiled natively nor certified by the evaluator.
+UNPARSEABLE_HARD = 'forall l in lessons where l.teacher ==== : :: !!'
+
+
+def test_screen_splits_violated_from_unverifiable():
+    """``screen_dsl_hard`` reports an unparseable HARD rule as
+    *unverifiable* (not silently dropped), while a genuine, checkable
+    violation lands in *violated*."""
+    import dsl_cp_gate as g
+    profs = {"T1": {"classi": {"1A": {"Mat": {"ore": 2}}}, "max_hours": 18}}
+    sol = {("T1", "1A", "Mat", 1, 8): 1, ("T1", "1A", "Mat", 1, 9): 1}
+    viol_expr = ('forall l in lessons where l.teacher == "T1" '
+                 'and l.day == 1 and l.hour == 8: false')
+    violated, unverifiable = g.screen_dsl_hard(
+        sol, profs, [viol_expr, UNPARSEABLE_HARD])
+    assert violated == [viol_expr]
+    assert unverifiable == [UNPARSEABLE_HARD]
+
+
+def test_verify_treats_unverifiable_as_not_satisfied():
+    """``verify_dsl_hard`` folds unverifiable rules into its NOT-satisfied
+    list -- so every CP-gate caller that fails closed on a non-empty list
+    fails closed on an uncertifiable HARD rule too (no silent pass)."""
+    import dsl_cp_gate as g
+    profs = {"T1": {"classi": {"1A": {"Mat": {"ore": 1}}}, "max_hours": 18}}
+    sol = {("T1", "1A", "Mat", 1, 9): 1}
+    assert g.verify_dsl_hard(sol, profs, [UNPARSEABLE_HARD]) == [UNPARSEABLE_HARD]
+
+
+def test_refinement_fails_closed_on_unverifiable_without_spinning():
+    """An uncertifiable HARD rule can't be fixed by a no-good; the loop
+    must surface it immediately (not burn all ``max_iters``) and return it
+    as unsatisfied so the caller fails closed."""
+    import dsl_cp_gate as g
+    profs = {"T1": {"classi": {"1A": {"Mat": {"ore": 1}}}, "max_hours": 18}}
+    good = {("T1", "1A", "Mat", 1, 9): 1}
+    calls = []
+
+    def solve_once(forbidden):
+        calls.append(len(forbidden))
+        return dict(good), "FEASIBLE"
+
+    sol, status, unsatisfied = g.solve_with_dsl_refinement(
+        solve_once, profs, [UNPARSEABLE_HARD], max_iters=8)
+    assert sol == good
+    assert unsatisfied == [UNPARSEABLE_HARD]
+    # solved exactly once -- no wasted refinement rounds on the un-fixable rule.
+    assert calls == [0], calls

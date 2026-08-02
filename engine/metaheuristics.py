@@ -619,15 +619,28 @@ def is_hard_feasible(sol, profs, verbose=False,
         for expr in expressions:
             try:
                 tree = _gd.parse(expr)
-                ok, err = _gd.evaluate_safe(tree, world)
             except Exception as exc:  # noqa: BLE001
+                # A HARD rule that cannot even be parsed can be neither
+                # compiled natively nor certified here -- accepting the
+                # solution would be the silent-pass bug (audit H6 residual).
+                # Fail closed instead of skipping it.
                 if verbose:
-                    print(f"  DSL parse failed: {expr!r} -> {exc}")
-                continue
+                    print(f"  DSL HARD unparseable -> fail-closed: "
+                          f"{expr!r} -> {exc}")
+                return False
+            ok, err = _gd.evaluate_safe(tree, world)
+            if err is not None:
+                # ``evaluate_safe`` defaults to True-on-error; a HARD rule
+                # we cannot evaluate must NOT be certified satisfied (the
+                # residual the True-on-error default was masking). Fail
+                # closed, same as a genuine violation.
+                if verbose:
+                    print(f"  DSL HARD uncertifiable -> fail-closed: "
+                          f"{expr!r} err={err}")
+                return False
             if not ok:
                 if verbose:
-                    print(f"  DSL HARD viol: {expr!r}"
-                          + (f" err={err}" if err else ""))
+                    print(f"  DSL HARD viol: {expr!r}")
                 return False
 
     return True

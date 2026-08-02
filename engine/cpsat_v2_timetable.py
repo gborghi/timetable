@@ -670,6 +670,37 @@ def solve_phase_a(profs, classes, triples, class_profs,
                 <= slots_for_day(d)
             )
 
+    # min_free_days HARD floor -- cross-day coordination for the per-day
+    # decomposition. Each teacher must keep at least
+    # ``profs[p]["min_free_days"]`` weekdays entirely free (zero day_count on
+    # every cattedra that day). The monolithic/week path enforces this via
+    # the DB-driven DSL free-day pragmas, but the NATIVE Phase A used by the
+    # decomposition (``pre_distribute_hours`` -> ``solve_phase_a``, no DB)
+    # dropped it, so a per-day-assembled week could be full-coverage yet
+    # ``is_hard_feasible``-rejected because a teacher got no free day (pure
+    # per-day solves cannot coordinate a cross-day count). Enforcing it HERE,
+    # at the day-count stage and from the SAME ``profs["min_free_days"]`` the
+    # validator reads, makes the counts reserve the free days so every
+    # downstream per-day solve inherits them and the assembled week is
+    # feasible. If locks/hours make it impossible, Phase A returns infeasible
+    # -- an honest, coverage-visible failure rather than a silent violation.
+    for p, lst in triples_by_prof.items():
+        mfd = int((profs.get(p, {}) or {}).get("min_free_days", 0) or 0)
+        if mfd <= 0:
+            continue
+        busy_days = []
+        for d in DAYS:
+            terms = [day_count[(p, cl, s, d)] for cl, s in lst
+                     if (p, cl, s, d) in day_count]
+            if not terms:
+                continue
+            b = model.NewBoolVar(f"busy_{p}_{d}")
+            model.Add(sum(terms) >= 1).OnlyEnforceIf(b)
+            model.Add(sum(terms) == 0).OnlyEnforceIf(b.Not())
+            busy_days.append(b)
+        if busy_days:
+            model.Add(sum(busy_days) <= max(0, len(DAYS) - mfd))
+
     # Per (cl, day): vincoli HARD aggiornati (richiesta Giovanni).
     # cl_day_load[cl, d] e\` il numero di ore di lezione della classe
     # cl nel giorno d. Vincoli imposti:
@@ -1304,6 +1335,7 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
                           special_room_ctx=None,
                           class_flags=None,
                           *,
+                          lagrangian_penalties=None,
                           diagnostics_sink=None):
     r"""Risolve il sotto-problema di un singolo giorno.
 
@@ -1691,6 +1723,24 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
     if _soft_coteach_terms:
         compiler.soft_cost_terms.extend(_soft_coteach_terms)
 
+    # ---- Lagrangian dual penalties (opt-in) ----
+    # The subgradient solver (``lagrangian.run_lagrangian``) dualizes the
+    # cross-cluster bridge-teacher no-overlap coupling: a bridge teacher may
+    # be used by at most ONE cluster in a given (day, hour), but each cluster
+    # is solved independently, so that coupling is relaxed and PRICED. For
+    # every slot of a bridge teacher ``t`` at hour ``h`` we add a soft term
+    # ``lambda[(t, h)] * slot`` so this cluster PAYS to occupy a contended
+    # hour and the CP objective steers ``t``'s (dc_value-fixed) hours toward
+    # the cheapest -- i.e. collision-free -- slots. Folding into
+    # ``soft_cost_terms`` means BOTH the initial ``Minimize`` and the
+    # ``via_dsl`` re-minimize price them. ``None`` (every non-Lagrangian
+    # caller) leaves the objective byte-identical.
+    if lagrangian_penalties:
+        for (_p, _cl, _s, _h), _var in slot.items():
+            _w = lagrangian_penalties.get((_p, _h))
+            if _w:
+                compiler.soft_cost_terms.append((int(round(_w)), _var))
+
     # ---- Plessi: dove sta il docente, ora per ora ----
     # `plessi_data=None` qui sopra non e\` una svista: il compiler DSL
     # ricava il plesso dall'aula, e in Phase B le aule non esistono
@@ -1909,37 +1959,52 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
             import dsl_cp_gate as _gate  # type: ignore
         _max_iters = 8
         _unsatisfied: list[str] = []
+        _uncertifiable = False
         status = None
         for _it in range(_max_iters):
             status = solver.Solve(model)
             if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-                break                                  # infeasible: give up
+                _unsatisfied = []              # no solution: handled below
+                break                          # infeasible: give up
             _produced = {
                 (p, cl, subj, day, h): solver.Value(slot[(p, cl, subj, h)])
                 for (p, cl, subj, _) in triples_active
                 for h in HOURS
             }
-            _unsatisfied = _gate.verify_dsl_hard(
+            _violated, _unverifiable = _gate.screen_dsl_hard(
                 _produced, profs, _noncompilable_hard, day=day)
+            if _unverifiable:
+                # HARD rule neither compiled natively nor certifiable by the
+                # evaluator (unparseable / eval raised): a no-good cannot fix
+                # it. Stop and fail closed (audit H6 residual) instead of
+                # silently shipping it.
+                _unsatisfied = _unverifiable + _violated
+                _uncertifiable = True
+                break
+            _unsatisfied = _violated
             if not _unsatisfied:
                 break                                  # fully compliant
             _gate.add_nogood(model, slot_5, _produced)
-        else:
-            # Budget exhausted with the last solve still violating. Respect
-            # PITANTUM_DSL_GATE_STRICT (same semantics as the week gate):
-            # strict (default) fails closed -- a day whose HARD DSL cannot
-            # be satisfied returns no solution, so the run degrades exactly
-            # like a genuine infeasibility (coverage drops, not activated).
-            # STRICT=0 keeps the last (violating) solution for inspection;
-            # is_hard_feasible still refuses to activate it.
+        if status in (cp_model.OPTIMAL, cp_model.FEASIBLE) and _unsatisfied:
+            # Either budget exhausted with violations still standing, or an
+            # uncertifiable HARD rule. Respect PITANTUM_DSL_GATE_STRICT
+            # (same semantics as the week gate): strict (default) fails
+            # closed -- a day whose HARD DSL cannot be satisfied returns no
+            # solution, so the run degrades exactly like a genuine
+            # infeasibility (coverage drops, not activated). STRICT=0 keeps
+            # the last (violating) solution for inspection; is_hard_feasible
+            # still refuses to activate it.
+            _reason = "uncertifiable" if _uncertifiable else "exhausted"
             dsl_diagnostics.extend(
-                "compile_failed:" + e + ":refinement:exhausted"
+                "compile_failed:" + e + ":refinement:" + _reason
                 for e in _unsatisfied)
             _strict = os.environ.get(
                 "PITANTUM_DSL_GATE_STRICT", "1"
             ).strip().lower() not in ("0", "false", "no", "off")
             if log:
-                print(f"[phaseB.day{day}] DSL gate: budget esaurito, "
+                _why = ("regola/e HARD non certificabile/i"
+                        if _uncertifiable else "budget esaurito,")
+                print(f"[phaseB.day{day}] DSL gate: {_why} "
                       f"{len(_unsatisfied)} regola/e HARD non soddisfatta/e"
                       + (" -> fail-closed" if _strict else
                          " -> keep-partial"))

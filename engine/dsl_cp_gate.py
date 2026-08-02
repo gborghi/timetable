@@ -75,14 +75,20 @@ def _build_world(sol, profs, *, day=None):
     return world
 
 
-def verify_dsl_hard(sol, profs, hard_exprs, *, day=None):
-    """Return the list of hard-DSL expression strings VIOLATED by ``sol``.
+def screen_dsl_hard(sol, profs, hard_exprs, *, day=None):
+    """Split ``hard_exprs`` into ``(violated, unverifiable)`` against ``sol``.
 
-    Each expression is parsed and evaluated against the world built from
-    ``sol``; ``evaluate_safe`` returns ``(ok, err)`` where ``ok is
-    False`` means the rule is violated. Expressions that cannot be
-    parsed or evaluated are skipped (they cannot be verified here and
-    are warned about elsewhere) rather than crashing the gate.
+    - ``violated``: parseable AND evaluable AND the rule evaluated
+      ``False``. A no-good over this exact assignment can rule the point
+      out, so the refinement loop CAN act on these.
+    - ``unverifiable``: the expression could NOT be parsed, OR its
+      evaluation raised (``evaluate_safe`` reports a non-``None`` error,
+      i.e. the ``True``-on-error default fired). A HARD rule reaches this
+      gate precisely because the CP compiler declined it; if it *also*
+      cannot be certified here it can be neither compiled nor verified, so
+      it MUST fail closed -- accepting the solution would be the
+      silent-pass bug (audit H6 residual). A no-good cannot fix it, so the
+      caller must stop refining and surface it rather than spinning.
 
     ``day`` (per-day CP path only): project the evaluation world to that
     single day so per-day pragmas are checked against the slice the
@@ -90,18 +96,41 @@ def verify_dsl_hard(sol, profs, hard_exprs, *, day=None):
     week / whole-solution path) keeps the full-week world unchanged.
     """
     if not hard_exprs:
-        return []
+        return [], []
     gd = _gd()
     world = _build_world(sol, profs, day=day)
-    violated = []
+    violated, unverifiable = [], []
     for e in hard_exprs:
         try:
-            ok, _err = gd.evaluate_safe(gd.parse(e), world)
-        except Exception:  # noqa: BLE001 - unparseable/unevaluable: skip
+            tree = gd.parse(e)
+        except Exception:  # noqa: BLE001 - unparseable HARD rule: fail closed
+            unverifiable.append(e)
             continue
-        if not ok:
+        ok, err = gd.evaluate_safe(tree, world)
+        if err is not None:      # eval raised -> True-on-error masked it
+            unverifiable.append(e)
+        elif not ok:
             violated.append(e)
-    return violated
+    return violated, unverifiable
+
+
+def verify_dsl_hard(sol, profs, hard_exprs, *, day=None):
+    """Return the hard-DSL expression strings NOT SATISFIED by ``sol``.
+
+    This is ``violated + unverifiable`` from :func:`screen_dsl_hard`: a
+    HARD rule that cannot be verified (unparseable, or its evaluation
+    raised) is treated as NOT satisfied and therefore fails closed -- it
+    is never silently accepted. Callers that must distinguish "fixable by
+    a no-good" from "un-fixable, must fail closed" should call
+    :func:`screen_dsl_hard` directly.
+
+    ``day`` (per-day CP path only): project the evaluation world to that
+    single day so per-day pragmas are checked against the slice the
+    per-day model actually owns (see ``_build_world``). ``None`` (the
+    week / whole-solution path) keeps the full-week world unchanged.
+    """
+    violated, unverifiable = screen_dsl_hard(sol, profs, hard_exprs, day=day)
+    return violated + unverifiable
 
 
 def add_nogood(model, slot, sol):
@@ -150,8 +179,15 @@ def solve_with_dsl_refinement(solve_once, profs, hard_exprs, *, max_iters=8):
         last_sol, last_status = sol, status
         if sol is None:
             return None, status, []          # infeasible / no solution
-        violated = verify_dsl_hard(sol, profs, hard_exprs)
+        violated, unverifiable = screen_dsl_hard(sol, profs, hard_exprs)
+        if unverifiable:
+            # A HARD rule we can neither compile nor certify: a no-good
+            # cannot fix it, so stop refining and surface it. The caller
+            # fails closed on a non-empty unsatisfied list (STRICT),
+            # exactly as for a genuine infeasibility.
+            return sol, status, unverifiable + violated
         if not violated:
             return sol, status, []           # fully compliant
         forbidden.append(dict(sol))
-    return last_sol, last_status, verify_dsl_hard(last_sol, profs, hard_exprs)
+    violated, unverifiable = screen_dsl_hard(last_sol, profs, hard_exprs)
+    return last_sol, last_status, unverifiable + violated
