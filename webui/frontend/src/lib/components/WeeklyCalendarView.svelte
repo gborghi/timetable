@@ -1095,7 +1095,8 @@
                             {slot.start_time}-{slot.end_time}
                           </div>
                           <div class="cal-event-label">
-                            {_lessonLabel(l)}
+                            {#if l.locked}<span aria-hidden="true"
+                              title="Bloccata in questo slot">🔒</span> {/if}{_lessonLabel(l)}
                           </div>
                           {#if l.classroom_name}
                             <div class="cal-event-room">

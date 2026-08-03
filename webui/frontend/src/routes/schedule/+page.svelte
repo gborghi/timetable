@@ -229,6 +229,21 @@
     actionMode = 'menu';
     flash('Click su uno slot vuoto per spostare la lezione', 'success');
   }
+  async function togglePin() {
+    if (!actionLesson) return;
+    const next = !actionLesson.locked;
+    try {
+      // Per-slot pin (finding 26): POST /api/schedule/lessons/{id}/pin.
+      // This is the lesson lock (Lesson.locked = immovable hour), NOT the
+      // cattedra lock on /assignments (Assignment.locked = confirmed WHO).
+      await api.post('/api/schedule/lessons/' + actionLesson.id + '/pin'
+                     + '?locked=' + next);
+      flash(next ? 'Lezione bloccata in questo slot'
+                 : 'Lezione sbloccata', 'success');
+      closeActions();
+      await loadCalendar();
+    } catch (e) { flash('Errore: ' + e.message, 'error'); }
+  }
   async function svincolaLesson() {
     if (!actionLesson) return;
     if (!await confirmDialog('Svincolare questa lezione? Verra messa nel pool '
@@ -699,6 +714,11 @@
           <div><strong>Aula:</strong> {actionLesson.classroom_name || '-'}</div>
           <div><strong>Slot:</strong> {DAY_NAMES_IT[actionLesson.day]}
             {actionLesson.hour}:00</div>
+          {#if actionLesson.locked}
+            <div class="text-amber-700" data-testid="schedule-action-pinned">
+              <strong>🔒 Bloccata</strong> in questo slot (sopravvive a una
+              rigenerazione)</div>
+          {/if}
         </div>
         <div class="grid grid-cols-2 gap-2">
           <button class="btn"
@@ -707,6 +727,14 @@
           <button class="btn"
                   on:click={startMove}
                   data-testid="schedule-action-move">Sposta</button>
+          <button class="btn"
+                  class:!bg-amber-50={actionLesson.locked}
+                  class:!border-amber-200={actionLesson.locked}
+                  class:!text-amber-800={actionLesson.locked}
+                  on:click={togglePin}
+                  title="Fissa la lezione in questo slot: una rigenerazione la mantiene qui (diverso dal blocco della cattedra, che fissa CHI insegna ma lascia muovere le ore)"
+                  data-testid="schedule-action-pin">
+            {actionLesson.locked ? '🔓 Sblocca slot' : '🔒 Blocca slot'}</button>
           <button class="btn"
                   on:click={svincolaLesson}
                   data-testid="schedule-action-unschedule">Svincola</button>

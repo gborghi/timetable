@@ -67,6 +67,7 @@ def _serialise(l: models.Lesson) -> dict:
         "hour": l.hour,
         "classroom_name": l.classroom_name,
         "cotaught_with": l.cotaught_with,
+        "locked": bool(l.locked),
     }
 
 
