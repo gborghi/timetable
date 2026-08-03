@@ -98,6 +98,12 @@ try:
 except ImportError:  # direct script import (no package context)
     import solver_config as _solvercfg  # type: ignore
 
+# Penalty for leaving a lesson unplaced (no real room). Chosen far above any
+# per-lesson bonus (~home 20, subject/class pref ~10) and overflow term
+# (~30 * pref_weight), so the solver only ever unplaces a lesson when NO real
+# room can host it -- never as a cheaper alternative to a valid placement.
+_UNPLACED_PENALTY = 1_000_000
+
 
 def _normalize_classroom(cl: dict) -> dict:
     out = dict(cl)
@@ -230,6 +236,7 @@ def solve_classroom_assignment(
     log: bool = False,
     locked_classrooms: list[tuple] | None = None,
     plessi_data=None,
+    allow_unplaced: bool = True,
 ) -> tuple[dict | None, str]:
     """Returns (mapping, status_name). mapping is None if infeasible.
 
@@ -239,6 +246,30 @@ def solve_classroom_assignment(
     for the named room. If the named room is not eligible for that
     lesson (kind / availability) the solver returns INFEASIBLE with
     a `LOCKED_INELIGIBLE:...` status.
+
+    `allow_unplaced` (default True): give every lesson a virtual
+    "unplaced" fallback carrying a dominant penalty, so a capacity /
+    plesso shortage in a single slot can no longer make the WHOLE week
+    INFEASIBLE (audit residual, findings 33/34). With it the exact solve
+    places the MAXIMUM number of lessons in real rooms honouring every
+    HARD constraint (capacity, required-kind, plessi, locks) and leaves
+    only the over-subscribed ones unplaced -- those are dropped from the
+    returned mapping and named in the log, and the status is suffixed
+    ``/UNPLACED:<n>`` so a partial outcome never reads as a clean success.
+    This is strictly better than the per-slot greedy fallback (which
+    cannot look across slots), so the caller no longer needs to degrade to
+    greedy on capacity shortage. Set it False to recover the old
+    all-or-nothing behaviour (an over-subscribed slot returns None).
+
+    Two failure modes, deliberately kept distinct because they need
+    opposite remediations from the school:
+    - **no eligible room at all** (structural: a `required_kind` no room
+      satisfies, or every room too small) -> ``NO_ELIGIBLE`` + None, at
+      ANY value of `allow_unplaced`. Rescheduling cannot help; the school
+      must add the room or drop the requirement.
+    - **over-subscription** (this slot wants more rooms than exist)
+      -> unplaced + ``/UNPLACED:<n>``. A scheduling problem, and the
+      thing this flag exists for.
     """
     if not lessons:
         return {}, "OPTIMAL"
@@ -294,7 +325,14 @@ def solve_classroom_assignment(
 
     no_room_keys = [k for k, v in eligible.items() if not v]
     if no_room_keys:
-        # Return early with diagnostic
+        # Structural, NOT a scheduling problem: this lesson has no eligible
+        # room anywhere in the school at any hour (a `required_kind` with no
+        # matching room, or every room too small). Rescheduling cannot fix
+        # it and `allow_unplaced` deliberately does NOT swallow it -- the
+        # school must add the room or drop the requirement, and it needs to
+        # be told so loudly rather than handed a timetable quietly missing
+        # every PE lesson. Over-subscription is the opposite case and IS
+        # handled by the unplaced fallback below.
         return None, f"NO_ELIGIBLE:{no_room_keys[:5]}"
 
     # Validate locks against eligibility.
@@ -308,11 +346,22 @@ def solve_classroom_assignment(
     model = cp_model.CpModel()
     # x[lesson_key, room_name] = 1 if that lesson is assigned to that room
     x: dict[tuple, Any] = {}
+    # u[lesson_key] = 1 if the lesson is left UNPLACED (no real room). Only
+    # built when allow_unplaced; it is the escape valve that keeps the model
+    # feasible under a slot capacity / plesso shortage. It never enters the
+    # capacity or plessi constraints (those sum over real-room x vars only),
+    # so an unplaced lesson consumes no room and is exempt from plesso rules.
+    u: dict[tuple, Any] = {}
     for key in lesson_keys:
         for rname in eligible[key]:
             x[(key, rname)] = model.NewBoolVar(f"x_{rname}_{key}")
-        # exactly-1 room per lesson
-        model.Add(sum(x[(key, rn)] for rn in eligible[key]) == 1)
+        terms = [x[(key, rn)] for rn in eligible[key]]
+        if allow_unplaced:
+            uv = model.NewBoolVar(f"unplaced_{key}")
+            u[key] = uv
+            terms.append(uv)
+        # exactly-1 room (or the unplaced fallback) per lesson
+        model.Add(sum(terms) == 1)
 
     # Slot capacity: per (room, day, hour), the number of distinct
     # CLASSES assigned must be <= multi_class_max. Different classes count
@@ -435,8 +484,13 @@ def solve_classroom_assignment(
             if b:
                 bonus_terms.append(-int(round(b)) * x[(key, rn)])
 
-    # Objective: minimize overflow penalty - bonuses
+    # Objective: minimize overflow penalty - bonuses (+ a dominant penalty
+    # per unplaced lesson so a real room is always preferred when one is
+    # available; unplacing is the last resort, never a cheaper alternative
+    # to a valid placement or a bonus/overflow trade-off).
     objective_terms = list(overflow_terms) + list(bonus_terms)
+    if u:
+        objective_terms.append(_UNPLACED_PENALTY * sum(u.values()))
     if objective_terms:
         model.Minimize(sum(objective_terms))
 
@@ -456,19 +510,40 @@ def solve_classroom_assignment(
             if solver.Value(x[(key, rn)]) == 1:
                 out[key] = rn
                 break
-    # Le lezioni in compresenza ereditano l'aula dell'ospite.
+    # Lessons the solver could not fit into any real room (capacity /
+    # plesso shortage -- a structurally roomless lesson returned NO_ELIGIBLE
+    # long before here). They are dropped from the mapping -- exactly what
+    # the greedy fallback would leave uncovered, but here chosen OPTIMALLY
+    # (fewest possible) instead of per-slot.
+    unplaced = [key for key, uv in u.items() if solver.Value(uv) == 1]
+    # Le lezioni in compresenza ereditano l'aula dell'ospite (solo se
+    # l'ospite ha davvero un'aula: se e\` unplaced, lo e\` anche il rider).
     for rider_key, host_key in riders.items():
         if host_key in out:
             out[rider_key] = out[host_key]
+    status_name = solver.StatusName(status)
+    if unplaced:
+        # Name the first few so the headmaster sees WHICH lessons had no
+        # room and can fix the room supply -- a diagnostic, not a silent
+        # degrade. The suffix keeps the status machine-readable.
+        sample = ", ".join(
+            f"{cl}/{subj} g{d}o{h}" for (cl, subj, d, h) in unplaced[:10])
+        print(
+            f"[classroom] {len(unplaced)} lezioni SENZA aula (capienza/"
+            f"plesso insufficienti): {sample}"
+            + (" ..." if len(unplaced) > 10 else "")
+        )
+        status_name = f"{status_name}/UNPLACED:{len(unplaced)}"
     print(
-        f"[classroom] status={solver.StatusName(status)} "
+        f"[classroom] status={status_name} "
         f"elapsed={elapsed:.1f}s lessons={len(lesson_keys)} "
+        f"placed={len(lesson_keys) - len(unplaced)} "
         f"rooms={len(rooms)}"
         + (f" compresenze={len(riders)}" if riders else "")
         + (f" plessi(commute={n_pl_commute}, policy={n_pl_policy})"
            if (n_pl_commute or n_pl_policy) else "")
     )
-    return out, solver.StatusName(status)
+    return out, status_name
 
 
 def add_joint_room_vars(

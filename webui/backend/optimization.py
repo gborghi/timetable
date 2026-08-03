@@ -4296,6 +4296,18 @@ def _apply_joint_room_map(sid: int, room_map: dict,
     }
 
 
+def _unplaced_from_status(status: str | None) -> int:
+    """Parse the ``.../UNPLACED:<n>`` suffix the room solver appends when a
+    capacity/plesso shortage forced it to leave lessons without a real room.
+    Returns 0 when the status carries no such suffix (or is None)."""
+    if not status or "/UNPLACED:" not in status:
+        return 0
+    try:
+        return int(status.rsplit("/UNPLACED:", 1)[1])
+    except (ValueError, IndexError):
+        return 0
+
+
 def _apply_rooms_to_solution(sid: int, *, time_limit_s: float,
                              workers: int, prefer_home: bool,
                              log_prefix: str = "rooms",
@@ -4366,13 +4378,24 @@ def _apply_rooms_to_solution(sid: int, *, time_limit_s: float,
             locked_classrooms=locked_classrooms or None,
             plessi_data=plessi_data,
         )
+    rooms_unplaced = _unplaced_from_status(status)
     with SessionLocal() as db:
         n_rooms = engine_io.apply_room_mapping(db, sid, result)
-    print(f"[{log_prefix}] {n_rooms}/{len(lessons)} lessons got a room")
+    print(f"[{log_prefix}] {n_rooms}/{len(lessons)} lessons got a room"
+          + (f" ({rooms_unplaced} senza aula per capienza/plesso)"
+             if rooms_unplaced else ""))
     # Surface the exact-vs-fallback outcome so a silent greedy fallback
-    # stops reading as "assegnazione riuscita" (finding 35a).
+    # stops reading as "assegnazione riuscita" (finding 35a). With the
+    # unplaced fallback the exact solve stays feasible under a slot
+    # shortage, so the two signals now mean different things:
+    # `rooms_fallback` = the exact solve returned nothing at all (solver
+    # failure, or NO_ELIGIBLE: a lesson with no eligible room anywhere,
+    # which is a configuration error read off `rooms_exact_status`);
+    # `rooms_unplaced` = the exact solve succeeded but could not fit N
+    # lessons for capacity/plesso reasons (findings 33/34).
     return {"rooms_assigned": n_rooms, "rooms_total_lessons": len(lessons),
-            "rooms_exact_status": status, "rooms_fallback": rooms_fallback}
+            "rooms_exact_status": status, "rooms_fallback": rooms_fallback,
+            "rooms_unplaced": rooms_unplaced}
 
 
 def run_classroom_assignment(time_limit_s: float, workers: int, log: bool,
@@ -4437,16 +4460,25 @@ def run_classroom_assignment(time_limit_s: float, workers: int, log: bool,
                 locked_classrooms=locked_classrooms or None,
                 plessi_data=plessi_data,
             )
+        rooms_unplaced = _unplaced_from_status(status)
         with SessionLocal() as db:
             n = engine_io.apply_room_mapping(db, active.id, result)
-        # `rooms_fallback` tells the UI the exact solve was INFEASIBLE and
-        # what it holds is the approximate greedy placement, instead of the
-        # step reading as a clean success (finding 35a).
+        # `rooms_fallback` tells the UI the exact solve returned nothing
+        # (timeout/unknown, or NO_ELIGIBLE -- a lesson with no eligible
+        # room anywhere, which `rooms_exact_status` names) and what it
+        # holds is the approximate greedy placement, instead of reading as
+        # a clean success (finding 35a). `rooms_unplaced` reports the
+        # lessons the (feasible) exact solve could not fit into any real
+        # room -- a capacity/plesso shortage the headmaster must resolve,
+        # not a solver failure (findings 33/34).
         update_run(rid, progress=1.0, metrics={
             "rooms_assigned": n, "lessons": len(lessons),
             "rooms_exact_status": status, "rooms_fallback": rooms_fallback,
+            "rooms_unplaced": rooms_unplaced,
         })
-        print(f"[rooms] {n}/{len(lessons)} lezioni hanno un'aula")
+        print(f"[rooms] {n}/{len(lessons)} lezioni hanno un'aula"
+              + (f" ({rooms_unplaced} senza aula per capienza/plesso)"
+                 if rooms_unplaced else ""))
 
     start_thread(run_id, target)
     return run_id
