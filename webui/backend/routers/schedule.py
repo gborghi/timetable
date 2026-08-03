@@ -424,11 +424,16 @@ def _conflicts_at_slot(
 
 
 def _summarise_conflicts(rows: list[models.Lesson]) -> list[dict]:
+    # `locked` travels so ScheduleConflictModal can mark a pinned row.
+    # It matters most here: /schedule's resolveDropConflict bulk-DELETEs
+    # every conflicting lesson, pinned ones included. Mirrors
+    # monitor._summarise_lessons -- keep the two shapes in step.
     return [
         {"lesson_id": r.id, "teacher_name": r.teacher_name,
          "class_name": r.class_name, "subject": r.subject,
          "day": r.day, "hour": r.hour,
-         "classroom_name": r.classroom_name}
+         "classroom_name": r.classroom_name,
+         "locked": bool(r.locked)}
         for r in rows
     ]
 

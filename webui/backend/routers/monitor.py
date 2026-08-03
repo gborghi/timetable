@@ -587,10 +587,15 @@ _RESOLUTION_ALIASES = {
 
 
 def _summarise_lessons(rows: list[models.Lesson]) -> list[dict]:
+    # `locked` travels so the conflict modal can mark a pinned row: both
+    # resolutions below ('unbind' and 'delete') destroy the conflicting
+    # lesson, and a pin is exactly the thing the school asked not to lose
+    # by accident.
     return [{"lesson_id": r.id, "teacher_name": r.teacher_name,
              "class_name": r.class_name, "subject": r.subject,
              "day": r.day, "hour": r.hour,
-             "classroom_name": r.classroom_name}
+             "classroom_name": r.classroom_name,
+             "locked": bool(r.locked)}
             for r in rows]
 
 
@@ -674,9 +679,15 @@ class LessonReassignIn(_BM):
 
     Backward-compat aliases: 'unassign' -> 'delete', 'optimize' ->
     'delete'.
+
+    `unlock` confirms re-timing a lesson pinned to its slot
+    (`Lesson.locked`). Without it a re-time of a pinned lesson is
+    refused with `needs_unlock`, matching /schedule's drag-and-drop:
+    same lesson, same user, two pages, one semantics.
     """
     day: int | None = None
     hour: int | None = None
+    unlock: bool = False
     classroom_name: str | None = None  # None = leave as-is; '' = clear
     on_conflict: str = "dry_run"
 
@@ -720,6 +731,19 @@ def reassign_lesson(assignment_id: int, lesson_id: int,
             and new_room == target.classroom_name):
         return {"ok": True, "no_change": True}
 
+    # A pin is refusable-but-overridable: ask, don't relocate it silently.
+    # Only a RE-TIME trips this -- `Lesson.locked` pins the lesson to its
+    # (day, hour), so re-rooming in place does not touch what was pinned.
+    # Checked ahead of the conflict probe so the confirmation round-trip
+    # stays a single cheap question, and so a pinned lesson is never
+    # reported as a conflict-resolution problem when the real question is
+    # whether the pin should go at all.
+    retimed = (new_day != target.day or new_hour != target.hour)
+    if retimed and target.locked and not payload.unlock:
+        return {"ok": False, "needs_unlock": True,
+                "reason": ("La lezione e` bloccata in questo slot. "
+                           "Spostarla la sblocchera`.")}
+
     cinfo = _conflict_lessons(db, active.id, target, new_day, new_hour,
                               new_room)
     has_conflict = bool(cinfo["teacher_busy"] or cinfo["class_busy"]
@@ -751,6 +775,13 @@ def reassign_lesson(assignment_id: int, lesson_id: int,
     # Apply the move
     target.day = new_day
     target.hour = new_hour
+    # The confirmed re-time consumes the pin: it pinned the OLD slot, and
+    # carrying it to the new one would silently re-pin a slot the school
+    # never chose. /schedule lands the same move unpinned (there because
+    # the row is recreated under a new key); do it explicitly here.
+    unlocked = retimed and bool(target.locked)
+    if unlocked:
+        target.locked = False
     if payload.classroom_name is not None:
         target.classroom_name = (payload.classroom_name or None)
     db.commit()
@@ -760,6 +791,7 @@ def reassign_lesson(assignment_id: int, lesson_id: int,
         "conflict": has_conflict,
         "resolution": (strategy if has_conflict else None),
         "details": conflict_payload,
+        "unlocked": unlocked,
         "moved_to": {"day": new_day, "hour": new_hour,
                      "classroom_name": target.classroom_name},
     }

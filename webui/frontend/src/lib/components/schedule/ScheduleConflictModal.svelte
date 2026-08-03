@@ -43,9 +43,16 @@
   function describe(r) {
     const when = (r.day != null && r.hour != null)
       ? ` [${_DAYS_IT[r.day] || ('g' + r.day)} ${r.hour}:00]` : '';
+    // Both resolutions destroy the conflicting lesson, so a pinned one is
+    // worth flagging before the user picks either button.
+    const pin = r.locked ? ' [bloccata]' : '';
     return `${r.class_name} - ${r.subject} (${r.teacher_name})`
-         + (r.classroom_name ? ` in ${r.classroom_name}` : '') + when;
+         + (r.classroom_name ? ` in ${r.classroom_name}` : '') + when + pin;
   }
+
+  $: hasLocked = [...(details.teacher_busy || []),
+                  ...(details.class_busy   || []),
+                  ...(details.room_busy    || [])].some((r) => r.locked);
 </script>
 
 <Modal {open} {title} onClose={onCancel}>
@@ -83,6 +90,13 @@
         {/each}
       </ul>
     </div>
+  {/if}
+
+  {#if hasLocked}
+    <p class="text-sm text-red-700 mb-3" data-testid="schedule-conflict-locked">
+      Attenzione: fra gli eventi confliggenti ce n'e' almeno uno
+      <b>bloccato</b>. Entrambe le risoluzioni lo rimuovono.
+    </p>
   {/if}
 
   <div class="text-xs text-ink-500 mt-3 space-y-1">

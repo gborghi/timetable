@@ -401,25 +401,47 @@
   }
 
   async function applyMove(eventId, lesson, newDay, newHour, newRoom,
-                          onConflict) {
+                          onConflict, unlock = false) {
     const payload = {
       day: Number(newDay),
       hour: Number(newHour),
       classroom_name: newRoom,
       on_conflict: onConflict,
+      unlock,
     };
     return await api.put(
       '/api/monitor/event/' + eventId + '/lesson/' + lesson.lesson_id,
       payload);
   }
 
+  function moveFlash(r, base) {
+    // The unpin is a consequence the user agreed to, not a side effect to
+    // discover later in the Lockati tab -- say it happened.
+    flash(r.unlocked ? base + ' Il blocco e\' stato rimosso.' : base,
+          'success');
+  }
+
   async function tryMove(eventId, lesson, newDay, newHour, newRoom) {
     try {
-      const dry = await applyMove(eventId, lesson, newDay, newHour, newRoom,
-                                  'dry_run');
+      let unlock = false;
+      let dry = await applyMove(eventId, lesson, newDay, newHour, newRoom,
+                                'dry_run');
+      if (dry.needs_unlock) {
+        // Pinned: ASK before spending the pin. Same question /schedule
+        // asks on drop -- a pin is the school's own earlier choice, so
+        // only an explicit confirmation revokes it.
+        if (!await confirmDialog(
+            'Questa lezione risulta bloccata in questo slot. '
+            + 'Spostarla comporta lo sblocco. Procedere?',
+            { title: 'Lezione bloccata',
+              confirmLabel: 'Sblocca e sposta', danger: false })) return;
+        unlock = true;
+        dry = await applyMove(eventId, lesson, newDay, newHour, newRoom,
+                              'dry_run', unlock);
+      }
       if (dry.no_change) return;
       if (dry.ok) {
-        flash('Lezione spostata.', 'success');
+        moveFlash(dry, 'Lezione spostata.');
         await refreshAll();
         return;
       }
@@ -431,6 +453,8 @@
           hour: newHour,
           classroom_name: newRoom,
           details: dry.details,
+          // Carried so resolving a conflict doesn't re-ask about the pin.
+          unlock,
         };
       }
     } catch (e) { flash('Errore: ' + e.message, 'error'); }
@@ -438,15 +462,15 @@
 
   async function resolveConflict(strategy) {
     if (!conflictDialog) return;
-    const { event_id, lesson, day, hour, classroom_name } = conflictDialog;
+    const { event_id, lesson, day, hour, classroom_name,
+            unlock } = conflictDialog;
     try {
       const r = await applyMove(event_id, lesson, day, hour, classroom_name,
-                                strategy);
+                                strategy, unlock);
       if (r.ok) {
-        flash(strategy === 'unbind'
-              ? 'Lezione spostata; conflitti svincolati.'
-              : 'Lezione spostata; conflitti eliminati.',
-              'success');
+        moveFlash(r, strategy === 'unbind'
+                  ? 'Lezione spostata; conflitti svincolati.'
+                  : 'Lezione spostata; conflitti eliminati.');
         conflictDialog = null;
         await refreshAll();
       } else if (r.cancelled) {
