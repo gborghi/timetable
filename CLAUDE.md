@@ -55,7 +55,7 @@ works from the repo root with no `PYTHONPATH`.
 
 ### Migrations
 ```
-cd webui/backend && ./.venv/bin/alembic upgrade head        # apply (17 revisions)
+cd webui/backend && ./.venv/bin/alembic upgrade head        # apply (22 revisions)
 ./.venv/bin/alembic revision --autogenerate -m "msg"        # after editing models.py
 ```
 `db.py::init_db()` runs `Base.metadata.create_all` at startup, so a *fresh* DB is
