@@ -18,6 +18,7 @@ from typing import Any
 # This import has to come BEFORE the engine modules:
 from . import engine_paths  # noqa: F401  (sys.path side effect)
 
+from ortools.sat.python import cp_model
 from sqlalchemy.orm import Session
 
 from . import engine_io, models
@@ -1384,6 +1385,49 @@ def _apply_dsl_rules_to_week_solver(solver, db, *,
     return len(rules)
 
 
+class _ProgressCallback(cp_model.CpSolverSolutionCallback):
+    """CP-SAT solution callback that advances the run's progress bar DURING
+    a long solve (finding 19). The monolithic week solve is a single
+    ``Solve`` that can run for the whole time budget; without a callback the
+    bar sits frozen at the phase's start. On each improving solution this
+    nudges progress within ``[base, base+span]`` as a function of elapsed
+    time vs. the limit, and records the current objective. DB writes are
+    throttled to at most once per ``min_interval`` seconds so the callback
+    never becomes the bottleneck of the search.
+    """
+
+    def __init__(self, rid: int, *, base: float, span: float,
+                 time_limit: float, step: str = "phase_b",
+                 min_interval: float = 1.2):
+        super().__init__()
+        self._rid = rid
+        self._base = float(base)
+        self._span = float(span)
+        self._limit = max(1e-6, float(time_limit))
+        self._step = step
+        self._min_interval = float(min_interval)
+        self._last_emit = -1e9
+        self._n = 0
+
+    def on_solution_callback(self) -> None:
+        self._n += 1
+        t = self.WallTime()
+        if t - self._last_emit < self._min_interval:
+            return
+        self._last_emit = t
+        # Monotone, bounded fraction: never reaches base+span (the solve's
+        # own completion drives the milestone jump to the next step).
+        # Progress + current_step only: update_run OVERWRITES metrics_json,
+        # so touching metrics here would clobber whatever the run set before
+        # the solve -- the finding-19 ask is bar MOVEMENT, nothing else.
+        frac = self._base + self._span * min(0.98, t / self._limit)
+        try:
+            update_run(self._rid, progress=round(frac, 3),
+                       current_step=self._step)
+        except Exception:  # noqa: BLE001 - progress is best-effort, never fatal
+            pass
+
+
 def _solve_phase_b_week(*, rid: int, ws: str, profs: dict,
                           classes: list, triples: list,
                           class_profs: dict,
@@ -1649,7 +1693,12 @@ def _solve_phase_b_week(*, rid: int, ws: str, profs: dict,
         cp_solver.parameters.log_search_progress = bool(log)
         print(f"[phaseB.week] solving (time_limit={time_mono}s, "
               f"workers={workers})")
-        status = cp_solver.Solve(solver.model)
+        # Advance the progress bar during this single long solve (finding
+        # 19): the milestone jumped to 0.30 before it, the next step
+        # (rooms/finalize) picks up at ~0.90, so the callback fills the gap.
+        _pcb = _ProgressCallback(rid, base=0.30, span=0.58,
+                                 time_limit=time_mono, step="phase_b")
+        status = cp_solver.Solve(solver.model, _pcb)
         status_name = cp_solver.StatusName(status)
         print(f"[phaseB.week] status={status_name}")
         return solver, cp_solver, status, status_name
