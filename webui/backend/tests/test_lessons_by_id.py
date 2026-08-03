@@ -70,6 +70,68 @@ def test_move_lesson_by_id_same_slot_rejected(app_with_temp_db):
     assert "identico" in body["reason"]
 
 
+def test_move_pinned_lesson_asks_before_unlocking(app_with_temp_db):
+    """Finding 26: a pinned lesson is not silently unpinned by a drag, and
+    not refused outright either -- the move comes back with
+    needs_unlock=True so the UI can ask. Distinct from a HARD refusal,
+    which carries no such flag and cannot be overridden."""
+    from fastapi.testclient import TestClient
+    from backend import models
+
+    app, SessionLocal = app_with_temp_db
+    _, l1, _ = _seed(SessionLocal)
+    with SessionLocal() as s:
+        s.get(models.Lesson, l1).locked = True
+        s.commit()
+
+    client = TestClient(app)
+    r = client.post(f"/api/lessons/{l1}/move", json={"day": 2, "hour": 10})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["accepted"] is False
+    assert body["needs_unlock"] is True
+    # Refused means refused: the lesson has not budged.
+    with SessionLocal() as s:
+        l = s.get(models.Lesson, l1)
+        assert (l.day, l.hour, l.locked) == (1, 8, True)
+
+
+def test_move_pinned_lesson_with_unlock_succeeds_and_unpins(app_with_temp_db):
+    """Confirming the prompt (unlock=true) moves the lesson AND leaves it
+    unpinned at the destination: the pin named an hour, and the hour is
+    what the school just changed."""
+    from fastapi.testclient import TestClient
+    from backend import models
+
+    app, SessionLocal = app_with_temp_db
+    _, l1, _ = _seed(SessionLocal)
+    with SessionLocal() as s:
+        s.get(models.Lesson, l1).locked = True
+        s.commit()
+
+    client = TestClient(app)
+    r = client.post(f"/api/lessons/{l1}/move",
+                    json={"day": 2, "hour": 10, "unlock": True})
+    assert r.status_code == 200
+    assert r.json()["accepted"] is True
+    with SessionLocal() as s:
+        moved = s.query(models.Lesson).filter(
+            models.Lesson.day == 2, models.Lesson.hour == 10).one()
+        assert moved.locked is False
+
+
+def test_move_unpinned_lesson_needs_no_unlock(app_with_temp_db):
+    """The guard must not leak onto ordinary lessons."""
+    from fastapi.testclient import TestClient
+
+    app, SessionLocal = app_with_temp_db
+    _, l1, _ = _seed(SessionLocal)
+    client = TestClient(app)
+    r = client.post(f"/api/lessons/{l1}/move", json={"day": 2, "hour": 10})
+    assert r.status_code == 200
+    assert r.json().get("needs_unlock", False) is False
+
+
 def test_unschedule_moves_to_pool_and_deletes_lesson(app_with_temp_db):
     from fastapi.testclient import TestClient
     from backend import models

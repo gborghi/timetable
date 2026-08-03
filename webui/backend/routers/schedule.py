@@ -285,7 +285,8 @@ def move_lesson(payload: schemas.MoveLessonIn,
            payload.src_day, payload.src_hour)
     dst = (payload.teacher_name, payload.class_name, payload.subject,
            payload.dst_day, payload.dst_hour)
-    out = optimization.validate_and_apply_move(db, src, dst)
+    out = optimization.validate_and_apply_move(db, src, dst,
+                                               unlock=payload.unlock)
     return out
 
 

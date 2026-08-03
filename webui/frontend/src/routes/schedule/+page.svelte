@@ -339,9 +339,26 @@
     // the reject paths) keep the array truthful, so a wrong guess is
     // self-correcting -- worst case matches the old full-reload flow.
     _optimisticMove(lessonId, day, hour);
+    let _didUnlock = false;
     try {
-      const r = await api.post('/api/lessons/' + lessonId + '/move',
+      let r = await api.post('/api/lessons/' + lessonId + '/move',
                                 { day, hour });
+      if (r && r.accepted === false && r.needs_unlock) {
+        // Pinned lesson: snap back and ASK before unpinning. A pin is the
+        // school's own earlier choice, so only an explicit confirmation
+        // revokes it -- unlike a HARD refusal, which has no override.
+        _optimisticMove(lessonId, _oldDay, _oldHour);
+        const ok = await confirmDialog(
+          'Questa lezione risulta bloccata in questo slot. '
+          + 'Spostarla comporta lo sblocco. Procedere?',
+          { title: 'Lezione bloccata', confirmLabel: 'Sblocca e sposta',
+            danger: false });
+        if (!ok) return;
+        _optimisticMove(lessonId, day, hour);
+        _didUnlock = true;
+        r = await api.post('/api/lessons/' + lessonId + '/move',
+                            { day, hour, unlock: true });
+      }
       if (r && r.accepted === false && r.conflicts) {
         // Snap back before prompting the "Sostituisci o annulla" modal.
         _optimisticMove(lessonId, _oldDay, _oldHour);
@@ -362,9 +379,10 @@
         _optimisticMove(lessonId, _oldDay, _oldHour);  // snap back
         flash('Mossa rifiutata: ' + (r.reason || 'vincolo violato'), 'error');
       } else {
-        // Offer UNDO only for a clean move (not when a room was cleared --
-        // moving back would not un-clear it, so the undo would be partial).
-        const canUndo = r && r.accepted && !r.room_cleared
+        // Offer UNDO only for a clean move (not when a room was cleared,
+        // nor when we unpinned to make the move -- moving back would
+        // restore neither, so the undo would be partial either way).
+        const canUndo = r && r.accepted && !r.room_cleared && !_didUnlock
           && _oldDay != null && _oldHour != null
           && !(_oldDay === day && _oldHour === hour);
         flash(r?.reason || 'Lezione spostata', 'success',

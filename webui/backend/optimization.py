@@ -4969,11 +4969,20 @@ def preview_moves_for_lesson(db: Session, src: tuple,
     return results
 
 
-def validate_and_apply_move(db: Session, src: tuple,
-                            dst: tuple) -> dict[str, Any]:
+def validate_and_apply_move(db: Session, src: tuple, dst: tuple,
+                            *, unlock: bool = False) -> dict[str, Any]:
     """src/dst are (teacher_name, class_name, subject, day, hour). The lesson
     at src moves to dst. Returns a dict with accepted/reason and optional
-    obj before/after."""
+    obj before/after.
+
+    A PINNED lesson (`Lesson.locked`, finding 26) is refused unless the
+    caller passes ``unlock=True``, and the refusal carries
+    ``needs_unlock=True`` so the UI can ask "sbloccare e spostare?" instead
+    of showing a dead end. This is deliberately distinct from a HARD
+    rejection, which no flag may override: a pin is the school's own
+    earlier choice and only the school can revoke it. Moving with
+    ``unlock=True`` leaves the lesson UNPINNED at the destination (the pin
+    said "this hour", and the hour is what changed)."""
     import metaheuristics as meta  # type: ignore
     active = engine_io.get_active_solution(db)
     if active is None:
@@ -5006,6 +5015,13 @@ def validate_and_apply_move(db: Session, src: tuple,
         models.Lesson.day == src[3],
         models.Lesson.hour == src[4],
     ).first()
+    # A pin is refusable-but-overridable: ask, don't silently unpin.
+    # Checked here, before the expensive _hard_check_ctx/is_hard_feasible
+    # pass below, so the round-trip that only wants a confirmation is cheap.
+    if src_lesson is not None and src_lesson.locked and not unlock:
+        return {"accepted": False, "needs_unlock": True,
+                "reason": ("La lezione e` bloccata in questo slot. "
+                           "Spostarla la sblocchera`.")}
     # Room HARD-unavailability is NOT a reason to reject the move: the
     # post-apply pass below will simply clear the classroom and tell the
     # caller via room_cleared=True so the UI can prompt for a new pick.

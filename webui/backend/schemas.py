@@ -914,6 +914,9 @@ class MoveLessonIn(BaseModel):
     src_hour: int
     dst_day: int
     dst_hour: int
+    # Confirm the move of a pinned lesson (finding 26). Without it a
+    # pinned lesson is refused with needs_unlock=True so the UI can ask.
+    unlock: bool = False
 
 
 class MoveLessonOut(BaseModel):
@@ -928,6 +931,9 @@ class MoveLessonOut(BaseModel):
     # because the old room was occupied or HARD-unavailable at dst.
     room_cleared: bool = False
     cleared_room: str | None = None
+    # Set when the move was refused ONLY because the lesson is pinned:
+    # the caller may retry with unlock=true. Never set for a HARD refusal.
+    needs_unlock: bool = False
 
 
 # ---------- Manual assignment override validation ----------

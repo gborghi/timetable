@@ -41,6 +41,8 @@ router = APIRouter(prefix="/api/lessons", tags=["lessons"])
 class LessonMoveIn(BaseModel):
     day: int
     hour: int
+    # See schemas.MoveLessonIn.unlock (finding 26).
+    unlock: bool = False
 
 
 class RescheduleIn(BaseModel):
@@ -212,7 +214,8 @@ def move_lesson_by_id(lesson_id: int,
                 },
             }
 
-    out = optimization.validate_and_apply_move(db, src, dst)
+    out = optimization.validate_and_apply_move(db, src, dst,
+                                               unlock=payload.unlock)
     out["lesson_id"] = lesson_id
     return out
 

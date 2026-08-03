@@ -1025,15 +1025,27 @@ def lessons_to_solution_dict(db: Session, solution_id: int
 
 def replace_solution_lessons(db: Session, solution_id: int,
                              solution_dict: dict[tuple, int]) -> None:
-    """Carry over classroom_name/co-teachers from previous Lesson rows when
-    keys still match — this preserves manual room edits across small SOFT
-    repairs (the keys are stable in (p, cl, subj, d, h))."""
+    """Carry over classroom_name/co-teachers/pin from previous Lesson rows
+    when keys still match — this preserves manual room edits across small
+    SOFT repairs (the keys are stable in (p, cl, subj, d, h)).
+
+    ``locked`` (the per-slot pin, finding 26) is carried for the same reason
+    and by the same key: this function deletes and re-creates every row, so
+    without it a single accepted drag-and-drop move would reset the whole
+    week's pins to the column default.
+
+    Note the moved lesson itself changes key and so carries nothing here.
+    That is load-bearing, not an oversight: `validate_and_apply_move`
+    refuses to move a pinned lesson at all unless the caller confirms with
+    ``unlock=True``, and this is what then makes the confirmed move land
+    UNPINNED at the destination. (It re-applies the classroom onto the new
+    key afterwards; there is deliberately no such re-apply for the pin.)"""
     prev = db.query(models.Lesson).filter(
         models.Lesson.solution_id == solution_id
     ).all()
     prev_by_key = {
         (l.teacher_name, l.class_name, l.subject, l.day, l.hour):
-        (l.classroom_name, l.cotaught_with) for l in prev
+        (l.classroom_name, l.cotaught_with, bool(l.locked)) for l in prev
     }
     db.query(models.Lesson).filter(
         models.Lesson.solution_id == solution_id
@@ -1043,8 +1055,8 @@ def replace_solution_lessons(db: Session, solution_id: int,
         if v != 1:
             continue
         p, cl, subj, day, hour = k
-        room, cot = prev_by_key.get((p, cl, subj, day, hour),
-                                    (None, None))
+        room, cot, pinned = prev_by_key.get((p, cl, subj, day, hour),
+                                            (None, None, False))
         db.add(models.Lesson(
             solution_id=solution_id,
             teacher_name=p,
@@ -1054,6 +1066,7 @@ def replace_solution_lessons(db: Session, solution_id: int,
             hour=int(hour),
             classroom_name=room,
             cotaught_with=cot,
+            locked=pinned,
         ))
     db.commit()
 

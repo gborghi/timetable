@@ -7,7 +7,7 @@ import datetime as dt
 
 from fastapi.testclient import TestClient
 
-from backend import models, optimization
+from backend import engine_io, models, optimization
 
 
 def _seed_active_solution_with_locked_cattedra(Session):
@@ -64,3 +64,28 @@ def test_pinned_lesson_is_the_only_immovable_slot(app_with_temp_db):
                 params={"locked": False})
     with Session() as db:
         assert optimization._read_locked_lessons(db) == []
+
+
+def test_replace_solution_lessons_preserves_pins(app_with_temp_db):
+    """`replace_solution_lessons` deletes and re-creates every row, so it
+    must carry `locked` on the keys that did not change -- otherwise one
+    accepted drag-and-drop move silently resets the whole week's pins and
+    the 'survives regenerations' contract is broken for every OTHER lesson.
+    """
+    _app, Session = app_with_temp_db
+    sol_id = _seed_active_solution_with_locked_cattedra(Session)
+    with Session() as db:
+        db.query(models.Lesson).filter(
+            models.Lesson.hour == 9).one().locked = True
+        db.commit()
+
+    # Move the UNRELATED 8:00 lesson to 11:00; 9 and 10 keep their key.
+    key = ("Longo Paolo", "1B", "Matematica", 1)
+    new_sol = {key + (9,): 1, key + (10,): 1, key + (11,): 1}
+    with Session() as db:
+        engine_io.replace_solution_lessons(db, sol_id, new_sol)
+
+    with Session() as db:
+        pinned = {l.hour: l.locked for l in db.query(models.Lesson).filter(
+            models.Lesson.solution_id == sol_id).all()}
+    assert pinned == {9: True, 10: False, 11: False}
