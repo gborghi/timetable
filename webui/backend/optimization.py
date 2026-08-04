@@ -864,25 +864,33 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
     # (the joint coupling guarantees that step now succeeds for every lesson).
     _jv = _norm_joint_vars(joint_vars)
     if _jv is not None:
-        # Auto-off at scale: the joint room vars (~rooms x cells) blow up the
-        # monolithic model on big schools -- verified fine at 60 classes,
-        # UNKNOWN at 90 -- while the standalone exact room solver on the week
-        # schedule stays cheap and OPTIMAL there. Above the threshold, degrade
-        # to the classic week solve + separate exact rooms (which DOES scale:
-        # ~170s / 100% / exact on 90 classes) instead of a path that can't
-        # finish. Tune via PITANTUM_JOINT_MAX_CLASSES.
+        # Optimizing rooms + schedule TOGETHER (joint model) vs. as separate
+        # steps is the USER's choice from the UI, not something to override
+        # silently. The joint room vars (~rooms x cells) are heavier at scale
+        # (verified fine at 60 classes, can go UNKNOWN around 90 on the
+        # monolithic week path), but that is a trade-off the user opts into --
+        # keep it on and only WARN. ``PITANTUM_JOINT_MAX_CLASSES`` remains as
+        # an OPTIONAL ops ceiling for headless/batch runs; UNSET (the default)
+        # means NO cap, so an explicit UI request is always honoured.
         try:
             with SessionLocal() as _db_n:
                 _n_classes = _db_n.query(models.SchoolClass).count()
         except Exception:  # noqa: BLE001
             _n_classes = 0
-        _joint_cap = int(os.environ.get("PITANTUM_JOINT_MAX_CLASSES", "75")
-                         or 75)
-        if _n_classes > _joint_cap:
-            print(f"[phase_b] joint rooms disattivato: {_n_classes} classi > "
-                  f"{_joint_cap} (il modello joint non scala); uso il week "
-                  f"classico + assegnazione aule esatta separata")
+        _cap_env = os.environ.get("PITANTUM_JOINT_MAX_CLASSES")
+        _joint_cap = (int(_cap_env) if (_cap_env and _cap_env.strip())
+                      else None)
+        if _joint_cap is not None and _n_classes > _joint_cap:
+            print(f"[phase_b] joint rooms disattivato dal tetto esplicito "
+                  f"PITANTUM_JOINT_MAX_CLASSES={_joint_cap} "
+                  f"({_n_classes} classi); uso il week classico + "
+                  f"assegnazione aule esatta separata")
             _jv = None
+        elif _n_classes > 75:
+            print(f"[phase_b] joint rooms ATTIVO su {_n_classes} classi "
+                  f"(scelta utente): il modello congiunto e' piu' pesante a "
+                  f"questa scala; imposta PITANTUM_JOINT_MAX_CLASSES per un "
+                  f"tetto di sicurezza.")
     if _jv is not None:
         if cp_sat_scope != "week":
             print("[phase_b] joint rooms richiede scope settimanale: "

@@ -1374,6 +1374,49 @@ def add_special_room_capacity_phase_b(model, slot, ctx, *, day=None) -> int:
     return n
 
 
+def add_general_room_capacity_phase_b(model, slot, n_rooms, *,
+                                      day=None) -> int:
+    """HARD: at most ``n_rooms`` distinct classes may be in session in the
+    same (day, hour) cell -- a school cannot seat more concurrent classes
+    than it has rooms. The general-room twin of
+    ``add_special_room_capacity_phase_b`` (which caps a specific ROOM KIND):
+    it makes the SCHEDULE itself room-feasible per slot, so the room step can
+    seat everyone instead of leaving lessons unplaced when the scheduler
+    crammed more classes into a slot than there are rooms.
+
+    Counts per (class, cell) like the special cap, so co-teaching / codocenza
+    on one class occupy one room, not two. Emitted only where the candidate
+    classes exceed the cap. ``n_rooms <= 0`` disables it. Returns the number
+    of constraints emitted.
+    """
+    if not n_rooms or int(n_rooms) <= 0:
+        return 0
+    cap = int(n_rooms)
+    from collections import defaultdict
+    buckets: dict[tuple[int, int], dict[str, list]] = defaultdict(
+        lambda: defaultdict(list))
+    for (p, cl, s, d, h), var in slot.items():
+        if day is not None and d != day:
+            continue
+        buckets[(d, h)][cl].append(var)
+    n = 0
+    for (d, h), per_class in buckets.items():
+        if len(per_class) <= cap:
+            continue  # can never exceed capacity -> no constraint needed
+        occ_terms = []
+        for cl, vars_ in per_class.items():
+            if len(vars_) == 1:
+                occ_terms.append(vars_[0])
+            else:
+                occ = model.NewBoolVar(f"genroom_{cl}_d{d}_h{h}")
+                for v in vars_:
+                    model.Add(occ >= v)
+                occ_terms.append(occ)
+        model.Add(sum(occ_terms) <= cap)
+        n += 1
+    return n
+
+
 def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
                           dc_value, time_limit=10, workers=4, log=False,
                           enforce_no_holes=True,
@@ -1390,6 +1433,7 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
                           plessi_ctx=None,
                           special_room_ctx=None,
                           class_flags=None,
+                          total_room_capacity=None,
                           *,
                           lagrangian_penalties=None,
                           diagnostics_sink=None):
@@ -1833,6 +1877,20 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
             model, slot_5, special_room_ctx, day=day)
         if log and n_sr:
             print(f"[phaseB.day{day}] aule speciali: {n_sr} vincoli capienza")
+
+    # General room capacity (F4): cap the distinct classes in session per
+    # slot at the total room count, so the per-day schedule the temporal
+    # decomposition produces is room-feasible and the room step can seat
+    # everyone. Opt-in (``total_room_capacity`` None/0 -> off, byte-identical
+    # to before). If the day genuinely has more concurrent classes than rooms
+    # the per-day solve returns infeasible -- an honest "add rooms / relax"
+    # signal rather than a silently over-booked timetable.
+    if total_room_capacity:
+        n_gr = add_general_room_capacity_phase_b(
+            model, slot_5, total_room_capacity, day=day)
+        if log and n_gr:
+            print(f"[phaseB.day{day}] capienza aule totale "
+                  f"({total_room_capacity}): {n_gr} vincoli per-slot")
 
     _soft_classes = sorted({k[1] for k in slot})
     for _src in _dt.build_soft_pragmas(
