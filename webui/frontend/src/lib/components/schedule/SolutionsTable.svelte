@@ -25,7 +25,19 @@
             <td>{s.name}</td>
             <td>{s.kind}</td>
             <td>{s.obj_value}</td>
-            <td class="text-xs">{Object.entries(s.metrics || {}).map(([k, v]) => `${k}=${v}`).join(' ')}</td>
+            <td class="text-xs">
+            <!--
+              `feasible: false` is recorded by the solver and by any
+              hand-edit made on an already-broken baseline. It used to
+              be just another k=v in this blob, indistinguishable from
+              the rest, on the row with the "attiva" button next to it.
+            -->
+            {#if s.metrics && s.metrics.feasible === false}
+              <span class="text-red-700 font-semibold"
+                    data-testid="solution-infeasible">non fattibile</span>
+            {/if}
+            {Object.entries(s.metrics || {}).map(([k, v]) => `${k}=${v}`).join(' ')}
+          </td>
             <td>{s.is_active ? '✓' : ''}</td>
             <td>
               {#if !s.is_active}

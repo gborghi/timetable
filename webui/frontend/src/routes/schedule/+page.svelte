@@ -291,6 +291,9 @@
               if (r && r.conflict) {
                 flash('Ripristino non riuscito: lo slot e di nuovo occupato.',
                       'warning');
+              } else if (r && r.hard_violation) {
+                flash('Ripristino non riuscito: ' + (r.reason || 'vincolo HARD'),
+                      'warning');
               } else {
                 flash('Eliminazione annullata', 'success');
               }
@@ -420,18 +423,26 @@
       const r = await api.post(
         '/api/lessons/unscheduled/' + unschedId + '/reschedule',
         { day, hour });
-      if (r && r.accepted === false && r.conflicts) {
-        const src = unscheduled.find((u) => u.id === unschedId);
-        dropConflict = {
-          kind: 'reschedule',
-          sourceId: unschedId,
-          day, hour,
-          subject: src
-            ? `${src.class_name} / ${src.teacher_name} -> `
-              + `${DAY_NAMES_IT[day]} ${hour}:00`
-            : `${DAY_NAMES_IT[day]} ${hour}:00`,
-          details: r.conflicts,
-        };
+      if (r && r.accepted === false) {
+        if (r.conflicts) {
+          const src = unscheduled.find((u) => u.id === unschedId);
+          dropConflict = {
+            kind: 'reschedule',
+            sourceId: unschedId,
+            day, hour,
+            subject: src
+              ? `${src.class_name} / ${src.teacher_name} -> `
+                + `${DAY_NAMES_IT[day]} ${hour}:00`
+              : `${DAY_NAMES_IT[day]} ${hour}:00`,
+            details: r.conflicts,
+          };
+          return;
+        }
+        // No `conflicts` payload means the slot was free but the HARD
+        // gate refused it (teacher unavailable, hole, logical rule).
+        // Nothing to resolve -- just say why. Reporting success here
+        // told the user the lesson had been placed when it had not.
+        flash(r.reason || 'Spostamento rifiutato', 'error');
         return;
       }
       flash('Lezione ripiazzata', 'success');
@@ -458,7 +469,18 @@
       if (ids.size) {
         // One round-trip instead of N serial DELETEs (each of which used
         // to also trigger a full timetable reload).
-        await api.post('/api/lessons/bulk-delete', { ids: [...ids] });
+        let r = await api.post('/api/lessons/bulk-delete', { ids: [...ids] });
+        if (r && r.needs_force) {
+          // Some victims are pinned. The modal already marks them
+          // '[bloccata]', but destroying a pin deserves the same
+          // confirmation moving one gets.
+          if (!await confirmDialog(r.reason + '\n\nProcedere?')) {
+            await loadCalendar();
+            return;
+          }
+          r = await api.post('/api/lessons/bulk-delete',
+                             { ids: [...ids], force: true });
+        }
       }
       if (dc.kind === 'move') {
         await onLessonMove(dc.sourceId, dc.day, dc.hour);
@@ -492,14 +514,27 @@
   }
 
   // ---- Solutions / exports ---------------------------------------
-  async function activateSolution(id) {
+  async function activateSolution(id, force = false) {
     try {
-      await api.post('/api/schedule/solutions/' + id + '/activate');
-      flash('Soluzione attivata', 'success');
+      await api.post('/api/schedule/solutions/' + id + '/activate'
+                     + (force ? '?force=true' : ''));
+      flash(force ? 'Soluzione attivata (con riserva)' : 'Soluzione attivata',
+            force ? 'warning' : 'success');
       solutions = await api.get('/api/schedule/solutions');
       await loadCalendar();
       await refreshDataset();
-    } catch (e) { flash('Errore: ' + e.message, 'error'); }
+    } catch (e) {
+      // 409 = the gate refused an incomplete/infeasible solution. It is
+      // the school's timetable, so the school may overrule it -- but it
+      // has to be told what it is overruling first.
+      if (e.status === 409 && !force) {
+        if (await confirmDialog(e.message + '\n\nAttivarla comunque?')) {
+          await activateSolution(id, true);
+        }
+        return;
+      }
+      flash('Errore: ' + e.message, 'error');
+    }
   }
   async function delSolution(id) {
     if (!await confirmDialog('Eliminare questa soluzione?')) return;

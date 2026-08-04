@@ -167,6 +167,13 @@
         conflictOpen = true;
         return;
       }
+      if (r.hard_violation) {
+        // The slot was free (or freed) but the lesson breaks a HARD
+        // rule. Unlike a conflict there is nothing to resolve, so the
+        // modal stays open with the reason and the user edits the pick.
+        flash(r.reason || 'Creazione rifiutata: vincolo HARD', 'error');
+        return;
+      }
       flash('Lezione creata', 'success');
       onCreated();
       onClose();

@@ -209,10 +209,20 @@ export const schedule = {
   byTeacher: () => api.get<unknown>("/api/schedule/by-teacher"),
   byRoom: () => api.get<unknown>("/api/schedule/by-room"),
   solutions: () => api.get<Solution[]>("/api/schedule/solutions"),
-  activateSolution: (id: number) =>
-    api.post<unknown>("/api/schedule/solutions/" + id + "/activate"),
+  /** Rejects with 409 when the solution is incomplete or infeasible;
+   * pass `force` to override (and tell the user what they overrode). */
+  activateSolution: (id: number, force = false) =>
+    api.post<unknown>("/api/schedule/solutions/" + id + "/activate"
+      + (force ? "?force=true" : "")),
+  solutionHealth: (id: number) =>
+    api.get<unknown>("/api/schedule/solutions/" + id + "/health"),
   removeSolution: (id: number) =>
     api.del<void>("/api/schedule/solutions/" + id),
+  /** No callers yet -- /schedule posts directly. If you adopt it:
+   * the response may come back `{accepted: false, needs_unlock: true}`
+   * when the lesson is pinned to its slot, and the correct handling is
+   * to ask the user and retry with `unlock: true`, NOT to treat it as a
+   * plain failure. See onLessonMove in routes/schedule/+page.svelte. */
   moveLesson: (b: Record<string, unknown>) =>
     api.put<unknown>("/api/schedule/move-lesson", b),
   movePreview: (b: Record<string, unknown>) =>
@@ -234,6 +244,10 @@ export const monitor = {
   conflicts: () => api.get<unknown[]>("/api/monitor/conflicts"),
   eventLessons: (eventId: number) =>
     api.get<unknown>("/api/monitor/event/" + eventId + "/lessons"),
+  /** No callers yet -- /monitor puts directly. Same caveat as
+   * schedule.moveLesson: a re-time of a pinned lesson answers
+   * `{ok: false, needs_unlock: true}` and must be confirmed and
+   * retried with `unlock: true`. Re-rooming in place never trips it. */
   updateLesson: (
     eventId: number,
     lid: number,

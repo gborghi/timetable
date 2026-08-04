@@ -3,7 +3,7 @@
   import Panel from '$lib/components/Panel.svelte';
   import { onMount } from 'svelte';
   import { api } from '$lib/api';
-  import { humanMetricsLine } from '$lib/metrics_labels';
+  import { humanMetricsLine, roomsWarning } from '$lib/metrics_labels';
   import { flash, refreshDataset } from '$lib/stores';
   import { OPTIMIZE_DEFAULTS } from '$lib/constants';
   import RunLogPanel from '$lib/components/RunLogPanel.svelte';
@@ -948,7 +948,14 @@
                   class:pill-blue={r.status === 'running'}>{r.status}</span>
               </td>
               <td>{r.obj_value ?? ''}</td>
-              <td class="text-xs">{humanMetricsLine(r.metrics, { max: 4 })}</td>
+              <td class="text-xs">
+                {humanMetricsLine(r.metrics, { max: 4 })}
+                {#if roomsWarning(r.metrics)}
+                  <div class="text-amber-700 mt-0.5" data-testid="rooms-warning">
+                    ⚠ {roomsWarning(r.metrics)}
+                  </div>
+                {/if}
+              </td>
               <td class="text-xs">{r.started_at?.split('T')[1]?.split('.')[0] ?? ''}</td>
               <td class="text-xs">
                 {#if r.started_at && r.finished_at}
