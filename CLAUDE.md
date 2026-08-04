@@ -53,6 +53,12 @@ backend suite. The top-level `tests/` dir (constraint unit tests + `tests/benchm
 injects `engine/` into `sys.path` itself — `pytest tests/test_capacity_constraint.py`
 works from the repo root with no `PYTHONPATH`.
 
+`tests/benchmarks/` carries the separate `very_slow` marker — **`-m "not slow"` does
+not deselect it**. `tests/benchmarks/conftest.py` skips those four multi-minute
+CP-SAT benchmarks unless you opt in with `-m very_slow`, so `pytest tests/` is a
+seconds-long run. The profile `.sqlite` fixtures under `engine/scripts/data/` are
+generated and gitignored; a stale one skips (with a rebuild hint) instead of failing.
+
 ### Migrations
 ```
 cd webui/backend && ./.venv/bin/alembic upgrade head        # apply (22 revisions)
@@ -84,8 +90,8 @@ legacy style). Ruleset is `F` + `S` only; many `S*` checks are carved out — se
 ```
 cd webui/frontend
 npm run check          # svelte-kit sync + svelte-check (CI gate)
-npm test               # node:test unit suite — the explicit file list lives in package.json;
-                       # a new *.test.mjs is NOT picked up until added there
+npm test               # node:test unit suite — discovers src/**/*.test.mjs, so a new
+                       # test file is picked up with no package.json edit
 npm run build          # vite build (CI gate)
 npm run test:e2e       # Cypress (alias for test:e2e:cypress); Playwright also present
 ```

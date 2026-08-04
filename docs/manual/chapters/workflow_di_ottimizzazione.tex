@@ -290,6 +290,13 @@ ci sono conflitti, apre un secondo Modal con 3 opzioni:
 \textbf{Annulla}, \textbf{Disassegna le lezioni in conflitto},
 \textbf{Disassegna e ottimizza dopo}.
 
+Se la lezione e\` bloccata nel suo slot (il \emph{pin} impostato da
+\texttt{/schedule}), lo spostamento viene rifiutato con
+\texttt{needs\_unlock} e la UI chiede conferma. Confermando, la lezione
+si sposta e resta \textbf{sbloccata}: il pin nominava quell'ora, ed e\`
+l'ora che e\` cambiata. Cambiare la sola aula, a giorno e ora
+invariati, non tocca il pin e non chiede nulla.
+
 \section{Punteggio di graduatoria e criterio Anzianita}
 
 Ciascun docente nell'anagrafica ha un campo

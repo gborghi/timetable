@@ -221,3 +221,12 @@ Se ci sono conflitti, apre un secondo Modal con 3 opzioni:
   conflitto (riappaiono come ore mancanti nel Monitor) e applica.
 - **Disassegna e ottimizza dopo** -- come sopra, ma l'utente sa che
   deve rilanciare il workflow per ricoprire le ore liberate.
+
+Se la lezione da spostare e' **bloccata nel suo slot** (`Lesson.locked`,
+il "pin" impostato da `/schedule`), lo spostamento non parte: la
+risposta e' `{"ok": false, "needs_unlock": true}` e la UI chiede
+conferma prima di procedere. Confermando, la lezione si sposta e
+**resta sbloccata**: il pin nominava quell'ora, ed e' l'ora che e'
+cambiata. Cambiare solo l'aula lasciando giorno e ora invariati non
+tocca il pin e non chiede nulla. Stessa semantica del drag-and-drop di
+`/schedule`.
