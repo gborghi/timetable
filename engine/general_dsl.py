@@ -1299,6 +1299,12 @@ def _eval_call(node: Call, env, world):
                 "(prof, giorno, n)")
         return _eval_teacher_day_capacity(
             world, str(pos[0]), int(pos[1]), int(pos[2]))
+    if name == "teacher_max_consecutive":
+        if len(pos) != 2:
+            raise DSLError(
+                "teacher_max_consecutive richiede 2 argomenti (prof, n)")
+        return _eval_teacher_max_consecutive(
+            world, str(pos[0]), int(pos[1]))
     # ----- Room-continuity pragmas -----
     # class_same_room_per_day / _per_week (HARD) and class_room_changes_min
     # (SOFT) are ROOM constraints: room vars exist only in the joint
@@ -1529,6 +1535,32 @@ def _eval_teacher_day_capacity(world: dict, t: str, d: int, n: int) -> bool:
         if d_l is not None and int(d_l) == d:
             cnt += 1
     return cnt <= n
+
+
+def _eval_teacher_max_consecutive(world: dict, t: str, n: int) -> bool:
+    """HARD: teacher ``t`` never has a run of more than ``n`` consecutive
+    busy hours in a day. Mirrors
+    ``dsl_to_cpsat._compile_teacher_max_consecutive`` (every (n+1)-hour
+    window has <= n busy hours). ``n <= 0`` forbids any lesson."""
+    n = max(int(n), 0)
+    by_day: dict[int, set] = {}
+    for l in world.get("lessons", []):
+        if l.get("teacher") != t:
+            continue
+        d, h = l.get("day"), l.get("hour")
+        if d is None or h is None:
+            continue
+        by_day.setdefault(int(d), set()).add(int(h))
+    for hours in by_day.values():
+        run = best = 0
+        prev = None
+        for h in sorted(hours):
+            run = run + 1 if (prev is not None and h == prev + 1) else 1
+            best = max(best, run)
+            prev = h
+        if best > n:
+            return False
+    return True
 
 
 def _eval_teacher_at_least_n_free_days(world: dict, t: str, n: int) -> bool:
