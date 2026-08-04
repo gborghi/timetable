@@ -87,4 +87,7 @@ addopts = "-ra --maxfail=10"
 python_files = "test_*.py"
 markers = [
     "slow: full CP-SAT pipeline tests; opt-in via -m slow.",
+    # NB `-m "not slow"` alone does NOT deselect these -- it is a
+    # separate marker. tests/benchmarks/conftest.py skips them instead.
+    "very_slow: multi-minute benchmarks under tests/benchmarks; opt-in via -m very_slow.",
 ]

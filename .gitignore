@@ -35,6 +35,12 @@ webui/data/*.db
 webui/data/*.db-shm
 webui/data/*.db-wal
 webui/data/runs/
+# Everything else webui/data/ and webui/logs/ accumulate at runtime:
+# operator-triggered DB snapshot zips, the pid file start.sh writes,
+# per-service logs. All regenerable, none reviewable, and they showed
+# up as untracked noise on every `git status`.
+webui/data/snapshots/
+webui/logs/
 /output/
 proofs/
 
@@ -57,6 +63,11 @@ schedule/*.pkl
 # (small / medium / big / huge / superhuge / mega school + profs). They
 # back the dashboard's "Importa profilo" dropdown -- without them the
 # dropdown shows only mega. Generation script: scripts/rebuild_profiles.{sh,ps1}.
+# The .sqlite profile DBs are tracked too, but their WAL sidecars are
+# per-machine scratch that a backend booted against a profile leaves
+# behind -- never commit those.
+engine/scripts/data/**/*.sqlite-shm
+engine/scripts/data/**/*.sqlite-wal
 
 # Claude Code worktrees (transient development branches)
 .claude/worktrees/

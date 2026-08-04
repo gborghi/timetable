@@ -43,16 +43,17 @@ def _make_lessons(class_name: str, n_students: int):
 
 
 def _make_room(name: str, capacity: int, *, kind: str = "standard"):
-    return {
+    """Built through the engine's own ``_normalize_classroom`` rather
+    than hand-listing keys: ``_can_host`` reads several of them with
+    ``room[...]``, so a room dict assembled by hand starts raising
+    ``KeyError`` the moment the engine grows a new HARD axis (that is
+    exactly how ``subject_forbidden`` broke these tests). Only the
+    values this suite actually varies are spelled out."""
+    return ca._normalize_classroom({
         "name": name, "kind": kind, "capacity": capacity,
         "multi_class": False, "multi_class_max": 1,
         "multi_class_pref": 1, "multi_class_pref_weight": 0.0,
-        "unavailability": set(),
-        "subject_required": set(),
-        "subject_pref_weight": {},
-        "class_pref_weight": {},
-        "is_home_for": set(),
-    }
+    })
 
 
 # ---------- _can_host unit tests (pure HARD eligibility) ----------

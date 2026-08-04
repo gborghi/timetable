@@ -1,12 +1,12 @@
 {
   "huge": {
-    "timestamp": "2026-05-05T22:40:37",
+    "timestamp": "2026-08-03T16:51:09",
     "scale": "huge",
     "n_classes": 50,
     "n_teachers": 95,
     "n_cattedre": 200,
     "granularity": "curriculum",
-    "t_bp_s": 2.5721144676208496,
+    "t_bp_s": 2.2203967571258545,
     "time_budget_s": 600.0,
     "hard_feasible": true,
     "soft_obj": null,
@@ -23,13 +23,13 @@
     ]
   },
   "mega": {
-    "timestamp": "2026-05-05T22:40:43",
+    "timestamp": "2026-08-03T16:51:15",
     "scale": "mega",
     "n_classes": 100,
     "n_teachers": 174,
     "n_cattedre": 400,
     "granularity": "curriculum",
-    "t_bp_s": 5.952622175216675,
+    "t_bp_s": 5.635770082473755,
     "time_budget_s": 3600.0,
     "hard_feasible": true,
     "soft_obj": null,

@@ -179,10 +179,15 @@ def test_translator_calcola_i_posti_e_salta_i_tipi_senza_aule():
             self.required_kind = kind
 
     class _Room:
-        def __init__(self, kind, multi=False, mmax=1):
+        def __init__(self, kind, multi=False, mmax=1, plesso_id=None):
             self.kind = kind
             self.multi_class = multi
             self.multi_class_max = mmax
+            # Real ``models.Classroom.plesso_id`` is nullable; the
+            # translator's per-plesso pass reads it, and a double
+            # missing the attribute raises instead of exercising the
+            # "no plesso" path this test wants.
+            self.plesso_id = plesso_id
 
     subjects = [_Subj("Scienze motorie", "palestra"),
                 _Subj("Fisica", "lab_fisica"),
@@ -194,12 +199,18 @@ def test_translator_calcola_i_posti_e_salta_i_tipi_senza_aule():
     class _DB:
         def query(self, model):
             name = getattr(model, "__name__", "")
-            return _Q(subjects if name == "Subject" else rooms)
+            # Dispatch by name and default to empty: the translator also
+            # queries PlessoEntityPolicy/SchoolClass, and handing those
+            # the room list made the fake answer questions it was never
+            # asked.
+            return _Q({"Subject": subjects, "Classroom": rooms}.get(name, []))
 
     import types
     fake = types.SimpleNamespace(
         Subject=type("Subject", (), {}),
         Classroom=type("Classroom", (), {}),
+        SchoolClass=type("SchoolClass", (), {}),
+        PlessoEntityPolicy=type("PlessoEntityPolicy", (), {}),
     )
     sys.modules.setdefault("webui", types.ModuleType("webui"))
     sys.modules["webui.backend"] = types.ModuleType("webui.backend")

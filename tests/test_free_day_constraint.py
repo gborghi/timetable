@@ -265,6 +265,7 @@ def test_small_profile_emits_at_least_one_free_day_per_teacher():
         pytest.skip("small.sqlite profile not built")
 
     from sqlalchemy import create_engine
+    from sqlalchemy.exc import OperationalError
     from sqlalchemy.orm import sessionmaker
     from backend import db as backend_db  # noqa: F401
     from backend import models  # noqa: F401  -- registers tables
@@ -280,6 +281,18 @@ def test_small_profile_emits_at_least_one_free_day_per_teacher():
     try:
         rules = load_all_dsl_constraints(sess, include_soft=True)
         n_teachers = sess.query(models.Teacher).count()
+    except OperationalError as exc:
+        # The profile .sqlite files are generated artifacts (gitignored),
+        # so a working copy easily carries one built before models.py
+        # grew a column -- the SELECT then names a column the file
+        # lacks. That is stale test data, not a translator regression,
+        # and it deserves the same skip as a profile that was never
+        # built at all.
+        if "no such column" not in str(exc):
+            raise
+        pytest.skip(
+            f"small.sqlite predates the current models.py ({exc.orig}); "
+            "rebuild with ./scripts/rebuild_profiles.sh --profiles small")
     finally:
         sess.close()
         engine.dispose()
