@@ -1275,6 +1275,30 @@ def _eval_call(node: Call, env, world):
         return _eval_free_day_choice_3way(
             world, str(pos[0]),
             [int(v) for v in pos[1:4]])
+    # ----- Teacher free-day / availability (natively compiled by
+    # dsl_to_cpsat; these post-hoc twins let is_hard_feasible and the
+    # metaheuristic gate actually CHECK them instead of erroring out and
+    # fail-closing on every solution -- audit F1). -----
+    if name == "teacher_unavailable_day":
+        if len(pos) != 2:
+            raise DSLError(
+                "teacher_unavailable_day richiede 2 argomenti (prof, giorno)")
+        return _eval_teacher_unavailable_day(
+            world, str(pos[0]), int(pos[1]))
+    if name == "teacher_at_least_n_free_days":
+        if len(pos) != 2:
+            raise DSLError(
+                "teacher_at_least_n_free_days richiede 2 argomenti "
+                "(prof, n)")
+        return _eval_teacher_at_least_n_free_days(
+            world, str(pos[0]), int(pos[1]))
+    if name == "teacher_day_capacity":
+        if len(pos) != 3:
+            raise DSLError(
+                "teacher_day_capacity richiede 3 argomenti "
+                "(prof, giorno, n)")
+        return _eval_teacher_day_capacity(
+            world, str(pos[0]), int(pos[1]), int(pos[2]))
     # ----- Room-continuity pragmas -----
     # class_same_room_per_day / _per_week (HARD) and class_room_changes_min
     # (SOFT) are ROOM constraints: room vars exist only in the joint
@@ -1480,6 +1504,48 @@ def _eval_teacher_max_per_day(world: dict, t: str, n: int) -> bool:
             continue
         by_day[int(d)] = by_day.get(int(d), 0) + 1
     return all(c <= n for c in by_day.values())
+
+
+def _eval_teacher_unavailable_day(world: dict, t: str, d: int) -> bool:
+    """HARD: teacher ``t`` has NO lesson on day ``d`` (a mandatory free
+    day / whole-day unavailability). Mirrors
+    ``dsl_to_cpsat._compile_teacher_unavailable_day``."""
+    for l in world.get("lessons", []):
+        if l.get("teacher") != t:
+            continue
+        d_l = l.get("day")
+        if d_l is not None and int(d_l) == d:
+            return False
+    return True
+
+
+def _eval_teacher_day_capacity(world: dict, t: str, d: int, n: int) -> bool:
+    """HARD: teacher ``t`` has at most ``n`` lessons on day ``d``."""
+    cnt = 0
+    for l in world.get("lessons", []):
+        if l.get("teacher") != t:
+            continue
+        d_l = l.get("day")
+        if d_l is not None and int(d_l) == d:
+            cnt += 1
+    return cnt <= n
+
+
+def _eval_teacher_at_least_n_free_days(world: dict, t: str, n: int) -> bool:
+    """HARD floor: teacher ``t`` keeps at least ``n`` weekdays entirely
+    free (zero lessons). Free days = the working-week days on which ``t``
+    has no lesson. Mirrors
+    ``dsl_to_cpsat._compile_teacher_at_least_n_free_days``."""
+    worked: set[int] = set()
+    for l in world.get("lessons", []):
+        if l.get("teacher") != t:
+            continue
+        d_l = l.get("day")
+        if d_l is not None:
+            worked.add(int(d_l))
+    days = _days_in_world(world) or [1, 2, 3, 4, 5, 6]
+    free = sum(1 for d in days if d not in worked)
+    return free >= n
 
 
 def _eval_cattedra_max_per_day(world: dict, t: str, cl: str,

@@ -68,6 +68,7 @@ def run_partitioned_pipeline(
     parallel_groups: list | None = None,
     group_assignments: list | None = None,
     class_day_load_allowed: dict | None = None,
+    class_free_days: dict | None = None,
     special_room_ctx=None,
     plessi_ctx=None,
     dsl_hard_expressions: list | None = None,
@@ -153,6 +154,7 @@ def run_partitioned_pipeline(
             parallel_groups=parallel_groups,
             group_assignments=group_assignments,
             class_day_load_allowed=class_day_load_allowed,
+            class_free_days=class_free_days,
         )
     elapsed_master = time.time() - t0
 

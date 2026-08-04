@@ -486,7 +486,8 @@ def solve_phase_a(profs, classes, triples, class_profs,
                   parallel_groups=None,
                   group_assignments=None,
                   class_flags=None,
-                  class_day_load_allowed=None):
+                  class_day_load_allowed=None,
+                  class_free_days=None):
     """Risolve Phase A. Se `locked_day_count` e\` valorizzato, e\` un
     dict (prof, class, subject, day) -> int che impone un FLOOR sul
     numero di ore di quella cattedra nel giorno indicato. Le ore non
@@ -750,6 +751,32 @@ def solve_phase_a(profs, classes, triples, class_profs,
                 model.AddAllowedAssignments(
                     [load], [[int(v)] for v in sorted(_allow)])
 
+    # Class free-day FLOOR (audit F3): each class keeps at least
+    # ``class_free_days[cl]`` weekdays entirely empty (load == 0). Unlike a
+    # PINNED free day, WHICH day stays a solver decision -- this reserves the
+    # count in the day distribution so every downstream per-day solve
+    # inherits the empty day(s), and the solver optimizes which day(s) (e.g.
+    # to align a biennio class' free day with its teachers' free-day
+    # preferences). It is the class-level twin of the ``min_free_days``
+    # teacher floor above, imposed on the same ``cl_day_load`` IntVars, so
+    # every decomposition scheduler that shares this Phase A honours it. If
+    # the class' total weekly hours cannot fit into the remaining days at
+    # <= 6h/day, Phase A returns infeasible -- an honest, visible failure.
+    for cl in classes:
+        rfd = int((class_free_days or {}).get(cl, 0) or 0)
+        if rfd <= 0:
+            continue
+        empty_days = []
+        for d in DAYS:
+            if (cl, d) not in cl_day_load:
+                continue
+            e = model.NewBoolVar(f"clfree_{cl}_{d}")
+            model.Add(cl_day_load[(cl, d)] == 0).OnlyEnforceIf(e)
+            model.Add(cl_day_load[(cl, d)] >= 1).OnlyEnforceIf(e.Not())
+            empty_days.append(e)
+        if empty_days:
+            model.Add(sum(empty_days) >= rfd)
+
     # SOFT (4): minimizziamo il totale degli slot di 6^a ora occupati
     # nella scuola, cioe\` il numero di (cl, d) con load == 6.
     sixth_hour_inds = []
@@ -981,6 +1008,34 @@ def solve_phase_a(profs, classes, triples, class_profs,
     else:
         model.Add(n_one == 0)
 
+    # SOFT (F5) -- ranked free-day PREFERENCE at the day-count level. The
+    # per-day Phase B penalty could never move a day the distribution had
+    # already fixed, so first-choice satisfaction sat near chance. Here,
+    # WHICH day a teacher is free is exactly what Phase A decides, so paying
+    # ``weight`` when the teacher works on a preferred day steers the
+    # distribution to free the top choice (weights come from
+    # ``engine_io._FREE_DAY_PREF_WEIGHT`` on the profs dict; priority 1 is set
+    # above the sixth-hour term so it wins unless coverage forbids it).
+    freeday_pref_terms = []
+    for p in triples_by_prof:
+        for pref in ((profs.get(p, {}) or {}).get("free_day_prefs") or []):
+            try:
+                pref_day, weight = int(pref[0]), int(pref[1])
+            except (TypeError, ValueError, IndexError):
+                continue
+            if weight <= 0 or (p, pref_day) not in prof_day_load:
+                continue
+            works = model.NewBoolVar(f"fdpref_{p}_{pref_day}")
+            model.Add(prof_day_load[(p, pref_day)] >= 1).OnlyEnforceIf(works)
+            model.Add(prof_day_load[(p, pref_day)] == 0).OnlyEnforceIf(
+                works.Not())
+            freeday_pref_terms.append(weight * works)
+    freeday_pref_pen = model.NewIntVar(0, 100_000_000, "fdpref_pen")
+    if freeday_pref_terms:
+        model.Add(freeday_pref_pen == sum(freeday_pref_terms))
+    else:
+        model.Add(freeday_pref_pen == 0)
+
     # HARD Hall-like (per (prof, day): prof_day_load <= max_c
     # cl_day_load) is compiled below by the ``hall_bound_prof_day``
     # DSL pragma. The compiler's prof_day_load and cl_day_load
@@ -1041,15 +1096,15 @@ def solve_phase_a(profs, classes, triples, class_profs,
     else:
         model.Add(uniform_prof_pen == 0)
 
-    # Free-day soft (giorno libero) is NOT scored here. Phase A's pragma
-    # stream (``build_phase_a_pragmas``) is HARD-only, so
-    # ``_compiler.soft_cost_terms`` is always empty at this point -- the
-    # old ``glib_pen`` fold was dead scaffolding (always 0). The free-day
-    # preference soft (``teacher_preferred_free_day_penalty``, weights
-    # 30/20/10) is owned by the DSL loader and applied at Phase B, on the
-    # per-day path via ``solve_phase_b_for_day(via_dsl=True)`` and on the
-    # week path via ``MonolithicSolver`` -- the single owner. See
-    # sub-project B2.
+    # Free-day handling here: the RANKED PREFERENCE is scored above as
+    # ``freeday_pref_pen`` (audit F5) -- it must live at this day-count stage
+    # because that is where "which day is free" is decided; a Phase-B-only
+    # penalty cannot move an already-distributed day. Phase A's pragma stream
+    # (``build_phase_a_pragmas``) stays HARD-only, so
+    # ``_compiler.soft_cost_terms`` is empty here. The DSL-loader twin
+    # (``teacher_preferred_free_day_penalty``) still also applies at Phase B
+    # (per-day via ``solve_phase_b_for_day(via_dsl=True)`` and week via
+    # ``MonolithicSolver``) as a tie-breaker within the fixed distribution.
 
     # Objective unico. Pesi:
     #   - uniform_class_pen / uniform_prof_pen: spalmatura ore.
@@ -1065,6 +1120,7 @@ def solve_phase_a(profs, classes, triples, class_profs,
         + W_SIXTH * n_sixth_hour
         + W_FIVE * n_five
         + W_ONE * n_one
+        + freeday_pref_pen          # SOFT (F5): ranked free-day preference
     )
 
     # Decision strategy = "lex-leader-lite" simmetria-break: forziamo

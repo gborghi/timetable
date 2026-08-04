@@ -51,6 +51,14 @@ DAY_MAP = {
 }
 DAY_NAME_IT = {1: "Lun", 2: "Mar", 3: "Mer", 4: "Gio", 5: "Ven", 6: "Sab"}
 
+# Phase-A day-count weight for a ranked free-day PREFERENCE (audit F5). Set
+# well above the competing day-count soft terms (sixth-hour 50, uneven
+# spread) so a first choice is honoured unless coverage makes it impossible
+# -- the old Phase-B-only 30/20/10 weights never reached the day distribution
+# that actually decides which day is free, so first-choice satisfaction sat
+# near chance. Priority 1 dominates; 2/3 taper off.
+_FREE_DAY_PREF_WEIGHT = {1: 150, 2: 45, 3: 15}
+
 
 # ---------- DB -> pickles ----------
 
@@ -304,6 +312,26 @@ def profs_dict_from_db(db: Session) -> dict[str, Any]:
             slot[a.subject] = {"ore": a.hours}
     # glibero + min_free_days HARD floor + per-day capacity
     day_caps = day_capacity_by_teacher(db)
+    # Ranked free-day PREFERENCES (audit F5). These are SOFT and, crucially,
+    # a CROSS-day (day-count) decision: which day a teacher is free is fixed
+    # by Phase A's day distribution, so the per-day Phase B penalty that used
+    # to "own" them could never move an already-placed day. Carry the ranked
+    # (day, weight) list on the profs dict -- like ``glibero`` /
+    # ``min_free_days`` -- so ``solve_phase_a`` can bias the day-count toward
+    # each teacher's first choice. Priority-1 is weighted well above the
+    # competing day-count soft terms (sixth-hour 50, uneven-spread) so the
+    # solver frees the top choice unless coverage makes it impossible.
+    _fdp_by_tid: dict[int, list] = {}
+    try:
+        _fdp_rows = db.query(models.TeacherFreeDayPreference).order_by(
+            models.TeacherFreeDayPreference.priority).all()
+    except Exception:
+        _fdp_rows = []
+    for r in _fdp_rows:
+        w = _FREE_DAY_PREF_WEIGHT.get(int(r.priority), 0)
+        if w > 0:
+            _fdp_by_tid.setdefault(int(r.teacher_id), []).append(
+                (int(r.day), int(w)))
     for tname, info in out.items():
         t = next((x for x in teachers.values() if x.name == tname), None)
         if t is None:
@@ -316,8 +344,15 @@ def profs_dict_from_db(db: Session) -> dict[str, Any]:
         # the DSL stream from a DB session (e.g. the benchmark harness)
         # read this off the profs dict so the stratified profile
         # distribution still reaches the model.
-        info["min_free_days"] = int(
-            getattr(t, "min_free_days", 1) or 1)
+        # NB `or 1` would turn a legitimate DB 0 into 1 (falsy-zero bug):
+        # a full-time teacher with no required free day, or a sostegno ADSS
+        # that must shadow its pupil every day, has min_free_days=0 and must
+        # stay 0 -- forcing >=1 makes the day-count Phase A infeasible.
+        # Distinguish an explicit 0 from "column unset" (default 1).
+        _mfd = getattr(t, "min_free_days", 1)
+        info["min_free_days"] = int(_mfd if _mfd is not None else 1)
+        # Ranked free-day preferences (day, weight), priority-ordered.
+        info["free_day_prefs"] = list(_fdp_by_tid.get(t.id, []))
         # Per-day hour ceilings from the HARD availability tables.
         # Read off profs by the solvers that get no DB session --
         # notably cv2.solve_phase_a, whose day distribution is where
@@ -1307,6 +1342,29 @@ def class_day_load_allowed_from_db(db: Session) -> dict:
         return {}
     return parse_class_day_load_pragmas(
         getattr(r, "expression", "") or "" for r in rows)
+
+
+def class_free_days_from_db(db: Session) -> dict:
+    r"""``{class_name -> required_free_days_count}`` for classes that must
+    keep >= N weekdays entirely free (audit F3 -- e.g. the biennio 5-of-6
+    rotation, ``required_free_days_count=1``).
+
+    Unlike ``class_day_load_allowed`` (a PINNED / per-day-load rule), this is
+    a FLOOR on the number of empty days, with WHICH day left to the solver.
+    Feed it to ``cpsat_v2_timetable.solve_phase_a(class_free_days=...)`` so
+    the day distribution reserves the empty day(s) and every decomposition
+    scheduler that shares that Phase A inherits an optimizable class free
+    day. Classes with count 0 (the default) are omitted."""
+    out: dict[str, int] = {}
+    try:
+        rows = db.query(models.SchoolClass).all()
+    except Exception:
+        return {}
+    for c in rows:
+        n = int(getattr(c, "required_free_days_count", 0) or 0)
+        if n > 0 and c.name:
+            out[c.name] = n
+    return out
 
 
 def parse_class_day_load_pragmas(expressions) -> dict:

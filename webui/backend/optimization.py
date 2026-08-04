@@ -1033,6 +1033,7 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
             with SessionLocal() as _db_pa:
                 _pa_class_flags = engine_io.class_flags_from_db(_db_pa)
                 _pa_cdl = engine_io.class_day_load_allowed_from_db(_db_pa)
+                _pa_cfd = engine_io.class_free_days_from_db(_db_pa)
             dc_value = cv2.solve_phase_a(
                 profs, classes, triples, class_profs,
                 time_limit=time_a, workers=workers, log=log,
@@ -1044,6 +1045,7 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                 group_assignments=group_assignments or None,
                 class_flags=_pa_class_flags,
                 class_day_load_allowed=_pa_cdl,
+                class_free_days=_pa_cfd,
             )
             with open(os.path.join(ws, "phase_a_dc.pkl"), "wb") as f:
                 pickle.dump(dc_value, f)
@@ -1509,6 +1511,7 @@ def _solve_phase_b_week(*, rid: int, ws: str, profs: dict,
         with SessionLocal() as _db_pa:  # 08b: Phase-A pragmas per-class
             _pa_class_flags = engine_io.class_flags_from_db(_db_pa)
             _pa_cdl = engine_io.class_day_load_allowed_from_db(_db_pa)
+            _pa_cfd = engine_io.class_free_days_from_db(_db_pa)
         try:
             dc_value = cv2.solve_phase_a(
                 profs, classes, triples, class_profs,
@@ -1521,6 +1524,7 @@ def _solve_phase_b_week(*, rid: int, ws: str, profs: dict,
                 group_assignments=group_assignments or None,
                 class_flags=_pa_class_flags,
                 class_day_load_allowed=_pa_cdl,
+                class_free_days=_pa_cfd,
             )
         except cv2.PhaseAError as exc:
             # A hint that cannot be computed is a missing hint, not a
@@ -2888,6 +2892,7 @@ def run_full_pipeline(profile: str,
                     _special_room_ctx = cv2.build_special_room_ctx(_db_ctx)
                     _class_flags = engine_io.class_flags_from_db(_db_ctx)
                     _cdl = engine_io.class_day_load_allowed_from_db(_db_ctx)
+                    _cfd = engine_io.class_free_days_from_db(_db_ctx)
                 _pb_scope = (pb_kwargs or {}).get("cp_sat_scope", "day")
                 # WEEK scope runs its own Phase A internally (soft_hint); the
                 # decomposition/per-day branches need dc_value up front.
@@ -2897,6 +2902,7 @@ def run_full_pipeline(profile: str,
                     workers=workers, log=False,
                     class_flags=_class_flags,
                     class_day_load_allowed=_cdl,
+                    class_free_days=_cfd,
                 )
                 state["dc_value"] = dc_value
                 full_solution: dict = {}
@@ -5526,6 +5532,7 @@ def run_decomposition_temporal(*, time_a: float = 60.0,
             _t_class_flags = engine_io.class_flags_from_db(_db_co)
             _t_special_room = cv2.build_special_room_ctx(_db_co)
             _t_cdl = engine_io.class_day_load_allowed_from_db(_db_co)
+            _t_cfd = engine_io.class_free_days_from_db(_db_co)
             support_assignments = engine_io.support_assignments_from_db(_db_co)
             parallel_groups = engine_io.parallel_groups_for_solver(_db_co)
             _t_plessi = cv2.build_plessi_ctx(_db_co)
@@ -5560,6 +5567,7 @@ def run_decomposition_temporal(*, time_a: float = 60.0,
             special_room_ctx=_t_special_room,
             class_flags=_t_class_flags,
             class_day_load_allowed=_t_cdl,
+            class_free_days=_t_cfd,
             support_assignments=support_assignments or None,
             parallel_groups=parallel_groups or None,
             plessi_ctx=_t_plessi,
