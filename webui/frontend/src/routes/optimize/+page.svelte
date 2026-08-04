@@ -39,6 +39,9 @@
     //   week + skip      OR  week + soft_hint
     cp_sat_scope: 'day',
     phase_a_mode: 'always',
+    // Capienza aule per-slot (option A): cap sul numero di classi in
+    // contemporanea in ogni (giorno, ora) pari al totale delle aule.
+    respect_room_capacity: false,
     // Joint (giorno,ora,aula): quando enabled, le var aula entrano nel
     // modello di schedulazione (il backend forza scope=week + no
     // decomposizione + estrazione aule). `obj` e' la lista di variabili
@@ -511,6 +514,20 @@
           </small>
         </div>
       </div>
+
+      <label class="flex items-start gap-2 text-sm mt-3">
+        <input type="checkbox" class="mt-0.5"
+               bind:checked={step3.respect_room_capacity}/>
+        <span>
+          Rispetta la capienza aule nello scheduling
+          <small class="block text-[11px] text-ink-500 leading-snug">
+            Limita il numero di classi in contemporanea in ogni ora al
+            totale delle aule della scuola, così l'orario è già
+            compatibile con le aule disponibili e lo step aule riesce a
+            collocarle tutte. Forza il percorso monolitico per giorno.
+          </small>
+        </span>
+      </label>
 
       <div class="mt-3 p-3 rounded border border-ink-200 bg-ink-50/40 space-y-2">
         <label class="flex items-center gap-2 text-sm font-medium">

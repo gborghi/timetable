@@ -583,6 +583,7 @@ def solve_monolithic_day(day, profs, triples, dc_value,
                          plessi_ctx=None,
                          special_room_ctx=None,
                          class_flags=None,
+                         total_room_capacity=None,
                          dsl_hard_expressions=None):
     """Monolithic fallback for a single day. Forwards
     `locked_slots_for_day`, `coteach_groups`, `support_assignments`,
@@ -612,6 +613,7 @@ def solve_monolithic_day(day, profs, triples, dc_value,
         plessi_ctx=plessi_ctx,
         special_room_ctx=special_room_ctx,
         class_flags=class_flags,
+        total_room_capacity=total_room_capacity,
         via_dsl=bool(dsl_hard_expressions),
         dsl_hard_expressions=dsl_hard_expressions or None,
     )

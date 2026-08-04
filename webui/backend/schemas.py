@@ -614,6 +614,11 @@ class PhaseBRunIn(BaseModel):
     #               on the week solver's day_count_for_hint vars (warm
     #               start, not enforced). Only valid with cp_sat_scope="week".
     phase_a_mode: str = "always"
+    # Per-slot general room capacity (option A). When True, Phase B caps the
+    # number of distinct classes in session in the same (day, hour) at the
+    # school's total room count, so the schedule is room-feasible per slot and
+    # the room step can seat everyone. Default False -> off (byte-identical).
+    respect_room_capacity: bool = False
     # Joint (day,hour,room) optimization. When ``joint_vars.enabled`` the
     # room vars join the schedule model (monolithic week scope is forced
     # server-side) and the rooms extraction step is turned on. None/absent

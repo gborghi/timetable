@@ -416,6 +416,7 @@ def _completion_solver(initial_sol: dict, profs: dict, dc_value: dict,
                        group_assignments: list | None = None,
                        special_room_ctx=None,
                        class_flags=None,
+                       total_room_capacity=None,
                        dsl_hard_expressions: list | None = None,
                        ) -> dict | None:
     """Completion solver. When the master LP assembly leaves any
@@ -452,6 +453,7 @@ def _completion_solver(initial_sol: dict, profs: dict, dc_value: dict,
             group_assignments=group_assignments,
             special_room_ctx=special_room_ctx,
             class_flags=class_flags,
+            total_room_capacity=total_room_capacity,
             via_dsl=bool(dsl_hard_expressions),
             dsl_hard_expressions=dsl_hard_expressions or None,
         )
@@ -4239,6 +4241,7 @@ def run_column_generation(profs: dict, dc_value: dict,
                           dsl_hard_expressions: list | None = None,
                           special_room_ctx=None,
                           class_flags=None,
+                          total_room_capacity=None,
                           ) -> tuple[dict | None, dict]:
     """Iterative Column Generation with master LP + diversified
     pattern enrichment + integer recovery + completion fallback.
@@ -4578,6 +4581,7 @@ def run_column_generation(profs: dict, dc_value: dict,
             workers=completion_workers,
             special_room_ctx=special_room_ctx,
             class_flags=class_flags,
+            total_room_capacity=total_room_capacity,
             dsl_hard_expressions=dsl_hard_expressions,
             locked_by_day=locked_by_day,
             coteach_groups=coteach_groups,

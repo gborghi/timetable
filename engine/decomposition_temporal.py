@@ -133,6 +133,7 @@ def solve_day(day: int, profs: dict, dc_value: dict, *,
               group_assignments: list | None = None,
               special_room_ctx=None,
               class_flags=None,
+              total_room_capacity=None,
               support_assignments: list | None = None,
               parallel_groups: list | None = None,
               plessi_ctx=None,
@@ -163,6 +164,7 @@ def solve_day(day: int, profs: dict, dc_value: dict, *,
         group_assignments=group_assignments,
         special_room_ctx=special_room_ctx,
         class_flags=class_flags,
+        total_room_capacity=total_room_capacity,
         via_dsl=bool(dsl_hard_expressions),
         dsl_hard_expressions=dsl_hard_expressions or None,
     )
@@ -181,11 +183,19 @@ def _worker_solve_day(args):
     """
     special_room_ctx = None
     class_flags = None
+    total_room_capacity = None
     support_assignments = None
     parallel_groups = None
     plessi_ctx = None
     dsl_hard_expressions = None
-    if len(args) == 15:
+    if len(args) == 16:
+        (day, profs_path, dc_path, time_limit, workers,
+         enforce_no_holes, locked_slots_for_day,
+         coteach_groups, group_assignments,
+         special_room_ctx, class_flags,
+         support_assignments, parallel_groups, plessi_ctx,
+         dsl_hard_expressions, total_room_capacity) = args
+    elif len(args) == 15:
         (day, profs_path, dc_path, time_limit, workers,
          enforce_no_holes, locked_slots_for_day,
          coteach_groups, group_assignments,
@@ -237,6 +247,7 @@ def _worker_solve_day(args):
         group_assignments=group_assignments,
         special_room_ctx=special_room_ctx,
         class_flags=class_flags,
+        total_room_capacity=total_room_capacity,
         support_assignments=support_assignments,
         parallel_groups=parallel_groups,
         plessi_ctx=plessi_ctx,
@@ -268,6 +279,7 @@ def run_temporal_pipeline(profs_path: str, *,
                           group_assignments: list | None = None,
                           special_room_ctx=None,
                           class_flags=None,
+                          total_room_capacity=None,
                           class_day_load_allowed=None,
                           class_free_days=None,
                           support_assignments=None,
@@ -412,7 +424,8 @@ def run_temporal_pipeline(profs_path: str, *,
                                support_assignments,
                                parallel_groups,
                                plessi_ctx,
-                               dsl_hard_expressions)): d
+                               dsl_hard_expressions,
+                               total_room_capacity)): d
                     for d in DAYS
                 }
                 done_args_iter = (as_completed(futures, timeout=day_timeout)
@@ -462,6 +475,7 @@ def run_temporal_pipeline(profs_path: str, *,
                 group_assignments=group_assignments,
                 special_room_ctx=special_room_ctx,
                 class_flags=class_flags,
+                total_room_capacity=total_room_capacity,
                 support_assignments=support_assignments,
                 parallel_groups=parallel_groups,
                 plessi_ctx=plessi_ctx,

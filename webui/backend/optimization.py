@@ -843,6 +843,7 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                 rooms_prefer_home: bool = True,
                 cp_sat_scope: str = "day",
                 phase_a_mode: str = "always",
+                respect_room_capacity: bool = False,
                 joint_vars: dict | None = None) -> int:
     # Phase 3 -- enforce the same (cp_sat_scope, phase_a_mode)
     # cross-field rules as PhaseBRunIn so direct callers (full
@@ -925,6 +926,7 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                   rooms_prefer_home=rooms_prefer_home,
                   cp_sat_scope=cp_sat_scope,
                   phase_a_mode=phase_a_mode,
+                  respect_room_capacity=respect_room_capacity,
                   joint_vars=_jv)
     _preflight_lock_check()
     run_id = create_run("phase_b", "Schedulazione orario", None, params)
@@ -1098,6 +1100,24 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
             if _special_room_ctx:
                 print(f"[phase_b] aule speciali: capienza per kind "
                       f"{_special_room_ctx[1]}")
+            # Per-slot GENERAL room capacity (option A): cap the number of
+            # distinct classes in session in the same (day, hour) at the total
+            # room count, so the schedule itself is room-feasible per slot and
+            # the room step can seat everyone. Opt-in via respect_room_capacity;
+            # None -> off (byte-identical). Like the special-room cap it is a
+            # GLOBAL per-slot rule the spectral stages can't see, so it forces
+            # the monolithic per-day path below.
+            _total_room_capacity = None
+            if respect_room_capacity:
+                try:
+                    with SessionLocal() as _db_rc:
+                        _total_room_capacity = (
+                            _db_rc.query(models.Classroom).count() or None)
+                except Exception:
+                    _total_room_capacity = None
+                if _total_room_capacity:
+                    print(f"[phase_b] capienza aule totale attiva: "
+                          f"{_total_room_capacity}")
             # HARD DSL rule expression strings, loaded ONCE (used both to
             # force the monolithic per-day path below and to feed its
             # verify + no-good gate). None => no hard DSL => zero drift.
@@ -1117,6 +1137,7 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
             # its presence also forces monolithic -- the spectral stages
             # would silently ship a timetable that violates it.
             _needs_mono = (bool(_special_room_ctx) or bool(_plessi_ctx)
+                           or bool(_total_room_capacity)
                            or bool(coteach_groups)
                            or bool(support_assignments)
                            or bool(parallel_groups)
@@ -1224,6 +1245,7 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                         plessi_ctx=_plessi_ctx,
                         special_room_ctx=_special_room_ctx,
                         class_flags=_class_flags,
+                        total_room_capacity=_total_room_capacity,
                     )
                     if out is not None:
                         full_solution = {
@@ -1255,6 +1277,7 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                         plessi_ctx=_plessi_ctx,
                         special_room_ctx=_special_room_ctx,
                         class_flags=_class_flags,
+                        total_room_capacity=_total_room_capacity,
                         diagnostics_sink=_dsl_sink,
                     )
                     if out is None and locked_by_day.get(d):
@@ -2901,6 +2924,15 @@ def run_full_pipeline(profile: str,
                     _class_flags = engine_io.class_flags_from_db(_db_ctx)
                     _cdl = engine_io.class_day_load_allowed_from_db(_db_ctx)
                     _cfd = engine_io.class_free_days_from_db(_db_ctx)
+                    # Per-slot general room capacity (option A), opt-in via the
+                    # phase_b step's respect_room_capacity kwarg. None -> off.
+                    _total_room_capacity = None
+                    if (pb_kwargs or {}).get("respect_room_capacity"):
+                        _total_room_capacity = (
+                            _db_ctx.query(models.Classroom).count() or None)
+                if _total_room_capacity:
+                    print(f"[full] phase_b: capienza aule totale attiva: "
+                          f"{_total_room_capacity}")
                 _pb_scope = (pb_kwargs or {}).get("cp_sat_scope", "day")
                 # WEEK scope runs its own Phase A internally (soft_hint); the
                 # decomposition/per-day branches need dc_value up front.
@@ -3038,6 +3070,7 @@ def run_full_pipeline(profile: str,
                             plessi_ctx=_plessi_ctx,
                             special_room_ctx=_special_room_ctx,
                             class_flags=_class_flags,
+                            total_room_capacity=_total_room_capacity,
                         )
                         if out is not None:
                             full_solution.update(out)

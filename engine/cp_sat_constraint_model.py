@@ -1989,6 +1989,7 @@ class PhaseBDaySolver:
         db: Any = None,
         extra_dsl_expressions: list | None = None,
         special_room_ctx: Any = None,
+        total_room_capacity: int | None = None,
     ):
         self.profs = profs
         self.dc_value = dc_value
@@ -2002,6 +2003,10 @@ class PhaseBDaySolver:
         # potrebbe reintrodurre l'overflow. Se None e db c'e', lo si
         # ricostruisce; altrimenti si usa quello passato dal chiamante.
         self.special_room_ctx = special_room_ctx
+        # Per-slot general room capacity (option A): total room count cap
+        # applied per (day, hour). None/0 -> off (byte-identical). Opt-in,
+        # forwarded to solve_phase_b_for_day exactly like special_room_ctx.
+        self.total_room_capacity = total_room_capacity
         if self.special_room_ctx is None and db is not None:
             try:
                 from . import cpsat_v2_timetable as _cv2  # type: ignore
@@ -2125,6 +2130,7 @@ class PhaseBDaySolver:
             # when via_dsl=False (no db), so the day-repair respects the
             # palestra/lab capienza in the post-processing path too.
             special_room_ctx=self.special_room_ctx,
+            total_room_capacity=self.total_room_capacity,
         )
         # Normalise status: the legacy function returns the CP-SAT
         # numeric status when infeasible and a dict when feasible.
