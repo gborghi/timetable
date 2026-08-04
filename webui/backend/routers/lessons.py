@@ -52,6 +52,8 @@ class RescheduleIn(BaseModel):
 
 class BulkDeleteIn(BaseModel):
     ids: list[int]
+    # Pinned lessons are refused unless the caller says it means it.
+    force: bool = False
 
 
 # ---------- helpers ----------
@@ -239,11 +241,30 @@ def bulk_delete_lessons(payload: BulkDeleteIn,
     """Delete many Lesson rows in one round-trip. Used by the calendar's
     "Sostituisci" conflict resolver, which previously issued N serial
     DELETEs (each a request + a full timetable reload). Unknown ids are
-    ignored; the response reports how many rows were actually removed."""
+    ignored; the response reports how many rows were actually removed.
+
+    A pinned lesson (`Lesson.locked`) is refused unless `force=true`.
+    Every mover in the app now asks before spending a pin, but the
+    conflict resolver reached the same lessons by a side door and
+    destroyed them outright -- a stronger action than the move the pin
+    already guards, taken with no question asked. The refusal names the
+    pinned ids so the UI can say which ones."""
     ids = [int(i) for i in payload.ids]
     if not ids:
         return {"ok": True, "deleted": 0, "deleted_ids": []}
     rows = db.query(models.Lesson).filter(models.Lesson.id.in_(ids)).all()
+    pinned = [l for l in rows if l.locked]
+    if pinned and not payload.force:
+        return {
+            "ok": False,
+            "needs_force": True,
+            "deleted": 0,
+            "deleted_ids": [],
+            "pinned_ids": [l.id for l in pinned],
+            "reason": (
+                f"{len(pinned)} lezioni su {len(rows)} sono bloccate nel "
+                "loro slot. Eliminarle annullera il blocco."),
+        }
     deleted_ids = [l.id for l in rows]
     for l in rows:
         db.delete(l)
@@ -288,10 +309,16 @@ def reschedule_lesson(unscheduled_id: int,
                       payload: RescheduleIn,
                       db: Session = Depends(get_db)):
     """Place a pool entry at (day, hour). Deletes the pool row and
-    creates a Lesson in its solution. The destination slot HARD
-    feasibility is enforced by reusing `validate_and_apply_move` on
-    a temp src tuple after the row is created -- if the move is
-    rejected, the new Lesson is rolled back.
+    creates a Lesson in its solution.
+
+    Destination HARD feasibility goes through
+    `optimization.validate_hard_placement` -- the same gate
+    `validate_and_apply_move` runs, minus the parts that only make
+    sense when a source row exists. Before that, this endpoint checked
+    nothing but double-booking, so the pool could deposit a lesson on
+    an hour where the teacher is HARD-unavailable, or one that opens a
+    hole: every guarantee the solver had been asked for, undone by a
+    drag.
 
     If the destination slot is occupied by other Lesson rows that
     share teacher / class / classroom with the pool entry, the
@@ -324,6 +351,16 @@ def reschedule_lesson(unscheduled_id: int,
                 "class_busy": _summarise_conflicts(cinfo["class_busy"]),
                 "room_busy": _summarise_conflicts(cinfo["room_busy"]),
             },
+        }
+
+    gate = optimization.validate_hard_placement(
+        db, add=(u.teacher_name, u.class_name, u.subject,
+                 int(payload.day), int(payload.hour)))
+    if not gate["ok"]:
+        return {
+            "accepted": False,
+            "reason": gate["reason"],
+            "unscheduled_id": unscheduled_id,
         }
 
     new_lesson = models.Lesson(

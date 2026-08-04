@@ -1533,10 +1533,27 @@ def lessons_for_classroom_step(db: Session, solution_id: int,
 
 
 def apply_room_mapping(db: Session, solution_id: int,
-                       mapping: dict[tuple, str]) -> int:
-    """Updates Lesson.classroom_name from a (class, subject, day, hour)
-    -> classroom_name dict. Returns the number of rows updated."""
-    n = 0
+                       mapping: dict[tuple, str],
+                       *, clear_missing: bool = False) -> int:
+    r"""Updates Lesson.classroom_name from a (class, subject, day, hour)
+    -> classroom_name dict. Returns the number of rows ROOMED.
+
+    `clear_missing` says the mapping is exhaustive: it was produced from the
+    whole lesson set of the solution, so a lesson absent from it is one the
+    room step deliberately left unplaced (capienza/plesso shortage) and its
+    old `classroom_name` is stale. Without this the previous run's aula
+    survives on a lesson the current run refused to place, and the grid
+    shows a room the solver never granted -- with the double-booking that
+    implies, since another lesson may have been given that aula for real.
+
+    Riders in compresenza are safe: `solve_classroom_assignment` writes them
+    back into its own result from the host's cell, and when the host is
+    unplaced the rider is genuinely roomless too. Only pass True from a
+    caller that submitted every lesson of the solution -- with a partial
+    mapping the clear would wipe rooms nobody asked about, which is why it
+    is off by default.
+    """
+    n = cleared = 0
     for l in db.query(models.Lesson).filter(
         models.Lesson.solution_id == solution_id
     ).all():
@@ -1544,7 +1561,13 @@ def apply_room_mapping(db: Session, solution_id: int,
         if key in mapping:
             l.classroom_name = mapping[key]
             n += 1
+        elif clear_missing and l.classroom_name:
+            l.classroom_name = None
+            cleared += 1
     db.commit()
+    if cleared:
+        print(f"[rooms] {cleared} lezioni senza aula in questa soluzione: "
+              "rimossa l'aula del run precedente (era stale)")
     return n
 
 

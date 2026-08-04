@@ -25,6 +25,7 @@ from . import engine_io, models
 from .db import SessionLocal
 from .run_manager import (
     create_run,
+    is_cancel_requested,
     raise_if_cancelled,
     start_thread,
     update_run,
@@ -1394,6 +1395,20 @@ class _ProgressCallback(cp_model.CpSolverSolutionCallback):
     time vs. the limit, and records the current objective. DB writes are
     throttled to at most once per ``min_interval`` seconds so the callback
     never becomes the bottleneck of the search.
+
+    ``base``/``span`` MUST describe the window the caller's own progress
+    scheme has reserved for this solve -- they are not a property of the
+    solve. ``run_phase_b`` gives it 0.30..0.88; ``run_full_pipeline``
+    gives it one slice of ``i/n_steps``. Hard-coding the former made the
+    bar leap forward and then fall back on the pipeline path.
+
+    It also doubles as the cancel hook: CP-SAT does not poll anything, so
+    a cancel requested during a long ``Solve`` had to wait out the whole
+    time budget. This is the only place inside the solve where we get
+    control, so it checks and calls ``StopSearch()``. That ends the solve
+    early with whatever it has; the orchestration's own
+    ``raise_if_cancelled`` at the next boundary is what actually marks
+    the run cancelled.
     """
 
     def __init__(self, rid: int, *, base: float, span: float,
@@ -1412,6 +1427,9 @@ class _ProgressCallback(cp_model.CpSolverSolutionCallback):
     def on_solution_callback(self) -> None:
         self._n += 1
         t = self.WallTime()
+        if is_cancel_requested(self._rid):
+            self.StopSearch()
+            return
         if t - self._last_emit < self._min_interval:
             return
         self._last_emit = t
@@ -1421,8 +1439,13 @@ class _ProgressCallback(cp_model.CpSolverSolutionCallback):
         # so touching metrics here would clobber whatever the run set before
         # the solve -- the finding-19 ask is bar MOVEMENT, nothing else.
         frac = self._base + self._span * min(0.98, t / self._limit)
+        # Clamp to the caller's band lower bound: rounding a fraction that
+        # sits right at ``base`` (t ~ 0 on the first incumbent) can dip
+        # below it (round(2/6, 3) = 0.333 < 0.3333), which would show the
+        # bar stepping backwards off the band the caller reserved.
+        progress = max(self._base, round(frac, 3))
         try:
-            update_run(self._rid, progress=round(frac, 3),
+            update_run(self._rid, progress=progress,
                        current_step=self._step)
         except Exception:  # noqa: BLE001 - progress is best-effort, never fatal
             pass
@@ -1441,7 +1464,9 @@ def _solve_phase_b_week(*, rid: int, ws: str, profs: dict,
                           potenziamento_assignments: list | None,
                           parallel_groups: list | None,
                           group_assignments: list | None,
-                          joint_vars: dict | None = None) -> dict:
+                          joint_vars: dict | None = None,
+                          progress_base: float = 0.30,
+                          progress_span: float = 0.58) -> dict:
     """Phase 3 -- single CP-SAT call covering the whole week via
     ``MonolithicSolver(scope=None)``.
 
@@ -1694,9 +1719,12 @@ def _solve_phase_b_week(*, rid: int, ws: str, profs: dict,
         print(f"[phaseB.week] solving (time_limit={time_mono}s, "
               f"workers={workers})")
         # Advance the progress bar during this single long solve (finding
-        # 19): the milestone jumped to 0.30 before it, the next step
-        # (rooms/finalize) picks up at ~0.90, so the callback fills the gap.
-        _pcb = _ProgressCallback(rid, base=0.30, span=0.58,
+        # 19). The window is the caller's: on the run_phase_b path the
+        # milestone jumped to 0.30 before it and the next step
+        # (rooms/finalize) picks up at ~0.90, so the callback fills the
+        # gap; run_full_pipeline hands over its own step slice instead.
+        _pcb = _ProgressCallback(rid, base=progress_base,
+                                 span=progress_span,
                                  time_limit=time_mono, step="phase_b")
         status = cp_solver.Solve(solver.model, _pcb)
         status_name = cp_solver.StatusName(status)
@@ -1705,7 +1733,7 @@ def _solve_phase_b_week(*, rid: int, ws: str, profs: dict,
 
     # The monolithic week solve below is the long wait; label it so the UI
     # shows 'Phase B' during it instead of a stale earlier step (finding 19).
-    update_run(rid, progress=0.30, current_step="phase_b")
+    update_run(rid, progress=progress_base, current_step="phase_b")
 
     def _solve_once(forbidden):
         """Adapter for ``dsl_cp_gate.solve_with_dsl_refinement``: build +
@@ -2900,6 +2928,12 @@ def run_full_pipeline(profile: str,
                         potenziamento_assignments=_pa, parallel_groups=_pg,
                         group_assignments=_ga,
                         joint_vars=None,
+                        # This solve owns exactly this pipeline step's
+                        # slice of the bar. Letting it keep the
+                        # run_phase_b default made it climb to 0.88 and
+                        # then snap back to (i+1)/n_steps.
+                        progress_base=i / n_steps,
+                        progress_span=1 / n_steps,
                     )
                 elif ((pb_kwargs or {}).get("use_decomposition", True)
                         and len(classes) >= 8):
@@ -4089,6 +4123,19 @@ def run_place_event(event_ids: list[int], lock_mode: str = "all_others_locked",
     according to lock_mode. Conflicts with movable lessons cause those
     lessons to be deleted (the user can "Piazza" them again later).
 
+    Eviction is a **last resort**: each cattedra first takes every slot
+    it can have for free, and only then starts displacing movable
+    lessons. Without that ordering `all_others_movable` -- where every
+    lesson is movable -- would bulldoze the week from Monday first hour
+    onwards instead of filling the gaps it was reached for.
+
+    Per-slot pins (`Lesson.locked`) outrank `lock_mode` entirely: a
+    pinned lesson is never wiped and never evicted, matching the "locked
+    lessons are hard constraints in every path" rule the CP-SAT
+    pipelines follow. A pinned lesson of a *target* cattedra therefore
+    stays where it is and counts against that cattedra's hours, so
+    "Piazza" tops up the remainder rather than re-placing it.
+
     Caveats: this is NOT a SOFT-optimal placer; for that the user
     should run the full Phase B + meta pipeline. The greedy approach
     is fast (sub-second on small/medium schools) and surfaces
@@ -4136,10 +4183,27 @@ def run_place_event(event_ids: list[int], lock_mode: str = "all_others_locked",
             frozen_class: set[tuple[str, int, int]] = set()
             frozen_room:  set[tuple[str, int, int]] = set()
             movable: list[models.Lesson] = []
+            # Pinned hours of a target cattedra: they stay put, so they
+            # count against that cattedra's hours instead of being
+            # re-placed. Keyed like `target_keys`.
+            kept_pins: dict[tuple[str, str, str], int] = {}
             for l in db.query(models.Lesson).filter(
                 models.Lesson.solution_id == active.id
             ).all():
-                if (l.teacher_name, l.class_name, l.subject) in target_keys:
+                key = (l.teacher_name, l.class_name, l.subject)
+                if l.locked:
+                    # A per-slot pin outranks lock_mode: it is a hard
+                    # constraint everywhere else in the engine, so it is
+                    # neither wiped nor evicted here. Freezing it also
+                    # keeps the placer from double-booking against it.
+                    if key in target_keys:
+                        kept_pins[key] = kept_pins.get(key, 0) + 1
+                    frozen_owner.add((l.teacher_name, l.day, l.hour))
+                    frozen_class.add((l.class_name, l.day, l.hour))
+                    if l.classroom_name:
+                        frozen_room.add((l.classroom_name, l.day, l.hour))
+                    continue
+                if key in target_keys:
                     # The target's own lessons are always re-placed
                     movable.append(l)
                     continue
@@ -4172,37 +4236,97 @@ def run_place_event(event_ids: list[int], lock_mode: str = "all_others_locked",
             db.flush()
             print(f"[piazza] wiped {n_wiped} existing lessons of target events")
 
+            # What survives in `movable` now is everything the lock_mode
+            # says MAY be displaced but that nobody has displaced yet.
+            # Those lessons are still in the solution and still occupy
+            # their teacher's and their class' slot -- index them so a
+            # candidate slot can name its occupants and evict them.
+            # Skipping this is what let the placer write a second lesson
+            # into an occupied cell; /schedule's by-class view then drew
+            # the collision as co-teaching, hiding it completely.
+            movable_by_owner: dict[tuple[str, int, int],
+                                   dict[int, models.Lesson]] = {}
+            movable_by_class: dict[tuple[str, int, int],
+                                   dict[int, models.Lesson]] = {}
+            for l in movable:
+                if l.id is None:      # already wiped above
+                    continue
+                movable_by_owner.setdefault(
+                    (l.teacher_name, l.day, l.hour), {})[l.id] = l
+                movable_by_class.setdefault(
+                    (l.class_name, l.day, l.hour), {})[l.id] = l
+
+            def _occupants(tname: str, cname: str, d: int, h: int):
+                """Movable lessons blocking (tname|cname, d, h). One
+                lesson can block on both axes -- dict-by-id de-dupes."""
+                out = dict(movable_by_owner.get((tname, d, h), {}))
+                out.update(movable_by_class.get((cname, d, h), {}))
+                return list(out.values())
+
+            def _evict(l: models.Lesson) -> None:
+                movable_by_owner.get(
+                    (l.teacher_name, l.day, l.hour), {}).pop(l.id, None)
+                movable_by_class.get(
+                    (l.class_name, l.day, l.hour), {}).pop(l.id, None)
+                db.delete(l)
+
             # Track temporary occupancy (frozen + already placed in this run)
             placed_owner = set(frozen_owner)
             placed_class = set(frozen_class)
+            # Rooms are assigned by a later step (lessons go in with
+            # classroom_name=None), so nothing consults this yet; kept so
+            # the frozen-room set has somewhere to go if it ever does.
             placed_room  = set(frozen_room)
 
             n_placed = 0
             n_unplaced = 0
+            n_evicted = 0
             # Sequence target hours (one entry per missing hour)
             for (a, t, c) in targets:
-                hours_to_place = int(a.hours)
+                pinned = kept_pins.get((t.name, c.name, a.subject), 0)
+                hours_to_place = int(a.hours) - pinned
+                if pinned:
+                    print(f"[piazza] {t.name}/{c.name}/{a.subject}: "
+                          f"{pinned} ore bloccate restano dove sono")
                 placements = []
-                for d in DAYS:
-                    if len(placements) >= hours_to_place:
-                        break
-                    for h in HOURS:
+                # Pass 1 takes only slots that are free anyway; pass 2
+                # is allowed to displace movable lessons. Two passes
+                # rather than one so a cattedra never evicts a colleague
+                # while an empty slot is still available further on in
+                # the week.
+                for allow_evict in (False, True):
+                    for d in DAYS:
                         if len(placements) >= hours_to_place:
                             break
-                        # HARD-availability checks
-                        if (t.name, d, h) in av["teacher_hard"]:
-                            continue
-                        if (c.name, d, h) in av["class_hard"]:
-                            continue
-                        # Frozen + already-placed-in-this-run conflicts
-                        if (t.name, d, h) in placed_owner:
-                            continue
-                        if (c.name, d, h) in placed_class:
-                            continue
-                        # OK: take this slot
-                        placements.append((d, h))
-                        placed_owner.add((t.name, d, h))
-                        placed_class.add((c.name, d, h))
+                        for h in HOURS:
+                            if len(placements) >= hours_to_place:
+                                break
+                            # HARD-availability checks
+                            if (t.name, d, h) in av["teacher_hard"]:
+                                continue
+                            if (c.name, d, h) in av["class_hard"]:
+                                continue
+                            # Frozen + already-placed-in-this-run conflicts
+                            if (t.name, d, h) in placed_owner:
+                                continue
+                            if (c.name, d, h) in placed_class:
+                                continue
+                            busy = _occupants(t.name, c.name, d, h)
+                            if busy and not allow_evict:
+                                continue
+                            for victim in busy:
+                                print(f"[piazza] sfratto "
+                                      f"{victim.teacher_name}/"
+                                      f"{victim.class_name}/"
+                                      f"{victim.subject} da ({d}, {h})")
+                                _evict(victim)
+                                n_evicted += 1
+                            # OK: take this slot
+                            placements.append((d, h))
+                            placed_owner.add((t.name, d, h))
+                            placed_class.add((c.name, d, h))
+                    if len(placements) >= hours_to_place:
+                        break
                 # Insert lessons
                 for (d, h) in placements:
                     db.add(models.Lesson(
@@ -4224,9 +4348,11 @@ def run_place_event(event_ids: list[int], lock_mode: str = "all_others_locked",
                 "n_targets": len(targets),
                 "n_placed": n_placed,
                 "n_unplaced": n_unplaced,
+                "n_evicted": n_evicted,
                 "lock_mode": lock_mode,
             })
-            print(f"[piazza] DONE: {n_placed} piazzate, {n_unplaced} non piazzate")
+            print(f"[piazza] DONE: {n_placed} piazzate, "
+                  f"{n_unplaced} non piazzate, {n_evicted} sfrattate")
 
     start_thread(run_id, target)
     return run_id
@@ -4284,7 +4410,7 @@ def _apply_joint_room_map(sid: int, room_map: dict,
               f"joint room; falling back to standalone room step")
         return None
     with SessionLocal() as db:
-        n = engine_io.apply_room_mapping(db, sid, final)
+        n = engine_io.apply_room_mapping(db, sid, final, clear_missing=True)
     print(f"[{log_prefix}] {n}/{len(lessons)} lessons roomed from the joint "
           f"solve's own room vars (home/continuity preserved)")
     return {
@@ -4308,6 +4434,74 @@ def _unplaced_from_status(status: str | None) -> int:
         return 0
 
 
+def _rooms_unplaced_count(lessons: list[dict], result: dict) -> int:
+    """Lessons left without a real room, counted off the mapping actually
+    shipped rather than off the exact solver's ``/UNPLACED:<n>`` suffix --
+    the suffix describes the exact solve, and the greedy branch (fallback
+    or rescue) produces a different mapping with a different shortfall."""
+    keys = {(L["class"], L["subject"], int(L["day"]), int(L["hour"]))
+            for L in lessons}
+    return sum(1 for k in keys if k not in (result or {}))
+
+
+def _rooms_with_greedy_fallback(result, status, *, lessons, rooms,
+                                prefer_home: bool, locked_classrooms,
+                                plessi_data, log_prefix: str = "rooms"):
+    r"""Decide what the room step actually ships, given the exact solve's
+    outcome. Returns ``(result, rooms_fallback, rooms_rescued)``.
+
+    Two distinct reasons to reach for the greedy heuristic:
+
+    1. the exact solve returned nothing at all (`result is None`): solver
+       failure, NO_CLASSROOMS/NO_ELIGIBLE/LOCKED_INELIGIBLE. Greedy is the
+       only thing left -- that is `rooms_fallback`, and it has always run;
+    2. the exact solve came back cut short AND with lessons unplaced.
+       Since `allow_unplaced` gives every lesson a virtual "no room"
+       fallback, the model is trivially feasible, so a timeout no longer
+       yields None -- it yields a FEASIBLE incumbent that may have parked
+       a pile of lessons on the virtual room simply because the search
+       never got far. The old `result is None` test could not see that
+       case, so the greedy branch was dead on timeout and a badly-timed
+       solve shipped its degraded incumbent unchallenged. Here we run
+       greedy too and keep whichever placed more lessons: greedy is fast,
+       lock- and plesso-aware, and on an OPTIMAL status we don't bother
+       (nothing can beat it, unplaced there is a real shortage).
+    """
+    from classroom_assignment import (  # type: ignore
+        greedy_classroom_assignment,
+    )
+    if result is None:
+        print(f"[{log_prefix}] CP-SAT infeasible ({status}); fallback greedy")
+        # Greedy is now lock-aware (FU-2): forward the same
+        # locked_classrooms list so the fallback honours every lock.
+        # It must also see `plessi_data`, or the fallback places lessons
+        # plesso-blind while the exact model would have honoured the
+        # single-plesso policies (finding 35b).
+        return greedy_classroom_assignment(
+            lessons, rooms, prefer_home=prefer_home,
+            locked_classrooms=locked_classrooms or None,
+            plessi_data=plessi_data,
+        ), True, 0
+    unplaced = _unplaced_from_status(status)
+    if not unplaced or (status or "").startswith("OPTIMAL"):
+        return result, False, 0
+    print(f"[{log_prefix}] {status}: {unplaced} lezioni senza aula da una "
+          "ricerca troncata; provo il greedy come controprova")
+    alt = greedy_classroom_assignment(
+        lessons, rooms, prefer_home=prefer_home,
+        locked_classrooms=locked_classrooms or None,
+        plessi_data=plessi_data,
+    )
+    rescued = len(alt) - len(result)
+    if rescued <= 0:
+        print(f"[{log_prefix}] il greedy non fa meglio ({len(alt)} vs "
+              f"{len(result)} lezioni collocate); tengo la soluzione esatta")
+        return result, False, 0
+    print(f"[{log_prefix}] il greedy colloca {rescued} lezioni in piu'; "
+          "uso quella")
+    return alt, True, rescued
+
+
 def _apply_rooms_to_solution(sid: int, *, time_limit_s: float,
                              workers: int, prefer_home: bool,
                              log_prefix: str = "rooms",
@@ -4323,7 +4517,7 @@ def _apply_rooms_to_solution(sid: int, *, time_limit_s: float,
       - the standalone "rooms" pipeline step
     """
     from classroom_assignment import (  # type: ignore
-        solve_classroom_assignment, greedy_classroom_assignment,
+        solve_classroom_assignment,
     )
     try:
         from plessi_constraints import (  # type: ignore
@@ -4365,22 +4559,17 @@ def _apply_rooms_to_solution(sid: int, *, time_limit_s: float,
         locked_classrooms=locked_classrooms or None,
         plessi_data=plessi_data,
     )
-    rooms_fallback = result is None
-    if rooms_fallback:
-        print(f"[{log_prefix}] CP-SAT infeasible ({status}); fallback greedy")
-        # Greedy is now lock-aware (FU-2): forward the same
-        # locked_classrooms list so the fallback honours every lock.
-        # It must also see `plessi_data`, or the fallback places lessons
-        # plesso-blind while the exact model would have honoured the
-        # single-plesso policies (finding 35b).
-        result = greedy_classroom_assignment(
-            lessons, rooms, prefer_home=prefer_home,
-            locked_classrooms=locked_classrooms or None,
-            plessi_data=plessi_data,
-        )
-    rooms_unplaced = _unplaced_from_status(status)
+    result, rooms_fallback, rooms_rescued = _rooms_with_greedy_fallback(
+        result, status, lessons=lessons, rooms=rooms,
+        prefer_home=prefer_home, locked_classrooms=locked_classrooms,
+        plessi_data=plessi_data, log_prefix=log_prefix)
+    rooms_unplaced = _rooms_unplaced_count(lessons, result)
     with SessionLocal() as db:
-        n_rooms = engine_io.apply_room_mapping(db, sid, result)
+        # Esaustivo: `result` nasce da TUTTE le lezioni della soluzione,
+        # quindi chi non c'e\` e\` rimasto senza aula per davvero e l'aula
+        # del run precedente va tolta, non lasciata li\`.
+        n_rooms = engine_io.apply_room_mapping(db, sid, result,
+                                               clear_missing=True)
     print(f"[{log_prefix}] {n_rooms}/{len(lessons)} lessons got a room"
           + (f" ({rooms_unplaced} senza aula per capienza/plesso)"
              if rooms_unplaced else ""))
@@ -4393,9 +4582,14 @@ def _apply_rooms_to_solution(sid: int, *, time_limit_s: float,
     # which is a configuration error read off `rooms_exact_status`);
     # `rooms_unplaced` = the exact solve succeeded but could not fit N
     # lessons for capacity/plesso reasons (findings 33/34).
+    # `rooms_rescued` > 0 means the second case above: the exact incumbent
+    # was truncated and the greedy placed more, so `rooms_fallback` here
+    # says "what you are looking at is the greedy's mapping", not "the
+    # exact solve died".
     return {"rooms_assigned": n_rooms, "rooms_total_lessons": len(lessons),
             "rooms_exact_status": status, "rooms_fallback": rooms_fallback,
-            "rooms_unplaced": rooms_unplaced}
+            "rooms_unplaced": rooms_unplaced,
+            "rooms_rescued": rooms_rescued}
 
 
 def run_classroom_assignment(time_limit_s: float, workers: int, log: bool,
@@ -4407,7 +4601,7 @@ def run_classroom_assignment(time_limit_s: float, workers: int, log: bool,
 
     def target(rid: int):
         from classroom_assignment import (  # type: ignore
-            solve_classroom_assignment, greedy_classroom_assignment,
+            solve_classroom_assignment,
         )
         try:
             from plessi_constraints import (  # type: ignore
@@ -4452,17 +4646,14 @@ def run_classroom_assignment(time_limit_s: float, workers: int, log: bool,
             locked_classrooms=locked_classrooms or None,
             plessi_data=plessi_data,
         )
-        rooms_fallback = result is None
-        if rooms_fallback:
-            print(f"[rooms] CP-SAT infeasible ({status}); fallback greedy")
-            result = greedy_classroom_assignment(
-                lessons, rooms, prefer_home=prefer_home,
-                locked_classrooms=locked_classrooms or None,
-                plessi_data=plessi_data,
-            )
-        rooms_unplaced = _unplaced_from_status(status)
+        result, rooms_fallback, rooms_rescued = _rooms_with_greedy_fallback(
+            result, status, lessons=lessons, rooms=rooms,
+            prefer_home=prefer_home, locked_classrooms=locked_classrooms,
+            plessi_data=plessi_data)
+        rooms_unplaced = _rooms_unplaced_count(lessons, result)
         with SessionLocal() as db:
-            n = engine_io.apply_room_mapping(db, active.id, result)
+            n = engine_io.apply_room_mapping(db, active.id, result,
+                                             clear_missing=True)
         # `rooms_fallback` tells the UI the exact solve returned nothing
         # (timeout/unknown, or NO_ELIGIBLE -- a lesson with no eligible
         # room anywhere, which `rooms_exact_status` names) and what it
@@ -4470,11 +4661,14 @@ def run_classroom_assignment(time_limit_s: float, workers: int, log: bool,
         # a clean success (finding 35a). `rooms_unplaced` reports the
         # lessons the (feasible) exact solve could not fit into any real
         # room -- a capacity/plesso shortage the headmaster must resolve,
-        # not a solver failure (findings 33/34).
+        # not a solver failure (findings 33/34). `rooms_rescued` > 0 marks
+        # the third case: l'esatto era troncato e il greedy ha collocato
+        # piu\` lezioni, quindi cio\` che si vede e\` la mappa del greedy.
         update_run(rid, progress=1.0, metrics={
             "rooms_assigned": n, "lessons": len(lessons),
             "rooms_exact_status": status, "rooms_fallback": rooms_fallback,
             "rooms_unplaced": rooms_unplaced,
+            "rooms_rescued": rooms_rescued,
         })
         print(f"[rooms] {n}/{len(lessons)} lezioni hanno un'aula"
               + (f" ({rooms_unplaced} senza aula per capienza/plesso)"
@@ -4969,6 +5163,170 @@ def preview_moves_for_lesson(db: Session, src: tuple,
     return results
 
 
+def assess_solution_health(db: Session, sol_id: int) -> dict[str, Any]:
+    r"""Is solution ``sol_id`` fit to be the school's live timetable?
+
+    Runs the three checks a solve has to pass before it is allowed to
+    become active -- full coverage, global HARD feasibility, logical
+    HARD constraints -- against the solution as it is stored *now*.
+
+    It re-checks rather than trusting `Solution.metrics`, because a
+    solution can be saved feasible and then rot: the school edits the
+    week, a teacher's unavailability changes, hours move by hand. The
+    metrics describe the moment the solver finished; activation is
+    about the moment the school starts running on it.
+
+    Returns ``{"ok", "problems", "coverage", "required_hours",
+    "missing_hours", "worst", "hard_ok", "logical_ok"}``. ``problems``
+    is a list of ready-to-show Italian sentences; ``ok`` is simply
+    ``not problems``.
+    """
+    import metaheuristics as meta  # type: ignore
+
+    problems: list[str] = []
+
+    # --- Coverage. Same (teacher, class, subject) accounting /monitor
+    # uses for its per-cattedra "ore mancanti", so the two agree.
+    placed: dict[tuple, int] = {}
+    for l in db.query(models.Lesson).filter(
+            models.Lesson.solution_id == sol_id).all():
+        key = (l.teacher_name, l.class_name, l.subject)
+        placed[key] = placed.get(key, 0) + 1
+    teachers = {t.id: t.name for t in db.query(models.Teacher).all()}
+    classes = {c.id: c.name for c in db.query(models.SchoolClass).all()}
+    required = 0
+    missing = 0
+    worst: list[dict] = []
+    for a in db.query(models.Assignment).all():
+        tn = teachers.get(a.teacher_id)
+        cn = classes.get(a.class_id)
+        if tn is None or cn is None:
+            continue
+        need = int(a.hours or 0)
+        required += need
+        gap = need - placed.get((tn, cn, a.subject), 0)
+        if gap > 0:
+            missing += gap
+            worst.append({"teacher": tn, "class": cn,
+                          "subject": a.subject, "missing": gap})
+    coverage = None if required <= 0 else (required - missing) / required
+    worst.sort(key=lambda r: -r["missing"])
+    if missing > 0:
+        problems.append(
+            f"{missing} ore su {required} non sono collocate "
+            f"(copertura {(coverage or 0) * 100:.1f}%).")
+
+    # --- Global HARD + logical, on the stored solution.
+    sol = engine_io.lessons_to_solution_dict(db, sol_id)
+    profs = engine_io.profs_dict_from_db(db)
+    hard_ok = True
+    try:
+        hard_ok = bool(meta.is_hard_feasible(
+            sol, profs, verbose=False, **_hard_check_ctx(db)))
+    except Exception as exc:  # noqa: BLE001
+        # A checker that cannot run is not a pass, but it is also not
+        # evidence of a broken timetable -- say which it is.
+        hard_ok = True
+        problems.append(f"Controllo HARD non eseguibile: {exc}")
+    if not hard_ok:
+        problems.append(
+            "Viola almeno un vincolo HARD globale "
+            "(buchi/uscite anticipate/materie doppie/motorie).")
+    logical_ok, _soft, msg = _logical_check_for_solution(db, sol)
+    if not logical_ok:
+        problems.append("Vincolo logico HARD violato: "
+                        + (msg or "espressione non soddisfatta."))
+
+    return {
+        "ok": not problems,
+        "problems": problems,
+        "coverage": None if coverage is None else round(coverage, 4),
+        "required_hours": required,
+        "missing_hours": missing,
+        "worst": worst[:10],
+        "hard_ok": hard_ok,
+        "logical_ok": logical_ok,
+    }
+
+
+def validate_hard_placement(db: Session, *, add: tuple,
+                            remove: tuple | None = None,
+                            sol: dict | None = None,
+                            profs: dict | None = None) -> dict[str, Any]:
+    r"""The HARD gate for a single edit of the active solution, shared by
+    every hand-editing path.
+
+    ``add`` / ``remove`` are ``(teacher, class, subject, day, hour)``
+    keys; pass both for a move, ``add`` alone for an insertion (a pool
+    entry being rescheduled, a lesson added by hand). Returns
+    ``{"ok", "reason", "baseline_infeasible", "new_sol"}``.
+
+    This exists because it was previously inlined in
+    ``validate_and_apply_move`` and therefore reachable only by moves.
+    The endpoints that *create* a lesson checked nothing but
+    double-booking, so a lesson could be dropped onto an hour where the
+    teacher is HARD-unavailable, or one that opens a hole / breaks a
+    logical constraint -- the exact guarantees the solver is asked to
+    respect, bypassed by a click. Keep this the single definition; a
+    fourth copy is how they diverge again.
+
+    NB it is deliberately silent about `Lesson.locked`: a pin belongs to
+    an existing row, so only the movers can spend one, and they ask
+    first.
+    """
+    import metaheuristics as meta  # type: ignore
+    active = engine_io.get_active_solution(db)
+    if active is None:
+        return {"ok": False, "reason": "Nessuna soluzione attiva",
+                "baseline_infeasible": False, "new_sol": None}
+    if sol is None:
+        sol = engine_io.lessons_to_solution_dict(db, active.id)
+    if profs is None:
+        profs = engine_io.profs_dict_from_db(db)
+
+    p, cl, _subj, d, h = add
+    av = _availability_constraints(db)
+    if (p, d, h) in av["teacher_hard"]:
+        return {"ok": False, "baseline_infeasible": False, "new_sol": None,
+                "reason": (f"Il docente {p} ha indisponibilita HARD "
+                           f"in giorno {d} ora {h}.")}
+    if (cl, d, h) in av["class_hard"]:
+        return {"ok": False, "baseline_infeasible": False, "new_sol": None,
+                "reason": (f"La classe {cl} ha indisponibilita HARD "
+                           f"in giorno {d} ora {h}.")}
+
+    new_sol = dict(sol)
+    if remove is not None:
+        new_sol[remove] = 0
+    new_sol[add] = 1
+
+    # Il gate globale ha senso solo se il PUNTO DI PARTENZA e\` pulito.
+    # `is_hard_feasible` e\` un bool sull'intera scuola: se l'orario
+    # attivo viola gia\` un HARD (tipico dopo un import, o quando Phase B
+    # non modella una regola come H_A), pretendere feasibility assoluta
+    # rifiuta OGNI modifica, comprese quelle che servono proprio a
+    # sanare la violazione. Quando la base e\` gia\` infattibile lo
+    # segnaliamo al chiamante e lasciamo passare: i controlli puntuali
+    # qui sopra (docente/classe, vincoli logici) restano.
+    hard_ctx = _hard_check_ctx(db)
+    baseline_infeasible = False
+    if not meta.is_hard_feasible(new_sol, profs, verbose=False, **hard_ctx):
+        if meta.is_hard_feasible(sol, profs, verbose=False, **hard_ctx):
+            return {"ok": False, "baseline_infeasible": False,
+                    "new_sol": None,
+                    "reason": "Mossa rifiutata: viola almeno un vincolo HARD."}
+        baseline_infeasible = True
+
+    ok_hard, _soft_pen, msg = _logical_check_for_solution(db, new_sol)
+    if not ok_hard:
+        return {"ok": False, "baseline_infeasible": baseline_infeasible,
+                "new_sol": None,
+                "reason": ("Mossa rifiutata: "
+                           + (msg or "vincolo logico HARD violato."))}
+    return {"ok": True, "reason": None, "new_sol": new_sol,
+            "baseline_infeasible": baseline_infeasible}
+
+
 def validate_and_apply_move(db: Session, src: tuple, dst: tuple,
                             *, unlock: bool = False) -> dict[str, Any]:
     """src/dst are (teacher_name, class_name, subject, day, hour). The lesson
@@ -4993,19 +5351,9 @@ def validate_and_apply_move(db: Session, src: tuple, dst: tuple,
         return {"accepted": False, "reason": "Lezione di origine non trovata"}
     if sol.get(dst, 0) == 1:
         return {"accepted": False,
-                "reason": "Slot di destinazione gia\` occupato dalla "
+                "reason": "Slot di destinazione gia` occupato dalla "
                           "stessa lezione (no-op)"}
-    # 3-state availability HARD enforcement (teacher / class / classroom)
     av = _availability_constraints(db)
-    p_dst, cl_dst, _subj_dst, d_dst, h_dst = dst
-    if (p_dst, d_dst, h_dst) in av["teacher_hard"]:
-        return {"accepted": False,
-                "reason": (f"Il docente {p_dst} ha indisponibilita HARD "
-                           f"in giorno {d_dst} ora {h_dst}.")}
-    if (cl_dst, d_dst, h_dst) in av["class_hard"]:
-        return {"accepted": False,
-                "reason": (f"La classe {cl_dst} ha indisponibilita HARD "
-                           f"in giorno {d_dst} ora {h_dst}.")}
     # if the lesson has a classroom, also check room HARD
     src_lesson = db.query(models.Lesson).filter(
         models.Lesson.solution_id == active.id,
@@ -5026,30 +5374,12 @@ def validate_and_apply_move(db: Session, src: tuple, dst: tuple,
     # post-apply pass below will simply clear the classroom and tell the
     # caller via room_cleared=True so the UI can prompt for a new pick.
 
-    new_sol = dict(sol)
-    new_sol[src] = 0
-    new_sol[dst] = 1
-    # Il gate globale ha senso solo se il PUNTO DI PARTENZA e\` pulito.
-    # `is_hard_feasible` e\` un bool sull'intera scuola: se l'orario
-    # attivo viola gia\` un HARD (tipico dopo un import, o quando Phase B
-    # non modella una regola come H_A), pretendere feasibility assoluta
-    # rifiuta OGNI spostamento, compresi quelli che servono proprio a
-    # sanare la violazione. Quando la base e\` gia\` infattibile lo
-    # segnaliamo al chiamante e lasciamo passare la mossa: i controlli
-    # puntuali qui sopra (docente/classe/aula, vincoli logici) restano.
-    hard_ctx = _hard_check_ctx(db)
-    if not meta.is_hard_feasible(new_sol, profs, verbose=False, **hard_ctx):
-        if meta.is_hard_feasible(sol, profs, verbose=False, **hard_ctx):
-            return {"accepted": False,
-                    "reason": "Mossa rifiutata: viola almeno un vincolo HARD."}
-        baseline_infeasible = True
-    else:
-        baseline_infeasible = False
-    # Logical disjunctive HARD constraints
-    ok_hard, _soft_pen, msg = _logical_check_for_solution(db, new_sol)
-    if not ok_hard:
-        return {"accepted": False,
-                "reason": "Mossa rifiutata: " + (msg or "vincolo logico HARD violato.")}
+    gate = validate_hard_placement(db, add=dst, remove=src,
+                                   sol=sol, profs=profs)
+    if not gate["ok"]:
+        return {"accepted": False, "reason": gate["reason"]}
+    new_sol = gate["new_sol"]
+    baseline_infeasible = gate["baseline_infeasible"]
     v0, m0 = meta.compute_soft(sol, profs)
     v1, m1 = meta.compute_soft(new_sol, profs)
     # 3-state SOFT contribution (added on top of meta SOFT score)

@@ -45,13 +45,42 @@ def list_solutions(db: Session = Depends(get_db)):
     ]
 
 
+@router.get("/solutions/{sol_id}/health")
+def solution_health(sol_id: int, db: Session = Depends(get_db)):
+    """Coverage + HARD + logical assessment of a saved solution.
+
+    Same computation the activation gate runs, exposed on its own so
+    the UI can show what is wrong before anybody clicks "attiva"."""
+    if db.get(models.Solution, sol_id) is None:
+        raise HTTPException(404, "solution not found")
+    return optimization.assess_solution_health(db, sol_id)
+
+
 @router.post("/solutions/{sol_id}/activate")
-def activate(sol_id: int, db: Session = Depends(get_db)):
+def activate(sol_id: int, force: bool = False,
+             db: Session = Depends(get_db)):
+    """Make a saved solution the school's live timetable.
+
+    Refused with 409 when the solution is incomplete or infeasible,
+    unless the caller passes `force=true` -- the same refuse-by-default
+    shape as the constraint-downgrade guard. Runs deliberately unsolved
+    or partially solved solutions ARE saved (so they can be inspected
+    and repaired), and this is what stops "saved" from silently becoming
+    "in use": one click used to promote a timetable missing hours, with
+    nothing anywhere afterwards saying so.
+    """
     s = db.get(models.Solution, sol_id)
     if s is None:
         raise HTTPException(404, "solution not found")
+    health = optimization.assess_solution_health(db, sol_id)
+    if not health["ok"] and not force:
+        raise HTTPException(409, (
+            f"Soluzione #{sol_id} non attivabile: "
+            + " ".join(health["problems"])
+            + " Riprova con force=true per attivarla comunque."))
     engine_io.set_active_solution(db, sol_id)
-    return {"ok": True}
+    return {"ok": True, "health": health,
+            "forced": bool(force and not health["ok"])}
 
 
 @router.post("/lessons/{lesson_id}/pin")
@@ -628,6 +657,25 @@ def add_lesson(payload: schemas.AddLessonIn,
         }
     if has_conflict and strategy in ("unbind", "delete"):
         _resolve_conflicts(db, cinfo, strategy)
+        db.flush()   # so the gate below sees the freed slot
+
+    # Same HARD gate the drag-and-drop mover runs. It has to come after
+    # conflict resolution -- the lessons just unbound would otherwise
+    # still be in the solution dict and make every insertion look
+    # infeasible. Refusing means nothing at all persists, including the
+    # resolution and any Assignment auto-created above.
+    gate = optimization.validate_hard_placement(
+        db, add=(payload.teacher_name, payload.class_name, subject,
+                 int(payload.day), int(payload.hour)))
+    if not gate["ok"]:
+        db.rollback()
+        return {
+            "ok": False,
+            "conflict": has_conflict,
+            "hard_violation": True,
+            "reason": gate["reason"],
+            "details": conflict_payload,
+        }
 
     lesson = models.Lesson(
         solution_id=active.id,
@@ -671,7 +719,7 @@ def set_lesson_classroom(lesson_id: int, classroom_name: str | None = None,
                for u in room.unavailability):
             raise HTTPException(
                 400,
-                f"L'aula {classroom_name} non e\` disponibile in "
+                f"L'aula {classroom_name} non e` disponibile in "
                 f"giorno {l.day} ora {l.hour}"
             )
         # Check concurrent classes
