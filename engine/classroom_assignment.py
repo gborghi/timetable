@@ -146,6 +146,17 @@ def _can_host(room: dict, lesson: dict) -> bool:
     req_kind = lesson.get("required_kind") or ""
     if req_kind and str(room.get("kind", "standard")) != req_kind:
         return False
+    # HARD room-kind reservation: a special-kind room (palestra / lab_*) is
+    # RESERVED for the subjects that require that kind -- an ordinary lesson,
+    # or one requiring a DIFFERENT kind, must NOT consume it and leave the
+    # real gym/lab subjects roomless. Palestre go only to Scienze motorie
+    # (required_kind='palestra'), each lab only to the subject that requires
+    # it. A room carrying an explicit ``subject_required`` allow-list (handled
+    # above) opts out of this default and is governed by that list instead.
+    room_kind = str(room.get("kind", "standard"))
+    if (room_kind != "standard" and req_kind != room_kind
+            and not room["subject_required"]):
+        return False
     # HARD aula base: la lezione porta `home_room` quando la classe ha
     # il preset 'fissa' (o una riga 'enforced'), e allora nessun'altra
     # aula e\` ammessa.

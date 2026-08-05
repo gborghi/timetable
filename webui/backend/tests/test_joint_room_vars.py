@@ -328,8 +328,9 @@ def test_candidate_rooms_prune_ordinary_not_special():
     dis_rooms = {rn for (c, rn) in x if c == disjoint}
     assert ord_rooms == {"A1", "A2"}          # pruned to pool
     assert gym_rooms == {"Palestra"}          # special: required-kind kept
-    # Disjoint pool -> full eligible. NB _can_host lets an ordinary lesson
-    # into any room (incl. the gym); the pruning is exactly what keeps a
-    # pooled class out of it -- here 1B has no usable pool so it falls back.
-    assert dis_rooms == {"A1", "A2", "A3", "Palestra"}
+    # Disjoint pool (1B has no usable pool) -> full eligible per _can_host.
+    # A special-kind room is now RESERVED for the subjects that require that
+    # kind, so an ordinary lesson (Storia) is eligible for the standard rooms
+    # only, NOT the palestra -- the gym stays free for Scienze motorie.
+    assert dis_rooms == {"A1", "A2", "A3"}
     assert info["no_room_cells"] == []
