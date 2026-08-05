@@ -1624,23 +1624,43 @@ def _eval_subjects_max_concurrent_classes(world: dict, subjects,
 
 
 def _eval_subject_pair(world: dict, cl: str, subj: str) -> bool:
-    """For each day, when (cl, subj) has >= 2 hours, at least one
-    consecutive pair must exist. Both ``subject_pair_must`` and
-    ``subject_pair_exists`` reduce to this rule (the compiler's
-    ``must_pair`` mode adds no extra tightening on top)."""
-    by_day: dict[int, set[int]] = {}
-    for l in world.get("lessons", []):
-        if l.get("class") != cl or l.get("subject") != subj:
-            continue
-        d, h = l.get("day"), l.get("hour")
-        if d is None or h is None:
-            continue
-        by_day.setdefault(int(d), set()).add(int(h))
-    for hrs in by_day.values():
-        if len(hrs) < 2:
-            continue
-        if not any((h + 1) in hrs for h in hrs):
-            return False
+    """PROF-adjacency, matching what the native compiler actually enforces
+    (``cpsat_v2_timetable.add_consecutive_constraints_phase_b``, audit F6):
+    the TEACHER of ``(cl, subj)`` must, on any day they have >= 2 hours in
+    ``cl`` -- summed over ALL the subjects they teach in that class, not just
+    ``subj`` -- occupy at least one pair of ADJACENT hours.
+
+    This is deliberately the "the teacher has a 2-hour block" reading, NOT
+    "the two ``subj`` hours are adjacent": a Matematica teacher who also
+    teaches Fisica in the class satisfies it with a Mate-then-Fisica block
+    even if the two Mate hours are split. The old subject-only reading
+    disagreed with the compiler, so an audit / is_hard_feasible flagged
+    timetables the solver had deliberately produced (a false positive). The
+    two must agree; the compiler's semantics win here (chosen: option A)."""
+    teachers = {
+        l.get("teacher") for l in world.get("lessons", [])
+        if l.get("class") == cl and l.get("subject") == subj
+        and l.get("teacher")
+    }
+    if not teachers:
+        return True
+    for t in teachers:
+        # Per day, the hours where ``t`` is present in ``cl`` in ANY subject
+        # (a teacher occupies at most one slot per hour, so these are the
+        # ``day_count_total`` hours the compiler gates and pairs on).
+        by_day: dict[int, set[int]] = {}
+        for l in world.get("lessons", []):
+            if l.get("teacher") != t or l.get("class") != cl:
+                continue
+            d, h = l.get("day"), l.get("hour")
+            if d is None or h is None:
+                continue
+            by_day.setdefault(int(d), set()).add(int(h))
+        for hrs in by_day.values():
+            if len(hrs) < 2:
+                continue
+            if not any((h + 1) in hrs for h in hrs):
+                return False
     return True
 
 
