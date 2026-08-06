@@ -322,6 +322,12 @@ def solve_classroom_assignment(
     soft.setdefault("subject_pref_bonus", 10.0)
     soft.setdefault("class_pref_bonus", 10.0)
     soft.setdefault("multi_class_overflow", 30.0)
+    # SOFT: keep each class's set of rooms small -- it should change room as
+    # little as possible over the week and only when forced (a required-kind
+    # room like the gym/lab, or taking over a room freed by a class that went
+    # to the gym). Penalises each DISTINCT (class, room) pair the class
+    # occupies, so its rooms stay in a tight pool. 0 disables.
+    soft.setdefault("room_pool", 8.0)
 
     rooms = [_normalize_classroom(r) for r in classrooms]
     room_by_name = {r["name"]: r for r in rooms}
@@ -540,11 +546,35 @@ def solve_classroom_assignment(
             if b:
                 bonus_terms.append(-int(round(b)) * x[(key, rn)])
 
-    # Objective: minimize overflow penalty - bonuses (+ a dominant penalty
-    # per unplaced lesson so a real room is always preferred when one is
-    # available; unplacing is the last resort, never a cheaper alternative
-    # to a valid placement or a bonus/overflow trade-off).
-    objective_terms = list(overflow_terms) + list(bonus_terms)
+    # SOFT room-pool: minimise the number of DISTINCT rooms each class
+    # occupies over the week, so a class changes room as little as possible
+    # and its rooms stay in a small pool. `used[(cl, rn)]` is forced to 1 by
+    # any lesson of `cl` placed in `rn` (`used >= x`); we penalise the count
+    # and the minimisation drives every unused pair to 0. A class that must
+    # visit the gym (or take over a room a class at the gym vacated) pays one
+    # extra room here -- a soft cost spent only when capacity forces it, never
+    # able to override a HARD constraint.
+    pool_terms: list[Any] = []
+    _w_pool = int(round(soft.get("room_pool", 0.0)))
+    if _w_pool > 0:
+        keys_by_class_room: dict[tuple[str, str], list[tuple]] = defaultdict(
+            list)
+        for key in lesson_keys:
+            cl = key[0]
+            for rn in eligible[key]:
+                keys_by_class_room[(cl, rn)].append(key)
+        for (cl, rn), keys in keys_by_class_room.items():
+            uv = model.NewBoolVar(f"used_{cl}_{rn}")
+            for key in keys:
+                model.Add(uv >= x[(key, rn)])
+            pool_terms.append(_w_pool * uv)
+
+    # Objective: minimize overflow + room-pool penalties - bonuses (+ a
+    # dominant penalty per unplaced lesson so a real room is always preferred
+    # when one is available; unplacing is the last resort, never a cheaper
+    # alternative to a valid placement or a bonus/overflow trade-off).
+    objective_terms = list(overflow_terms) + list(bonus_terms) + list(
+        pool_terms)
     if u:
         objective_terms.append(_UNPLACED_PENALTY * sum(u.values()))
     if objective_terms:
