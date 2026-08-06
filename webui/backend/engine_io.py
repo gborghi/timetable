@@ -1584,8 +1584,16 @@ def lessons_for_classroom_step(db: Session, solution_id: int,
             "forbidden_rooms": forbidden_by_class.get(l.class_name, set()),
             # Compresenza: la lezione si accoda all'aula di un'altra
             # lezione della stessa classe e ora invece di prenotarne
-            # una propria. Vedi `compresenza_resolver`.
-            "shares_room": bool(shares(l.teacher_name, l.day, l.hour)),
+            # una propria. Vedi `compresenza_resolver`. Una lezione di
+            # SOSTEGNO e\` per natura una compresenza in classe -- il
+            # docente segue l'alunno nell'aula della classe, che resta
+            # UNITA -- quindi condivide sempre l'aula, a prescindere da
+            # ``Teacher.compresenza`` (se il preset a monte non l'ha
+            # impostata a 'sempre', senza questo un seed le farebbe
+            # sprecare un'aula propria ciascuna).
+            "shares_room": bool(
+                shares(l.teacher_name, l.day, l.hour)
+                or l.subject == models.SUPPORT_SUBJECT),
         })
     return out
 
