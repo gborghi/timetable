@@ -177,6 +177,36 @@ def _can_host(room: dict, lesson: dict) -> bool:
     return True
 
 
+def _no_room_reason(rooms: list[dict], lesson: dict) -> str:
+    """Human diagnostic for a lesson that ``_can_host`` rejects in EVERY
+    room: the single most actionable cause, CAPACITY first because it is the
+    silent one -- a room smaller than the class is HARD-ineligible and would
+    otherwise surface only as a bare ``NO_ELIGIBLE``, leaving a headmaster to
+    guess. ``rooms`` are already normalized (``_normalize_classroom``)."""
+    n_stud = int(lesson.get("n_students") or 0)
+    req_kind = lesson.get("required_kind") or ""
+    # Rooms that pass EVERY check except capacity (n_students bypassed): if
+    # some exist but all are smaller than the class, capacity is the cause.
+    kind_ok = [r for r in rooms
+               if _can_host(r, {**lesson, "n_students": 0})]
+    if n_stud > 0 and kind_ok:
+        biggest = max((int(r.get("capacity", 0) or 0) for r in kind_ok),
+                      default=0)
+        if biggest < n_stud:
+            return (f"capienza: la classe ha {n_stud} alunni ma l'aula "
+                    f"idonea piu capiente ne ospita {biggest} -- aumenta la "
+                    f"capienza di un'aula idonea o riduci gli alunni")
+    if req_kind and not any(
+            str(r.get("kind", "standard")) == req_kind for r in rooms):
+        return (f"nessuna aula di tipo '{req_kind}' in tutta la scuola "
+                f"-- aggiungi un'aula di quel tipo o togli il required_kind")
+    if req_kind:
+        return (f"nessuna aula di tipo '{req_kind}' ammissibile "
+                f"(indisponibilita, divieti o aula base fissa)")
+    return ("nessuna aula idonea (divieto classe/materia, indisponibilita "
+            "o aula base fissa)")
+
+
 def _lesson_key(L: dict) -> tuple[str, str, int, int]:
     return (L["class"], L["subject"], int(L["day"]), int(L["hour"]))
 
@@ -344,6 +374,21 @@ def solve_classroom_assignment(
         # be told so loudly rather than handed a timetable quietly missing
         # every PE lesson. Over-subscription is the opposite case and IS
         # handled by the unplaced fallback below.
+        # Say WHY, per lesson -- capacity first (the silent cause) -- so the
+        # run log names the fix instead of a bare NO_ELIGIBLE code.
+        _first_by_key: dict[tuple, dict] = {}
+        for _L in lessons:
+            _first_by_key.setdefault(_lesson_key(_L), _L)
+        for k in no_room_keys[:10]:
+            _Lk = _first_by_key.get(k)
+            cl_k, subj_k, d_k, h_k = k
+            reason = (_no_room_reason(rooms, _Lk) if _Lk
+                      else "lezione non trovata")
+            print(f"[classroom] NESSUNA AULA per {cl_k}/{subj_k} "
+                  f"g{d_k}o{h_k} -> {reason}")
+        if len(no_room_keys) > 10:
+            print(f"[classroom] ... e altre {len(no_room_keys) - 10} "
+                  f"lezioni senza aula idonea")
         return None, f"NO_ELIGIBLE:{no_room_keys[:5]}"
 
     # Validate locks against eligibility.
