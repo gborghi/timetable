@@ -222,29 +222,41 @@ def find_prof_subject(profs, cl, subject):
 
 
 def add_consecutive_constraints_phase_b(model, slot, day, profs, dc_value,
-                                        class_flags=None):
-    r"""Aggiunge i vincoli HARD su Phase B per quel giorno:
-      A) per ogni classe, se il prof di Mat/Ita ha >= 2 ore quel
-         giorno (sommate su tutte le materie), almeno una coppia
-         di slot consecutivi deve essere occupata da quel prof in
-         quella classe.
-      B) per ogni classe, se il prof di Scienzemotorie ha 2 ore
-         quel giorno (Phase A garantisce {0, 2}), devono essere
-         consecutive.
+                                        class_flags=None, pairing=None):
+    r"""Aggiunge i vincoli HARD di appaiamento su Phase B per quel giorno:
+      - ``pair_exists``: se il prof della materia ha >= 2 ore quel giorno,
+        almeno una coppia di slot consecutivi deve essere occupata.
+      - ``must_pair``: se ne ha 2 (Phase A garantisce {0, 2}), consecutive.
+
+    Le coppie (classe, materia) da appaiare arrivano dalla mappa
+    ``pairing`` -- ``{(class, subject): "must_pair" | "pair_exists"}`` --
+    **derivata dai vincoli** (pragma DSL ``subject_pair_must`` /
+    ``subject_pair_exists``, qualsiasi materia). Nessun nome di materia e\`
+    cablato qui. ``pairing=None`` ricade sul comportamento legacy (i tre
+    flag per-classe ``dual_math`` / ``dual_italian`` / ``motorie_pairs`` ->
+    le rispettive materie canoniche), solo per retro-compatibilita\` con i
+    chiamanti che non passano ancora la mappa.
     """
     classes_in_day = {k[1] for k in slot.keys()}
-    # Per-class HARD-invariant gates (finding 08b): dual_math / dual_italian
-    # / motorie_pairs. class_flags=None keeps every pair (global default).
-    _pair_flag = {"Matematica": "dual_math", "Italiano": "dual_italian",
-                  "Scienzemotorie": "motorie_pairs"}
-    for cl in classes_in_day:
-        for subject, mode in [
-            ("Matematica", "pair_exists"),
-            ("Italiano", "pair_exists"),
-            ("Scienzemotorie", "must_pair"),
-        ]:
-            if not class_enforces(class_flags, cl, _pair_flag[subject], True):
-                continue
+    if pairing is not None:
+        # Constraint-driven: itera esattamente le (classe, materia, modo)
+        # dichiarate dai vincoli. Zero nomi hard-coded.
+        targets = [(cl, s, m) for (cl, s), m in pairing.items()
+                   if cl in classes_in_day]
+    else:
+        # Legacy fallback (finding 08b): i tre flag per-classe mappati alle
+        # loro materie canoniche. Confinato qui, fuori dalla logica generale.
+        _pair_flag = {"Matematica": "dual_math", "Italiano": "dual_italian",
+                      "Scienzemotorie": "motorie_pairs"}
+        _legacy = [("Matematica", "pair_exists"),
+                   ("Italiano", "pair_exists"),
+                   ("Scienzemotorie", "must_pair")]
+        targets = [(cl, subj, mode)
+                   for cl in classes_in_day
+                   for subj, mode in _legacy
+                   if class_enforces(class_flags, cl,
+                                     _pair_flag[subj], True)]
+    for cl, subject, mode in targets:
             p = find_prof_subject(profs, cl, subject)
             if p is None or cl not in profs[p]["classi"]:
                 continue
@@ -326,6 +338,7 @@ def build_phase_a_pragmas(
     triples_by_prof,
     day_count_keys,
     class_flags=None,
+    pairing=None,
 ):
     """Emit the canonical list of Phase A DSL pragmas for the given
     Phase A state. Mirrors the HARD/SOFT surface of the legacy
@@ -413,44 +426,54 @@ def build_phase_a_pragmas(
     # cross-subject form is no longer the contract -- the user
     # explicit rule is "stesso prof stessa materia devono avere la
     # coppia di ore").
-    _pa_pair_flag = {"Matematica": "dual_math", "Italiano": "dual_italian"}
-    for cl in sorted(classes):
-        for subject in ("Matematica", "Italiano"):
-            if not class_enforces(class_flags, cl,
-                                  _pa_pair_flag[subject], True):
+    # 4+5. Appaiamento materie (CONSTRAINT-DRIVEN): per ogni (classe, materia)
+    # dichiarata appaiata dai vincoli, emetti il pragma Phase A che rende i
+    # conteggi-giorno placement-compatibili (senza, il per-day solve va
+    # HARD-infeasible su una materia appaiata con conteggio dispari):
+    #   * pair_exists: ``subject_day_count_pair`` per cattedra con >= 2 ore;
+    #   * must_pair:   ``subject_day_count_in(cl, subj, 0, 2)`` -> {0, 2}.
+    # ``pairing`` = ``{(class, subject): "must_pair"|"pair_exists"}``, derivata
+    # dai vincoli (pragma DSL ``subject_pair_must``/``subject_pair_exists``,
+    # qualsiasi materia). NESSUN nome di materia cablato qui. ``pairing=None``
+    # ricade sui tre flag legacy -> materie canoniche, solo retro-compat.
+    _classes_set = set(classes)
+    if pairing is not None:
+        _pa_targets = [(cl, s, m) for (cl, s), m in pairing.items()
+                       if cl in _classes_set]
+    else:
+        _pa_gate = {"Matematica": "dual_math", "Italiano": "dual_italian",
+                    "Scienzemotorie": "motorie_pairs"}
+        _pa_mode = {"Matematica": "pair_exists", "Italiano": "pair_exists",
+                    "Scienzemotorie": "must_pair"}
+        _pa_targets = [(cl, subj, _pa_mode[subj])
+                       for cl in sorted(classes)
+                       for subj in ("Matematica", "Italiano",
+                                    "Scienzemotorie")
+                       if class_enforces(class_flags, cl,
+                                         _pa_gate[subj], True)]
+    for cl, subject, mode in sorted(_pa_targets):
+        want = subject_key(subject)
+        for p in sorted(profs):
+            cmap = profs[p].get("classi", {}) or {}
+            if cl not in cmap:
                 continue
-            want = subject_key(subject)
-            for p in sorted(profs):
-                cmap = profs[p].get("classi", {}) or {}
-                if cl not in cmap:
-                    continue
-                # Match on the canonical key, emit the school's own
-                # spelling: see ``subject_key``.
-                subj = next((s for s in cmap[cl]
-                             if subject_key(s) == want), None)
-                if subj is None:
-                    continue
-                ore = int(cmap[cl][subj].get("ore", 0))
-                if ore < 2:
+            # Match on the canonical key, emit the school's own spelling.
+            subj = next((s for s in cmap[cl]
+                         if subject_key(s) == want), None)
+            if subj is None:
+                continue
+            if mode == "pair_exists":
+                if int(cmap[cl][subj].get("ore", 0)) < 2:
                     continue
                 pragmas.append(
-                    f'subject_day_count_pair({p!r}, {cl!r}, '
-                    f'{subj!r}, 2)'
-                )
-    # 5. subject_day_count_in -- per class with a Scienzemotorie
-    # cattedra in day_count, restrict daily count to {0, 2}.
-    for cl in sorted(classes):
-        if not class_enforces(class_flags, cl, "motorie_pairs", True):
-            continue
-        p, subj = find_prof_subject_named(profs, cl, "Scienzemotorie")
-        if p is None:
-            continue
-        if not any(k[0] == p and k[1] == cl and k[2] == subj
-                    for k in day_count_keys):
-            continue
-        pragmas.append(
-            f'subject_day_count_in({cl!r}, {subj!r}, 0, 2)'
-        )
+                    f'subject_day_count_pair({p!r}, {cl!r}, {subj!r}, 2)')
+            else:  # must_pair -> daily count restricted to {0, 2}
+                if not any(k[0] == p and k[1] == cl and k[2] == subj
+                           for k in day_count_keys):
+                    continue
+                pragmas.append(
+                    f'subject_day_count_in({cl!r}, {subj!r}, 0, 2)')
+                break
     # 6. Per-(prof, day) hour ceiling from the HARD availability
     # tables: capacity = the day's configured hours minus the prof's
     # HARD unavailable ones (0 for a mandatory free day). Carried on
