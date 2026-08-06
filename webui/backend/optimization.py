@@ -1109,14 +1109,21 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
             # the monolithic per-day path below.
             _total_room_capacity = None
             if respect_room_capacity:
+                # Count of STANDARD (ordinary) rooms: the per-slot cap bounds
+                # only the ordinary load, since required-kind lessons sit in
+                # their lab/gym (see solve_phase_b_for_day, which excludes them
+                # via the special-room subj_kind map). This is what lets a
+                # class in the gym free its ordinary seat -> rooms < classes.
                 try:
                     with SessionLocal() as _db_rc:
                         _total_room_capacity = (
-                            _db_rc.query(models.Classroom).count() or None)
+                            _db_rc.query(models.Classroom)
+                            .filter(models.Classroom.kind == "standard")
+                            .count() or None)
                 except Exception:
                     _total_room_capacity = None
                 if _total_room_capacity:
-                    print(f"[phase_b] capienza aule totale attiva: "
+                    print(f"[phase_b] capienza aule standard attiva: "
                           f"{_total_room_capacity}")
             # HARD DSL rule expression strings, loaded ONCE (used both to
             # force the monolithic per-day path below and to feed its
@@ -2929,9 +2936,11 @@ def run_full_pipeline(profile: str,
                     _total_room_capacity = None
                     if (pb_kwargs or {}).get("respect_room_capacity"):
                         _total_room_capacity = (
-                            _db_ctx.query(models.Classroom).count() or None)
+                            _db_ctx.query(models.Classroom)
+                            .filter(models.Classroom.kind == "standard")
+                            .count() or None)
                 if _total_room_capacity:
-                    print(f"[full] phase_b: capienza aule totale attiva: "
+                    print(f"[full] phase_b: capienza aule standard attiva: "
                           f"{_total_room_capacity}")
                 _pb_scope = (pb_kwargs or {}).get("cp_sat_scope", "day")
                 # WEEK scope runs its own Phase A internally (soft_hint); the

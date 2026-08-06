@@ -1375,7 +1375,7 @@ def add_special_room_capacity_phase_b(model, slot, ctx, *, day=None) -> int:
 
 
 def add_general_room_capacity_phase_b(model, slot, n_rooms, *,
-                                      day=None) -> int:
+                                      day=None, subj_kind=None) -> int:
     """HARD: at most ``n_rooms`` distinct classes may be in session in the
     same (day, hour) cell -- a school cannot seat more concurrent classes
     than it has rooms. The general-room twin of
@@ -1383,6 +1383,14 @@ def add_general_room_capacity_phase_b(model, slot, n_rooms, *,
     it makes the SCHEDULE itself room-feasible per slot, so the room step can
     seat everyone instead of leaving lessons unplaced when the scheduler
     crammed more classes into a slot than there are rooms.
+
+    ``subj_kind`` (optional, the ``{subject: required_kind}`` map): when given,
+    lessons whose subject requires a special kind are EXCLUDED from the count
+    -- they sit in a lab/gym, not an ordinary room, so ``n_rooms`` should be
+    the STANDARD-room count and this cap then bounds only the ordinary
+    (standard-seeking) load. This is what lets a class in the gym free its
+    ordinary room for another class: the PE cell simply doesn't consume a
+    standard seat. The special kinds keep their own per-slot caps.
 
     Counts per (class, cell) like the special cap, so co-teaching / codocenza
     on one class occupy one room, not two. Emitted only where the candidate
@@ -1398,6 +1406,9 @@ def add_general_room_capacity_phase_b(model, slot, n_rooms, *,
     for (p, cl, s, d, h), var in slot.items():
         if day is not None and d != day:
             continue
+        if subj_kind and s in subj_kind:
+            continue   # required-kind lesson -> special room, not a standard
+                       # seat; don't count it against ``n_rooms``
         buckets[(d, h)][cl].append(var)
     n = 0
     for (d, h), per_class in buckets.items():
@@ -1886,10 +1897,16 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
     # the per-day solve returns infeasible -- an honest "add rooms / relax"
     # signal rather than a silently over-booked timetable.
     if total_room_capacity:
+        # Cap the ORDINARY (standard-seeking) load only: a required-kind
+        # lesson sits in its lab/gym, freeing its ordinary seat for another
+        # class (the gym-sharing that lets rooms < classes). ``subj_kind``
+        # comes from the special-room ctx so PE / lab hours are excluded and
+        # ``total_room_capacity`` is read as the STANDARD-room count.
+        _sk = special_room_ctx[0] if special_room_ctx else None
         n_gr = add_general_room_capacity_phase_b(
-            model, slot_5, total_room_capacity, day=day)
+            model, slot_5, total_room_capacity, day=day, subj_kind=_sk)
         if log and n_gr:
-            print(f"[phaseB.day{day}] capienza aule totale "
+            print(f"[phaseB.day{day}] capienza aule standard "
                   f"({total_room_capacity}): {n_gr} vincoli per-slot")
 
     _soft_classes = sorted({k[1] for k in slot})
