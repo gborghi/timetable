@@ -279,5 +279,41 @@
       "max": 0
     },
     "fixtures": {}
+  },
+  {
+    "profile": "liceo90",
+    "schema_version": 1,
+    "seed": 20260730,
+    "schedule_label": "8-14 lun-sab (60min)",
+    "n_classes": 90,
+    "n_teachers": 187,
+    "n_subjects": 24,
+    "n_assignments": 1023,
+    "n_lessons": 2763,
+    "n_classrooms": 87,
+    "n_classrooms_lab": 0,
+    "n_classrooms_palestra": 3,
+    "n_classrooms_auditorium": 0,
+    "n_plessi": 1,
+    "n_working_days": 6,
+    "n_working_hour_slots": 36,
+    "capacity_range": {
+      "min": 30,
+      "max": 32
+    },
+    "n_students_range": {
+      "min": 0,
+      "max": 0
+    },
+    "fixtures": {
+      "teacher_unavailability": 0,
+      "teacher_mandatory_free_day": 18,
+      "teacher_free_day_preference": 218,
+      "general_constraint": 0,
+      "subject_required_kind": 1,
+      "class_required_free_days": 36,
+      "support_assignments": 9
+    },
+    "note": "Bespoke solved model: liceo 90 classi single-site, biennio a rotazione (giorno libero HARD), 84 aule standard + 3 palestre (gym-sharing), sostegno in compresenza. 0 lezioni non piazzate; is_hard_feasible."
   }
 ]

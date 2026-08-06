@@ -96,14 +96,27 @@ def _resolve_profile_pkl(name: str, filename: str) -> str | None:
     return None
 
 
+def _resolve_profile_sqlite(name: str) -> str | None:
+    """Path to the per-profile SQLite snapshot
+    (``engine/scripts/data/<name>/<name>.sqlite``) or ``None``.
+
+    This is the canonical solved-model source: ``import_engine_profile``
+    prefers it, and it carries anagrafica + the constraint tables +
+    WorkingDay/Slot + the solved Lessons in one file -- so a profile can
+    exist as a ready-made "modello risolto" with no pickles at all."""
+    return _resolve_profile_pkl(name, f"{name}.sqlite")
+
+
 @router.post("/import-profile")
 def import_profile(payload: schemas.ImportPickleIn):
     school_pkl = _resolve_profile_pkl(
         payload.profile, f"school_{payload.profile}.pkl")
-    if not school_pkl:
+    sqlite_snap = _resolve_profile_sqlite(payload.profile)
+    if not school_pkl and not sqlite_snap:
         raise HTTPException(
             404,
-            f"school_{payload.profile}.pkl not found "
+            f"profilo '{payload.profile}' non trovato: né "
+            f"{payload.profile}.sqlite né school_{payload.profile}.pkl "
             f"(searched engine/scripts/data/{payload.profile}/, "
             f"engine/scripts/output/{payload.profile}/, "
             f"engine/scripts/)"
@@ -122,9 +135,10 @@ def import_profile(payload: schemas.ImportPickleIn):
 def list_profiles():
     profiles = []
     for name in ("small", "medium", "big", "huge", "superhuge", "mega",
-                 "liceo60"):
+                 "liceo60", "liceo90"):
+        sqlite_snap = _resolve_profile_sqlite(name)
         school = _resolve_profile_pkl(name, f"school_{name}.pkl")
-        if not school:
+        if not school and not sqlite_snap:
             continue
         has_profs = _resolve_profile_pkl(name, f"profs_{name}.pkl") is not None
         # MEGA's pipeline (run_mega_pipeline.py) writes
@@ -144,6 +158,13 @@ def list_profiles():
             or _resolve_profile_pkl(
                 name, f"solution_temporal_{name}.pkl") is not None
         )
+        # A SQLite snapshot carries the solved Lessons in-DB (the
+        # import copies the `solutions`+`lessons` tables), so it is a
+        # ready-made solved model even with no solution pickle: surface
+        # its assignments and solution as present.
+        if sqlite_snap:
+            has_profs = True
+            has_opt = True
         profiles.append({
             "name": name,
             "has_profs": has_profs,
