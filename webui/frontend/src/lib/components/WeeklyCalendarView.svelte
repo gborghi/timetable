@@ -669,6 +669,13 @@
   let dragSource = null;     // {kind:'lesson',lesson} or {kind:'unscheduled',entry}
   let dragHoverKey = null;   // "day-hour" being hovered while dragging
 
+  // Compresenza popup: when a filtered-view slot holds >1 lesson (sostegno /
+  // codocenza / shared gym) we render the MAIN lesson as one full cell and
+  // the co-present ones behind a small button that opens this popup, instead
+  // of splitting the cell into unreadable halves. Fixed-positioned so it is
+  // never clipped by the calendar's horizontal overflow.
+  let compresenzaPopup = null;   // { lst, title, x, y } | null
+
   // Conflict set: which "day-hour" keys would HARD-conflict if the
   // dragged lesson dropped there? Same teacher OR same class busy at
   // that slot (excluding the dragged lesson itself). We use the FULL
@@ -788,6 +795,43 @@
     return (l.class_name || '') + ' - ' + (l.subject || '');
   }
 
+  // Two-part label so the SUBJECT is always written and prominent (the
+  // teacher orario used to read only as "class - subject" on one cramped
+  // line). `primary` is bold, `secondary` muted below it, per view.
+  function _lessonParts(l) {
+    const t = filter_by?.type;
+    const subj = l.subject || '';
+    const cls = l.class_name || l.group_name || '';
+    const tea = l.teacher_name || '';
+    if (t === 'teacher') return { primary: subj, secondary: cls };
+    if (t === 'room')    return { primary: cls, secondary: subj };
+    if (t === 'class')   return { primary: subj, secondary: tea };
+    return { primary: cls, secondary: subj };
+  }
+  const _isSupportLesson = (l) => (l.subject || '').toLowerCase() === 'sostegno';
+  // The "main" lesson of a shared slot: the ordinary (non-sostegno) subject.
+  function _primaryLesson(lst) {
+    return lst.find((l) => !_isSupportLesson(l)) || lst[0];
+  }
+  function _openCompresenza(ev, lst, timeLabel) {
+    ev.stopPropagation();
+    const r = ev.currentTarget.getBoundingClientRect();
+    compresenzaPopup = {
+      lst,
+      title: timeLabel,
+      x: Math.min(r.left, window.innerWidth - 240),
+      y: r.bottom + 4,
+    };
+  }
+  function _compresenzaRow(l) {
+    // "subject — teacher · class @ room", dropping empty parts.
+    const bits = [];
+    if (l.subject) bits.push(l.subject);
+    const who = [l.teacher_name, (l.class_name || l.group_name)]
+      .filter(Boolean).join(' · ');
+    return { head: bits.join(''), who, room: l.classroom_name || '' };
+  }
+
   function onCellClick(ev, d, h) {
     if (readonly) return;
     if (dragMoved) {
@@ -822,7 +866,9 @@
   }
 </script>
 
-<svelte:window on:mouseup={onMouseUp}/>
+<svelte:window on:mouseup={onMouseUp}
+  on:click={() => { if (compresenzaPopup) compresenzaPopup = null; }}
+  on:keydown={(e) => { if (e.key === 'Escape') compresenzaPopup = null; }}/>
 
 <div class="select-none weekly-calendar"
      class:weekly-calendar--schedule={mode === 'schedule'}
@@ -1073,12 +1119,15 @@
                         {slot.start_time}-{slot.end_time}
                       </div>
                     {:else}
-                      {#each lst as l, lIdx}
+                      {@const isCompresenza = !!filter_by?.type && lst.length > 1}
+                      {@const renderList = isCompresenza ? [_primaryLesson(lst)] : lst}
+                      {#each renderList as l, lIdx}
                         {@const col = _colourFor(l)}
+                        {@const parts = _lessonParts(l)}
                         <div class="cal-event cal-event--schedule"
                              class:cal-event--conflict={isConflict && dragSource}
                              style={`background:${col.bg};border-color:${col.bd};color:${col.fg};` +
-                                    (lst.length > 1 ? `width:${100 / lst.length}%;left:${(100 / lst.length) * lIdx}%;` : '')}
+                                    (!isCompresenza && lst.length > 1 ? `width:${100 / lst.length}%;left:${(100 / lst.length) * lIdx}%;` : '')}
                              draggable="true"
                              role="button"
                              tabindex="0"
@@ -1090,18 +1139,31 @@
                              on:keydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); _onLessonClick(e, l); } }}
                              title={_lessonLabel(l) +
                                (l.classroom_name ? ' @ ' + l.classroom_name : '') +
+                               (isCompresenza ? ` -- compresenza (${lst.length} lezioni, vedi bottone)` : '') +
                                (isConflict && dragSource ? ' -- conflitto con la lezione che stai trascinando' : '')}>
                           <div class="cal-event-time">
                             {slot.start_time}-{slot.end_time}
                           </div>
                           <div class="cal-event-label">
                             {#if l.locked}<span aria-hidden="true"
-                              title="Bloccata in questo slot">🔒</span> {/if}{_lessonLabel(l)}
+                              title="Bloccata in questo slot">🔒</span> {/if}<span
+                              class="cal-event-primary">{parts.primary}</span>{#if parts.secondary}<span
+                              class="cal-event-secondary">{parts.secondary}</span>{/if}
                           </div>
                           {#if l.classroom_name}
                             <div class="cal-event-room">
                               {l.classroom_name}
                             </div>
+                          {/if}
+                          {#if isCompresenza}
+                            <button type="button" class="cal-compresenza-btn"
+                                    title={`Compresenza: ${lst.length} lezioni in questo slot`}
+                                    data-testid={'sched-compresenza-' + dnum + '-' + hnum}
+                                    on:click={(e) => _openCompresenza(e, lst,
+                                      `${slot.start_time}-${slot.end_time}`)}
+                                    on:keydown|stopPropagation>
+                              +{lst.length - 1}&nbsp;<span aria-hidden="true">👥</span>
+                            </button>
                           {/if}
                           {#if isConflict && dragSource}
                             <span class="cal-event-conflict-badge"
@@ -1228,6 +1290,26 @@
   <KeyboardConstraintLegend visible={hovering} variant="matrix"/>
   {/if}
 </div>
+
+{#if compresenzaPopup}
+  <div class="cal-compresenza-pop"
+       data-testid="compresenza-popup"
+       style={`left:${compresenzaPopup.x}px; top:${compresenzaPopup.y}px;`}
+       on:click|stopPropagation
+       on:keydown|stopPropagation>
+    <div class="cal-compresenza-pop__title">
+      Compresenza · {compresenzaPopup.title}
+    </div>
+    {#each compresenzaPopup.lst as cl2}
+      {@const row = _compresenzaRow(cl2)}
+      <div class="cal-compresenza-pop__row">
+        <span class="cal-compresenza-pop__subj">{row.head || '?'}</span>
+        {#if row.who}<span class="cal-compresenza-pop__who">{row.who}</span>{/if}
+        {#if row.room}<span class="cal-compresenza-pop__room">@ {row.room}</span>{/if}
+      </div>
+    {/each}
+  </div>
+{/if}
 
 <style>
   /* Off-grid lessons banner: warns that some placed lessons fall on an
@@ -1630,6 +1712,61 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  /* Two-part label: subject (bold) always written, secondary muted below. */
+  .cal-event-primary {
+    font-weight: 700;
+    line-height: 1.15;
+  }
+  .cal-event-secondary {
+    display: block;
+    font-weight: 400;
+    opacity: 0.8;
+    line-height: 1.05;
+  }
+  /* Compresenza: small pill button on the main cell that opens the popup. */
+  .cal-compresenza-btn {
+    align-self: flex-start;
+    margin-top: 1px;
+    padding: 0 5px;
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 1.45;
+    border: 1px solid currentColor;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.55);
+    color: inherit;
+    cursor: pointer;
+  }
+  .cal-compresenza-btn:hover { background: rgba(255, 255, 255, 0.92); }
+  .cal-compresenza-pop {
+    position: fixed;
+    z-index: 1000;
+    min-width: 180px;
+    max-width: 240px;
+    background: #ffffff;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+    padding: 6px 8px;
+    font-size: 11px;
+    color: #1e293b;
+  }
+  .cal-compresenza-pop__title {
+    font-weight: 700;
+    font-size: 11px;
+    margin-bottom: 4px;
+    color: #0f172a;
+  }
+  .cal-compresenza-pop__row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 6px;
+    padding: 3px 0;
+    border-top: 1px solid #f1f5f9;
+  }
+  .cal-compresenza-pop__subj { font-weight: 600; }
+  .cal-compresenza-pop__who { opacity: 0.85; }
+  .cal-compresenza-pop__room { opacity: 0.7; }
   .cal-event-conflict-badge {
     position: absolute;
     top: 1px;
