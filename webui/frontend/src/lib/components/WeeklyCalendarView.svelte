@@ -813,10 +813,16 @@
   function _primaryLesson(lst) {
     return lst.find((l) => !_isSupportLesson(l)) || lst[0];
   }
-  function _openCompresenza(ev, lst, timeLabel) {
+  function _openCompresenza(ev, key, lst, timeLabel) {
     ev.stopPropagation();
+    // Toggle: pressing the button while ITS popup is open closes it.
+    if (compresenzaPopup && compresenzaPopup.key === key) {
+      compresenzaPopup = null;
+      return;
+    }
     const r = ev.currentTarget.getBoundingClientRect();
     compresenzaPopup = {
+      key,
       lst,
       title: timeLabel,
       x: Math.min(r.left, window.innerWidth - 240),
@@ -1141,8 +1147,20 @@
                                (l.classroom_name ? ' @ ' + l.classroom_name : '') +
                                (isCompresenza ? ` -- compresenza (${lst.length} lezioni, vedi bottone)` : '') +
                                (isConflict && dragSource ? ' -- conflitto con la lezione che stai trascinando' : '')}>
-                          <div class="cal-event-time">
-                            {slot.start_time}-{slot.end_time}
+                          <div class="cal-event-time cal-event-time--row">
+                            <span>{slot.start_time}-{slot.end_time}</span>
+                            {#if isCompresenza}
+                              <button type="button" class="cal-compresenza-btn"
+                                      class:cal-compresenza-btn--on={compresenzaPopup
+                                        && compresenzaPopup.key === (dnum + '-' + hnum)}
+                                      title={`Compresenza: ${lst.length} lezioni -- apri/chiudi`}
+                                      data-testid={'sched-compresenza-' + dnum + '-' + hnum}
+                                      on:click={(e) => _openCompresenza(e, dnum + '-' + hnum,
+                                        lst, `${slot.start_time}-${slot.end_time}`)}
+                                      on:keydown|stopPropagation>
+                                +{lst.length - 1}&nbsp;<span aria-hidden="true">👥</span>
+                              </button>
+                            {/if}
                           </div>
                           <div class="cal-event-label">
                             {#if l.locked}<span aria-hidden="true"
@@ -1154,16 +1172,6 @@
                             <div class="cal-event-room">
                               {l.classroom_name}
                             </div>
-                          {/if}
-                          {#if isCompresenza}
-                            <button type="button" class="cal-compresenza-btn"
-                                    title={`Compresenza: ${lst.length} lezioni in questo slot`}
-                                    data-testid={'sched-compresenza-' + dnum + '-' + hnum}
-                                    on:click={(e) => _openCompresenza(e, lst,
-                                      `${slot.start_time}-${slot.end_time}`)}
-                                    on:keydown|stopPropagation>
-                              +{lst.length - 1}&nbsp;<span aria-hidden="true">👥</span>
-                            </button>
                           {/if}
                           {#if isConflict && dragSource}
                             <span class="cal-event-conflict-badge"
@@ -1712,32 +1720,46 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  /* Two-part label: subject (bold) always written, secondary muted below. */
+  /* Two-part label: subject (bold) always written, secondary muted below.
+     Kept small so hour + subject + prof + room all pack into one cell. */
   .cal-event-primary {
     font-weight: 700;
-    line-height: 1.15;
+    line-height: 1.1;
   }
   .cal-event-secondary {
     display: block;
     font-weight: 400;
+    font-size: 9px;
     opacity: 0.8;
     line-height: 1.05;
   }
-  /* Compresenza: small pill button on the main cell that opens the popup. */
+  /* The time row carries the compresenza button so the button is visible
+     WITH everything else and never pushes the subject/prof/room out of the
+     fixed-height cell. */
+  .cal-event-time--row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4px;
+  }
   .cal-compresenza-btn {
-    align-self: flex-start;
-    margin-top: 1px;
+    flex: none;
     padding: 0 5px;
-    font-size: 9px;
+    font-size: 8.5px;
     font-weight: 700;
-    line-height: 1.45;
+    line-height: 1.4;
     border: 1px solid currentColor;
     border-radius: 999px;
-    background: rgba(255, 255, 255, 0.55);
+    background: rgba(255, 255, 255, 0.6);
     color: inherit;
     cursor: pointer;
+    white-space: nowrap;
   }
-  .cal-compresenza-btn:hover { background: rgba(255, 255, 255, 0.92); }
+  .cal-compresenza-btn:hover,
+  .cal-compresenza-btn--on {
+    background: rgba(255, 255, 255, 0.96);
+    box-shadow: inset 0 0 0 1px currentColor;
+  }
   .cal-compresenza-pop {
     position: fixed;
     z-index: 1000;
