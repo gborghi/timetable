@@ -156,6 +156,7 @@ def run_partitioned_pipeline(
             group_assignments=group_assignments,
             class_day_load_allowed=class_day_load_allowed,
             class_free_days=class_free_days,
+            special_room_ctx=special_room_ctx,
         )
     elapsed_master = time.time() - t0
 

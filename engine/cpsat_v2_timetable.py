@@ -510,7 +510,8 @@ def solve_phase_a(profs, classes, triples, class_profs,
                   group_assignments=None,
                   class_flags=None,
                   class_day_load_allowed=None,
-                  class_free_days=None):
+                  class_free_days=None,
+                  special_room_ctx=None):
     """Risolve Phase A. Se `locked_day_count` e\` valorizzato, e\` un
     dict (prof, class, subject, day) -> int che impone un FLOOR sul
     numero di ore di quella cattedra nel giorno indicato. Le ore non
@@ -799,6 +800,33 @@ def solve_phase_a(profs, classes, triples, class_profs,
             empty_days.append(e)
         if empty_days:
             model.Add(sum(empty_days) >= rfd)
+
+    # Special-room per-day capacity (HARD): Phase A must not allocate to a
+    # single day more hours of a required-kind subject (palestra / lab /
+    # ...) than the rooms of that kind can host across the day's slots.
+    # Without it the day-count is placement-infeasible -- the per-day solve
+    # DOES carry the per-slot special-room cap, so an over-allocated day is
+    # proven INFEASIBLE in presolve and a decomposition without recovery
+    # yields no solution at all (the curriculum path's failure mode).
+    # Fully constraint-driven: the kinds and their seat counts come from the
+    # room data (``special_room_ctx`` = (subject_required_kind, kind_capacity)),
+    # NO subject/kind name is hardcoded, and it holds for any special room.
+    if special_room_ctx:
+        _subj_req_kind, _kind_cap = special_room_ctx
+        _req_by_key = {subject_key(_s): _k
+                       for _s, _k in (_subj_req_kind or {}).items()}
+        _keys_by_kind = defaultdict(list)   # kind -> [(p, cl, subj)]
+        for (p, cl, subj, ore) in triples:
+            _k = _req_by_key.get(subject_key(subj))
+            if _k is not None and _k in (_kind_cap or {}):
+                _keys_by_kind[_k].append((p, cl, subj))
+        for _k, _keys in _keys_by_kind.items():
+            _seats = int(_kind_cap[_k])
+            for d in DAYS:
+                _terms = [day_count[(p, cl, s, d)] for (p, cl, s) in _keys
+                          if (p, cl, s, d) in day_count]
+                if _terms:
+                    model.Add(sum(_terms) <= _seats * slots_for_day(d))
 
     # SOFT (4): minimizziamo il totale degli slot di 6^a ora occupati
     # nella scuola, cioe\` il numero di (cl, d) con load == 6.
