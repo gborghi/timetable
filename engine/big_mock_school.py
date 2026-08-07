@@ -21,15 +21,9 @@ import math
 import pickle
 from collections import defaultdict
 
-# Permettiamo l'import di mock_classes2 senza modificarlo
-SCHEDULE_DIR = os.path.normpath(
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "schedule")
-)
-sys.path.insert(0, SCHEDULE_DIR)
-
-# Nota: mock_classes2.py ha effetti collaterali a livello modulo
-# (Faker.seed, random.seed, creazione di un cp_model.CpModel global).
-# Sono innocui per noi: useremo solo le funzioni pure-dati.
+# Import mock_classes2 from engine/ (was in schedule/ — audit A4).
+# Note: mock_classes2.py has module-level side effects (Faker.seed,
+# random.seed, cp_model creation); harmless for our pure-data use.
 import mock_classes2 as mc  # noqa: E402
 
 

@@ -1,0 +1,108 @@
+<!doctype html><html lang="it"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>piTantum — Guida vicepreside: come costruire l'orario del Liceo 90 classi</title>
+<style>
+ :root{--b:#2563eb;--ink:#0f172a;--mut:#475569;--bg:#f8fafc;--card:#fff;--ok:#16a34a;--line:#e2e8f0}
+ *{box-sizing:border-box} body{margin:0;font:15px/1.6 -apple-system,Segoe UI,Roboto,sans-serif;color:var(--ink);background:var(--bg)}
+ header{background:linear-gradient(135deg,#1e3a8a,#2563eb);color:#fff;padding:32px 24px}
+ header h1{margin:0 0 6px;font-size:26px} header p{margin:0;opacity:.9}
+ main{max-width:960px;margin:0 auto;padding:24px}
+ .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px 22px;margin:18px 0;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+ h2{font-size:20px;margin:.2em 0 .6em;color:#1e3a8a;border-bottom:2px solid #dbeafe;padding-bottom:6px}
+ h3{font-size:16px;margin:1.1em 0 .3em}
+ table{border-collapse:collapse;width:100%;font-size:14px;margin:.5em 0}
+ th,td{border:1px solid var(--line);padding:7px 9px;text-align:left;vertical-align:top}
+ th{background:#eff6ff;color:#1e3a8a} code{background:#f1f5f9;padding:1px 5px;border-radius:4px;font-size:13px}
+ .pill{display:inline-block;background:#dbeafe;color:#1e40af;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:600;margin:2px 4px 2px 0}
+ .ok{color:var(--ok);font-weight:700} a.btn{display:inline-block;background:var(--b);color:#fff;text-decoration:none;padding:8px 14px;border-radius:8px;font-weight:600;font-size:14px;margin:4px 6px 4px 0}
+ a.btn:hover{background:#1d4ed8} a.btn.alt{background:#0f766e} .mut{color:var(--mut)}
+ ol.steps{padding-left:20px} ol.steps>li{margin:10px 0} .kpi{display:flex;gap:14px;flex-wrap:wrap;margin:10px 0}
+ .kpi div{background:#ecfdf5;border:1px solid #a7f3d0;border-radius:10px;padding:10px 14px;text-align:center;min-width:120px}
+ .kpi b{display:block;font-size:22px;color:#065f46} .note{background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 12px;font-size:14px}
+ footer{color:var(--mut);text-align:center;padding:24px;font-size:13px}
+</style></head><body>
+<header>
+ <h1>Come costruire l'orario — Liceo "Torricelli", 90 classi</h1>
+ <p>Guida operativa per il vicepreside · piTantum · tutti i file e i passaggi per riprodurre l'orario ottimizzato</p>
+</header>
+<main>
+ <div class="card">
+  <h2>La scuola in breve</h2>
+  <span class="pill">90 classi</span><span class="pill">6 indirizzi</span><span class="pill">187 docenti</span>
+  <span class="pill">settimana 6×6 (lun–sab, 8–14)</span><span class="pill">84 aule + 3 palestre</span>
+  <span class="pill">biennio a turnazione</span><span class="pill">9 alunni con sostegno</span>
+  <p class="mut">Indirizzi: scientifico, scienze applicate, linguistico, classico, scienze umane, economico-sociale.
+  Obiettivo dimostrato: <b>far stare 90 classi in 87 aule</b> (aule &lt; classi) grazie alla turnazione del biennio e alla
+  condivisione palestra, con <b>0 lezioni non piazzate</b>, giorno libero di 1ª scelta soddisfatto al ~99%, biennio 36/36.</p>
+ </div>
+
+ <div class="card">
+  <h2>1 · I file da caricare</h2>
+  <p>Sei fogli Excel, nell'ordine. Ogni file rispetta il template ufficiale (<code>GET /api/import/&lt;entita&gt;/template</code>).
+  La prima riga è l'intestazione; ogni foglio ha una scheda <i>Note</i> che spiega le colonne meno ovvie.</p>
+  <table>
+   <tr><th>#</th><th>File</th><th>Entità</th><th>Cosa contiene / colonne chiave</th></tr>
+   <tr><td>1</td><td><a href="files/01_materie.xlsx">01_materie.xlsx</a></td><td>subjects (24)</td>
+     <td><code>required_kind=palestra</code> su Scienze motorie → obbliga la palestra (senza, la ginnastica va in aula!)</td></tr>
+   <tr><td>2</td><td><a href="files/02_docenti.xlsx">02_docenti.xlsx</a></td><td>teachers (187)</td>
+     <td><code>subjects</code> (materie insegnabili), <code>min_free_days</code>, <code>preferred_free_days_json</code>
+     (giorno libero 1ª/2ª/3ª scelta), nota <code>compresenza=sempre</code> per il sostegno</td></tr>
+   <tr><td>3</td><td><a href="files/03_classi.xlsx">03_classi.xlsx</a></td><td>classes (90, 1 riga per materia)</td>
+     <td><code>subject</code>+<code>hours_per_week</code> (monte-ore), <code>required_free_days_count=1</code> sul BIENNIO
+     (1 giorno vuoto a turnazione, scelto dal solver), <code>room_policy=ibrida</code></td></tr>
+   <tr><td>4</td><td><a href="files/04_aule.xlsx">04_aule.xlsx</a></td><td>classrooms (87)</td>
+     <td><code>kind</code> standard/palestra, <code>capacity</code>; palestra con <code>multi_class=1, multi_class_max=2</code> (due classi insieme)</td></tr>
+   <tr><td>5</td><td><a href="files/05_studenti_sostegno.xlsx">05_studenti_sostegno.xlsx</a></td><td>students (9)</td>
+     <td>alunni con <code>sostegno=1</code> e <code>ore_sostegno</code>; il docente si assegna poi all'alunno in UI</td></tr>
+   <tr><td>6</td><td><a href="files/06_cattedre.xlsx">06_cattedre.xlsx</a></td><td>assignments (1014)</td>
+     <td>cattedre <code>docente → classe + materia</code>. Il sostegno NON va qui (vedi file 5)</td></tr>
+  </table>
+  <a class="btn" href="files/">Sfoglia i file</a>
+  <a class="btn alt" href="liceo90_input_xlsx.zip">Scarica tutto (.zip)</a>
+  <p class="note"><b>Verificato:</b> caricando questi 6 file su un DB vuoto (mode=replace) l'import va a buon fine con
+  <b>0 errori</b> → 90 classi, 187 docenti, 24 materie, 87 aule, 1014 cattedre, 9 alunni.</p>
+ </div>
+
+ <div class="card">
+  <h2>2 · Come caricarli + i pochi settaggi non-Excel</h2>
+  <h3>Caricamento</h3>
+  <p>Dashboard → <b>Importazione dati</b>: per ogni file scegli l'entità e carica. Alla PRIMA volta usa modalità
+  <code>replace</code> (svuota e ripopola); per aggiornamenti successivi <code>upsert</code>. Ordine consigliato:
+  materie → aule → docenti → classi → studenti → cattedre.</p>
+  <h3>Settaggi che NON stanno nell'Excel</h3>
+  <ul>
+   <li><b>Settimana</b> (tab <b>Ore</b>): 6 giorni lun–sab × 6 ore 8:00–14:00. È l'unica configurazione strutturale da fare a mano.</li>
+   <li><b>Sostegno</b>: per ogni alunno flaggato (file 5) assegna in UI il docente di sostegno all'alunno; imposta il docente su
+     <code>compresenza=sempre</code> così il sostegno <b>resta nell'aula della classe</b> (non prenota un'aula in più).</li>
+  </ul>
+  <p class="mut">Tutto il resto (giorni liberi con priorità, biennio a turnazione, palestra obbligatoria, policy aula ibrida,
+  palestra a 2 classi) è già dentro le colonne dei file Excel — niente da reinserire.</p>
+ </div>
+
+ <div class="card">
+  <h2>3 · I run da lanciare (pipeline)</h2>
+  <ol class="steps">
+   <li><b>Phase B — Orario</b> (sezione Ottimizza): <code>cp_sat_scope = day</code>, <code>phase_a_mode = always</code>,
+     <code>use_decomposition = true</code> (decomposizione per giorno), <code>respect_room_capacity = ON</code>
+     (tetto = 84 aule standard). Questo colloca le lezioni rispettando capienza-aule e giorni liberi.</li>
+   <li><b>Metaeuristica LNS</b>: rifinitura (chiude i buchi, migliora i soft) sulla soluzione attiva.</li>
+   <li><b>Assegnazione aule</b> (rooms): assegna le aule fisiche. Il vincolo soft <b>room-pool</b> (attivo di default)
+     tiene ogni classe in un <b>pool ridotto di aule</b> (~2–3, non ~25): la classe cambia aula solo quando serve
+     (palestra, o per occupare l'aula di chi è in palestra).</li>
+  </ol>
+  <p class="note">Alternativa rapida: dal menù <b>Importa modelli risolti</b> scegli <b>liceo90</b> per caricare
+  direttamente la scuola <i>già risolta</i> (anagrafica + vincoli + orario), oppure ripristina lo snapshot DB dalla
+  card <b>Import/Export DB</b>.</p>
+ </div>
+
+ <div class="card">
+  <h2>4 · Risultato atteso</h2>
+  <div class="kpi">
+   <div><b>0</b>lezioni fuori</div><div><b>87</b>aule per 90 classi</div><div><b>36/36</b>biennio con giorno libero</div>
+   <div><b>~99%</b>1ª scelta giorno libero</div><div><b>~2.4</b>aule/classe (era ~25)</div><div><b>✓</b>HARD-feasible</div>
+  </div>
+  <p class="mut">Il tutto è raggiungibile perché il biennio turna (1 giorno vuoto a rotazione → meno aule di picco),
+  la ginnastica libera l'aula (che un'altra classe occupa) e il sostegno cavalca l'aula della classe.</p>
+ </div>
+ <footer>piTantum · generato dai dati reali del modello <code>liceo90</code> · tutti i file sono già validati per l'import</footer>
+</main></body></html>

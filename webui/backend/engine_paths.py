@@ -15,17 +15,12 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ENGINE_DIR = os.path.normpath(
     os.path.join(HERE, "..", "..", "engine")
 )
-SCHEDULE_DIR = os.path.normpath(
-    os.path.join(HERE, "..", "..", "schedule")
-)
 
 
 def ensure_engine_on_path() -> None:
-    """Inject engine/ and schedule/ onto sys.path so flat imports work."""
+    """Inject engine/ onto sys.path so flat imports work."""
     if ENGINE_DIR not in sys.path:
         sys.path.insert(0, ENGINE_DIR)
-    if SCHEDULE_DIR not in sys.path:
-        sys.path.insert(0, SCHEDULE_DIR)
 
 
 # Backward-compatible module-level side-effect: existing importers that
