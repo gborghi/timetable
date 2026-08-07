@@ -37,7 +37,6 @@ from __future__ import annotations
 
 import time
 from collections import defaultdict
-from typing import Iterable
 
 import numpy as np
 
@@ -322,7 +321,7 @@ def run_partitioned_pipeline(
 
         days_per_day[d] = time.time() - t
         if log:
-            occ = sum(1 for k_id in cluster_solutions
+            sum(1 for k_id in cluster_solutions
                        for v in cluster_solutions[k_id].values() if v == 1)
             print(f"[loop]   day {d} ok in {days_per_day[d]:.1f}s "
                   f"({len(cluster_solutions)} cluster ok, "

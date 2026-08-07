@@ -31,7 +31,6 @@ import json
 import os
 import pickle
 import random
-import shutil
 import sys
 from typing import Any
 
@@ -246,7 +245,7 @@ def build(profile: str, *, seed: int = 42, force: bool = False
 
     # Lazy imports: must happen after env-var pin.
     from webui.backend import db as wdb
-    from webui.backend import engine_io, models, mock_classrooms
+    from webui.backend import engine_io, models
     from webui.backend import seed_curricula
     wdb.init_db()
 
@@ -328,7 +327,6 @@ def build(profile: str, *, seed: int = 42, force: bool = False
     # Now distribute aule across plessi + force a few special rooms.
     SPECIAL_KINDS = ["palestra", "lab_fisica", "lab_chimica",
                      "lab_informatica"]
-    auditorium_kinds = ["aula_speciale"]
     with wdb.SessionLocal() as db:
         rooms = db.query(models.Classroom).order_by(models.Classroom.id).all()
         # Re-assign every room a plesso_id round-robin.
@@ -336,7 +334,6 @@ def build(profile: str, *, seed: int = 42, force: bool = False
             r.plesso_id = plesso_ids[i % n_plessi]
         # Make sure we have at least one room of each special kind:
         existing_kinds = {r.kind for r in rooms}
-        next_idx = 0
         for kk in SPECIAL_KINDS:
             if kk in existing_kinds:
                 continue
@@ -550,7 +547,6 @@ def _seed_stress_fixtures(profile: str, rng: random.Random,
     # didn't happen yet (smoke tests).
     from webui.backend import db as wdb
     from webui.backend import models
-    from sqlalchemy import select
 
     counts: dict[str, int] = {}
     with wdb.SessionLocal() as db:

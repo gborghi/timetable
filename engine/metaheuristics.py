@@ -46,7 +46,6 @@ import random
 import sys
 import time
 from collections import defaultdict
-from copy import deepcopy
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -285,7 +284,7 @@ def is_hard_feasible(sol, profs, verbose=False,
             (sa.get("teacher_name"), sa.get("class_name"),
              sa.get("subject"))
         )
-    cls_h = class_day_hours(sol, cls_set)
+    class_day_hours(sol, cls_set)
     pd_h = prof_day_hours(sol, profs_set)
 
     # Class no-overlap: per (cl, d, h) max 1 occupazione, dove
@@ -914,7 +913,7 @@ def run_lns(sol, profs, dc_value, time_budget_s,
             dsl_hard_expressions)
         via_dsl = True
     profs_list = sorted(profs.keys())
-    classes_list = sorted({c for p in profs.values() for c in p["classi"]})
+    sorted({c for p in profs.values() for c in p["classi"]})
     log_entries = []
     t_start = time.time()
     iter_count = 0

@@ -200,7 +200,7 @@ def add_plesso_commuting_constraints_for_teacher(
 
     days_list = sorted(set(days))
     hours_list = sorted(set(hours))
-    h_index = {h: i for i, h in enumerate(hours_list)}
+    {h: i for i, h in enumerate(hours_list)}
 
     for d in days_list:
         for i, h_a in enumerate(hours_list[:-1]):

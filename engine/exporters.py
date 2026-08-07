@@ -48,7 +48,6 @@ from __future__ import annotations
 import os
 import pickle
 import re
-from typing import Iterable
 
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side

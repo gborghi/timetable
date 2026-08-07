@@ -55,7 +55,6 @@ soluzione effettiva di ogni cluster delega a `cpsat_v2_timetable`
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Iterable
 
 import numpy as np
 

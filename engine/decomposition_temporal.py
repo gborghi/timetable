@@ -64,7 +64,6 @@ def _pool_ctx():
     except Exception:  # noqa: BLE001
         pass
     return None
-from typing import Any
 
 # Make sibling modules importable when this file is run from
 # anywhere (including by ProcessPoolExecutor workers on Windows).

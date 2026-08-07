@@ -1267,10 +1267,6 @@ class ConstraintModel:
         plessi = self.config.plessi_data
         if plessi is None:
             return
-        try:
-            from . import plessi_constraints as pc  # type: ignore
-        except ImportError:
-            import plessi_constraints as pc  # type: ignore
         # Build cpsat_vars_by_t_d_h indexed by (teacher, day, hour).
         # The slots in this model are 5-tuple keyed; the helper
         # operates on column-pair selection so it doesn't fit

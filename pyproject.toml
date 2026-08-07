@@ -14,7 +14,6 @@ line-length = 100
 # constants) that we won't refactor right now. `extend-exclude` here
 # keeps an editor's ruff invocation in line with CI.
 extend-exclude = [
-    "engine",
     "schedule",
     "proposals",
     "tests",

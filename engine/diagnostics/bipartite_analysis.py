@@ -101,7 +101,7 @@ def analyze(profs: dict, *, mode: str = "classes",
         from networkx.algorithms.community.quality import modularity
         communities = list(greedy_modularity_communities(g))
         mod = float(modularity(g, communities))
-    except Exception as e:  # noqa: BLE001
+    except Exception:  # noqa: BLE001
         communities = []
         mod = 0.0
 

@@ -37,7 +37,6 @@ Espone le stesse funzioni della spettrale per integrazione:
 from __future__ import annotations
 
 import math
-from typing import Iterable
 
 import numpy as np
 

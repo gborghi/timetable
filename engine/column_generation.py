@@ -3827,7 +3827,7 @@ def _run_ryan_foster_tree(
                             branching_constraints=node_branches,
                         )
                     except NotImplementedError:
-                        col, rc = None, 0.0
+                        col, _rc = None, 0.0
                     info["rf_tree_pricing_calls"] += 1
                     if col is None:
                         continue

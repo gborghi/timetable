@@ -69,7 +69,7 @@ def run_decomposition(profs, profile, k, args):
     _, triples, _ = cv2.build_indices(profs)
     bridges_set = set(bridges.keys())
 
-    print(f"\n[pipe] === STAGE A (bridges) ===")
+    print("\n[pipe] === STAGE A (bridges) ===")
     bridge_solutions = {}
     a_failed = []
     t0 = time.time()
@@ -85,7 +85,7 @@ def run_decomposition(profs, profile, k, args):
     t_sa = time.time() - t0
     print(f"[pipe] stage A: {t_sa:.1f}s, {len(a_failed)} giorni falliti")
 
-    print(f"[pipe] === STAGE B (cluster internals) ===")
+    print("[pipe] === STAGE B (cluster internals) ===")
     cluster_solutions = {}
     b_failed = defaultdict(set)
     t0 = time.time()
@@ -109,7 +109,7 @@ def run_decomposition(profs, profile, k, args):
     # paralleli quando possibile.
     workers_per_task = max(1, args.workers // n_jobs)
     if n_jobs > 1:
-        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from concurrent.futures import ThreadPoolExecutor
         print(f"[pipe] stage B: parallel n_jobs={n_jobs} "
               f"workers_per_task={workers_per_task} ({len(tasks)} tasks)")
 
@@ -150,7 +150,7 @@ def run_decomposition(profs, profile, k, args):
             if (k_id, d) in cluster_solutions:
                 full_solution.update(cluster_solutions[(k_id, d)])
 
-    print(f"[pipe] === STAGE C (ricucitura) ===")
+    print("[pipe] === STAGE C (ricucitura) ===")
     days_C = sorted(set(b_failed.keys()) | set(a_failed))
     c_failed = []
     t0 = time.time()
@@ -175,7 +175,7 @@ def run_decomposition(profs, profile, k, args):
     t_sc = time.time() - t0
     print(f"[pipe] stage C: {t_sc:.1f}s, {len(c_failed)} falliti")
 
-    print(f"[pipe] === MONOLITHIC fallback ===")
+    print("[pipe] === MONOLITHIC fallback ===")
     m_failed = []
     t0 = time.time()
     for d in c_failed:

@@ -59,6 +59,7 @@ import os
 import pickle
 import time
 from collections import defaultdict
+from typing import Any
 
 from ortools.sat.python import cp_model
 
@@ -1267,12 +1268,12 @@ def solve_phase_a(profs, classes, triples, class_profs,
     for (cl, d), v in cl_day_load.items():
         load_distribution[solver.Value(v)] += 1
     print(
-        f"[phaseA] cl_day_load distribution (cl,d): "
+        "[phaseA] cl_day_load distribution (cl,d): "
         + ", ".join(f"{k}={v}" for k, v in sorted(load_distribution.items()))
     )
     if any(k in (1, 2, 3) for k in load_distribution):
         print(
-            f"[phaseA] WARNING: vincolo HARD violato (load 1/2/3 trovato)"
+            "[phaseA] WARNING: vincolo HARD violato (load 1/2/3 trovato)"
         )
 
     # Estrai assegnazione giornaliera. The coday_count IntVars (one
@@ -2271,8 +2272,8 @@ def _diagnose_phaseb_infeasibility(day, profs, triples, dc_value):
     if n_violations > 5:
         print(f"  ... e altre {n_violations - 5} violazioni Hall.")
     if n_violations == 0:
-        print(f"  Nessuna violazione Hall evidente. Causa diversa "
-              f"(probabile: HARD (2) e capacita\\` slot).")
+        print("  Nessuna violazione Hall evidente. Causa diversa "
+              "(probabile: HARD (2) e capacita\\` slot).")
 
 
 def main():

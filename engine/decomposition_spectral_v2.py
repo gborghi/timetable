@@ -706,7 +706,7 @@ def main():
     print(f"[v2] spectral clustering k={k_used}: {t_cluster:.2f}s")
     bridges, cl_to_label = find_bridges(profs, classes, labels)
     pmetrics = partition_metrics(M, classes, labels, bridges)
-    print(f"[v2] partition metrics:")
+    print("[v2] partition metrics:")
     print(f"     cluster_sizes={pmetrics['cluster_sizes']} "
           f"balance={pmetrics['cluster_size_balance']}")
     print(f"     internal_edges={pmetrics['n_internal_edges']} "
@@ -731,7 +731,7 @@ def main():
     # ============================================================
     # 3) Stage A: bridges per giorno
     # ============================================================
-    print(f"\n[v2] === STAGE A (bridges only) ===")
+    print("\n[v2] === STAGE A (bridges only) ===")
     bridge_solutions = {}        # day -> {(p,cl,s,d,h):0/1}
     a_failed = []
     t_stage_a_total = 0.0
@@ -755,7 +755,7 @@ def main():
     # ============================================================
     # 4) Stage B: per cluster x day, internals con bridges fissati
     # ============================================================
-    print(f"\n[v2] === STAGE B (cluster internals, bridges fixed) ===")
+    print("\n[v2] === STAGE B (cluster internals, bridges fixed) ===")
     cluster_solutions = {}        # (cluster_id, day) -> {...}
     b_failed = defaultdict(set)   # day -> set of cluster_ids
     t_stage_b_total = 0.0
@@ -803,7 +803,7 @@ def main():
     # ============================================================
     # 5) Stage C: ricucitura per giorni con cluster falliti
     # ============================================================
-    print(f"\n[v2] === STAGE C (ricucitura) ===")
+    print("\n[v2] === STAGE C (ricucitura) ===")
     days_needing_C = sorted(set(b_failed.keys()) | set(a_failed))
     if not days_needing_C:
         print("[stageC] nessun giorno da ricucire")
@@ -838,7 +838,7 @@ def main():
     # ============================================================
     # 6) Monolithic fallback per i giorni dove anche Stage C fallisce
     # ============================================================
-    print(f"\n[v2] === MONOLITHIC FALLBACK ===")
+    print("\n[v2] === MONOLITHIC FALLBACK ===")
     m_failed = []
     t_stage_m_total = 0.0
     for d in c_failed:
@@ -865,7 +865,7 @@ def main():
     # ============================================================
     # 7) Verifica HARD + statistiche SOFT
     # ============================================================
-    print(f"\n[v2] === VERIFICA HARD + SOFT ===")
+    print("\n[v2] === VERIFICA HARD + SOFT ===")
     n_lessons = sum(1 for v in full_solution.values() if v == 1)
     fabbisogno = sum(
         meta["ore"] for p in profs.values()
@@ -943,7 +943,7 @@ def main():
     # 9) Riassunto finale
     # ============================================================
     print(f"\n[v2] === RIASSUNTO {args.profile} ===")
-    print(f"  k = {args.k}, cluster_sizes = {cluster_sizes}")
+    print(f"  k = {args.k}, cluster_sizes = {pmetrics['cluster_sizes']}")
     print(f"  bridges = {len(bridges)}/{len(profs)} "
           f"({100.0*len(bridges)/len(profs):.1f}%)")
     print(f"  Phase A interno = "

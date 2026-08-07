@@ -28,7 +28,6 @@ import random
 import sys
 import time
 from collections import defaultdict
-from copy import deepcopy
 from typing import Callable
 
 # `engine/` may or may not be on sys.path depending on how the

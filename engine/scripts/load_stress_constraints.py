@@ -126,7 +126,7 @@ def _resolve_class(pattern: str, classes: list[dict]) -> int | None:
     if pattern.startswith(("first_class_year_", "second_class_year_",
                             "third_class_year_", "fourth_class_year_",
                             "fifth_class_year_", "sixth_class_year_")):
-        order_token, _, year_str = pattern.rsplit("_", 2)[0], None, pattern.split("_")[-1]
+        _order_token, _, year_str = pattern.rsplit("_", 2)[0], None, pattern.split("_")[-1]
         ord_map = {"first": 0, "second": 1, "third": 2,
                    "fourth": 3, "fifth": 4, "sixth": 5}
         try:
@@ -247,7 +247,7 @@ def main():
     if not dataset:
         return
 
-    print(f"[stress-loader] fetching DB owners...")
+    print("[stress-loader] fetching DB owners...")
     try:
         teachers = _http_get(args.backend, "/api/teachers?limit=1000")
         classes = _http_get(args.backend, "/api/classes?limit=1000")

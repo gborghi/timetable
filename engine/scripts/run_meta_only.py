@@ -20,13 +20,11 @@ import argparse
 import os
 import pickle
 import sys
-import time
 from collections import defaultdict
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
-import cpsat_v2_timetable as cv2  # noqa: E402
 import decomposition_spectral_v2 as dec  # noqa: E402
 import metaheuristics as meta  # noqa: E402
 from exporters import (  # noqa: E402

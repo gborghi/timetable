@@ -273,7 +273,7 @@ def load_or_build_phase_a(profs, profile, time_a, workers, log):
         print(f"[decomp] cache trovata: carico {cache_path}")
         with open(cache_path, "rb") as f:
             return pickle.load(f), 0.0
-    print(f"[decomp] cache assente, eseguo Phase A interno...")
+    print("[decomp] cache assente, eseguo Phase A interno...")
     classes, triples, class_profs = cv2.build_indices(profs)
     t0 = time.time()
     dc_value = cv2.solve_phase_a(
@@ -355,7 +355,7 @@ def main():
         classes_per_cluster[lbl].add(c)
     _, triples, _ = cv2.build_indices(profs)
 
-    print(f"\n[decomp] inizio Phase B decomposta")
+    print("\n[decomp] inizio Phase B decomposta")
     full_solution = {}
     failed = []
     elapsed_b = 0.0
@@ -401,7 +401,6 @@ def main():
         print(f"[decomp] day={d}: {day_total_t:.1f}s, {n_set} ore-classe "
               f"occupate")
 
-    elapsed_total = elapsed_b
     print(
         f"\n[decomp] TOTALE Phase B decomposta: {elapsed_b:.1f}s "
         f"({len(failed)} fallimenti)"

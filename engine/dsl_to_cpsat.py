@@ -38,7 +38,7 @@ see ``engine/cp_sat_constraint_model.py``.
 """
 from __future__ import annotations
 
-from typing import Any, Iterable
+from typing import Any
 
 try:
     from . import metaheuristics as meta  # type: ignore
@@ -744,7 +744,6 @@ class DSLConstraintCompiler:
         - ``exists``: collect over keys and emit BoolOr at the end
           (handled outside this helper).
         """
-        import general_dsl as gd  # type: ignore
         if quant != "forall":
             # exists: collect the slot var; aggregate handled by
             # caller. For now: treat the body as a static filter
@@ -922,7 +921,6 @@ class DSLConstraintCompiler:
         # "AddBoolOr over reified branch indicators". For now we
         # only implement the case where every branch reduces to a
         # static truth value plus a small slot-disjunction.
-        import general_dsl as gd  # type: ignore
         slot_vars: list = []
         for arg in node.args:
             try:
@@ -1186,7 +1184,7 @@ class DSLConstraintCompiler:
         if name == "subject_pair_must":
             if len(arg_values) != 2:
                 self.diagnostics.append(
-                    f"subject_pair_must expects 2 args")
+                    "subject_pair_must expects 2 args")
                 return True
             cl = str(arg_values[0])
             subj = str(arg_values[1])
@@ -1195,7 +1193,7 @@ class DSLConstraintCompiler:
         if name == "subject_pair_exists":
             if len(arg_values) != 2:
                 self.diagnostics.append(
-                    f"subject_pair_exists expects 2 args")
+                    "subject_pair_exists expects 2 args")
                 return True
             cl = str(arg_values[0])
             subj = str(arg_values[1])
@@ -1546,7 +1544,7 @@ class DSLConstraintCompiler:
     def _compile_teacher_max_per_day(self, t: str, n: int):
         """sum_{cl, s, h} slot[(t, cl, s, d, h)] <= n for every day."""
         days = self._days_in_scope()
-        hours = self._hours_in_scope()
+        self._hours_in_scope()
         for d in days:
             vs = [v for (tt, _cl, _s, dd, _h), v in self.slot.items()
                   if tt == t and dd == d]
