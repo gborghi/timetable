@@ -1196,6 +1196,7 @@
                   {@const isHard = cell && cell.state === 'hard'}
                   {@const isPref = cell && cell.state === 'preferred'}
                   {@const isEnf  = cell && cell.state === 'enforced'}
+                  <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
                   <div class="cal-event"
                        class:cal-event--free={isFree}
                        class:cal-event--soft={isSoft}
@@ -1208,6 +1209,8 @@
                        data-day={dnum}
                        data-hour={hnum}
                        data-state={cell ? cell.state : 'free'}
+                       role="gridcell"
+                       aria-label="{slot.start_time}-{slot.end_time}"
                        on:click={(e) => onCellClick(e, dnum, hnum)}
                        on:mousedown={(e) => onMouseDown(e, dnum, hnum)}
                        on:mouseenter={() => onMouseEnter(dnum, hnum)}
@@ -1258,7 +1261,7 @@
       </div>
     </div>
     {#if mode === 'schedule'}
-      <aside class="cal-pool" data-testid="schedule-pool" role="complementary" aria-label="Lezioni svincolate">
+      <aside class="cal-pool" data-testid="schedule-pool" aria-label="Lezioni svincolate">
         <div class="cal-pool__header">
           Pool ({(unscheduled_lessons || []).length})
         </div>
@@ -1300,6 +1303,7 @@
 </div>
 
 {#if compresenzaPopup}
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="cal-compresenza-pop"
        data-testid="compresenza-popup"
        style={`left:${compresenzaPopup.x}px; top:${compresenzaPopup.y}px;`}

@@ -24,6 +24,9 @@ export const _ = {
     coteaching: 'Coteaching',
     coverage: 'Assenze',
   },
+  dashboard: {
+    hero: "Il tuo orario, in quattro tappe",
+  },
   common: {
     save: 'Salva',
     cancel: 'Annulla',

@@ -6,6 +6,7 @@
   import { datasetState, datasetEverLoaded, flash, refreshDataset, bumpMutation,
            workingHoursConfig, loadWorkingHoursConfig } from '$lib/stores';
   import { statoTappe } from '$lib/tappe';
+  import { _ } from '$lib/locales/it';  // i18n (audit F2)
   import PageHero from '$lib/components/PageHero.svelte';
   import Panel from '$lib/components/Panel.svelte';
   import RunLogPanel from '$lib/components/RunLogPanel.svelte';
@@ -193,7 +194,7 @@
 
 <PageHero
   eyebrow={null}
-  title="Il tuo orario, in quattro tappe"
+  title={$_.dashboard.hero}
   description={tappaCorrente
     ? `Sei alla tappa ${tappaCorrente.n}. Ogni tappa raccoglie le pagine che servono: puoi tornare indietro in qualsiasi momento senza perdere il lavoro fatto.`
     : 'Tutte le tappe sono complete: la scuola ha un orario. Da qui puoi rigenerarlo, modificarlo o gestire assenze e supplenze.'} />
