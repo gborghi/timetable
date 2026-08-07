@@ -206,6 +206,46 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+# ── CSP (Content-Security-Policy) ──────────────────────────────────
+class _CSPMiddleware:
+    """Add a basic CSP header to every response.
+
+    The policy is deliberately permissive (self-origin for scripts and
+    styles; images and media from anywhere) because the deployed frontend
+    is a static SPA.  Tighten ``PITANTUM_CSP`` via env var when a stricter
+    policy is needed.
+    """
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        async def _send(message):
+            if message["type"] == "http.response.start":
+                headers = dict(message.get("headers", []))
+                if b"content-security-policy" not in headers:
+                    csp = os.environ.get(
+                        "PITANTUM_CSP",
+                        "default-src 'self'; "
+                        "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
+                        "style-src 'self' 'unsafe-inline'; "
+                        "img-src 'self' data: blob:; "
+                        "font-src 'self' data:; "
+                        "connect-src 'self'",
+                    )
+                    headers[b"content-security-policy"] = csp.encode()
+                message["headers"] = list(headers.items())
+            await send(message)
+
+        await self.app(scope, receive, _send)
+
+
+app.add_middleware(_CSPMiddleware)
+
 app.include_router(teachers.router)
 app.include_router(classes.router)
 app.include_router(subjects.router)

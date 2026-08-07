@@ -16,7 +16,9 @@ from collections import defaultdict
 from typing import Any
 
 # This import has to come BEFORE the engine modules:
-from . import engine_paths  # noqa: F401  (sys.path side effect)
+from .engine_paths import ensure_engine_on_path  # noqa: E402
+
+ensure_engine_on_path()
 
 from ortools.sat.python import cp_model
 from sqlalchemy.orm import Session
