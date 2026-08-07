@@ -380,7 +380,7 @@ def coteach_group_to_dsl(class_name: str, subject: str,
       2. Teachers' hours coincide on the same slots (slot-equality).
 
     Returns a list of DSL strings (one per clause). If ``required``
-    is False, the rules are SOFT (compiler TODO).
+    is False, the rules are SOFT (compiler TODO(audit)).
     """
     if not teacher_names or len(teacher_names) < 2:
         return []
@@ -737,7 +737,7 @@ def load_all_dsl_constraints(db,
         SQLAlchemy session.
     include_soft : bool
         when False (default), only HARD rules are returned. SOFT
-        translation is TODO; the compiler currently logs SOFT rules
+        translation is TODO(audit); the compiler currently logs SOFT rules
         in diagnostics rather than enforcing them.
 
     Returns

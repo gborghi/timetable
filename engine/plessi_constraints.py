@@ -384,7 +384,7 @@ def add_plesso_entity_policy_constraints_classroom_assignment(
         teacher's lessons must lie in ``policy.plesso_id``.
       - ``any``: no constraint emitted.
 
-    Class-side and group-side policies are TODO; they require the
+    Class-side and group-side policies are TODO(audit); they require the
     class_name -> id and group_name -> id maps and a similar pattern
     grouped by (class, day) instead of (teacher, day).
 

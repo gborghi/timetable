@@ -68,7 +68,7 @@ DSL_A_NO_CONSECUTIVE_DAYS = (
 # which {h, h+1, h+2} doesn't satisfy for the (h, h+2) pair). The
 # canonical way to express "n hours in one consecutive window" is
 # ``subject_pair_must`` (the n=2 pragma) or a dedicated n-block
-# pragma (TODO at the engine level). For this integration test we
+# pragma (TODO(audit) at the engine level). For this integration test we
 # pin the same-day part as the new general-DSL feature; the
 # consecutive-hours part is verified separately via the n=2 form
 # in test_compile_time_3c_pair_consecutive_n2.

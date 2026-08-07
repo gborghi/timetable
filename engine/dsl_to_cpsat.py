@@ -23,7 +23,7 @@ Scope of this commit
 - Reified ``implies`` / ``and`` / ``or`` over slot vars when the
   body involves dynamic terms (e.g. another lesson on the same day).
 
-Out-of-scope (TODO marks where applicable)
+Out-of-scope (TODO(audit) marks where applicable)
 ==========================================
 - ``sum`` aggregates beyond plain ``count``.
 - Multi-quantifier joins where every variable ranges over slot
@@ -547,7 +547,7 @@ class DSLConstraintCompiler:
     ---------------
     ``compile(node)`` returns:
       - None when the node has been added as a HARD constraint
-      - A list of CP-SAT BoolExpr for SOFT integration (TODO)
+      - A list of CP-SAT BoolExpr for SOFT integration (TODO(audit))
 
     Phase A soft cost
     -----------------
@@ -778,7 +778,7 @@ class DSLConstraintCompiler:
         # Body involves dynamic terms. Best-effort: if body is a
         # comparison/predicate over another lesson reachable via
         # static filters, emit a reified pair-wise constraint. This
-        # path is intentionally limited; richer patterns are TODO.
+        # path is intentionally limited; richer patterns are TODO(audit).
         self._compile_dynamic_forall_body(node, env, key)
 
     def _compile_dynamic_forall_body(self, node, env: dict,

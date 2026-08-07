@@ -7,7 +7,7 @@ A group has:
 
 The solver treats a group as a virtual class scheduled in parallel with
 home classes; constraints across overlapping memberships are enforced
-during the scheduling phase (TODO: solver-side wiring; the data model is
+during the scheduling phase (TODO(audit): solver-side wiring; the data model is
 already in place)."""
 from __future__ import annotations
 

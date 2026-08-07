@@ -1,5 +1,7 @@
 # piTantum
 
+**Nota:** Questo README è un riassunto in italiano. Il README canonico è in inglese: [English](README.md).
+
 > 🤖 **Realizzato con l'intelligenza artificiale.** piTantum è stato
 > progettato e implementato con l'assistenza dell'intelligenza artificiale
 > (Claude di Anthropic) — dal solver CP-SAT e il motore dei vincoli al

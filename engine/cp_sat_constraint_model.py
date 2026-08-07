@@ -560,7 +560,7 @@ class ConstraintModel:
 
         When ``groups`` is None, ``self.config.coteach_groups`` is
         used. SOFT groups (``required=False``) are skipped here; SOFT
-        coteach belongs to the objective layer (TODO).
+        coteach belongs to the objective layer (TODO(audit)).
         """
         if groups is None:
             groups = list(self.config.coteach_groups or [])

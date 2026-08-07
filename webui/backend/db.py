@@ -162,7 +162,7 @@ def init_db():
       alongside alembic.
     - For fresh DBs, `Base.metadata.create_all` builds the canonical
       schema directly; alembic_version is then stamped to head on
-      first start (TODO: optional auto-stamp when DB is empty).
+      first start (TODO(audit): optional auto-stamp when DB is empty).
     """
     from . import models  # noqa: F401
     Base.metadata.create_all(bind=engine)

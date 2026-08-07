@@ -167,6 +167,11 @@ implementation was developed from those ideas.
   `docs/build_manual.sh` (Linux/macOS/Git Bash) or
   `docs/build_manual.bat` (Windows). The pipeline is lualatex +
   biber + makeindex + lualatex (x2).
+
+  **Note:** The English manual (`docs/manual_en.pdf`) is partially
+  auto-generated from the Italian chapters. Some chapters are summaries
+  pointing back to the Italian text.
+
 - **[docs/](docs/)** -- modular markdown reference:
   [installation](docs/installation.md) /
   [architecture](docs/architecture.md) /

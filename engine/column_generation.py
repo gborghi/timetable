@@ -4276,7 +4276,7 @@ def run_column_generation(profs: dict, dc_value: dict,
          scheme as a primal heuristic, then a single round of
          dual-driven sub-CP-SAT pricing per teacher, then a final
          master LP solve. NO Ryan-Foster branching tree yet
-         (see TODO below). Falls back to iterative if pricing
+         (see TODO(audit) below). Falls back to iterative if pricing
          finds no improving columns.
       - "auto": picks branch-and-price when n_classes <= 25,
          iterative-diversified otherwise (the BP scaffold is too
