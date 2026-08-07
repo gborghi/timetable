@@ -16,7 +16,7 @@ from typing import Any
 
 from fastapi import (APIRouter, Depends, File, HTTPException, Query,
                       UploadFile)
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
 
@@ -324,6 +324,51 @@ def export_db(
         headers={
             "Content-Disposition": f'attachment; filename="{fn}"',
             "X-Pitantum-Schema-Version": meta.get("schema_version") or "",
+        },
+    )
+
+
+@router.get("/backup-db")
+def backup_db():
+    """Download a safe SQLite backup via the sqlite3 backup API.
+
+    Uses ``sqlite3.backup()`` which is WAL-aware (unlike ``shutil.copy``
+    which can miss uncommitted WAL pages).  Returns a 400 for non-SQLite
+    backends — use ``pg_dump`` for Postgres.
+    """
+    if not db_mod.IS_SQLITE or not db_mod.DB_PATH or not os.path.exists(db_mod.DB_PATH):
+        raise HTTPException(
+            400,
+            detail="Il backup diretto e' disponibile solo per SQLite. "
+                   "Per Postgres usa pg_dump.",
+        )
+    import sqlite3
+    import tempfile
+    # Checkpoint WAL so all committed pages are in the main DB file
+    try:
+        with db_mod.engine.connect() as conn:
+            conn.exec_driver_sql("PRAGMA wal_checkpoint(TRUNCATE)")
+    except Exception:
+        pass
+    tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+    try:
+        src = sqlite3.connect(db_mod.DB_PATH)
+        dst = sqlite3.connect(tmp.name)
+        src.backup(dst)
+        src.close()
+        dst.close()
+        with open(tmp.name, "rb") as f:
+            data = f.read()
+    finally:
+        os.unlink(tmp.name)
+    ts = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"pitantum_backup_{ts}.db"
+    return Response(
+        content=data,
+        media_type="application/octet-stream",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "X-Backup-Size-Bytes": str(len(data)),
         },
     )
 
