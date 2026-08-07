@@ -1,0 +1,12 @@
+# Branch protection rules — audit PR1.
+#
+# Apply these in GitHub repo Settings → Branches → Add rule for `main`:
+#   ✅ Require a pull request before merging (1 approval)
+#   ✅ Require status checks to pass before merging
+#   ✅ Require conversation resolution before merging
+#   ✅ Do not allow bypassing the above settings
+#
+# This file serves as documentation for the expected branch protection.
+# GitHub Free orgs cannot set branch protection via API without GitHub Premium.
+
+* @gborghi

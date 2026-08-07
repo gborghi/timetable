@@ -1079,7 +1079,9 @@
                       </div>
                       <div class="cal-event-label">{slot.label || ''}</div>
                     {/if}
+                    <!-- svelte-ignore a11y_no_static_element_interactions -->
                     <div class="cal-edit-handle cal-edit-handle--bot"
+                         role="separator" aria-label="Ridimensiona slot" tabindex="-1"
                          on:mousedown|stopPropagation={(e) =>
                            (!isEditing) && onEditSlotMouseDown(e, dayId, sIdx,
                                                 d._colEl, 'resize-bottom')}>
@@ -1106,6 +1108,7 @@
                   {@const lst = lessonsBySlot.get(slotKey) || []}
                   {@const isHover = dragHoverKey === slotKey}
                   {@const isConflict = conflictKeys.has(slotKey)}
+                  <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
                   <div class="cal-slot cal-slot--schedule"
                        class:cal-slot--drop-ok={isHover && dragSource}
                        class:cal-slot--drop-conflict={isConflict && dragSource}
@@ -1114,6 +1117,8 @@
                        data-day={dnum}
                        data-hour={hnum}
                        data-testid={'sched-slot-' + dnum + '-' + hnum}
+                       role="gridcell"
+                       tabindex="-1"
                        on:dragover={(e) => _onSlotDragOver(e, dnum, hnum)}
                        on:dragleave={(e) => _onSlotDragLeave(e, dnum, hnum)}
                        on:drop={(e) => _onSlotDrop(e, dnum, hnum)}

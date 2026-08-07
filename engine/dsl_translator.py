@@ -270,10 +270,7 @@ def special_room_capacity_to_dsl(db, _models=None) -> list[tuple[str, str]]:
     utile quando qualche classe non e' vincolata a nessuna sede.
     """
     if _models is None:
-        try:
-            from backend import models as _models  # type: ignore
-        except ImportError:
-            from webui.backend import models as _models  # type: ignore
+        from backend import models as _models  # type: ignore
 
     subs_by_kind: dict[str, list[str]] = {}
     for s in db.query(_models.Subject).all():
@@ -760,10 +757,7 @@ def load_all_dsl_constraints(db, *, _models=None,
     construction order stable across runs.
     """
     if _models is None:
-        try:
-            from backend import models as _models  # type: ignore
-        except ImportError:
-            from webui.backend import models as _models  # type: ignore
+        from backend import models as _models  # type: ignore
 
     out: list[dict] = []
     teachers = {t.id: t.name for t in db.query(_models.Teacher).all()}
