@@ -5784,6 +5784,14 @@ def run_decomposition_curriculum(*, time_a: float = 60.0,
                 _db_co)
             class_day_load_allowed = (
                 engine_io.class_day_load_allowed_from_db(_db_co))
+            # Biennio free-day rotation (class_free_days): reserving the empty
+            # day per class in the DAY-COUNT is exactly what lets more classes
+            # than rooms coexist (they take turns being off). Without it the
+            # per-day solve over-fills the rooms on tight days and goes
+            # INFEASIBLE. The temporal path already passes it; the curriculum /
+            # metis paths dropped it -- found via the 90-class decomposition
+            # failing on several days until the rotation was reinstated.
+            class_free_days = engine_io.class_free_days_from_db(_db_co)
             import cpsat_v2_timetable as _cv2  # type: ignore
             _special_room = _cv2.build_special_room_ctx(_db_co)
             _plessi = _cv2.build_plessi_ctx(_db_co)
@@ -5811,6 +5819,7 @@ def run_decomposition_curriculum(*, time_a: float = 60.0,
             parallel_groups=parallel_groups or None,
             group_assignments=group_assignments or None,
             class_day_load_allowed=class_day_load_allowed,
+            class_free_days=class_free_days,
             special_room_ctx=_special_room,
             plessi_ctx=_plessi,
             dsl_hard_expressions=_curr_dsl_hard,
@@ -5940,6 +5949,14 @@ def run_decomposition_metis(*, time_a: float = 60.0,
                 _db_co)
             class_day_load_allowed = (
                 engine_io.class_day_load_allowed_from_db(_db_co))
+            # Biennio free-day rotation (class_free_days): reserving the empty
+            # day per class in the DAY-COUNT is exactly what lets more classes
+            # than rooms coexist (they take turns being off). Without it the
+            # per-day solve over-fills the rooms on tight days and goes
+            # INFEASIBLE. The temporal path already passes it; the curriculum /
+            # metis paths dropped it -- found via the 90-class decomposition
+            # failing on several days until the rotation was reinstated.
+            class_free_days = engine_io.class_free_days_from_db(_db_co)
             import cpsat_v2_timetable as _cv2  # type: ignore
             _special_room = _cv2.build_special_room_ctx(_db_co)
             _plessi = _cv2.build_plessi_ctx(_db_co)
@@ -5968,6 +5985,7 @@ def run_decomposition_metis(*, time_a: float = 60.0,
             parallel_groups=parallel_groups or None,
             group_assignments=group_assignments or None,
             class_day_load_allowed=class_day_load_allowed,
+            class_free_days=class_free_days,
             special_room_ctx=_special_room,
             plessi_ctx=_plessi,
             dsl_hard_expressions=_metis_dsl_hard,
