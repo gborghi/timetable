@@ -104,6 +104,7 @@
   }
 </script>
 
+<!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="select-none space-y-2"
      on:mouseenter={() => (hovering = true)}
      on:mouseleave={() => (hovering = false)}>

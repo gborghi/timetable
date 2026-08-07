@@ -1079,7 +1079,6 @@
                       </div>
                       <div class="cal-event-label">{slot.label || ''}</div>
                     {/if}
-                    <!-- svelte-ignore a11y_no_static_element_interactions -->
                     <div class="cal-edit-handle cal-edit-handle--bot"
                          role="separator" aria-label="Ridimensiona slot" tabindex="-1"
                          on:mousedown|stopPropagation={(e) =>
@@ -1108,7 +1107,6 @@
                   {@const lst = lessonsBySlot.get(slotKey) || []}
                   {@const isHover = dragHoverKey === slotKey}
                   {@const isConflict = conflictKeys.has(slotKey)}
-                  <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
                   <div class="cal-slot cal-slot--schedule"
                        class:cal-slot--drop-ok={isHover && dragSource}
                        class:cal-slot--drop-conflict={isConflict && dragSource}
@@ -1202,7 +1200,6 @@
                   {@const isHard = cell && cell.state === 'hard'}
                   {@const isPref = cell && cell.state === 'preferred'}
                   {@const isEnf  = cell && cell.state === 'enforced'}
-                  <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
                   <div class="cal-event"
                        class:cal-event--free={isFree}
                        class:cal-event--soft={isSoft}
@@ -1284,7 +1281,6 @@
 </div>
 
 {#if compresenzaPopup}
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="cal-compresenza-pop"
        data-testid="compresenza-popup"
        style={`left:${compresenzaPopup.x}px; top:${compresenzaPopup.y}px;`}
