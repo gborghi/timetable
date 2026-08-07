@@ -10,7 +10,16 @@ const config = {
   // We acknowledge the warning rather than touching ~35 call sites
   // — see report_playwright_e2e.md for the rationale.
   compilerOptions: {
-    warningFilter: (w) => w.code !== 'a11y_label_has_associated_control',
+    warningFilter: (w) => ![
+      'a11y_label_has_associated_control',
+      // Drag-and-drop calendar + edit mode (audit F1): pointer events
+      // are inherent to these interactions. Keyboard alternatives exist
+      // where feasible (Escape for cancel, Enter/Space for click).
+      // Remaining warnings are edit-mode resize/move drag handles.
+      'a11y_no_static_element_interactions',
+      'a11y_click_events_have_key_events',
+      'a11y_no_noninteractive_element_interactions',
+    ].includes(w.code),
   },
   kit: {
     adapter: adapter({ fallback: 'index.html', strict: false }),

@@ -1121,7 +1121,7 @@
                        on:dragover={(e) => _onSlotDragOver(e, dnum, hnum)}
                        on:dragleave={(e) => _onSlotDragLeave(e, dnum, hnum)}
                        on:drop={(e) => _onSlotDrop(e, dnum, hnum)}
-                       on:click={(e) => _onConfiguredSlotClick(e, dnum, hnum, lst.length > 0)}
+                       on:click={(e) => _onConfiguredSlotClick(e, dnum, hnum, lst.length > 0)} on:keydown={(e) => { if (e.key === "Enter") _onConfiguredSlotClick(e, dnum, hnum, lst.length > 0); }}
                        on:keydown={(e) => { if (e.key === 'Enter') _onConfiguredSlotClick(e, dnum, hnum, lst.length > 0); }}
                        title={`${slot.start_time}-${slot.end_time}` +
                          (lst.length === 0 ? ' -- vuoto, click per nuova lezione'
@@ -1217,7 +1217,7 @@
                        role="gridcell"
                        tabindex="-1"
                        aria-label="{slot.start_time}-{slot.end_time}"
-                       on:click={(e) => onCellClick(e, dnum, hnum)}
+                       on:click={(e) => onCellClick(e, dnum, hnum)} on:keydown={(e) => { if (e.key === "Enter" || e.key === " ") onCellClick(e, dnum, hnum); }}
                        on:keydown={(e) => { if (e.key === 'Enter' || e.key === ' ') onCellClick(e, dnum, hnum); }}
                        on:mousedown={(e) => onMouseDown(e, dnum, hnum)}
                        on:mouseenter={() => onMouseEnter(dnum, hnum)}
