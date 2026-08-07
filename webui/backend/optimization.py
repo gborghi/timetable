@@ -3043,6 +3043,7 @@ def run_full_pipeline(profile: str,
                 exp_dir = os.path.join(os.path.dirname(__file__),
                                         "..", "..", "engine", "scripts")
                 if exp_dir not in sys.path:
+  # (harmless: engine_paths.ensure_engine_on_path() already handles this — audit A2)
                     sys.path.insert(0, exp_dir)
                 pb = pb_kwargs or {}
                 t_a = float(pb.get("time_a", 60))
@@ -5469,6 +5470,7 @@ def run_decomposition_temporal(*, time_a: float = 60.0,
                 os.path.dirname(os.path.abspath(__file__)))),
             "engine", "scripts")
         if exp_dir not in sys.path:
+  # (harmless: engine_paths.ensure_engine_on_path() already handles this — audit A2)
             sys.path.insert(0, exp_dir)
         import decomposition_temporal as dec_t  # type: ignore
 
@@ -5670,6 +5672,7 @@ def run_decomposition_curriculum(*, time_a: float = 60.0,
                 os.path.dirname(os.path.abspath(__file__)))),
             "engine", "scripts")
         if exp_dir not in sys.path:
+  # (harmless: engine_paths.ensure_engine_on_path() already handles this — audit A2)
             sys.path.insert(0, exp_dir)
         import decomposition_curriculum as dec_c  # type: ignore
         auto = dec_c.auto_group_small_curricula(
@@ -5836,6 +5839,7 @@ def run_decomposition_metis(*, time_a: float = 60.0,
                 os.path.dirname(os.path.abspath(__file__)))),
             "engine", "scripts")
         if exp_dir not in sys.path:
+  # (harmless: engine_paths.ensure_engine_on_path() already handles this — audit A2)
             sys.path.insert(0, exp_dir)
         import decomposition_metis as dec_m  # type: ignore
         if not dec_m._has_pymetis():

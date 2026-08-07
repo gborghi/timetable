@@ -948,7 +948,7 @@
     {/if}
     <div class="cal-layout"
          class:cal-layout--with-pool={mode === 'schedule'}>
-    <div class="overflow-x-auto cal-layout__calendar" tabindex="0"
+    <div class="overflow-x-auto cal-layout__calendar" tabindex="0" role="grid" aria-label="Orario settimanale"
          on:keydown={onEditKeyDown}>
       <div class="cal-grid"
            class:cal-grid--edit={mode === 'edit'}
@@ -1258,7 +1258,7 @@
       </div>
     </div>
     {#if mode === 'schedule'}
-      <aside class="cal-pool" data-testid="schedule-pool">
+      <aside class="cal-pool" data-testid="schedule-pool" role="complementary" aria-label="Lezioni svincolate">
         <div class="cal-pool__header">
           Pool ({(unscheduled_lessons || []).length})
         </div>
