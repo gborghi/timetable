@@ -8,8 +8,8 @@ constraint tables) and dumps the whole thing to
 
 Usage
 -----
-    python -m engine.scripts.build_profile_db small
-    python -m engine.scripts.build_profile_db --all
+    python -m backend.scripts.build_profile_db small
+    python -m backend.scripts.build_profile_db --all
 
 The output SQLite is the new source of truth for ``import_engine_profile``;
 the pickles stay around for audit but are deprecated -- see
@@ -925,7 +925,7 @@ def _pickle_deprecated_md(profile: str, manifest: dict) -> str:
 
 Da questo commit la fonte di verità per il profilo `{profile}` è
 **`{profile}.sqlite`** (costruito da
-`engine/scripts/build_profile_db.py`). I file `school_{profile}.pkl` /
+`webui/backend/scripts/build_profile_db.py`). I file `school_{profile}.pkl` /
 `profs_{profile}.pkl` restano nel repository per finalità di audit
 storico, ma:
 
@@ -940,7 +940,7 @@ storico, ma:
 Per rigenerare lo SQLite di questo profilo:
 
 ```
-python -m engine.scripts.build_profile_db {profile}
+python -m backend.scripts.build_profile_db {profile}
 ```
 
 ## Snapshot stress (manifest)
@@ -1003,7 +1003,7 @@ def main():
         manifests: list[dict] = []
         for p in PROFILES:
             print(f"\n=== {p} (subprocess) ===")
-            cmd = [sys.executable, "-m", "engine.scripts.build_profile_db",
+            cmd = [sys.executable, "-m", "backend.scripts.build_profile_db",
                    p, "--seed", str(args.seed)]
             if args.force:
                 cmd.append("--force")

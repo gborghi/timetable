@@ -133,7 +133,7 @@ DB state into three slim pickle shapes the engine consumes:
 - `solution` = `{(prof, class, subj, day, hour): 0|1}`
 
 Canonical demo data is now a per-profile SQLite snapshot under
-`engine/scripts/data/<profile>/<profile>.sqlite` (built by `engine.scripts.build_profile_db`);
+`engine/scripts/data/<profile>/<profile>.sqlite` (built by `backend.scripts.build_profile_db`);
 the old `.pkl` path is a fallback (see `PICKLE_DEPRECATED.md` markers). Profiles are
 `small | medium | big | huge | superhuge` (+ `mega`); rebuild them — this actually
 runs Phase A per profile, so it is slow — with:

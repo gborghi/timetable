@@ -475,7 +475,7 @@ Six demo profiles (`small`, `medium`, `big`, `huge`, `superhuge`,
 `engine/scripts/data/<profile>/<profile>.sqlite`. Each one carries
 the full anagrafica + the 14 constraint tables + WorkingDay/Slot
 + Lessons, generated deterministically by
-`engine/scripts/build_profile_db.py` with `seed=42`. Importing a
+`webui/backend/scripts/build_profile_db.py` with `seed=42`. Importing a
 profile from the dashboard now reads the SQLite directly (the
 legacy `school_*.pkl` / `profs_*.pkl` pair is kept as historic
 fallback only — see the `PICKLE_DEPRECATED.md` note in each
@@ -484,8 +484,8 @@ profile folder).
 To rebuild a single profile or all six:
 
 ```sh
-python -m engine.scripts.build_profile_db small
-python -m engine.scripts.build_profile_db --all
+python -m backend.scripts.build_profile_db small
+python -m backend.scripts.build_profile_db --all
 ```
 
 A `manifest.json` is written alongside each SQLite with row

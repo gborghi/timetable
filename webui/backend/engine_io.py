@@ -3,7 +3,7 @@ pickles (slim structures consumed by engine/*.py).
 
 Note: a newer single-file SQLite snapshot
 (``engine/scripts/data/<profile>/<profile>.sqlite``, built by
-``engine.scripts.build_profile_db``) is now the canonical source of
+``backend.scripts.build_profile_db``) is now the canonical source of
 truth for the demo profiles. ``import_profile_sqlite_into_db`` below
 wires it into ``import_engine_profile`` so the legacy pickle path
 becomes a fallback.

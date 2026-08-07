@@ -116,7 +116,7 @@ def _make_in_memory_db():
 
 def load_profile_from_sqlite(profile: str):
     """Load profile from `<profile>.sqlite` produced by
-    engine/scripts/build_profile_db.py. Returns the same shape as
+    webui/backend/scripts/build_profile_db.py. Returns the same shape as
     `load_profile()` but with a meaningful `inputs` tuple extracted
     from the constraint tables.
 

@@ -210,7 +210,7 @@ def import_engine_profile(profile: str, use_optimized: bool,
 
     def target(rid: int):
         # New default path: load the per-profile SQLite snapshot
-        # built by ``engine/scripts/build_profile_db.py``. The
+        # built by ``webui/backend/scripts/build_profile_db.py``. The
         # snapshot carries anagrafica + the 14 constraint tables +
         # WorkingDay/Slot + Lessons in one file, replacing the slim
         # pickles + the post-import classroom / student / curricula
@@ -232,7 +232,7 @@ def import_engine_profile(profile: str, use_optimized: bool,
             return
 
         # Fallback (deprecated): legacy pickle path. Kept for users
-        # who haven't run ``python -m engine.scripts.build_profile_db
+        # who haven't run ``python -m backend.scripts.build_profile_db
         # <profile>`` yet, or for one-off pickle dumps not yet
         # converted. Logged at INFO so the deprecation is visible.
         print(f"[import] {profile}.sqlite not found; "

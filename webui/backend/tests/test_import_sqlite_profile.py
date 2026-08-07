@@ -1,6 +1,6 @@
 """Pin the new SQLite-snapshot profile import path.
 
-The build script ``engine/scripts/build_profile_db.py`` produces a
+The build script ``webui/backend/scripts/build_profile_db.py`` produces a
 self-contained SQLite per profile carrying anagrafica + the 14
 constraint tables + WorkingDay/Slot + Lessons. This test imports
 ``small.sqlite`` into a fresh live DB and verifies every category
@@ -26,7 +26,7 @@ SQLITE_SMALL = os.path.join(
 
 @pytest.mark.skipif(not os.path.exists(SQLITE_SMALL),
                     reason=f"{SQLITE_SMALL} not built; "
-                           f"run `python -m engine.scripts.build_profile_db "
+                           f"run `python -m backend.scripts.build_profile_db "
                            f"small` first")
 def test_import_small_sqlite_populates_anagrafica_and_constraints(
         app_with_temp_db):
