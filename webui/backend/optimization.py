@@ -1321,7 +1321,7 @@ def _apply_dsl_rules_to_week_solver(solver, db, *,
         from engine import dsl_translator as dt  # type: ignore
     except ImportError:
         import dsl_translator as dt  # type: ignore
-    rules = dt.load_all_dsl_constraints(db, include_soft=True)
+    rules = dt.load_all_dsl_constraints(db, _models=models, include_soft=True)
     for r in rules:
         solver.add_dsl_constraint(
             r["expression"],
@@ -1824,7 +1824,7 @@ def _load_dsl_hard_expressions(db) -> list[str] | None:
             from engine import dsl_translator as _dt  # type: ignore
         except ImportError:
             import dsl_translator as _dt  # type: ignore
-        _all = _dt.load_all_dsl_constraints(db, include_soft=True)
+        _all = _dt.load_all_dsl_constraints(db, _models=models, include_soft=True)
         exprs = [r["expression"] for r in _all
                  if r.get("is_hard") and r.get("expression")]
         return exprs or None
@@ -2047,7 +2047,7 @@ def run_meta(stage: str, budget_s: float, workers: int, log: bool,
                     from engine import dsl_translator as _dt  # type: ignore
                 except ImportError:
                     import dsl_translator as _dt  # type: ignore
-                _all = _dt.load_all_dsl_constraints(db, include_soft=True)
+                _all = _dt.load_all_dsl_constraints(db, _models=models, include_soft=True)
                 soft_rules = meta.parse_soft_rules(_all) or None
             except Exception:
                 soft_rules = None

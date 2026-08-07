@@ -94,7 +94,7 @@ def classroom_unavailability_to_dsl(classroom_name: str, day: int,
             f' and l.day == {int(day)} and l.hour == {int(hour)}: false')
 
 
-def _configured_hours_by_day(db, models) -> dict[int, set[int]]:
+def _configured_hours_by_day(db, _models) -> dict[int, set[int]]:
     """Map legacy day number -> set of legacy hour numbers configured
     as active in Tab Ore.
 
@@ -103,7 +103,7 @@ def _configured_hours_by_day(db, models) -> dict[int, set[int]]:
     8..13) when the DB carries no WorkingDay rows, which is the shape
     every pre-Tab-Ore dataset uses."""
     by_day: dict[int, set[int]] = {}
-    for d in db.query(models.WorkingDay).all():
+    for d in db.query(_models.WorkingDay).all():
         if not getattr(d, "is_active", True):
             continue
         legacy = getattr(d, "legacy_day_number", None)
@@ -235,7 +235,7 @@ def cattedra_max_per_day_to_dsl(teacher_name: str, class_name: str,
         f'{_quote(class_name)}, {_quote(subject)}, {int(n)})')
 
 
-def special_room_capacity_to_dsl(db) -> list[tuple[str, str]]:
+def special_room_capacity_to_dsl(db, _models=None) -> list[tuple[str, str]]:
     r"""Un pragma per ogni tipo di aula speciale effettivamente
     richiesto da qualche materia. Ritorna ``[(kind, dsl), ...]``.
 
@@ -269,13 +269,14 @@ def special_room_capacity_to_dsl(db) -> list[tuple[str, str]]:
     rilassamento valido dell'insieme di quelle per plesso, e resta
     utile quando qualche classe non e' vincolata a nessuna sede.
     """
-    try:
-        from webui.backend import models  # type: ignore
-    except ImportError:  # pragma: no cover - path juggling in tests
-        from backend import models  # type: ignore
+    if _models is None:
+        try:
+            from backend import models as _models  # type: ignore
+        except ImportError:
+            from webui.backend import models as _models  # type: ignore
 
     subs_by_kind: dict[str, list[str]] = {}
-    for s in db.query(models.Subject).all():
+    for s in db.query(_models.Subject).all():
         kind = (getattr(s, "required_kind", None) or "").strip()
         if kind:
             subs_by_kind.setdefault(kind, []).append(s.name)
@@ -283,7 +284,7 @@ def special_room_capacity_to_dsl(db) -> list[tuple[str, str]]:
         return []
 
     seats_by_kind: dict[str, int] = {}
-    for r in db.query(models.Classroom).all():
+    for r in db.query(_models.Classroom).all():
         kind = (r.kind or "standard").strip()
         if kind not in subs_by_kind:
             continue
@@ -302,7 +303,7 @@ def special_room_capacity_to_dsl(db) -> list[tuple[str, str]]:
 
     # --- Tetti per plesso (vedi il docstring) ---
     seats_by_kind_plesso: dict[tuple[str, int], int] = {}
-    for r in db.query(models.Classroom).all():
+    for r in db.query(_models.Classroom).all():
         kind = (r.kind or "standard").strip()
         if kind not in subs_by_kind or r.plesso_id is None:
             continue
@@ -318,8 +319,8 @@ def special_room_capacity_to_dsl(db) -> list[tuple[str, str]]:
     # puo' cambiare sede e non appartiene a nessun sottoinsieme.
     classes_by_plesso: dict[int, list[str]] = {}
     class_name_by_id = {c.id: c.name
-                        for c in db.query(models.SchoolClass).all()}
-    for p in db.query(models.PlessoEntityPolicy).all():
+                        for c in db.query(_models.SchoolClass).all()}
+    for p in db.query(_models.PlessoEntityPolicy).all():
         if (p.entity_kind != "class" or p.entity_id is None
                 or p.plesso_id is None):
             continue
@@ -725,8 +726,7 @@ def build_soft_pragmas(profs, classes, *, scale_mode="default", level=None):
 # ---------------------------------------------------------------------
 
 
-def load_all_dsl_constraints(db,
-                              *,
+def load_all_dsl_constraints(db, *, _models=None,
                               include_soft: bool = False) -> list[dict]:
     """Aggregate every constraint table into a unified list of DSL
     expressions ready for ``ConstraintModel.add_all_dsl_constraints``.
@@ -759,18 +759,19 @@ def load_all_dsl_constraints(db,
     subject / curriculum). This determinism keeps the CP-SAT model
     construction order stable across runs.
     """
-    try:
-        from webui.backend import models  # type: ignore
-    except ImportError:
-        from backend import models  # type: ignore
+    if _models is None:
+        try:
+            from backend import models as _models  # type: ignore
+        except ImportError:
+            from webui.backend import models as _models  # type: ignore
 
     out: list[dict] = []
-    teachers = {t.id: t.name for t in db.query(models.Teacher).all()}
-    classes = {c.id: c.name for c in db.query(models.SchoolClass).all()}
-    rooms = {r.id: r.name for r in db.query(models.Classroom).all()}
+    teachers = {t.id: t.name for t in db.query(_models.Teacher).all()}
+    classes = {c.id: c.name for c in db.query(_models.SchoolClass).all()}
+    rooms = {r.id: r.name for r in db.query(_models.Classroom).all()}
 
     # 1. TeacherUnavailability
-    for r in db.query(models.TeacherUnavailability).all():
+    for r in db.query(_models.TeacherUnavailability).all():
         is_hard = (r.state == "hard")
         if not is_hard and not include_soft:
             continue
@@ -803,7 +804,7 @@ def load_all_dsl_constraints(db,
     # more legible whole-day pragma is emitted instead.
     hours_by_day = _configured_hours_by_day(db, models)
     hard_cells: dict[int, dict[int, set[int]]] = {}
-    for r in db.query(models.TeacherUnavailability).all():
+    for r in db.query(_models.TeacherUnavailability).all():
         if r.state == "hard":
             hard_cells.setdefault(r.teacher_id, {})\
                 .setdefault(int(r.day), set()).add(int(r.hour))
@@ -834,7 +835,7 @@ def load_all_dsl_constraints(db,
             })
 
     # 2. ClassUnavailability
-    for r in db.query(models.ClassUnavailability).all():
+    for r in db.query(_models.ClassUnavailability).all():
         is_hard = (r.state == "hard")
         if not is_hard and not include_soft:
             continue
@@ -852,7 +853,7 @@ def load_all_dsl_constraints(db,
         })
 
     # 3. ClassroomUnavailability
-    for r in db.query(models.ClassroomUnavailability).all():
+    for r in db.query(_models.ClassroomUnavailability).all():
         is_hard = (r.state == "hard")
         if not is_hard and not include_soft:
             continue
@@ -870,7 +871,7 @@ def load_all_dsl_constraints(db,
         })
 
     # 4. TeacherMandatoryFreeDay
-    for r in db.query(models.TeacherMandatoryFreeDay).all():
+    for r in db.query(_models.TeacherMandatoryFreeDay).all():
         n = teachers.get(r.teacher_id)
         if not n:
             continue
@@ -895,7 +896,7 @@ def load_all_dsl_constraints(db,
     # cpsat_day_soft_hint techniques. With the new pragma the floor
     # is enforced uniformly regardless of solver scope. n=0 is treated
     # as "no constraint" and skipped.
-    for t in db.query(models.Teacher).all():
+    for t in db.query(_models.Teacher).all():
         n_floor = int(getattr(t, "min_free_days", 1) or 0)
         if n_floor <= 0:
             continue
@@ -919,7 +920,7 @@ def load_all_dsl_constraints(db,
     # would only flood every pipeline with vacuous constraints. n <= 0
     # is treated as "unlimited" and skipped.
     DAILY_HOURS = 6  # canonical 8..13 grid; n >= 6 never binds
-    for t in db.query(models.Teacher).all():
+    for t in db.query(_models.Teacher).all():
         n_mc = int(getattr(t, "max_consecutive", 0) or 0)
         if n_mc < 1 or n_mc >= DAILY_HOURS:
             continue
@@ -939,10 +940,10 @@ def load_all_dsl_constraints(db,
     # to ignore so the solver honors it first under minimisation.
     if include_soft and hasattr(models, "TeacherFreeDayPreference"):
         PRIORITY_WEIGHT = {1: 30, 2: 20, 3: 10}
-        for r in (db.query(models.TeacherFreeDayPreference)
+        for r in (db.query(_models.TeacherFreeDayPreference)
                     .order_by(
-                        models.TeacherFreeDayPreference.teacher_id,
-                        models.TeacherFreeDayPreference.priority)
+                        _models.TeacherFreeDayPreference.teacher_id,
+                        _models.TeacherFreeDayPreference.priority)
                     .all()):
             n = teachers.get(r.teacher_id)
             if not n:
@@ -967,7 +968,7 @@ def load_all_dsl_constraints(db,
 
     # 5. CoteachGroup (HARD when required=True)
     if hasattr(models, "CoteachGroup"):
-        for g in db.query(models.CoteachGroup).all():
+        for g in db.query(_models.CoteachGroup).all():
             if not g.required and not include_soft:
                 continue
             cl_name = (
@@ -997,7 +998,7 @@ def load_all_dsl_constraints(db,
 
     # 5b. Capienza delle aule speciali (posti-classe per tipo).
     # Vincolo di scuola, non di entita': lo scope resta None.
-    for kind, clause in special_room_capacity_to_dsl(db):
+    for kind, clause in special_room_capacity_to_dsl(db, _models):
         out.append({
             "source": "special_room_capacity",
             "scope_kind": None, "scope_id": None,
@@ -1008,7 +1009,7 @@ def load_all_dsl_constraints(db,
         })
 
     # 6. LogicalUnavailability (already DSL, just pass through)
-    for r in db.query(models.LogicalUnavailability).all():
+    for r in db.query(_models.LogicalUnavailability).all():
         is_hard = bool(r.is_hard) and (r.kind in ("hard", "enforced"))
         if not is_hard and not include_soft:
             continue
@@ -1024,7 +1025,7 @@ def load_all_dsl_constraints(db,
 
     # 7. CurriculumLogicalConstraint
     if hasattr(models, "CurriculumLogicalConstraint"):
-        for r in db.query(models.CurriculumLogicalConstraint).all():
+        for r in db.query(_models.CurriculumLogicalConstraint).all():
             is_hard = bool(r.is_hard) and (r.kind in ("hard", "enforced"))
             if not is_hard and not include_soft:
                 continue
@@ -1045,7 +1046,7 @@ def load_all_dsl_constraints(db,
     # the entity scoping is informational (the rule body itself filters
     # via `forall l in lessons where l.teacher == ...`).
     if hasattr(models, "GeneralConstraint"):
-        for r in db.query(models.GeneralConstraint).all():
+        for r in db.query(_models.GeneralConstraint).all():
             is_hard = (r.level in ("hard", "enforced"))
             if not is_hard and not include_soft:
                 continue
