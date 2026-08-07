@@ -18,6 +18,7 @@ per una versione PDF stampabile con copertina e indice, vedere
 | [ui_guide.md](ui_guide.md)                 | guida tab per tab della webui: Dashboard, Docenti, Classi, Indirizzi, Studenti, Gruppi, Materie, Aule, Compresenze, Cattedre, Orario, Assenze e supplenze, Monitor, Vincoli, Workflow |
 | [api.md](api.md)                           | reference REST: gruppi di endpoint, formati request/response, esempi curl |
 | [extending.md](extending.md)               | come aggiungere un nuovo tipo di vincolo, una nuova tabella, una nuova pagina UI |
+| [experiments.md](experiments.md) ([IT](experiments_it.md)) | esperimenti e benchmark: due scuole da 90 classi (aula-classe `liceo90` vs aula-docente `liceo90doc`), decomposizioni temporale/curriculum/joint, statistiche previsto vs ottenuto |
 
 ## Ricompilare il manuale PDF
 
