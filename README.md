@@ -1,5 +1,11 @@
 # piTantum
 
+[![CI](https://github.com/gborghi/timetable/actions/workflows/ci.yml/badge.svg)](https://github.com/gborghi/timetable/actions/workflows/ci.yml)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
+[![Svelte 5](https://img.shields.io/badge/svelte-5-orange)](https://svelte.dev/)
+[![License](https://img.shields.io/badge/license-proprietary-red)](LICENSE)
+[![Built with AI](https://img.shields.io/badge/built%20with-AI-8b5cf6)](https://claude.ai/code)
+
 [Italiano](README.it.md) | English
 
 > 🤖 **Built with AI.** piTantum was designed and implemented with the

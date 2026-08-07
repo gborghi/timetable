@@ -12,6 +12,7 @@ Threadsafe via a single module-level lock around the dict.
 """
 from __future__ import annotations
 
+import os
 import threading
 import time
 from typing import Any, Callable
@@ -19,6 +20,18 @@ from typing import Any, Callable
 _LOCK = threading.Lock()
 _CACHE: dict[str, tuple[float, int, Any]] = {}
 _MUTATION_COUNTER = 0
+
+
+def default_ttl() -> float:
+    """Return the cache TTL in seconds from the PITANTUM_CACHE_TTL env var.
+
+    Default is 30 s. Set to 0 to disable caching entirely (useful for
+    debugging or when running multiple backend processes)."""
+    val = os.environ.get("PITANTUM_CACHE_TTL", "30").strip()
+    try:
+        return float(val)
+    except ValueError:
+        return 30.0
 
 
 def bump_mutation() -> None:
