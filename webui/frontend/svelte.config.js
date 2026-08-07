@@ -10,15 +10,7 @@ const config = {
   // We acknowledge the warning rather than touching ~35 call sites
   // — see report_playwright_e2e.md for the rationale.
   compilerOptions: {
-    warningFilter: (w) => ![
-      'a11y_label_has_associated_control',
-      // Drag-and-drop interactive elements (audit F1): pointer events
-      // are inherent to the calendar UI; full keyboard alternatives
-      // require a multi-sprint accessibility overhaul.
-      'a11y_no_static_element_interactions',
-      'a11y_click_events_have_key_events',
-      'a11y_no_noninteractive_element_interactions',
-    ].includes(w.code),
+    warningFilter: (w) => w.code !== 'a11y_label_has_associated_control',
   },
   kit: {
     adapter: adapter({ fallback: 'index.html', strict: false }),
