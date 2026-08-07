@@ -315,5 +315,23 @@
       "support_assignments": 9
     },
     "note": "Bespoke solved model: liceo 90 classi single-site, biennio a rotazione (giorno libero HARD), 84 aule standard + 3 palestre (gym-sharing), sostegno in compresenza. 0 lezioni non piazzate; is_hard_feasible."
+  },
+  {
+    "profile": "liceo90doc",
+    "schema_version": 1,
+    "seed": 20260730,
+    "schedule_label": "8-14 lun-sab (base 8-13, 6a ora se serve)",
+    "n_classes": 90,
+    "n_teachers": 187,
+    "n_subjects": 24,
+    "n_assignments": 1023,
+    "n_lessons": 2763,
+    "n_classrooms": 111,
+    "n_classrooms_palestra": 3,
+    "n_classrooms_lab": 2,
+    "n_plessi": 1,
+    "n_working_days": 6,
+    "n_working_hour_slots": 36,
+    "note": "Modello 'aula del docente': aule partizionate per AREA disciplinare (required_kind), il docente resta nella sua area cambiando aula il meno possibile (teacher_room_pool), gli studenti si spostano; classi room_policy=libera; 106 aule d'area + 2 lab + 3 palestre. Copertura piena, is_hard_feasible."
   }
 ]

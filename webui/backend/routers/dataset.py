@@ -135,7 +135,7 @@ def import_profile(payload: schemas.ImportPickleIn):
 def list_profiles():
     profiles = []
     for name in ("small", "medium", "big", "huge", "superhuge", "mega",
-                 "liceo60", "liceo90"):
+                 "liceo60", "liceo90", "liceo90doc"):
         sqlite_snap = _resolve_profile_sqlite(name)
         school = _resolve_profile_pkl(name, f"school_{name}.pkl")
         if not school and not sqlite_snap:
