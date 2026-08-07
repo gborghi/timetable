@@ -511,7 +511,8 @@ def solve_phase_a(profs, classes, triples, class_profs,
                   class_flags=None,
                   class_day_load_allowed=None,
                   class_free_days=None,
-                  special_room_ctx=None):
+                  special_room_ctx=None,
+                  day_load_caps=None):
     """Risolve Phase A. Se `locked_day_count` e\` valorizzato, e\` un
     dict (prof, class, subject, day) -> int che impone un FLOOR sul
     numero di ore di quella cattedra nel giorno indicato. Le ore non
@@ -827,6 +828,20 @@ def solve_phase_a(profs, classes, triples, class_profs,
                           if (p, cl, s, d) in day_count]
                 if _terms:
                     model.Add(sum(_terms) <= _seats * slots_for_day(d))
+
+    # Recovery hook (loop retry): cap the TOTAL class-hours the day-count may
+    # place on specific days. The day-count is a relaxation -- it cannot see
+    # per-slot room pressure -- so a day can be placement-infeasible even when
+    # every per-day aggregate is fine. When that happens the decomposition
+    # loop re-solves with a lower total on the offending day, forcing the
+    # excess hours to redistribute to days with slack. ``day_load_caps`` =
+    # ``{day: max_total_class_hours}``. 0/absent => no cap (byte-identical).
+    if day_load_caps:
+        for _d, _cap in day_load_caps.items():
+            _loads = [cl_day_load[(cl, int(_d))] for cl in classes
+                      if (cl, int(_d)) in cl_day_load]
+            if _loads:
+                model.Add(sum(_loads) <= int(_cap))
 
     # SOFT (4): minimizziamo il totale degli slot di 6^a ora occupati
     # nella scuola, cioe\` il numero di (cl, d) con load == 6.

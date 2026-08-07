@@ -73,6 +73,7 @@ def run_partitioned_pipeline(
     total_room_capacity=None,
     plessi_ctx=None,
     dsl_hard_expressions: list | None = None,
+    day_load_caps: dict | None = None,
 ):
     """Run the canonical Stage A/B/C/monolithic loop on a precomputed
     cluster partition.
@@ -157,6 +158,7 @@ def run_partitioned_pipeline(
             class_day_load_allowed=class_day_load_allowed,
             class_free_days=class_free_days,
             special_room_ctx=special_room_ctx,
+            day_load_caps=day_load_caps,
         )
     elapsed_master = time.time() - t0
 

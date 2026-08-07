@@ -219,21 +219,63 @@ def solve_with_curriculum_decomposition(
         profs, classroom_to_curriculum, manual_groupings,
     )
     bridges = find_bridges(profs, classes, labels)
-    return dl.run_partitioned_pipeline(
-        profs, labels, classes, bridges,
-        time_a=time_a, time_bridges=time_bridges,
-        time_cluster=time_per_cluster,
-        time_ricucitura=time_ricucitura, time_mono=time_mono,
-        workers=workers, log=log, dc_value=dc_value,
-        locked_day_count=locked_day_count,
-        locked_by_day=locked_by_day,
-        coteach_groups=coteach_groups,
-        support_assignments=support_assignments,
-        parallel_groups=parallel_groups,
-        group_assignments=group_assignments,
-        class_day_load_allowed=class_day_load_allowed,
-        class_free_days=class_free_days,
-        special_room_ctx=special_room_ctx,
-        plessi_ctx=plessi_ctx,
-        dsl_hard_expressions=dsl_hard_expressions,
-    )
+    def _run(_caps):
+        return dl.run_partitioned_pipeline(
+            profs, labels, classes, bridges,
+            time_a=time_a, time_bridges=time_bridges,
+            time_cluster=time_per_cluster,
+            time_ricucitura=time_ricucitura, time_mono=time_mono,
+            workers=workers, log=log, dc_value=dc_value,
+            locked_day_count=locked_day_count,
+            locked_by_day=locked_by_day,
+            coteach_groups=coteach_groups,
+            support_assignments=support_assignments,
+            parallel_groups=parallel_groups,
+            group_assignments=group_assignments,
+            class_day_load_allowed=class_day_load_allowed,
+            class_free_days=class_free_days,
+            special_room_ctx=special_room_ctx,
+            plessi_ctx=plessi_ctx,
+            dsl_hard_expressions=dsl_hard_expressions,
+            day_load_caps=_caps,
+        )
+
+    # Recovery loop: the day-count is a relaxation and cannot see per-slot
+    # room pressure, so a day can be placement-INFEASIBLE even when every
+    # per-day aggregate is fine (and a monolithic per-day solve then fails in
+    # presolve with no fallback). When days fail we re-solve with a lower
+    # TOTAL class-load cap on the offending days -- forcing the excess hours
+    # to redistribute to days with slack -- and retry, keeping the best. Only
+    # meaningful when this call computes the day-count itself (dc_value is
+    # None); a pre-computed dc can't be re-derived, so we don't retry it.
+    day_load_caps = None
+    result = _run(day_load_caps)
+    best = result
+    for _attempt in range(3):
+        if not result["failed_days"] or dc_value is not None:
+            break
+        _dc = result.get("dc_value") or {}
+        _tot: dict[int, int] = {}
+        for _k, _v in _dc.items():
+            if (isinstance(_k, tuple) and len(_k) == 4 and _v
+                    and str(_k[2]).lower() != "sostegno"):
+                _tot[int(_k[3])] = _tot.get(int(_k[3]), 0) + int(_v)
+        _caps = dict(day_load_caps or {})
+        _changed = False
+        for _d in result["failed_days"]:
+            _d = int(_d)
+            _base = _caps.get(_d, _tot.get(_d, 0))
+            _newcap = max(0, _base - max(6, int(_base * 0.06)))
+            if _newcap < _base:
+                _caps[_d] = _newcap
+                _changed = True
+        if not _changed:
+            break
+        day_load_caps = _caps
+        if log:
+            print(f"[curriculum-recovery] retry {_attempt + 1}: "
+                  f"day_load_caps={day_load_caps}")
+        result = _run(day_load_caps)
+        if len(result["failed_days"]) < len(best["failed_days"]):
+            best = result
+    return best
