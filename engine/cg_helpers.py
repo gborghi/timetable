@@ -39,6 +39,8 @@ def _profs_iter_with_groups(profs: dict,
 def _seed_patterns(profs: dict, dc_value: dict, max_per_teacher: int = 3,
                    locks: set | None = None,
                    group_assignments: list | None = None,
+                   days: list[int] | None = None,
+                   hours: list[int] | None = None,
                    ) -> dict[str, list[dict]]:
     """Build a small initial pattern catalog from `dc_value` (Phase-A
     output), one or more "shifted" patterns per teacher.
@@ -57,6 +59,10 @@ def _seed_patterns(profs: dict, dc_value: dict, max_per_teacher: int = 3,
     them. Callers are responsible for keeping `dc_value` consistent
     with the locks (i.e. day_count >= n_locked_in_day).
     """
+    if days is None:
+        days = list(range(1, 7))  # 1..6 default
+    if hours is None:
+        hours = list(range(8, 14))  # 8..13 default (08:00-13:00)
     locks = locks or set()
     locks_by_teacher: dict[str, list[tuple]] = {}
     for (p, cl, s, d, h) in locks:
@@ -76,7 +82,7 @@ def _seed_patterns(profs: dict, dc_value: dict, max_per_teacher: int = 3,
         # for `count` hours.
         triples = [(p, cl, subj, d, dc_value.get((p, cl, subj, d), 0))
                     for (cl, subj) in pairs_by_t[p]
-                    for d in DAYS]
+                    for d in days]
         triples = [t for t in triples if t[4] > 0]
         if not triples:
             out[p] = []
@@ -101,14 +107,14 @@ def _seed_patterns(profs: dict, dc_value: dict, max_per_teacher: int = 3,
                     if cl_l == cl and s_l == subj and d_l == d
                 )
                 placed = already
-                for h_idx in range(len(HOURS)):
+                for h_idx in range(len(hours)):
                     # Check BEFORE placement: if already at quota,
                     # don't even try to add more (avoids the
                     # off-by-one where placed==quota lets one extra
                     # hour slip through before the post-add break).
                     if placed >= hours_to_place:
                         break
-                    h = HOURS[(h_idx + offset) % len(HOURS)]
+                    h = hours[(h_idx + offset) % len(hours)]
                     if (pp, d, h) in occupied_t or (cl, d, h) in occupied_c:
                         continue
                     pat[(pp, cl, subj, d, h)] = 1

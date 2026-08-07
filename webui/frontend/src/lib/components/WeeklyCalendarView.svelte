@@ -49,6 +49,14 @@
   } from '../keyboardConstraintMode';
   import KeyboardConstraintLegend from './KeyboardConstraintLegend.svelte';
   import UnscheduledPool from './UnscheduledPool.svelte';
+  import CompresenzaPopup from './CompresenzaPopup.svelte';
+  import {
+    colourFor,
+    lessonLabel,
+    lessonParts,
+    isSupportLesson,
+    primaryLesson,
+  } from '$lib/calendar_helpers.mjs';
   import {
     PX_PER_HOUR,
     bgRangeFor,
@@ -700,37 +708,9 @@
     return out;
   })();
 
-  // Deterministic palette: colour by (teacher_name | subject | class)
-  // so siblings of the same cattedra share a hue across views.
-  const _PALETTE = [
-    { bg: '#dbeafe', bd: '#2563eb', fg: '#1e3a8a' }, // blue
-    { bg: '#dcfce7', bd: '#16a34a', fg: '#14532d' }, // green
-    { bg: '#fee2e2', bd: '#dc2626', fg: '#7f1d1d' }, // red
-    { bg: '#fef3c7', bd: '#d97706', fg: '#78350f' }, // amber
-    { bg: '#f3e8ff', bd: '#9333ea', fg: '#581c87' }, // violet
-    { bg: '#ccfbf1', bd: '#0d9488', fg: '#134e4a' }, // teal
-    { bg: '#ffe4e6', bd: '#e11d48', fg: '#881337' }, // rose
-    { bg: '#e0e7ff', bd: '#4f46e5', fg: '#3730a3' }, // indigo
-    { bg: '#fef9c3', bd: '#ca8a04', fg: '#713f12' }, // yellow
-    { bg: '#cffafe', bd: '#0891b2', fg: '#155e75' }, // cyan
-  ];
-  function _hashStr(s) {
-    let h = 2166136261;
-    for (let i = 0; i < s.length; i += 1) {
-      h ^= s.charCodeAt(i);
-      h = Math.imul(h, 16777619) >>> 0;
-    }
-    return h;
-  }
-  function _colourFor(lesson) {
-    const t = filter_by?.type;
-    let key;
-    if (t === 'teacher') key = lesson.subject || lesson.class_name || '';
-    else if (t === 'class') key = lesson.subject || lesson.teacher_name || '';
-    else if (t === 'room')  key = lesson.class_name || lesson.subject || '';
-    else key = (lesson.teacher_name || '') + '|' + (lesson.subject || '');
-    return _PALETTE[_hashStr(key) % _PALETTE.length];
-  }
+  // Colour palette helpers live in $lib/calendar_helpers.mjs (audit Q1).
+  // Thin wrapper so UnscheduledPool prop signature stays unchanged.
+  function _colourFor(lesson) { return colourFor(lesson, filter_by); }
 
   function _onLessonDragStart(ev, lesson) {
     dragSource = { kind: 'lesson', lesson };
@@ -749,6 +729,60 @@
   function _onDragEnd() {
     dragSource = null;
     dragHoverKey = null;
+  }
+  /**
+   * Keyboard lesson movement (audit F1): Ctrl+Arrow moves a focused
+   * lesson to an adjacent configured slot within the same day or across
+   * days. Moves are immediate (no confirm step) so the user can chain
+   * them rapidly. Falls through to the existing Enter/Space click
+   * handler for normal interaction. */
+  function _onLessonKeydown(ev, lesson) {
+    if (mode !== 'schedule' || readonly) return;
+    if (!ev.ctrlKey && !ev.metaKey) return; // let Enter/Space pass through
+    const { day, hour } = lesson;
+    if (day == null || hour == null) return;
+    // Build an ordered list of configured (day, hour) pairs for
+    // directional navigation.
+    const slots = [];
+    for (const d of activeDays) {
+      for (const s of (d.slots || [])) {
+        slots.push({ day: d.legacy_day_number,
+                     hour: s.legacy_hour_number });
+      }
+    }
+    const idx = slots.findIndex(
+      (s) => s.day === day && s.hour === hour);
+    if (idx < 0) return;
+    let target = null;
+    if (ev.key === 'ArrowUp' || ev.key === 'ArrowDown') {
+      // Move within same day: find next/prev slot in same day.
+      const sameDay = slots.filter((s) => s.day === day);
+      const dayIdx = sameDay.findIndex((s) => s.hour === hour);
+      if (ev.key === 'ArrowUp' && dayIdx > 0)
+        target = sameDay[dayIdx - 1];
+      else if (ev.key === 'ArrowDown' && dayIdx < sameDay.length - 1)
+        target = sameDay[dayIdx + 1];
+    } else if (ev.key === 'ArrowLeft' || ev.key === 'ArrowRight') {
+      // Move across days: find the closest hour-slot in prev/next day.
+      const step = ev.key === 'ArrowLeft' ? -1 : 1;
+      let candidateIdx = idx + step;
+      while (candidateIdx >= 0 && candidateIdx < slots.length) {
+        const c = slots[candidateIdx];
+        if (c.day !== day) {
+          // Find the closest hour-slot in the target day.
+          const targetDaySlots = slots.filter((s) => s.day === c.day);
+          target = targetDaySlots.reduce((best, s) =>
+            Math.abs(s.hour - hour) < Math.abs(best.hour - hour) ? s : best,
+            targetDaySlots[0]);
+          break;
+        }
+        candidateIdx += step;
+      }
+    }
+    if (target && (target.day !== day || target.hour !== hour)) {
+      ev.preventDefault();
+      on_lesson_move(lesson.id, target.day, target.hour);
+    }
   }
   function _onSlotDragOver(ev, day, hour) {
     if (!dragSource) return;
@@ -788,35 +822,15 @@
     if (dragSource) return;          // ignore during drag
     on_slot_click(day, hour);
   }
-  function _lessonLabel(l) {
-    const t = filter_by?.type;
-    if (t === 'class')   return (l.subject || '') + ' - ' + (l.teacher_name || '');
-    if (t === 'teacher') return (l.class_name || '') + ' - ' + (l.subject || '');
-    if (t === 'room')    return (l.class_name || '') + ' / ' + (l.subject || '');
-    return (l.class_name || '') + ' - ' + (l.subject || '');
-  }
+  // Lesson helpers live in $lib/calendar_helpers.mjs (audit Q1).
+  // Thin wrappers so the template calls stay concise.
+  function _lessonLabel(l) { return lessonLabel(l, filter_by); }
+  function _lessonParts(l) { return lessonParts(l, filter_by); }
+  const _isSupportLesson = isSupportLesson;
+  const _primaryLesson = primaryLesson;
 
-  // Two-part label so the SUBJECT is always written and prominent (the
-  // teacher orario used to read only as "class - subject" on one cramped
-  // line). `primary` is bold, `secondary` muted below it, per view.
-  function _lessonParts(l) {
-    const t = filter_by?.type;
-    const subj = l.subject || '';
-    const cls = l.class_name || l.group_name || '';
-    const tea = l.teacher_name || '';
-    if (t === 'teacher') return { primary: subj, secondary: cls };
-    if (t === 'room')    return { primary: cls, secondary: subj };
-    if (t === 'class')   return { primary: subj, secondary: tea };
-    return { primary: cls, secondary: subj };
-  }
-  const _isSupportLesson = (l) => (l.subject || '').toLowerCase() === 'sostegno';
-  // The "main" lesson of a shared slot: the ordinary (non-sostegno) subject.
-  function _primaryLesson(lst) {
-    return lst.find((l) => !_isSupportLesson(l)) || lst[0];
-  }
   function _openCompresenza(ev, key, lst, timeLabel) {
     ev.stopPropagation();
-    // Toggle: pressing the button while ITS popup is open closes it.
     if (compresenzaPopup && compresenzaPopup.key === key) {
       compresenzaPopup = null;
       return;
@@ -829,14 +843,6 @@
       x: Math.min(r.left, window.innerWidth - 240),
       y: r.bottom + 4,
     };
-  }
-  function _compresenzaRow(l) {
-    // "subject — teacher · class @ room", dropping empty parts.
-    const bits = [];
-    if (l.subject) bits.push(l.subject);
-    const who = [l.teacher_name, (l.class_name || l.group_name)]
-      .filter(Boolean).join(' · ');
-    return { head: bits.join(''), who, room: l.classroom_name || '' };
   }
 
   function onCellClick(ev, d, h) {
@@ -880,6 +886,7 @@
 <div class="select-none weekly-calendar"
      class:weekly-calendar--schedule={mode === 'schedule'}
      data-testid={mode === 'schedule' ? 'weekly-schedule' : undefined}
+     role="application" aria-label="Calendario settimanale"
      on:mouseenter={() => (hovering = true)}
      on:mouseleave={() => (hovering = false)}
      on:keydown={(e) => { if (e.key === 'Escape') { dragSource = null; dragHoverKey = null; } }}>
@@ -1028,11 +1035,12 @@
                          (!isEditing) && onEditSlotMouseDown(e, dayId, sIdx,
                                               d._colEl, 'move')}
                        title={`${slot.start_time}-${slot.end_time} -- trascina i bordi per ridimensionare, il corpo per spostare`}>
-                    <div class="cal-edit-handle cal-edit-handle--top"
+                    <button type="button" class="cal-edit-handle cal-edit-handle--top"
+                         aria-label="Ridimensiona slot dal bordo superiore"
                          on:mousedown|stopPropagation={(e) =>
                            (!isEditing) && onEditSlotMouseDown(e, dayId, sIdx,
                                                 d._colEl, 'resize-top')}>
-                    </div>
+                    </button>
                     {#if isEditing}
                       <div class="cal-edit-popover"
                            on:mousedown|stopPropagation={() => {}}>
@@ -1080,12 +1088,12 @@
                       </div>
                       <div class="cal-event-label">{slot.label || ''}</div>
                     {/if}
-                    <div class="cal-edit-handle cal-edit-handle--bot"
-                         role="separator" aria-label="Ridimensiona slot" tabindex="-1"
+                    <button type="button" class="cal-edit-handle cal-edit-handle--bot"
+                         aria-label="Ridimensiona slot dal bordo inferiore"
                          on:mousedown|stopPropagation={(e) =>
                            (!isEditing) && onEditSlotMouseDown(e, dayId, sIdx,
                                                 d._colEl, 'resize-bottom')}>
-                    </div>
+                    </button>
                   </div>
                 {/each}
                 <!-- drag-to-create live preview -->
@@ -1121,8 +1129,8 @@
                        on:dragover={(e) => _onSlotDragOver(e, dnum, hnum)}
                        on:dragleave={(e) => _onSlotDragLeave(e, dnum, hnum)}
                        on:drop={(e) => _onSlotDrop(e, dnum, hnum)}
-                       on:click={(e) => _onConfiguredSlotClick(e, dnum, hnum, lst.length > 0)} on:keydown={(e) => { if (e.key === "Enter") _onConfiguredSlotClick(e, dnum, hnum, lst.length > 0); }}
-                       on:keydown={(e) => { if (e.key === 'Enter') _onConfiguredSlotClick(e, dnum, hnum, lst.length > 0); }}
+                       on:click={(e) => _onConfiguredSlotClick(e, dnum, hnum, lst.length > 0)}
+                       on:keydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); _onConfiguredSlotClick(e, dnum, hnum, lst.length > 0); } }}
                        title={`${slot.start_time}-${slot.end_time}` +
                          (lst.length === 0 ? ' -- vuoto, click per nuova lezione'
                           : ` -- ${lst.length} lezion${lst.length === 1 ? 'e' : 'i'}`)}>
@@ -1148,7 +1156,10 @@
                              on:dragstart={(e) => _onLessonDragStart(e, l)}
                              on:dragend={_onDragEnd}
                              on:click={(e) => _onLessonClick(e, l)}
-                             on:keydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); _onLessonClick(e, l); } }}
+                             on:keydown={(e) => {
+                               if (e.ctrlKey || e.metaKey) { _onLessonKeydown(e, l); return; }
+                               if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); _onLessonClick(e, l); }
+                             }}
                              title={_lessonLabel(l) +
                                (l.classroom_name ? ' @ ' + l.classroom_name : '') +
                                (isCompresenza ? ` -- compresenza (${lst.length} lezioni, vedi bottone)` : '') +
@@ -1217,8 +1228,8 @@
                        role="gridcell"
                        tabindex="-1"
                        aria-label="{slot.start_time}-{slot.end_time}"
-                       on:click={(e) => onCellClick(e, dnum, hnum)} on:keydown={(e) => { if (e.key === "Enter" || e.key === " ") onCellClick(e, dnum, hnum); }}
-                       on:keydown={(e) => { if (e.key === 'Enter' || e.key === ' ') onCellClick(e, dnum, hnum); }}
+                       on:click={(e) => onCellClick(e, dnum, hnum)}
+                       on:keydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onCellClick(e, dnum, hnum); } }}
                        on:mousedown={(e) => onMouseDown(e, dnum, hnum)}
                        on:mouseenter={() => onMouseEnter(dnum, hnum)}
                        title={`${slot.start_time}-${slot.end_time}` +
@@ -1283,26 +1294,10 @@
   {/if}
 </div>
 
-{#if compresenzaPopup}
-  <div class="cal-compresenza-pop"
-       data-testid="compresenza-popup"
-       role="dialog" aria-label="Dettagli compresenza" tabindex="-1"
-       style={`left:${compresenzaPopup.x}px; top:${compresenzaPopup.y}px;`}
-       on:click|stopPropagation
-       on:keydown|stopPropagation>
-    <div class="cal-compresenza-pop__title">
-      Compresenza · {compresenzaPopup.title}
-    </div>
-    {#each compresenzaPopup.lst as cl2}
-      {@const row = _compresenzaRow(cl2)}
-      <div class="cal-compresenza-pop__row">
-        <span class="cal-compresenza-pop__subj">{row.head || '?'}</span>
-        {#if row.who}<span class="cal-compresenza-pop__who">{row.who}</span>{/if}
-        {#if row.room}<span class="cal-compresenza-pop__room">@ {row.room}</span>{/if}
-      </div>
-    {/each}
-  </div>
-{/if}
+<CompresenzaPopup
+  popup={compresenzaPopup}
+  onClose={() => { compresenzaPopup = null; }}
+/>
 
 <style>
   @import "./WeeklyCalendarView.css";

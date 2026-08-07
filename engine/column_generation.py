@@ -4218,7 +4218,8 @@ def run_column_generation(profs: dict, dc_value: dict,
     patterns = _seed_patterns(profs, dc_value,
                               max_per_teacher=patterns_per_teacher,
                               locks=locks,
-                              group_assignments=group_assignments)
+                              group_assignments=group_assignments,
+                              days=DAYS, hours=HOURS)
     info["n_patterns_total_initial"] = sum(len(v) for v in patterns.values())
     if info["n_patterns_total_initial"] == 0:
         info["duration_s"] = time.time() - t0
