@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import os
 import sys
+import time
+from collections import defaultdict
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
@@ -205,6 +207,49 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ── Rate limiting ───────────────────────────────────────────────────
+_RATE_LIMIT_WINDOW_S = 10.0
+_RATE_LIMIT_BURST = 3
+_rate_limit_state: dict[str, tuple[float, int]] = defaultdict(
+    lambda: (0.0, 0),
+)
+
+
+def _rate_limit_path(path: str) -> int | None:
+    """Return max requests per window for *path*, or None for no limit."""
+    if path.startswith("/api/optimize/"):
+        return _RATE_LIMIT_BURST
+    if path in ("/api/dataset/clear",):
+        return 1  # destructive, one per window
+    if path == "/api/dataset/mock":
+        return 3  # allow burst during setup
+    return None
+
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    # Rate-limiting is off in dev (no API key), same as the auth gate.
+    # In production it caps optimize/* and destructive endpoints.
+    if not os.environ.get("PITANTUM_API_KEY", "").strip():
+        return await call_next(request)
+    max_req = _rate_limit_path(request.url.path)
+    if max_req is not None:
+        now = time.monotonic()
+        key = request.client.host if request.client else "unknown"
+        entry = _rate_limit_state[key]
+        window_start, count = entry
+        if now - window_start > _RATE_LIMIT_WINDOW_S:
+            window_start, count = now, 0
+        if count >= max_req:
+            raise HTTPException(
+                429,
+                detail=f"Limite di richieste superato. Riprova tra "
+                       f"{_RATE_LIMIT_WINDOW_S - (now - window_start):.0f}s.",
+            )
+        _rate_limit_state[key] = (window_start, count + 1)
+    return await call_next(request)
 
 
 # ── CSP (Content-Security-Policy) ──────────────────────────────────

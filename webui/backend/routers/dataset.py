@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 import os
 import pickle
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Response
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
@@ -211,13 +211,20 @@ async def upload_pickle(kind: str, file: UploadFile = File(...),
         obj = pickle.loads(data)  # noqa: S301 -- gated by env flag above
     except Exception as exc:
         raise HTTPException(400, f"Pickle non valido: {exc}") from exc
+    headers = {"X-Pickle-Upload-Enabled": "true"}
     if kind == "school":
         engine_io.import_school_into_db(db, obj, replace=True)
-        return {"ok": True, "imported": "school",
-                "n_classes": len(obj.get("classes", []))}
+        return JSONResponse(
+            {"ok": True, "imported": "school",
+             "n_classes": len(obj.get("classes", []))},
+            headers=headers,
+        )
     if kind == "profs":
         n = engine_io.import_profs_into_db(db, obj)
-        return {"ok": True, "imported": "profs", "n_assignments": n}
+        return JSONResponse(
+            {"ok": True, "imported": "profs", "n_assignments": n},
+            headers=headers,
+        )
     # solution
     from .. import engine_io as ei
     profs = ei.profs_dict_from_db(db)
@@ -232,8 +239,11 @@ async def upload_pickle(kind: str, file: UploadFile = File(...),
         kind="imported", obj_value=float(v),
         metrics=m, make_active=True,
     )
-    return {"ok": True, "imported": "solution",
-            "solution_id": sid, "obj_value": v, "metrics": m}
+    return JSONResponse(
+        {"ok": True, "imported": "solution",
+         "solution_id": sid, "obj_value": v, "metrics": m},
+        headers=headers,
+    )
 
 
 @router.post("/clear")
