@@ -1,0 +1,23 @@
+{
+  "include": ["engine"],
+  "exclude": [
+    "engine/scripts",
+    "**/__pycache__",
+    ".venv",
+    "schedule"
+  ],
+  "typeCheckingMode": "basic",
+  "reportMissingTypeStubs": false,
+  "reportMissingImports": false,
+  "reportUnknownMemberType": false,
+  "reportUnknownVariableType": false,
+  "reportUnknownArgumentType": false,
+  "reportGeneralTypeIssues": "warning",
+  "reportOptionalMemberAccess": "warning",
+  "reportOptionalSubscript": "warning",
+  "reportArgumentType": "warning",
+  "reportAttributeAccessIssue": "warning",
+  "reportUnusedImport": "warning",
+  "reportUnusedVariable": "warning",
+  "pythonVersion": "3.11"
+}
