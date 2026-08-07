@@ -48,6 +48,7 @@
     shortcutToMatrixState,
   } from '../keyboardConstraintMode';
   import KeyboardConstraintLegend from './KeyboardConstraintLegend.svelte';
+  import UnscheduledPool from './UnscheduledPool.svelte';
   import {
     PX_PER_HOUR,
     bgRangeFor,
@@ -1210,6 +1211,7 @@
                        data-hour={hnum}
                        data-state={cell ? cell.state : 'free'}
                        role="gridcell"
+                       tabindex="-1"
                        aria-label="{slot.start_time}-{slot.end_time}"
                        on:click={(e) => onCellClick(e, dnum, hnum)}
                        on:mousedown={(e) => onMouseDown(e, dnum, hnum)}
@@ -1261,38 +1263,12 @@
       </div>
     </div>
     {#if mode === 'schedule'}
-      <aside class="cal-pool" data-testid="schedule-pool" aria-label="Lezioni svincolate">
-        <div class="cal-pool__header">
-          Pool ({(unscheduled_lessons || []).length})
-        </div>
-        {#if !(unscheduled_lessons && unscheduled_lessons.length)}
-          <div class="cal-pool__empty">Nessuna lezione svincolata.</div>
-        {:else}
-          <ul class="cal-pool__list">
-            {#each unscheduled_lessons as u}
-              {@const col = _colourFor(u)}
-              <li class="cal-pool__item"
-                  style={`background:${col.bg};border-color:${col.bd};color:${col.fg};`}
-                  draggable="true"
-                  data-unsched-id={u.id}
-                  data-testid={'sched-pool-item-' + u.id}
-                  on:dragstart={(e) => _onUnschedDragStart(e, u)}
-                  on:dragend={_onDragEnd}
-                  title={`${u.class_name || ''} - ${u.subject || ''} (${u.teacher_name || ''})` +
-                    (u.original_day != null
-                      ? ` -- prima era giorno ${u.original_day} ora ${u.original_hour}` : '')}>
-                <div class="cal-pool__item-title">
-                  {u.class_name || ''} - {u.subject || ''}
-                </div>
-                <div class="cal-pool__item-sub">
-                  {u.teacher_name || ''}
-                  {#if u.classroom_name}- {u.classroom_name}{/if}
-                </div>
-              </li>
-            {/each}
-          </ul>
-        {/if}
-      </aside>
+      <UnscheduledPool
+        lessons={unscheduled_lessons || []}
+        _colourFor={_colourFor}
+        _onUnschedDragStart={_onUnschedDragStart}
+        _onDragEnd={_onDragEnd}
+      />
     {/if}
     </div>
   {/if}
@@ -1810,63 +1786,4 @@
     line-height: 1;
   }
 
-  /* Unscheduled-pool sidebar. */
-  .cal-pool {
-    border: 1px solid var(--line);
-    border-radius: 11px;
-    background: var(--band);
-    padding: 10px;
-    max-height: 70vh;
-    overflow-y: auto;
-    position: sticky;
-    top: 8px;
-  }
-  .cal-pool__header {
-    font-family: 'IBM Plex Mono', ui-monospace, monospace;
-    font-size: 10px;
-    font-weight: 500;
-    letter-spacing: 0.11em;
-    text-transform: uppercase;
-    color: var(--ink3);
-    padding: 0 2px 6px;
-    margin-bottom: 6px;
-    border-bottom: 1px solid var(--line);
-  }
-  .cal-pool__empty {
-    font-size: 11px;
-    color: var(--ink3);
-    padding: 8px 4px;
-    text-align: center;
-  }
-  .cal-pool__list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-  .cal-pool__item {
-    border-style: solid;
-    border-width: 1px;
-    border-radius: 7px;
-    padding: 5px 7px;
-    cursor: grab;
-    font-size: 11px;
-  }
-  .cal-pool__item:active { cursor: grabbing; }
-  .cal-pool__item-title {
-    font-weight: 600;
-    line-height: 1.2;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .cal-pool__item-sub {
-    font-size: 9px;
-    opacity: 0.8;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
 </style>
