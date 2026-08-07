@@ -112,6 +112,10 @@
           <span class="italic" style="color: var(--brand-secondary);">π</span>Tantum
         </span>
       </a>
+      <span class="hidden sm:inline text-[10px] font-semibold uppercase
+                   tracking-wide text-ink-400 shrink-0 -ml-1"
+            title="Sviluppato con l'aiuto dell'intelligenza artificiale (Claude)"
+            data-testid="built-with-ai">built with AI</span>
       <div class="w-px h-6 bg-ink-200 shrink-0" aria-hidden="true"></div>
 
       <nav class="flex flex-wrap gap-[3px] relative min-w-0"

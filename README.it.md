@@ -1,5 +1,10 @@
 # piTantum
 
+> 🤖 **Realizzato con l'intelligenza artificiale.** piTantum è stato
+> progettato e implementato con l'assistenza dell'intelligenza artificiale
+> (Claude di Anthropic) — dal solver CP-SAT e il motore dei vincoli al
+> backend FastAPI e al frontend SvelteKit.
+
 > *Omnia, Lucili, aliena sunt, tempus tantum nostrum est.*
 > &mdash; Seneca, *Epistulae morales ad Lucilium*, I, 1
 

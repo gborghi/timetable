@@ -2,6 +2,11 @@
 
 [Italiano](README.it.md) | English
 
+> 🤖 **Built with AI.** piTantum was designed and implemented with the
+> assistance of artificial intelligence (Anthropic's Claude) — from the
+> CP-SAT solver and constraint engine to the FastAPI backend and the
+> SvelteKit frontend.
+
 > *Omnia, Lucili, aliena sunt, tempus tantum nostrum est.*
 > &mdash; Seneca, *Epistulae morales ad Lucilium*, I, 1
 
