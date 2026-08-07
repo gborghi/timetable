@@ -1769,3 +1769,181 @@ def import_profile_sqlite_into_db(
     finally:
         src.close()
     return counts
+
+
+# ── build_world (moved from engine/general_dsl.py — audit A5) ──────
+# Formerly lived in engine/ where it imported webui.backend.models,
+# creating a layer violation. Now lives in engine_io.py alongside all
+# other DB→dict conversion functions.
+def build_world(db) -> dict[str, list]:
+    """Materialize the relevant DB state into a dict of lists for the
+    evaluator. Called once per evaluation pass; cheap (few k rows).
+
+    Each item is a `dict` with the entity's attributes. Nested
+    references (e.g. `lesson.class.curriculum`) are pre-resolved so
+    the evaluator stays a simple dotted-path lookup.
+    """
+    # ``build_world`` is the one DB-coupled entry; it is called only by the
+    # webui side (never by the engine), so this webui import is lazy and
+    # absolute -- the engine module itself imports webui-free.
+    from backend import models
+    out: dict[str, list] = {}
+    teachers_by_id = {t.id: t for t in db.query(models.Teacher).all()}
+    classes_by_id = {c.id: c for c in db.query(models.SchoolClass).all()}
+    curricula_by_id = {c.id: c for c in db.query(models.Curriculum).all()}
+    rooms_by_id = {r.id: r for r in db.query(models.Classroom).all()}
+
+    # Pre-collect each teacher's subjects so the DSL can write
+    #   t.subject == "Fisica"
+    # which we treat as "Fisica is in t.subjects" (see _apply_op).
+    from backend import models as _m
+    teacher_subjects: dict[int, list[str]] = {}
+    for ts in db.query(_m.TeacherSubject).all():
+        teacher_subjects.setdefault(ts.teacher_id, []).append(ts.subject)
+    out["teachers"] = [
+        {"name": t.name, "group": t.group, "max_hours": t.max_hours,
+         "free_day": t.free_day,
+         "graduatoria_score": t.graduatoria_score,
+         "completion_hours": t.completion_hours,
+         "exemption_hours": t.exemption_hours,
+         # Both `subject` (singular, list-typed for the
+         # `==`-as-contains shorthand) and `subjects` (plural, the
+         # canonical list) resolve to the same data.
+         "subject": teacher_subjects.get(t.id, []),
+         "subjects": teacher_subjects.get(t.id, [])}
+        for t in teachers_by_id.values()
+    ]
+    out["classes"] = [
+        {"name": c.name, "year": c.year, "section": c.section,
+         "curriculum": (
+             curricula_by_id.get(c.curriculum_id).name
+             if c.curriculum_id and curricula_by_id.get(c.curriculum_id)
+             else (c.curriculum or "")
+         ),
+         "n_students": c.n_students}
+        for c in classes_by_id.values()
+    ]
+    out["classrooms"] = [
+        {"name": r.name, "kind": r.kind, "type": r.kind,
+         "capacity": r.capacity,
+         "plesso": r.plesso_id}
+        for r in rooms_by_id.values()
+    ]
+    out["subjects"] = [
+        {"name": s.name} for s in db.query(models.Subject).all()
+    ]
+    out["curricula"] = [
+        {"name": c.name, "code": c.code, "score": c.score}
+        for c in curricula_by_id.values()
+    ]
+    # ----- Students with tags + groups -----
+    student_tags: dict[int, list[str]] = {}
+    for sa in db.query(_m.StudentTagAssignment).all():
+        if sa.tag is not None:
+            student_tags.setdefault(sa.student_id, []).append(sa.tag.name)
+    student_groups: dict[int, list[dict]] = {}
+    groups_by_id: dict[int, _m.StudyGroup] = {
+        g.id: g for g in db.query(models.StudyGroup).all()
+    }
+    for gm in db.query(_m.GroupMembership).all():
+        g = groups_by_id.get(gm.group_id)
+        if g is None:
+            continue
+        student_groups.setdefault(gm.student_id, []).append({
+            "name": g.name, "kind": g.kind,
+        })
+    out["students"] = [
+        {
+            "id": s.id,
+            "name": ((s.last_name or "") + " "
+                     + (s.first_name or "")).strip(),
+            "last_name": s.last_name,
+            "first_name": s.first_name,
+            "class": (classes_by_id.get(s.class_id).name
+                      if s.class_id and classes_by_id.get(s.class_id)
+                      else None),
+            "tags": sorted(student_tags.get(s.id, [])),
+            "groups": student_groups.get(s.id, []),
+        }
+        for s in db.query(models.Student).all()
+    ]
+    out["groups"] = [
+        {"name": g.name, "kind": g.kind}
+        for g in groups_by_id.values()
+    ]
+    out["days"] = [{"index": d, "name": _day_name(d)}
+                   for d in range(1, 7)]
+    out["hours"] = [{"index": h} for h in range(8, 14)]
+    out["slots"] = [{"day": d, "hour": h}
+                    for d in range(1, 7) for h in range(8, 14)]
+
+    out["assignments"] = []
+    for a in db.query(models.Assignment).all():
+        t = teachers_by_id.get(a.teacher_id)
+        c = classes_by_id.get(a.class_id)
+        out["assignments"].append({
+            "teacher": t.name if t else None,
+            "class": c.name if c else None,
+            "subject": a.subject,
+            "hours": a.hours,
+            "locked": bool(a.locked),
+        })
+    out["lessons"] = []
+    active = engine_io.get_active_solution(db)
+    if active is not None:
+        # class -> curriculum lookup for fast `lesson.class.curriculum`
+        cls_to_curr: dict[str, str] = {}
+        for c in classes_by_id.values():
+            cls_to_curr[c.name] = (
+                curricula_by_id.get(c.curriculum_id).name
+                if c.curriculum_id and curricula_by_id.get(c.curriculum_id)
+                else (c.curriculum or "")
+            )
+        # Pre-resolve classroom name -> kind/type/tags so
+        # `l.classroom.type == "lab_fisica"` and
+        # `"matematica" in l.classroom.tags` work without nested obj.
+        room_type_by_name: dict[str, str] = {
+            r.name: (r.kind or "") for r in rooms_by_id.values()
+        }
+        room_tags_by_name: dict[str, list[str]] = {}
+        for r in rooms_by_id.values():
+            room_tags_by_name[r.name] = sorted({
+                a.tag.name for a in (r.tag_assignments or [])
+                if a.tag is not None
+            })
+        room_plesso_by_name: dict[str, Any] = {
+            r.name: r.plesso_id for r in rooms_by_id.values()
+        }
+        for l in db.query(models.Lesson).filter(
+            models.Lesson.solution_id == active.id
+        ).all():
+            cr_name = l.classroom_name or ""
+            cr_type = room_type_by_name.get(cr_name, "")
+            cr_tags = room_tags_by_name.get(cr_name, [])
+            cr_plesso = room_plesso_by_name.get(cr_name)
+            out["lessons"].append({
+                "teacher": l.teacher_name,
+                "class": l.class_name,
+                "class_curriculum": cls_to_curr.get(l.class_name, ""),
+                "subject": l.subject,
+                "day": l.day,
+                "hour": l.hour,
+                "classroom": cr_name,
+                "classroom_type": cr_type,    # alias for l.classroom.type
+                "classroom_kind": cr_type,    # alias for l.classroom.kind
+                "classroom_tags": cr_tags,    # alias for l.classroom.tags
+                "classroom_plesso": cr_plesso,  # alias for l.classroom.plesso
+                "slot": (l.day, l.hour),
+            })
+    # Also populate the classrooms world dict with tags so DSLs that
+    # iterate `forall r in classrooms: ...` can read r.tags.
+    cr_to_tags: dict[str, list[str]] = {}
+    for r in rooms_by_id.values():
+        cr_to_tags[r.name] = sorted({
+            a.tag.name for a in (r.tag_assignments or [])
+            if a.tag is not None
+        })
+    for r in out["classrooms"]:
+        r["tags"] = cr_to_tags.get(r["name"], [])
+    return out
+

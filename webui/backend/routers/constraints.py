@@ -30,7 +30,7 @@ import json as _json
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from .. import models, schemas
+from .. import engine_io, models, schemas  # engine_io for build_world (audit A5)
 from ..db import get_db
 
 router = APIRouter(prefix="/api/constraints", tags=["constraints"])
@@ -896,9 +896,9 @@ def check_all_general(db: Session = Depends(get_db)):
     active solution snapshot. Returns a list of HARD violations and
     the cumulative SOFT penalty contribution."""
     from ..utils.general_dsl import (
-        parse, evaluate_safe, build_world, DSLError,
+        parse, evaluate_safe, DSLError,
     )
-    world = build_world(db)
+    world = engine_io.build_world(db)
     rows = db.query(models.GeneralConstraint).all()
     hard_violations: list[dict] = []
     soft_penalty = 0
