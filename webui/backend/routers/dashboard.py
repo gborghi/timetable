@@ -70,8 +70,20 @@ def _alembic_revision() -> str | None:
         return None
 
 
-def _table_csv(conn, table: str) -> bytes:
-    """Dump one table as CSV bytes using the live engine connection."""
+def _table_csv(conn, table: str, *, _validated_tables: frozenset | None = None) -> bytes:
+    """Dump one table as CSV bytes using the live engine connection.
+
+    ``_validated_tables`` is a frozenset of known-good table names from
+    SQLAlchemy metadata (never user input). When provided, ``table`` is
+    checked against it at runtime so a future change that accidentally
+    passes user-controlled names fails safe with a clear error instead of
+    silently interpolating into SQL.
+    """
+    if _validated_tables is not None and table not in _validated_tables:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Tabella '{table}' non trovata nel database.",
+        )
     res = conn.execute(text(f'SELECT * FROM "{table}"'))
     cols = list(res.keys())
     buf = io.StringIO()
@@ -93,6 +105,7 @@ def _build_export_zip(*, schema_only: bool = False) -> tuple[bytes, dict]:
     """
     insp = inspect(db_mod.engine)
     tables = sorted(insp.get_table_names())
+    validated_tables = frozenset(tables)
     row_counts: dict[str, int] = {}
     csv_hashes: dict[str, str] = {}
 
@@ -127,7 +140,7 @@ def _build_export_zip(*, schema_only: bool = False) -> tuple[bytes, dict]:
                 if schema_only:
                     continue
                 try:
-                    body = _table_csv(conn, t)
+                    body = _table_csv(conn, t, _validated_tables=validated_tables)
                 except Exception:
                     continue
                 z.writestr(f"tables/{t}.csv", body)

@@ -121,8 +121,16 @@ def _uncovered_report(full_solution: dict,
 
 
 def _runs_dir() -> str:
-    here = os.path.dirname(os.path.abspath(__file__))
-    base = os.path.normpath(os.path.join(here, "..", "data", "runs"))
+    # PITANTUM_RUNS_DIR overrides the default location. Set it to an
+    # absolute path outside the source tree when two archive instances
+    # share a filesystem or container volume, so they never clobber each
+    # other's run files (finding 32). Default: webui/data/runs/&lt;db_hash&gt;.
+    env_runs_dir = os.environ.get("PITANTUM_RUNS_DIR")
+    if env_runs_dir:
+        base = os.path.abspath(os.path.expanduser(env_runs_dir.strip()))
+    else:
+        here = os.path.dirname(os.path.abspath(__file__))
+        base = os.path.normpath(os.path.join(here, "..", "data", "runs"))
     # Isolate run work-files per archive: two instances pointed at
     # different databases (PITANTUM_DB_URL) must NOT share a workspace,
     # or they silently overwrite each other's files (finding 32). The
