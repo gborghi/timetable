@@ -131,6 +131,12 @@ def _check_production_security() -> None:
             "Questo endpoint esegue pickle.loads su input utente "
             "-- vulnerabilita RCE se non strettamente controllato."
         )
+    if not os.environ.get("PITANTUM_CORS_ORIGINS", "").strip():
+        raise RuntimeError(
+            "PITANTUM_ENV=production ma PITANTUM_CORS_ORIGINS non e' "
+            "impostato. Impostare l'elenco esplicito degli origin "
+            "front-end ammessi invece di usare i default localhost."
+        )
 
 
 @asynccontextmanager
