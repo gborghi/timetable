@@ -569,6 +569,35 @@ def solve_classroom_assignment(
                 model.Add(uv >= x[(key, rn)])
             pool_terms.append(_w_pool * uv)
 
+    # SOFT teacher-room-pool: minimise the number of DISTINCT rooms each
+    # TEACHER occupies over the week -- the "aula del docente" model, where a
+    # teacher stays in (few rooms of) their subject area and the STUDENTS move
+    # to them, instead of the class keeping a home room. Mirrors room_pool but
+    # groups by the lesson's PRIMARY teacher. `used[(teacher, rn)] >= x`;
+    # penalise the count. 0 disables (byte-identical). Pair it with per-room
+    # `subject_required` area pools (and room_pool=0) to keep every teacher
+    # inside their area while changing room as little as possible.
+    _w_tpool = int(round(soft.get("teacher_room_pool", 0.0)))
+    if _w_tpool > 0:
+        _teacher_by_key: dict[tuple, str] = {}
+        for L in lessons:
+            _k = _lesson_key(L)
+            if _k not in riders:
+                _teacher_by_key.setdefault(_k, L.get("teacher") or "")
+        keys_by_teacher_room: dict[tuple[str, str], list[tuple]] = defaultdict(
+            list)
+        for key in lesson_keys:
+            _t = _teacher_by_key.get(key, "")
+            if not _t:
+                continue
+            for rn in eligible[key]:
+                keys_by_teacher_room[(_t, rn)].append(key)
+        for (_t, rn), keys in keys_by_teacher_room.items():
+            uv = model.NewBoolVar(f"tused_{rn}")
+            for key in keys:
+                model.Add(uv >= x[(key, rn)])
+            pool_terms.append(_w_tpool * uv)
+
     # Objective: minimize overflow + room-pool penalties - bonuses (+ a
     # dominant penalty per unplaced lesson so a real room is always preferred
     # when one is available; unplacing is the last resort, never a cheaper
