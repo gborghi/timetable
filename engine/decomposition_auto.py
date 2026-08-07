@@ -48,7 +48,7 @@ def compute_modularity(M: np.ndarray, labels: np.ndarray | None = None) -> float
     Se `labels` e' None, calcola modularita' rispetto al
     clustering banale "ogni nodo nel suo cluster" (zero) e si
     delega l'utente al fatto che con clustering reale il valore
-    pu\`o salire molto. Per la heuristica auto-detect basta una
+    pu'o salire molto. Per la heuristica auto-detect basta una
     stima di "quanto modulare e' la struttura": si fa un
     clustering-spettrale veloce a k=4 e si misura la sua Q.
     """

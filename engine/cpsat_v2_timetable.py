@@ -16,8 +16,8 @@ PHASE A (giorno):
     sum_d = ore-cattedra
     no overlap prof per (prof, day): sum_{cl,subj} day_count <= 6
     no overlap classe per (cl, day): sum_{prof,subj} day_count <= 6
-    "no holes" della classe non puo\` essere imposto qui (e\` sui buchi
-    intra-giornalieri); ma possiamo gia\` imporre numero di ore al
+    "no holes" della classe non puo' essere imposto qui (e' sui buchi
+    intra-giornalieri); ma possiamo gia' imporre numero di ore al
     giorno della classe = somma_subj day_count[*,cl,*,d] e
     metterlo tra min e max di una "giornata scuola tipica" (4..6).
     Giorno libero del prof: day_count[(prof,*,*,free_day)] == 0,
@@ -28,14 +28,14 @@ PHASE B (slot orario):
     var bool slot[(prof, cl, subj, hour)] per ogni triple "presente
     quel giorno", con hour in 8..13.
     sum_h slot == day_count[*,*,*,d] (ora fissato).
-    no overlap prof e classe (gia\` per giorno).
-    no holes della classe: la presenza per ora e\` non crescente,
-    e l'ora 8 e\` occupata.
+    no overlap prof e classe (gia' per giorno).
+    no holes della classe: la presenza per ora e' non crescente,
+    e l'ora 8 e' occupata.
     consecutive Matematica/Scienzemotorie: in qualche giorno coppia.
-    max 2 ore della stessa cattedra in un giorno (gia\` da day_count
-    + slot e\` un duplicato; ma utile come bound).
+    max 2 ore della stessa cattedra in un giorno (gia' da day_count
+    + slot e' un duplicato; ma utile come bound).
 
-PERCHE\` SCALA MEGLIO
+PERCHE' SCALA MEGLIO
 ====================
 - Phase A ha ~ N_triples * 6 IntVar di range piccolo. Per ~400 triples
   -> ~2400 IntVar. Niente reified pattern, niente quadratiche.
@@ -44,9 +44,9 @@ PERCHE\` SCALA MEGLIO
   ciascuna -> ~420 Bool. Banale.
 
 Usa solo la variabile globale "day libero" (3-way choice) e l'objective
-delle "buche prof" come penalita\` di ricomposizione fra fasi.
+delle "buche prof" come penalita' di ricomposizione fra fasi.
 
-Le penalita\` originali quadratiche di "uniform_class" e "uniform_prof"
+Le penalita' originali quadratiche di "uniform_class" e "uniform_prof"
 sono sostituite con **somma di deviazioni assolute**.
 
 USO:
@@ -217,7 +217,7 @@ def find_prof_subject_named(profs, cl, subject):
 
 def find_prof_subject(profs, cl, subject):
     r"""Ritorna il nome del docente che insegna `subject` in `cl`,
-    o None se non esiste in questa classe. Il confronto e\` sulla
+    o None se non esiste in questa classe. Il confronto e' sulla
     chiave canonica (vedi `subject_key`)."""
     return find_prof_subject_named(profs, cl, subject)[0]
 
@@ -232,10 +232,10 @@ def add_consecutive_constraints_phase_b(model, slot, day, profs, dc_value,
     Le coppie (classe, materia) da appaiare arrivano dalla mappa
     ``pairing`` -- ``{(class, subject): "must_pair" | "pair_exists"}`` --
     **derivata dai vincoli** (pragma DSL ``subject_pair_must`` /
-    ``subject_pair_exists``, qualsiasi materia). Nessun nome di materia e\`
+    ``subject_pair_exists``, qualsiasi materia). Nessun nome di materia e'
     cablato qui. ``pairing=None`` ricade sul comportamento legacy (i tre
     flag per-classe ``dual_math`` / ``dual_italian`` / ``motorie_pairs`` ->
-    le rispettive materie canoniche), solo per retro-compatibilita\` con i
+    le rispettive materie canoniche), solo per retro-compatibilita' con i
     chiamanti che non passano ancora la mappa.
     """
     classes_in_day = {k[1] for k in slot.keys()}
@@ -263,8 +263,8 @@ def add_consecutive_constraints_phase_b(model, slot, day, profs, dc_value,
                 continue
             subjs_of_p = list(profs[p]["classi"][cl].keys())
             # Skip se questo prof non ha slot in questo stage
-            # (e\` schedulato altrove). Il vincolo verra\` applicato
-            # nello stage in cui il prof e\` modellato.
+            # (e' schedulato altrove). Il vincolo verra' applicato
+            # nello stage in cui il prof e' modellato.
             has_slots = any(
                 (p, cl, s, h) in slot
                 for s in subjs_of_p
@@ -514,19 +514,19 @@ def solve_phase_a(profs, classes, triples, class_profs,
                   class_free_days=None,
                   special_room_ctx=None,
                   day_load_caps=None):
-    """Risolve Phase A. Se `locked_day_count` e\` valorizzato, e\` un
+    """Risolve Phase A. Se `locked_day_count` e' valorizzato, e' un
     dict (prof, class, subject, day) -> int che impone un FLOOR sul
     numero di ore di quella cattedra nel giorno indicato. Le ore non
     coperte dai lock restano libere (il vincolo settimanale
     sum_d day_count == ore resta intatto).
 
-    Se `coteach_groups` e\` valorizzato, e\` una lista di dict
+    Se `coteach_groups` e' valorizzato, e' una lista di dict
     {class_name, subject, n_hours, teachers, required} (formato di
     engine_io.coteach_groups_for_solver). Per ogni gruppo HARD viene
     introdotta una IntVar `coday_count[g, d]` in [0, n_hours] tale
     che sum_d == n_hours, e per ogni teacher Ti del gruppo
     `day_count[(Ti, X, Y, d)] >= coday_count[g, d]`. Il valore di
-    `coday_count` viene incluso nell'output dc_value cosi\` che
+    `coday_count` viene incluso nell'output dc_value cosi' che
     Phase B sappia quante ore sono in compresenza in ciascun giorno.
     """
     model = cp_model.CpModel()
@@ -684,8 +684,8 @@ def solve_phase_a(profs, classes, triples, class_profs,
             )
 
     # Per (prof, day): no overlap fra classi.
-    # E\` un upper bound: nello stesso slot orario un prof puo\`
-    # avere al massimo 1 lezione, ma in un GIORNO puo\` averne
+    # E' un upper bound: nello stesso slot orario un prof puo'
+    # avere al massimo 1 lezione, ma in un GIORNO puo' averne
     # fino a len(HOURS).
     triples_by_prof = defaultdict(list)
     for (p, cl, subj, ore) in triples:
@@ -729,7 +729,7 @@ def solve_phase_a(profs, classes, triples, class_profs,
             model.Add(sum(busy_days) <= max(0, len(DAYS) - mfd))
 
     # Per (cl, day): vincoli HARD aggiornati (richiesta Giovanni).
-    # cl_day_load[cl, d] e\` il numero di ore di lezione della classe
+    # cl_day_load[cl, d] e' il numero di ore di lezione della classe
     # cl nel giorno d. Vincoli imposti:
     #   (HARD-2) "uscita non prima delle 12:00" => sotto no-holes,
     #            ogni giornata con lezione ha >= 4 ore. Quindi
@@ -845,7 +845,7 @@ def solve_phase_a(profs, classes, triples, class_profs,
                 model.Add(sum(_loads) <= int(_cap))
 
     # SOFT (4): minimizziamo il totale degli slot di 6^a ora occupati
-    # nella scuola, cioe\` il numero di (cl, d) con load == 6.
+    # nella scuola, cioe' il numero di (cl, d) con load == 6.
     sixth_hour_inds = []
     for cl in classes:
         for d in DAYS:
@@ -960,18 +960,18 @@ def solve_phase_a(profs, classes, triples, class_profs,
     # is no longer needed -- the new pragmas handle any number of
     # preferences uniformly.
 
-    # Penalita\` "uniform_class" e "uniform_prof" come dev. assolute.
+    # Penalita' "uniform_class" e "uniform_prof" come dev. assolute.
     # Per ogni triple (prof, cl, subj) con ore "ore", il valore atteso
-    # giornaliero e\` ore/6. Ma con interi: 'ore // 6' o 'ceil'.
-    # Penalita\` assoluta = sum_d |day_count - ore/6|.
+    # giornaliero e' ore/6. Ma con interi: 'ore // 6' o 'ceil'.
+    # Penalita' assoluta = sum_d |day_count - ore/6|.
     # Con ore <= 6 spesso il "perfettamente uniforme" non esiste
-    # (es. ore=4 -> distribuzione [1,1,1,1,0,0]). Va bene cosi\`.
+    # (es. ore=4 -> distribuzione [1,1,1,1,0,0]). Va bene cosi'.
     abs_terms = []
     for (p, cl, subj, ore) in triples:
         # target diviso per 6 con floor e ceil; minimizziamo dev. da
         # questi due target -- in pratica: dev. assoluta da ore/6
         # arrotondato.
-        # Per semplicita\` usiamo la deviazione massima da 1 dello
+        # Per semplicita' usiamo la deviazione massima da 1 dello
         # spread: |day_count * 6 - ore| sommato e diviso per 6
         # (intero). Mettiamolo come |day_count - target_i| dove
         # target_i in {0,1,2}. Trick standard:
@@ -1049,8 +1049,8 @@ def solve_phase_a(profs, classes, triples, class_profs,
     # HARD (B) Motorie {0, 2} -- compiled below by the
     # ``subject_day_count_in`` DSL pragma.
 
-    # SOFT (D) -- penalita\` per prof_day_load == 5
-    # SOFT (E) -- penalita\` per prof_day_load == 1
+    # SOFT (D) -- penalita' per prof_day_load == 5
+    # SOFT (E) -- penalita' per prof_day_load == 1
     n_five_terms = []
     n_one_terms = []
     for p in triples_by_prof:
@@ -1175,12 +1175,12 @@ def solve_phase_a(profs, classes, triples, class_profs,
 
     # Objective unico. Pesi:
     #   - uniform_class_pen / uniform_prof_pen: spalmatura ore.
-    #   - n_sixth_hour: penalita\` sulle 6e ore (richiesta Giovanni,
+    #   - n_sixth_hour: penalita' sulle 6e ore (richiesta Giovanni,
     #     SOFT (4)). Peso scelto per essere in scala con uniform_class
     #     (somma fra 0 e ~5000 per dataset reali).
     W_SIXTH = 50
     W_FIVE = 30                                # SOFT (D)
-    W_ONE = 80                                 # SOFT (E) -- piu\` pesante
+    W_ONE = 80                                 # SOFT (E) -- piu' pesante
     model.Minimize(
         4 * uniform_class_pen
         + 3 * uniform_prof_pen
@@ -1300,8 +1300,8 @@ def build_plessi_ctx(db):
     Da costruire UNA volta e passare a tutte le chiamate di
     :func:`solve_phase_b_for_day`: ricostruirlo per ogni giorno vuol
     dire rileggere aule, docenti, classi e regole sei volte per niente.
-    Ritorna ``None`` quando la scuola non ha plessi configurati, cosi\`
-    il chiamante puo\` saltare il blocco senza casi speciali.
+    Ritorna ``None`` quando la scuola non ha plessi configurati, cosi'
+    il chiamante puo' saltare il blocco senza casi speciali.
     """
     try:
         from . import plessi_constraints as _pc  # type: ignore
@@ -1518,23 +1518,23 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
     r"""Risolve il sotto-problema di un singolo giorno.
 
     Se enforce_no_holes=True (default) impone ai profili di classe la
-    contiguita\` dalle 8. Se phase A ha distribuito troppo tight i
-    giorni puo\` rendersi necessario rilassare questo vincolo per
+    contiguita' dalle 8. Se phase A ha distribuito troppo tight i
+    giorni puo' rendersi necessario rilassare questo vincolo per
     quel giorno (vedi main: fallback automatico).
 
-    Se `locked_slots_for_day` e\` valorizzato, e\` un iterable di
-    tuple (prof, class, subject, hour) che devono valere 1 (cioe\`
+    Se `locked_slots_for_day` e' valorizzato, e' un iterable di
+    tuple (prof, class, subject, hour) che devono valere 1 (cioe'
     occupati). Sono i lock nativi: il solver li tratta come
     constraint e li sfrutta per potare lo spazio di ricerca.
 
-    Se `coteach_groups` e\` valorizzato, e\` la stessa lista di dict
+    Se `coteach_groups` e' valorizzato, e' la stessa lista di dict
     passata a solve_phase_a (uno per gruppo di compresenza). Per
-    ogni gruppo la cui `coday_count` per questo giorno e\` > 0 (letta
+    ogni gruppo la cui `coday_count` per questo giorno e' > 0 (letta
     da dc_value tramite la chiave ("__coday__", group_id, day)),
     introdurre `coslot[(g, h)]` BoolVar con somma == coday e
     legare `slot[(Ti, X, Y, h)] >= coslot[(g, h)]` per ogni teacher
     del gruppo. Il vincolo class-busy aggrega per (class, subject)
-    cosi\` che gli k slot di compresenza contino UNA sola volta
+    cosi' che gli k slot di compresenza contino UNA sola volta
     come occupazione classe.
     """
     model = cp_model.CpModel()
@@ -1803,8 +1803,8 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
 
         # HARD (2) "uscita non prima delle 12:00":
         # se la classe ha lezione (= cl in cls_in_day), allora la 4^a
-        # ora deve essere occupata (h=11). Sotto no-holes questo e\`
-        # gia\` implicato da Phase A (cl_day_load >= 4); qui lo
+        # ora deve essere occupata (h=11). Sotto no-holes questo e'
+        # gia' implicato da Phase A (cl_day_load >= 4); qui lo
         # imponiamo esplicitamente per coprire anche il fallback
         # no-holes rilassato. Gated per-class su `exit_after_12` (08b).
         if 11 in HOURS and _cf(cl, "exit_after_12", True):
@@ -1920,14 +1920,14 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
                 compiler.soft_cost_terms.append((int(round(_w)), _var))
 
     # ---- Plessi: dove sta il docente, ora per ora ----
-    # `plessi_data=None` qui sopra non e\` una svista: il compiler DSL
+    # `plessi_data=None` qui sopra non e' una svista: il compiler DSL
     # ricava il plesso dall'aula, e in Phase B le aule non esistono
     # ancora. Il plesso lo sa la CLASSE (sta nella sua aula base tutta
-    # la settimana), e da li\` si ricava quello del docente ora per ora.
+    # la settimana), e da li' si ricava quello del docente ora per ora.
     # Senza questo blocco il tempo di trasferimento fra plessi non
     # vincola nulla: quando la fase aule interviene le ore sono
     # congelate, e un docente messo nei due plessi a ore contigue non
-    # ha piu\` nessuna assegnazione di aula che possa salvarlo.
+    # ha piu' nessuna assegnazione di aula che possa salvarlo.
     if plessi_ctx is None and db is not None:
         plessi_ctx = build_plessi_ctx(db)
     if plessi_ctx:
@@ -2245,7 +2245,7 @@ def _diagnose_phaseb_infeasibility(day, profs, triples, dc_value):
 
     Cerca le coppie (prof, day) che violano il vincolo Hall:
     prof_hours[p, d] > max(cl_day_load[c, d] : c classi insegnate
-    da p quel giorno). Questo e\` il caso piu\` frequente di
+    da p quel giorno). Questo e' il caso piu' frequente di
     infeasibility nel modello attuale.
     """
     from collections import defaultdict as _dd
@@ -2273,7 +2273,7 @@ def _diagnose_phaseb_infeasibility(day, profs, triples, dc_value):
         print(f"  ... e altre {n_violations - 5} violazioni Hall.")
     if n_violations == 0:
         print("  Nessuna violazione Hall evidente. Causa diversa "
-              "(probabile: HARD (2) e capacita\\` slot).")
+              "(probabile: HARD (2) e capacita\' slot).")
 
 
 def main():
@@ -2326,7 +2326,7 @@ def main():
         elapsed_b += dt
         if out is None:
             # Fallback NON ammesso: il vincolo no-holes per le classi
-            # e\` categorico (richiesta Giovanni). Diagnostichiamo e
+            # e' categorico (richiesta Giovanni). Diagnostichiamo e
             # segnaliamo le classi infeasible per quel giorno.
             print(f"[phaseB] day={d}: INFEASIBLE ({status}), no-holes "
                   f"hard non rilassabile. Diagnostica:")

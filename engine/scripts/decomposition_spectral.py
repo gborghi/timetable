@@ -6,23 +6,23 @@ IDEA:
        sul numero di docenti in comune.
     2) Clustering spettrale (Laplaciano normalizzato + k-means su
        prime K eigenvecs) -> partizione delle classi in K cluster.
-    3) Trova i "docenti ponte" (insegnano in piu\` di un cluster).
+    3) Trova i "docenti ponte" (insegnano in piu' di un cluster).
     4) Per ogni giorno, risolvi sequenzialmente una sotto-Phase-B
-       per ciascun cluster, bloccando gli slot gia\` occupati dai
+       per ciascun cluster, bloccando gli slot gia' occupati dai
        docenti ponte negli altri cluster.
 
 SCOPO:
     Verificare se la decomposizione riduce in modo significativo il
     tempo di Phase B su problemi grandi (HUGE/SUPERHUGE), anche a
-    costo di una perdita modesta di qualita\` SOFT (buchi prof,
-    seste ore) perche\` ogni cluster ottimizza solo il proprio
+    costo di una perdita modesta di qualita' SOFT (buchi prof,
+    seste ore) perche' ogni cluster ottimizza solo il proprio
     sotto-problema.
 
 USO:
     python decomposition_spectral.py --profile huge \\
         [--k 4] [--time-cluster 30] [--time-a 180] [--write-xlsx]
 
-Phase A (assegnazione giorno) non e\` toccata: viene rieseguita
+Phase A (assegnazione giorno) non e' toccata: viene rieseguita
 una sola volta e cachata in `phase_a_dc_<profile>.pkl`. Le run
 successive caricano la cache.
 """
@@ -89,9 +89,9 @@ def spectral_cluster(M, k):
     D_inv_sqrt = 1.0 / np.sqrt(d_safe)
     # L_norm = I - D^(-1/2) A D^(-1/2)
     L_norm = np.eye(n) - (A * D_inv_sqrt[:, None]) * D_inv_sqrt[None, :]
-    # eigendecomposition (L_norm e\` simmetrica)
+    # eigendecomposition (L_norm e' simmetrica)
     eigvals, eigvecs = np.linalg.eigh(L_norm)
-    # primi k autovettori (autovalori piu\` piccoli)
+    # primi k autovettori (autovalori piu' piccoli)
     embedding = eigvecs[:, :k]
     # normalizza righe (Ng-Jordan-Weiss)
     norms = np.linalg.norm(embedding, axis=1, keepdims=True)
@@ -126,9 +126,9 @@ def solve_cluster_day(
     time_limit=30, workers=4,
 ):
     r"""Risolve Phase B per le `cluster_classes` nel giorno `day`.
-    `locked_slots`: dict {(prof, hour): True} per slot gia\` occupati
+    `locked_slots`: dict {(prof, hour): True} per slot gia' occupati
     da prof "ponte" in cluster precedenti dello stesso giorno; in
-    questo cluster il prof non puo\` essere assegnato a quegli slot.
+    questo cluster il prof non puo' essere assegnato a quegli slot.
 
     Restituisce (out, status). out = dict {(p, cl, subj, day, h): 0/1}.
     """
@@ -166,8 +166,8 @@ def solve_cluster_day(
             if keys:
                 model.Add(sum(keys) <= 1)
             if locked_slots.get((p, h), False):
-                # Il prof e\` gia\` occupato in un altro cluster nello
-                # stesso giorno: non puo\` essere qui.
+                # Il prof e' gia' occupato in un altro cluster nello
+                # stesso giorno: non puo' essere qui.
                 for k in keys:
                     model.Add(k == 0)
 
@@ -359,11 +359,11 @@ def main():
     full_solution = {}
     failed = []
     elapsed_b = 0.0
-    # Ordina i cluster dal piu\` PICCOLO al piu\` grande. Il cluster
-    # piccolo tipicamente ha la finestra di slot piu\` stretta
+    # Ordina i cluster dal piu' PICCOLO al piu' grande. Il cluster
+    # piccolo tipicamente ha la finestra di slot piu' stretta
     # (load=4 per molte classi) e va schedulato per primo: occupa
-    # le sue ore "early" senza che i bridge le abbiano gia\`
-    # consumate. I cluster piu\` grandi si adattano dopo.
+    # le sue ore "early" senza che i bridge le abbiano gia'
+    # consumate. I cluster piu' grandi si adattano dopo.
     cluster_order = sorted(
         range(args.k),
         key=lambda k: len(classes_per_cluster[k]),
@@ -371,7 +371,7 @@ def main():
     print(f"[decomp] ordine cluster (size ASC): {cluster_order}")
     for d in DAYS:
         # Per questo giorno: risolvi i K cluster sequenzialmente.
-        # locked_slots e\` accumulato fra cluster nello stesso giorno.
+        # locked_slots e' accumulato fra cluster nello stesso giorno.
         locked_slots = {}                  # (prof, hour) -> True
         day_total_t = 0.0
         for k in cluster_order:

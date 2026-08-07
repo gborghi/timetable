@@ -1905,37 +1905,37 @@ class DSLConstraintCompiler:
 
         A cosa serve. Le materie con un'aula obbligatoria (Scienze
         motorie -> palestra) competono per un numero finito di posti,
-        ma quel numero vive nello step aule, che gira DOPO ed e\`
-        costretto a prendere l'orario come dato. Cosi\` la fase orario
-        puo\` mettere quattro classi in palestra alle 9 di martedi\`
+        ma quel numero vive nello step aule, che gira DOPO ed e'
+        costretto a prendere l'orario come dato. Cosi' la fase orario
+        puo' mettere quattro classi in palestra alle 9 di martedi'
         quando i posti sono due, e l'errore emerge solo alla fine come
         un INFEASIBLE senza spiegazione. Questo pragma porta il tetto
-        dei posti dentro la fase orario, dove puo\` ancora spostare le
+        dei posti dentro la fase orario, dove puo' ancora spostare le
         lezioni.
 
         ``only_classes``, se valorizzato, restringe il conteggio a
         quelle classi. Serve ai plessi: i posti di UNA sede contro le
-        sole classi vincolate a quella sede. Senza, il tetto e\` la
+        sole classi vincolate a quella sede. Senza, il tetto e' la
         somma dei posti di tutte le sedi e non morde -- due palestre da
         due posti in due sedi diverse danno un tetto globale di 4, ma
         quattro classi della stessa sede non ci stanno lo stesso.
         Entrambe le forme sono condizioni necessarie valide e possono
-        convivere: quella globale e\` un rilassamento di quelle per
+        convivere: quella globale e' un rilassamento di quelle per
         plesso.
 
-        Resta un limite, nella direzione sicura (il vincolo e\` una
+        Resta un limite, nella direzione sicura (il vincolo e' una
         condizione NECESSARIA, non sufficiente): sotto decomposizione
         ogni sotto-problema vede solo le proprie classi, quindi il
-        tetto e\` applicato per cluster e l'unione dei cluster puo\`
+        tetto e' applicato per cluster e l'unione dei cluster puo'
         superarlo.
 
         In entrambi i casi lo step aule resta l'arbitro esatto. Un
-        taglio valido e conservativo vale comunque piu\` di nessun
+        taglio valido e conservativo vale comunque piu' di nessun
         taglio: elimina proprio i casi grossolani (3-4 classi su 2
-        posti) che sono la norma quando l'orario e\` cieco al vincolo.
+        posti) che sono la norma quando l'orario e' cieco al vincolo.
 
-        Una classe conta UNA volta anche con piu\` docenti sullo stesso
-        slot (compresenza): l'indicatore e\` un OR sui suoi slot, non
+        Una classe conta UNA volta anche con piu' docenti sullo stesso
+        slot (compresenza): l'indicatore e' un OR sui suoi slot, non
         una somma.
         """
         want = {str(s) for s in subjects}
@@ -1963,7 +1963,7 @@ class DSLConstraintCompiler:
         n_slots = 0
         for (d, h), per_class in sorted(by_slot.items()):
             if len(per_class) <= n_max:
-                # Meno classi candidate dei posti: il vincolo non puo\`
+                # Meno classi candidate dei posti: il vincolo non puo'
                 # mordere, non sporchiamo il modello.
                 continue
             inds = []

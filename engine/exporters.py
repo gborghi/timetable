@@ -33,12 +33,12 @@ Edge case gestiti:
 - nomi tab Excel > 31 char: troncati a 28 + "..."; collisioni di nome
   dopo troncamento: suffisso numerico "~1", "~2", ... mantenendo la
   lunghezza max 31.
-- caratteri Excel proibiti `[]:*?/\\` sostituiti con "-".
-- docente con piu\` materie nella stessa classe: nel tab del docente
+- caratteri Excel proibiti `[]:*?/\' sostituiti con "-".
+- docente con piu' materie nella stessa classe: nel tab del docente
   la cella mostra "<classe>\n(<materia>)" se ambiguo.
-- docente con piu\` materie totali: header "Materie:" elenca tutte.
+- docente con piu' materie totali: header "Materie:" elenca tutte.
 - compresenza nello stesso slot (non dovrebbe mai accadere visto il
-  vincolo hard no-overlap, ma e\` difensivo): cella prefissata
+  vincolo hard no-overlap, ma e' difensivo): cella prefissata
   "*CONFLICT*" e l'evento viene loggato (numero totale a fine).
 
 Utilizzabili anche da CLI -- vedi il blocco `if __name__ ...` in fondo.
@@ -271,7 +271,7 @@ def export_teacher_schedules_to_xlsx(
 
     Header del tab (righe 1-3): nome docente, materie insegnate, totali.
     Colonne = giorni; righe = ore; celle = nome della classe.
-    Se il docente insegna piu\` materie nella stessa classe, la cella
+    Se il docente insegna piu' materie nella stessa classe, la cella
     riporta "<classe>\n(<materia>)" per disambiguare.
     """
     sol, school, profs = _load_pickles(
@@ -319,7 +319,7 @@ def export_teacher_schedules_to_xlsx(
             row=3, column=1,
             value=f"Classi: {n_classes} | "
                   f"Ore assegnate: {tot_ore} | "
-                  f"Disponibilita\\` max: {max_hours}"
+                  f"Disponibilita\' max: {max_hours}"
         ).font = _SUBTITLE_FONT
         ws.merge_cells(start_row=3, start_column=1,
                        end_row=3, end_column=1 + len(days))

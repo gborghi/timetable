@@ -17,8 +17,13 @@ from .. import engine_paths  # noqa: F401  (sys.path for engine modules)
 
 router = APIRouter(prefix="/api/schedule", tags=["schedule"])
 
-DAYS = list(range(1, 7))
-HOURS = list(range(8, 14))
+try:
+    from working_hours_config import DEFAULT_DAYS as _WC_DAYS, DEFAULT_HOURS as _WC_HOURS
+except ImportError:
+    _WC_DAYS = list(range(1, 7))
+    _WC_HOURS = list(range(8, 14))
+DAYS: list[int] = list(_WC_DAYS)
+HOURS: list[int] = list(_WC_HOURS)
 DAY_NAMES_IT = {1: "Lun", 2: "Mar", 3: "Mer", 4: "Gio", 5: "Ven", 6: "Sab"}
 
 

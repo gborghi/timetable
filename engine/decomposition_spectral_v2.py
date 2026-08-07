@@ -5,7 +5,7 @@ Differenze chiave rispetto a `decomposition_spectral.py` (v1):
   (un sotto-CP-SAT per giorno con solo i bridges).
 - Stage B: per ogni cluster, schedula gli internals con i bridges
   fissati (per ogni giorno).
-- Stage C: se uno o piu\` cluster falliscono in Stage B, "ricucitura":
+- Stage C: se uno o piu' cluster falliscono in Stage B, "ricucitura":
   fissa gli internals dei cluster RIUSCITI, libera bridges e
   internals dei cluster falliti, ri-risolve solo per quel giorno.
 - Fallback monolitico per i giorni dove anche Stage C fallisce.
@@ -18,7 +18,7 @@ USO:
         [--k 4] [--time-bridges 60] [--time-cluster 30] \\
         [--time-ricucitura 120] [--time-mono 240] [--write-xlsx]
 
-Phase A (assegnazione giorno) e\` in cache `phase_a_dc_<profile>.pkl`.
+Phase A (assegnazione giorno) e' in cache `phase_a_dc_<profile>.pkl`.
 """
 from __future__ import annotations
 
@@ -190,15 +190,15 @@ def add_buchi_soft(model, triples_active, slot, day, prefix):
     r"""Aggiunge variabili "buchi del prof" e ritorna la lista di gap.
 
     Delega l'encoding dei buchi (ore interne vuote per prof/giorno) a
-    :func:`soft_costs.buchi_pairs`, l'unica fonte di verita\` per i
+    :func:`soft_costs.buchi_pairs`, l'unica fonte di verita' per i
     soft-cost CP-SAT. Restituisce la lista delle variabili-buchi (una
     per (prof, giorno), ciascuna pari al numero di ore-buco interne di
     quel prof in quel giorno): i tre call-site fanno
     ``model.Minimize(sum(...))``, quindi la somma -- e dunque il valore
     di obiettivo -- coincide col vecchio encoding per-slot a peso 1.
 
-    `prefix` e\` mantenuto per compatibilita\` di firma ma non e\`
-    piu\` usato per i nomi delle variabili (``buchi_pairs`` battezza le
+    `prefix` e' mantenuto per compatibilita' di firma ma non e'
+    piu' usato per i nomi delle variabili (``buchi_pairs`` battezza le
     proprie ausiliarie internamente)."""
     # Solo i prof presenti nei triple passati (replica l'aggregazione
     # per-prof del vecchio `present_p`: A=bridges, B=internals del
@@ -207,7 +207,7 @@ def add_buchi_soft(model, triples_active, slot, day, prefix):
     if not teachers:
         return []
     # Vista 5-tupla `(prof, classe, materia, giorno, ora)` ristretta
-    # ai (prof, classe, materia) dei triple attivi: cosi\` un prof con
+    # ai (prof, classe, materia) dei triple attivi: cosi' un prof con
     # un triple FISSO (Stage C) non vede quelle ore tra i buchi.
     active_keys = {(p, cl, subj) for (p, cl, subj, _) in triples_active}
     slot5 = {
@@ -226,7 +226,7 @@ def add_plessi(model, slot, day, plessi_ctx, stage: str):
     Ogni stage decide gli orari di un insieme DISGIUNTO di docenti (A i
     bridge, B gli interni di un cluster, C la ricucitura), quindi tutte
     le coppie di ore di un docente cadono dentro un solo stage e il
-    vincolo di trasferimento non puo\` sfuggire fra le maglie della
+    vincolo di trasferimento non puo' sfuggire fra le maglie della
     decomposizione.
 
     No-op quando la scuola non ha plessi (``plessi_ctx is None``).
@@ -403,7 +403,7 @@ def stage_b_cluster_internals(cluster_classes, day, profs, bridges,
 
     # Class fill: per (cl, h) in [8..8+L-1]:
     #   bridge_count(cl, h) + sum_internal(cl, h) == 1
-    # Per h fuori: 0 (gia\` forzato).
+    # Per h fuori: 0 (gia' forzato).
     for cl in cluster_classes:
         L = cl_day_load.get(cl, 0)
         if L == 0:
@@ -420,7 +420,7 @@ def stage_b_cluster_internals(cluster_classes, day, profs, bridges,
                 model.Add(b_val + sum(internal_keys) == 0)
 
     # HARD A/B: applicato ai prof internal del cluster (i bridges
-    # sono fissati e gli stessi vincoli sono stati gia\` applicati
+    # sono fissati e gli stessi vincoli sono stati gia' applicati
     # in Stage A).
     cv2.add_consecutive_constraints_phase_b(
         model, slot, day, profs, dc_value, class_flags=class_flags
@@ -498,7 +498,7 @@ def stage_c_ricucitura(day, profs, bridges, triples, dc_value,
             model.Add(
                 sum(slot[(p, cl, subj, h)] for h in HOURS) == cnt
             )
-        # Se is_fixed, somma e\` gia\` cnt per costruzione
+        # Se is_fixed, somma e' gia' cnt per costruzione
 
     profs_active = {pp for (pp, _, _, _) in triples_active}
     for p in profs_active:

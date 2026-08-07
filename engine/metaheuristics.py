@@ -3,7 +3,7 @@ r"""Metaeuristiche di post-ottimizzazione per l'orario settimanale.
 Tutte le funzioni operano su un dizionario "soluzione" del formato:
     sol: dict {(prof, classe, materia, day, hour): 0/1}
 
-Mai violano i vincoli HARD seguenti (la verifica e\` fatta da
+Mai violano i vincoli HARD seguenti (la verifica e' fatta da
 `is_hard_feasible`):
     H1) classi: niente buchi
     H2) classi: ingresso fisso alle 8
@@ -16,7 +16,7 @@ Mai violano i vincoli HARD seguenti (la verifica e\` fatta da
     H_C) prof: max 5 ore consecutive in un giorno (= max 5 totali su
          6 slot, dato che no-holes obbligati)
     coverage: tutte le ore-cattedra coperte (se la sol parte feasible
-        non e\` mai a rischio: nessuna mossa modifica day_count)
+        non e' mai a rischio: nessuna mossa modifica day_count)
 
 SOFT (da minimizzare):
     S4) numero di slot di 6^a ora occupati dalle classi
@@ -35,7 +35,7 @@ API principale:
     run_cascade(sol, profs, dc_value, budgets, ...)
 
 `profs` e `dc_value` (= Phase A) sono usati per: (a) verifica HARD
-A/B (richiede di sapere chi e\` il prof di Mat/Ita/Mot per classe),
+A/B (richiede di sapere chi e' il prof di Mat/Ita/Mot per classe),
 (b) lookup di cattedre/triple esistenti.
 """
 from __future__ import annotations
@@ -406,7 +406,7 @@ def is_hard_feasible(sol, profs, verbose=False,
                 return False
 
     # H_C: prof max 5 ore consecutive (= max 5 totali in [8..13]
-    # perche\` no-holes prof? Falso, il prof puo\` avere buchi. Ma
+    # perche' no-holes prof? Falso, il prof puo' avere buchi. Ma
     # 6 ore in giornata = tutti 6 gli slot occupati = 6 consecutive
     # banner.)
     for p in profs_set:
@@ -1473,7 +1473,7 @@ def run_cascade(sol, profs, dc_value, budgets,
                 classes_clusters=None, log=True):
     r"""Esegue LNS -> SA -> TS -> ILS in cascata.
     `budgets`: dict con keys 'lns', 'sa', 'ts', 'ils' -> secondi.
-    Restituisce (best_sol, history) dove history e\` lista di
+    Restituisce (best_sol, history) dove history e' lista di
     (stage_name, time_used, obj_value, metrics).
     """
     history = []

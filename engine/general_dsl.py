@@ -1605,7 +1605,7 @@ def _eval_subjects_max_concurrent_classes(world: dict, subjects,
     sulla stessa ora occupano un posto, non due.
 
     ``only_classes``, se valorizzato, restringe il conteggio a quelle
-    classi: e\` cosi\` che si esprime un tetto PER PLESSO (i posti di
+    classi: e' cosi' che si esprime un tetto PER PLESSO (i posti di
     quella sede contro le sole classi che stanno in quella sede).
     """
     want = {str(s) for s in subjects}

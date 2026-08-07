@@ -1,4 +1,4 @@
-r"""Generatore di mock "scuola grande" basato sulle funzioni gia\` presenti
+r"""Generatore di mock "scuola grande" basato sulle funzioni gia' presenti
 in schedule/mock_classes2.py, SENZA modificarlo.
 
 Riusa le funzioni pure-dati del mock generator e produce un dump
@@ -162,21 +162,21 @@ def generate_tight_teachers(hours_needed_per_subject, day_weights,
                             cconcorsopersubject, cconcorso_list,
                             margin=0.15, base_max_hours=18,
                             min_part_time=4):
-    r"""Crea un pool di docenti con somma ore-disponibilita\` =
-    fabbisogno x (1+margin), dove "fabbisogno" e\` il monte ore della
-    materia. L'ultimo docente di ogni materia puo\` essere part-time
+    r"""Crea un pool di docenti con somma ore-disponibilita' =
+    fabbisogno x (1+margin), dove "fabbisogno" e' il monte ore della
+    materia. L'ultimo docente di ogni materia puo' essere part-time
     (max_hours < base_max_hours) per fine-tunare il totale.
 
     A differenza di mc.generate_required_teachers (che mette sempre
     18h e genera sovradimensionamento dipendente dal numero di
-    materie), qui la dimensione totale del pool e\` esplicitamente
+    materie), qui la dimensione totale del pool e' esplicitamente
     controllata da `margin`.
 
     Nota sul double counting di gruppi multi-materia: per soggetti
     che possono essere coperti da N gruppi di concorso (es. Matematica
     da A026 e A027), la scelta del gruppo per ciascun docente segue
     i pesi `cconcorsopersubject[subj]`, come nel mock originale.
-    Questo introduce variabilita\` ma non incide sull'ordine di
+    Questo introduce variabilita' ma non incide sull'ordine di
     grandezza del pool: il bilanciamento bipartito in fase di
     assegnazione resta governato da `margin`.
     """

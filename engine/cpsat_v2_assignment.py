@@ -3,22 +3,22 @@ r"""Assegnazione prof->classe (cattedre) v2 -- proof of concept.
 Risolve in un'unica passata CP-SAT con tre obiettivi linearizzati e
 sommati con pesi gerarchici: completare le cattedre, ridurre il numero
 di classi distinte per docente, massimizzare il numero di indirizzi
-distinti per docente. Il bilanciamento equita\` (la "phase 4" del
-mock_classes2 originale) e\` rimosso dal CP-SAT e tenuto come
+distinti per docente. Il bilanciamento equita' (la "phase 4" del
+mock_classes2 originale) e' rimosso dal CP-SAT e tenuto come
 post-processing locale opzionale a colpi di swap (vedi --balance).
 
-PERCHE\` E\` PIU\` VELOCE:
+PERCHE' E' PIU' VELOCE:
 - niente AddMultiplicationEquality (la phase 4 del mock attuale faceva
   due moltiplicazioni di IntVar enormi -- vedi proposals/analysis.md);
 - una sola risoluzione invece di 4;
-- penalita\` come somma di valori assoluti (non quadrati).
+- penalita' come somma di valori assoluti (non quadrati).
 
-PERCHE\` PRODUCE QUALITA\` SIMILE:
-- i pesi sono "lessicografici" (1e9, 1e3, 1) cosi\` la fase 1 domina,
+PERCHE' PRODUCE QUALITA' SIMILE:
+- i pesi sono "lessicografici" (1e9, 1e3, 1) cosi' la fase 1 domina,
   poi la fase 2, ecc. -- equivalente a 3 risoluzioni in cascata se
   la prima trova l'ottimo. Aggiusta i pesi se nelle tue istanze i
-  domini sono molto piu\` grandi.
-- l'equita\` finale, se attivata, viene ottenuta con dev. assolute.
+  domini sono molto piu' grandi.
+- l'equita' finale, se attivata, viene ottenuta con dev. assolute.
 
 USO:
     cd engine
@@ -91,8 +91,8 @@ def solve_assignment(data, time_limit_s=60, workers=8, log=True):
     # Soft 1: minimizza l'ORE-DOCENTE NON UTILIZZATE.
     # Notazione: tutte le ore di tutte le materie di tutte le classi
     # sono coperte HARD (vedi vincolo "sum(keys) == 1" sopra). Il
-    # valore qui sotto e\` solo lo "spreco" lato docente (capacita\`
-    # contrattuale max_hours non assegnata). E\` accettabile che
+    # valore qui sotto e' solo lo "spreco" lato docente (capacita'
+    # contrattuale max_hours non assegnata). E' accettabile che
     # singoli docenti finiscano con cattedra parziale; minimizziamo
     # solo per non lasciare in piedi docenti totalmente vuoti.
     unused_capacity = model.NewIntVar(0, 100000, "unused_capacity")
@@ -194,7 +194,7 @@ def solve_assignment(data, time_limit_s=60, workers=8, log=True):
         model.Add(n_under_18 == 0)
         model.Add(n_under_10 == 0)
 
-    # Objective: spezzettamento + varieta\` indirizzi + workload
+    # Objective: spezzettamento + varieta' indirizzi + workload
     # balance. Pesi tarati empiricamente.
     W_UNUSED = 50
     W_FEW = 100
@@ -373,7 +373,7 @@ def main():
         pickle.dump(profs, f)
     print(f"[assignment] scritto {out} ({len(profs)} docenti effettivi)")
 
-    # Statistiche di sanita\`
+    # Statistiche di sanita'
     n_pairs = sum(len(p["classi"]) for p in profs.values())
     print(f"[assignment] coppie (prof,classe) = {n_pairs}")
     print(

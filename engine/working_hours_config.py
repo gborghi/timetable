@@ -51,6 +51,13 @@ from typing import Any
 _LEGACY_DAYS = [1, 2, 3, 4, 5, 6]   # lun .. sab
 _LEGACY_HOURS = [8, 9, 10, 11, 12, 13]
 
+# Public re-exports: callers that just need the default Italian-school
+# grid can import these constants instead of hardcoding range(1,7) /
+# range(8,14).  Prefer get_days() / get_hours() when a DB connection is
+# available — they read the actual Tab Ore config.
+DEFAULT_DAYS = _LEGACY_DAYS
+DEFAULT_HOURS = _LEGACY_HOURS
+
 
 _CACHE: dict[str, Any] | None = None
 _CACHE_LOCK = threading.Lock()

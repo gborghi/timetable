@@ -239,21 +239,21 @@ def special_room_capacity_to_dsl(db) -> list[tuple[str, str]]:
     r"""Un pragma per ogni tipo di aula speciale effettivamente
     richiesto da qualche materia. Ritorna ``[(kind, dsl), ...]``.
 
-    Perche\` esiste. ``Subject.required_kind`` obbliga una materia a
+    Perche' esiste. ``Subject.required_kind`` obbliga una materia a
     finire in un'aula di quel tipo, ma i POSTI di quelle aule li
-    conosce solo lo step aule, che gira dopo la fase orario e non puo\`
-    piu\` spostare niente. Una scuola con due palestre da due classi
+    conosce solo lo step aule, che gira dopo la fase orario e non puo'
+    piu' spostare niente. Una scuola con due palestre da due classi
     ciascuna si ritrova quindi con orari che mettono quattro classi in
     palestra alla stessa ora e uno step aule che fallisce senza dire
-    perche\`. Qui il tetto viene calcolato dai dati e passato alla fase
-    orario, che puo\` ancora rimediare.
+    perche'. Qui il tetto viene calcolato dai dati e passato alla fase
+    orario, che puo' ancora rimediare.
 
-    Posti = per ogni aula di quel tipo, ``multi_class_max`` se e\`
+    Posti = per ogni aula di quel tipo, ``multi_class_max`` se e'
     multi-classe, altrimenti 1.
 
     Emette solo per i tipi che hanno almeno una materia con
-    ``required_kind``: una scuola che non usa la funzionalita\` non
-    vede cambiare nulla. Se un tipo e\` richiesto ma NON esiste
+    ``required_kind``: una scuola che non usa la funzionalita' non
+    vede cambiare nulla. Se un tipo e' richiesto ma NON esiste
     nessuna aula di quel tipo il pragma non viene emesso -- sarebbe un
     tetto a 0 che rende la fase orario infattibile, e la diagnosi
     giusta ("hai chiesto la palestra e non hai palestre") deve
@@ -262,12 +262,12 @@ def special_room_capacity_to_dsl(db) -> list[tuple[str, str]]:
     PLESSI. Il tetto globale non basta quando le classi sono vincolate
     a una sede: due palestre da due posti in due sedi diverse danno un
     tetto globale di 4, ma quattro classi della stessa sede non ci
-    stanno lo stesso. Per ogni sede si emette percio\` anche un tetto
+    stanno lo stesso. Per ogni sede si emette percio' anche un tetto
     ristretto alle sue classi
     (``subjects_max_concurrent_classes_in``), usando i posti delle sole
-    aule di quella sede. Le due forme convivono: quella globale e\` un
+    aule di quella sede. Le due forme convivono: quella globale e' un
     rilassamento valido dell'insieme di quelle per plesso, e resta
-    utile quando qualche classe non e\` vincolata a nessuna sede.
+    utile quando qualche classe non e' vincolata a nessuna sede.
     """
     try:
         from webui.backend import models  # type: ignore
@@ -315,7 +315,7 @@ def special_room_capacity_to_dsl(db) -> list[tuple[str, str]]:
 
     # Classi inchiodate a una sede. Solo le policy che valgono per
     # tutta la settimana o per l'intera giornata: con 'any' la classe
-    # puo\` cambiare sede e non appartiene a nessun sottoinsieme.
+    # puo' cambiare sede e non appartiene a nessun sottoinsieme.
     classes_by_plesso: dict[int, list[str]] = {}
     class_name_by_id = {c.id: c.name
                         for c in db.query(models.SchoolClass).all()}
@@ -335,10 +335,10 @@ def special_room_capacity_to_dsl(db) -> list[tuple[str, str]]:
             if seats <= 0 or not cls:
                 # Nessuna aula di quel tipo in questa sede: il tetto
                 # sarebbe 0. Non lo emettiamo per la stessa ragione del
-                # caso globale -- la diagnosi utile la da\` lo step aule.
+                # caso globale -- la diagnosi utile la da' lo step aule.
                 continue
             if len(cls) <= seats:
-                continue  # non puo\` mordere
+                continue  # non puo' mordere
             args = ([str(seats), _quote(",".join(sorted(cls)))]
                     + [_quote(s) for s in sorted(subs)])
             out.append((

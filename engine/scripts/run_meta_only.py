@@ -1,8 +1,8 @@
 r"""Esegue SOLO la cascata metaeuristica su una soluzione decomposta
-gia\` calcolata (cachata in solution_timetable_<profile>_decomposed.pkl).
+gia' calcolata (cachata in solution_timetable_<profile>_decomposed.pkl).
 
 Utile per separare la misura della parte meta dal costo della
-decomposizione + Phase A (gia\` cachato).
+decomposizione + Phase A (gia' cachato).
 
 Uso:
     python run_meta_only.py --profile huge \\

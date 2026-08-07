@@ -1,8 +1,8 @@
-r"""Assegnazione delle aule alle lezioni gia\` schedulate -- modulo nuovo.
+r"""Assegnazione delle aule alle lezioni gia' schedulate -- modulo nuovo.
 
-NON modifica nessuno dei moduli esistenti in `engine/`. E\` pensato
+NON modifica nessuno dei moduli esistenti in `engine/`. E' pensato
 per essere chiamato dal backend webui (`webui/backend/optimization.py`)
-con dati gia\` reificati in dict Python.
+con dati gia' reificati in dict Python.
 
 INPUT
 =====
@@ -46,18 +46,18 @@ OUTPUT
 NOTE
 ====
 - Trattiamo ogni gruppo di compresenze come UN'unica lezione: la chiave
-  e\` (class, subject, day, hour). Il modulo non separa le lezioni per
-  docente perche\` la stanza e\` condivisa.
+  e' (class, subject, day, hour). Il modulo non separa le lezioni per
+  docente perche' la stanza e' condivisa.
 - Compresenze su materia DIVERSA (sostegno, potenziamento, ITP,
-  madrelingua): la chiave sopra non basta, perche\` la lezione del
+  madrelingua): la chiave sopra non basta, perche' la lezione del
   docente in compresenza porta un'altra `subject` e diventerebbe una
   seconda richiesta d'aula per la stessa classe nella stessa ora. Chi
-  porta `shares_room=True` viene percio\` escluso dal modello e riceve
+  porta `shares_room=True` viene percio' escluso dal modello e riceve
   a valle l'aula dell'ospite (vedi `compresenza_map`). Senza questo, in
-  una scuola con molto sostegno il modello e\` insoddisfacibile: le
+  una scuola con molto sostegno il modello e' insoddisfacibile: le
   richieste d'aula superano le celle realmente esistenti.
-  Attenzione: NON si puo\` dedurre la regola da "stessa classe, stessa
-  ora", perche\` gli sdoppiamenti veri (Religione / Attivita\`
+  Attenzione: NON si puo' dedurre la regola da "stessa classe, stessa
+  ora", perche' gli sdoppiamenti veri (Religione / Attivita'
   alternativa, gruppi di lingua) mettono davvero la classe in due aule.
   Serve il dato esplicito, che il backend deriva da
   `Teacher.compresenza`.
@@ -65,16 +65,16 @@ NOTE
   lezioni con subject in quell'insieme. Le altre lezioni NON possono
   essere assegnate a quell'aula.
 - Required-kind (HARD): se la lezione porta `required_kind` non vuoto
-  (es. 'palestra' per Educazione Fisica), la lezione e\` ammessa solo
+  (es. 'palestra' per Educazione Fisica), la lezione e' ammessa solo
   nelle aule con `kind` corrispondente. La chiave viene popolata da
   `Subject.required_kind` nel webui-side `lessons_for_classroom_step`.
-- Capacit\`a (HARD): se la lezione porta `n_students > 0` la lezione e\`
+- Capacit'a (HARD): se la lezione porta `n_students > 0` la lezione e'
   ammessa solo nelle aule con `capacity >= n_students`. Lezioni senza
   `n_students` (chiave assente o 0) bypassano il vincolo - usato
   storicamente quando i dati di classe non includevano lo studente
   count.
 - Multi-class: se due lezioni vogliono la stessa palestra nello stesso
-  slot, sono ammesse purche\` <= multi_class_max. Penalita\` SOFT se
+  slot, sono ammesse purche' <= multi_class_max. Penalita' SOFT se
   > multi_class_pref (es. preferiamo 1 classe in palestra anche se 2
   starebbero per HARD).
 
@@ -159,11 +159,11 @@ def _can_host(room: dict, lesson: dict) -> bool:
         return False
     # HARD aula base: la lezione porta `home_room` quando la classe ha
     # il preset 'fissa' (o una riga 'enforced'), e allora nessun'altra
-    # aula e\` ammessa.
+    # aula e' ammessa.
     #
-    # La deroga per `req_kind` non e\` una comodita\`: senza di essa il
+    # La deroga per `req_kind` non e' una comodita': senza di essa il
     # preset sarebbe insoddisfacibile in qualunque scuola con una
-    # palestra, perche\` Scienze motorie chiederebbe insieme l'aula base
+    # palestra, perche' Scienze motorie chiederebbe insieme l'aula base
     # e un'aula di tipo palestra. Le due regole vivono su assi diversi
     # -- la materia vince sulla classe.
     home_room = lesson.get("home_room") or ""
@@ -216,18 +216,18 @@ def compresenza_map(lessons: list[dict]) -> dict[tuple, tuple]:
 
     Ritorna ``{lesson_key_che_segue -> lesson_key_ospite}``. Le chiavi
     presenti NON devono ricevere un'aula propria: prendono quella
-    dell'ospite, perche\` una compresenza e\` per definizione due docenti
+    dell'ospite, perche' una compresenza e' per definizione due docenti
     nella stessa stanza.
 
-    La regola NON e\` "stessa classe + stessa ora => stessa aula": gli
-    sdoppiamenti veri (Religione / Attivita\` alternativa, gruppi di
-    lingua) dividono la classe fra due aule ed e\` giusto che chiedano
+    La regola NON e' "stessa classe + stessa ora => stessa aula": gli
+    sdoppiamenti veri (Religione / Attivita' alternativa, gruppi di
+    lingua) dividono la classe fra due aule ed e' giusto che chiedano
     due stanze. Si accoda solo chi porta ``shares_room=True``, che il
     backend deriva da ``Teacher.compresenza``.
 
     Due precisazioni che sembrano dettagli e non lo sono:
 
-    - ``shares_room`` e\` una proprieta\` del docente, quindi e\` vera
+    - ``shares_room`` e' una proprieta' del docente, quindi e' vera
       anche nelle ore in cui quel docente ha una cattedra tutta sua. Per
       questo ci si accoda SOLO se nella cella esiste un'altra lezione:
       da soli si prenota un'aula normalmente.
@@ -241,8 +241,8 @@ def compresenza_map(lessons: list[dict]) -> dict[tuple, tuple]:
         key = _lesson_key(L)
         rides = bool(L.get("shares_room"))
         if key in rides_by_key:
-            # Stessa chiave, piu\` docenti (codocenza sulla stessa
-            # materia): e\` gia\` una sola lezione e una sola aula. Conta
+            # Stessa chiave, piu' docenti (codocenza sulla stessa
+            # materia): e' gia' una sola lezione e una sola aula. Conta
             # come ospite se almeno uno dei suoi docenti non si accoda.
             rides_by_key[key] = rides_by_key[key] and rides
             continue
@@ -337,7 +337,7 @@ def solve_classroom_assignment(
     riders = compresenza_map(lessons)
 
     # Build the locked-room map keyed by lesson_key. Un lock su una
-    # lezione in compresenza vale in realta\` per l'ospite: e\` la stessa
+    # lezione in compresenza vale in realta' per l'ospite: e' la stessa
     # stanza, e la chiave della lezione accodata non esiste nel modello.
     locks_by_lesson: dict[tuple, str] = {}
     for entry in (locked_classrooms or []):
@@ -537,10 +537,10 @@ def solve_classroom_assignment(
             if cl in room["class_pref_weight"]:
                 b += float(room["class_pref_weight"][cl]) * \
                      soft["class_pref_bonus"] / 10.0
-            # `b` e\` una magnitudine positiva: "quanto e\` gradita questa
+            # `b` e' una magnitudine positiva: "quanto e' gradita questa
             # aula". Il segno viene normalizzato all'origine da
-            # engine_io, dove `state` e\` la fonte di verita\` e il segno
-            # della colonna `weight` non lo e\` (la UI scrive -20 per
+            # engine_io, dove `state` e' la fonte di verita' e il segno
+            # della colonna `weight` non lo e' (la UI scrive -20 per
             # 'preferred', il generatore mock +10). Il modello minimizza,
             # quindi il bonus entra negato.
             if b:
@@ -632,7 +632,7 @@ def solve_classroom_assignment(
     # (fewest possible) instead of per-slot.
     unplaced = [key for key, uv in u.items() if solver.Value(uv) == 1]
     # Le lezioni in compresenza ereditano l'aula dell'ospite (solo se
-    # l'ospite ha davvero un'aula: se e\` unplaced, lo e\` anche il rider).
+    # l'ospite ha davvero un'aula: se e' unplaced, lo e' anche il rider).
     for rider_key, host_key in riders.items():
         if host_key in out:
             out[rider_key] = out[host_key]
@@ -675,18 +675,18 @@ def add_joint_room_vars(
     want_overflow: bool = True,
     want_plessi: bool = True,
 ) -> tuple[dict, list, dict]:
-    r"""Fonde l'assegnazione delle aule dentro un modello di orario GIA\`
+    r"""Fonde l'assegnazione delle aule dentro un modello di orario GIA'
     esistente -- il modello *joint* (giorno, ora, aula) in un solo solve.
 
-    ``cell_occ[(cl, subj, d, h)]`` e\` l'indicatore di occupazione della
+    ``cell_occ[(cl, subj, d, h)]`` e' l'indicatore di occupazione della
     cella prodotto dal modello di orario (una BoolVar dello scheduler, o
-    il letterale ``1`` per una cella fissata da un lock): e\` questo che
+    il letterale ``1`` per una cella fissata da un lock): e' questo che
     rende la scelta dell'aula CONGIUNTA con quella dello slot. Per ogni
     cella emettiamo le var aula con ``sum_r x[cell, r] == cell_occ[cell]``,
-    cosi\` una lezione consuma un'aula solo quando e\` davvero collocata li\`,
-    e il solutore puo\` spostare una lezione a un'altra ora per soddisfare
+    cosi' una lezione consuma un'aula solo quando e' davvero collocata li',
+    e il solutore puo' spostare una lezione a un'altra ora per soddisfare
     un vincolo di aula / plesso / capienza (cosa che il passo aule
-    sequenziale, a orario congelato, non puo\` fare).
+    sequenziale, a orario congelato, non puo' fare).
 
     ``cell_lessons[(cl, subj, d, h)]`` porta i metadati che ``_can_host``
     consuma (``home_room``, ``forbidden_rooms``, ``required_kind``,
@@ -695,7 +695,7 @@ def add_joint_room_vars(
     dell'ospite, esattamente come nel solutore aule standalone.
 
     Ritorna ``(x, obj_terms, info)``. ``obj_terms`` sono termini di
-    MINIMIZZAZIONE (i bonus sono gia\` negati) che il chiamante folda nel
+    MINIMIZZAZIONE (i bonus sono gia' negati) che il chiamante folda nel
     proprio obiettivo; i flag ``want_*`` permettono di escludere un
     singolo termine dall'ottimizzazione senza toccare i vincoli HARD.
     """
@@ -708,9 +708,9 @@ def add_joint_room_vars(
     rooms = [_normalize_classroom(r) for r in classrooms]
     room_by_name = {r["name"]: r for r in rooms}
 
-    # HARD eligibility per cella; una cella senza aule ammissibili non puo\`
+    # HARD eligibility per cella; una cella senza aule ammissibili non puo'
     # mai essere occupata -> forziamo occ == 0 (vincolo joint: non
-    # collocare li\` una lezione che nessuna aula puo\` ospitare).
+    # collocare li' una lezione che nessuna aula puo' ospitare).
     eligible: dict[tuple, list[str]] = {}
     no_room_cells: list[tuple] = []
     for cell, L in cell_lessons.items():
@@ -734,15 +734,15 @@ def add_joint_room_vars(
     for cell, occ in cell_occ.items():
         elig = eligible.get(cell, [])
         if not elig:
-            # Nessuna aula: la cella non puo\` essere occupata.
+            # Nessuna aula: la cella non puo' essere occupata.
             model.Add(occ == 0)
             continue
         for rn in elig:
             x[(cell, rn)] = model.NewBoolVar(f"jx_{rn}_{cell}")
-        # Esattamente un'aula SE la cella e\` occupata, zero altrimenti.
+        # Esattamente un'aula SE la cella e' occupata, zero altrimenti.
         model.Add(sum(x[(cell, rn)] for rn in elig) == occ)
 
-    # Capienza per (aula, giorno, ora): al piu\` multi_class_max celle.
+    # Capienza per (aula, giorno, ora): al piu' multi_class_max celle.
     by_slot: dict[tuple[str, int, int], list[tuple]] = defaultdict(list)
     for (cell, rn) in x:
         _cl, _s, d, h = cell
@@ -782,7 +782,7 @@ def add_joint_room_vars(
 
     # Plessi (commuting + policy): riusa gli stessi helper del solutore
     # standalone, che ragionano su ``x`` e ``eligible`` -- validi anche qui
-    # perche\` una cella non occupata ha ``sum_r x == 0`` (nessun plesso).
+    # perche' una cella non occupata ha ``sum_r x == 0`` (nessun plesso).
     n_pl_commute = 0
     n_pl_policy = 0
     if (want_plessi and plessi_data is not None
@@ -929,7 +929,7 @@ def add_room_continuity_constraints(
 
 def _plesso_pins(plessi_data) -> dict[tuple[str, int], int]:
     r"""``{('class'|'teacher', entity_id) -> plesso_id}`` per le policy
-    che inchiodano un'entita\` a un plesso preciso."""
+    che inchiodano un'entita' a un plesso preciso."""
     pins: dict[tuple[str, int], int] = {}
     for p in (getattr(plessi_data, "entity_policies", None) or []):
         if p.entity_id is None or p.plesso_id is None:
@@ -959,19 +959,19 @@ def greedy_classroom_assignment(
     capacity bookkeeping for that slot is bumped regardless.
 
     `plessi_data` (optional): stesso oggetto passato al modello esatto.
-    Il greedy ne usa la parte che si puo\` rispettare decidendo una
+    Il greedy ne usa la parte che si puo' rispettare decidendo una
     lezione alla volta:
 
     - HARD, le policy che inchiodano una classe (o un docente) a un
       plesso: le aule degli altri plessi vengono scartate;
-    - preferenza forte per la CONTINUITA\`, cioe\` restare nel plesso in
-      cui la classe si trova gia\` quel giorno.
+    - preferenza forte per la CONTINUITA', cioe' restare nel plesso in
+      cui la classe si trova gia' quel giorno.
 
     Le regole di pendolarismo (`commuting_rules`, con i loro intervalli
     minimi fra due spostamenti) NON sono modellate qui: richiedono di
     guardare avanti e indietro nella giornata, cosa che un greedy per
     slot non fa. Restano garantite solo dal ramo CP-SAT. Questa
-    funzione e\` una rete di sicurezza per quando il modello esatto non
+    funzione e' una rete di sicurezza per quando il modello esatto non
     conclude, non un suo sostituto.
     """
     rooms = [_normalize_classroom(r) for r in classrooms]
@@ -991,7 +991,7 @@ def greedy_classroom_assignment(
     teacher_ids = dict(
         getattr(plessi_data, "teacher_name_to_id", None) or {})
     pins = _plesso_pins(plessi_data) if plessi_data is not None else {}
-    # Plesso in cui ogni classe si trova gia\`, quel giorno.
+    # Plesso in cui ogni classe si trova gia', quel giorno.
     day_plesso: dict[tuple[str, int], int] = {}
 
     def _pinned_plesso(L: dict, cl: str) -> int | None:
@@ -1034,7 +1034,7 @@ def greedy_classroom_assignment(
                     if room_plesso.get(r["name"]) == pin]
             # Se il vincolo di plesso non lascia nessuna aula, meglio
             # collocare la lezione altrove che lasciarla senza aula:
-            # il greedy e\` gia\` il ramo degradato.
+            # il greedy e' gia' il ramo degradato.
             candidates = hard or candidates
         if not candidates:
             continue

@@ -33,8 +33,16 @@ from .run_manager import (
     update_run,
 )
 
-DAYS = list(range(1, 7))
-HOURS = list(range(8, 14))
+# Day/hour grid defaults — prefer the Tab Ore config when a DB is available.
+# These constants match the legacy Italian-school defaults seeded by the
+# lightweight migration in db.py (Mon–Sat, 8:00–14:00).
+try:
+    from working_hours_config import DEFAULT_DAYS as _WC_DAYS, DEFAULT_HOURS as _WC_HOURS
+except ImportError:
+    _WC_DAYS = list(range(1, 7))
+    _WC_HOURS = list(range(8, 14))
+DAYS: list[int] = list(_WC_DAYS)
+HOURS: list[int] = list(_WC_HOURS)
 
 
 def _coverage_strict() -> bool:
