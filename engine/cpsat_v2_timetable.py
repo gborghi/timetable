@@ -1217,13 +1217,20 @@ def solve_phase_a(profs, classes, triples, class_profs,
 
     # Thoroughness → gap / probing mapping
     _tn = thoroughness
-    _gap = {"fast": 0.10, "balanced": 0.05, "thorough": 0.01}.get(_tn, 0.05)
+    _gap = {"fast": 0.15, "balanced": 0.05, "thorough": 0.01}.get(_tn, 0.05)
     _prob = {"fast": 0, "balanced": 1, "thorough": 2, "maximum": 2}.get(_tn, 1)
 
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = time_limit
     solver.parameters.num_search_workers = workers
     solver.parameters.log_search_progress = log
+    # Phase A: the gap limit is DELIBERATE, not just a speed hack.
+    # Phase A's objective (uniform_class/uniform_prof) is a PROXY for
+    # what Phase B needs. Without a gap limit, CP-SAT spends the full
+    # time budget finding a distribution that LOOKS optimal to Phase A
+    # but is too tight for the per-day solver to realise — producing
+    # 66-83% coverage. A 5% gap stops early enough that the distribution
+    # is still balanced-but-loose, which Phase B CAN pack to 100%.
     solver.parameters.linearization_level = 1
     solver.parameters.cp_model_probing_level = _prob
     solver.parameters.relative_gap_limit = 0 if _tn == "maximum" else _gap
@@ -2154,10 +2161,12 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
     solver.parameters.num_search_workers = workers
     solver.parameters.log_search_progress = log
     solver.parameters.linearization_level = 1
-    # Per-day models are hard combinatorial problems (no-overlap,
-    # no-holes, coteach, etc.), so keep a tight gap to maintain
-    # solution quality. 2% stops the solver once the objective is
-    # close enough to the bound — most of the gain comes early.
+    # CRITICAL: gap limit prevents the solver from spending the full
+    # time budget chasing soft-penalty optimality and timing out
+    # before proving feasibility. With tight room capacity constraints
+    # (e.g. 84 rooms for 90 classes), the feasible region is small —
+    # the first feasible solution is good enough. Without this, per-day
+    # solvers time out at 300s with 0% coverage.
     solver.parameters.relative_gap_limit = 0.02
 
     _solvercfg.configure_solver(solver)

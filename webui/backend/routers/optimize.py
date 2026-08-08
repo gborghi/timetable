@@ -247,6 +247,88 @@ def recommend_decomposition(db: Session = Depends(get_db)):
     return rec.to_dict()
 
 
+@router.get("/parameters/recommend")
+def recommend_parameters(db: Session = Depends(get_db)):
+    """Suggest solver parameters based on the current school's size
+    and constraint complexity. Returns recommended time limits,
+    worker count, and thoroughness level.
+
+    Used by the frontend to pre-fill the Phase B form with sensible
+    defaults that adapt to the school."""
+    from backend import models as m
+
+    n_classes = db.query(m.SchoolClass).count()
+    n_teachers = db.query(m.Teacher).count()
+    n_assignments = db.query(m.Assignment).count()
+    n_constraints = db.query(m.GeneralConstraint).count()
+    n_coteach = db.query(m.CoteachingRule).count()
+    n_parallel = db.query(m.StudyGroup).count()
+    n_support = db.query(m.Assignment).filter(
+        m.Assignment.is_support == True).count()
+    complexity = n_classes + n_assignments // 3 + n_constraints * 2
+
+    # Time recommendations based on school size
+    if n_classes <= 15:
+        time_a, time_mono = 30, 60
+        workers = 4
+    elif n_classes <= 30:
+        time_a, time_mono = 60, 120
+        workers = 6
+    elif n_classes <= 60:
+        time_a, time_mono = 120, 240
+        workers = 8
+    else:
+        time_a, time_mono = 150, 300
+        workers = 8
+
+    # Thoroughness based on constraint density
+    if n_constraints + n_coteach + n_parallel + n_support == 0:
+        thoroughness = "fast"
+    elif complexity < 200:
+        thoroughness = "balanced"
+    else:
+        thoroughness = "thorough"
+
+    # Decomposition: true for schools with > 8 classes (spectral helps)
+    use_decomposition = n_classes > 8
+
+    # Room capacity: true only if rooms < classes (turnazione)
+    n_rooms = db.query(m.Classroom).count()
+    respect_room_capacity = n_rooms < n_classes
+
+    return {
+        "k": 6,
+        "time_a": time_a,
+        "time_mono": time_mono,
+        "time_bridges": 20,
+        "time_cluster": 20,
+        "time_ricucitura": 20,
+        "workers": workers,
+        "use_decomposition": use_decomposition,
+        "thoroughness": thoroughness,
+        "respect_room_capacity": respect_room_capacity,
+        "rooms_prefer_home": True,
+        "cp_sat_scope": "day",
+        "phase_a_mode": "always",
+        # Diagnostics
+        "n_classes": n_classes,
+        "n_teachers": n_teachers,
+        "n_assignments": n_assignments,
+        "n_rooms": n_rooms,
+        "n_constraints": n_constraints,
+        "complexity_score": complexity,
+        "rationale": (
+            f"{n_classes} classi, {n_teachers} docenti, "
+            f"{n_assignments} cattedre, {n_rooms} aule. "
+            f"Vincoli: {n_constraints} generali, {n_coteach} coteach, "
+            f"{n_support} sostegno. "
+            f"Decomposizione {'attiva' if use_decomposition else 'disattivata'}, "
+            f"capienza aule {'attiva' if respect_room_capacity else 'disattivata'} "
+            f"({'turnazione' if respect_room_capacity else 'aule >= classi'})."
+        ),
+    }
+
+
 @router.post("/decomposition/{method}")
 def launch_decomposition(method: str, payload: dict | None = None):
     """Launch a decomposition-driven Phase B run.

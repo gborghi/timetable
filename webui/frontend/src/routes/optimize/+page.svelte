@@ -26,6 +26,33 @@
   // layout migration).
   let availableProfiles = [];
   let step2 = { time_limit_s: 30, workers: 8, log: true };
+  let paramRec = null;  // server-recommended params for current school
+  let paramRecLoading = false;
+  async function loadRecommendedParams() {
+    paramRecLoading = true;
+    try {
+      const r = await api.get('/api/optimize/parameters/recommend');
+      paramRec = r;
+      // Merge recommendations into step3, keeping user overrides if they tweaked
+      if (!step3._userTweaked) {
+        step3.k = r.k;
+        step3.time_a = r.time_a;
+        step3.time_mono = r.time_mono;
+        step3.time_bridges = r.time_bridges;
+        step3.time_cluster = r.time_cluster;
+        step3.time_ricucitura = r.time_ricucitura;
+        step3.workers = r.workers;
+        step3.use_decomposition = r.use_decomposition;
+        step3.thoroughness = r.thoroughness;
+        step3.respect_room_capacity = r.respect_room_capacity;
+      }
+    } catch (e) {
+      paramRec = { error: e.message };
+    } finally {
+      paramRecLoading = false;
+    }
+  }
+  function markTweaked() { step3._userTweaked = true; }
   let step3 = {
     k: 4, time_a: 60, time_bridges: 30, time_cluster: 20,
     time_ricucitura: 60, time_mono: 120, workers: 8, log: false,
@@ -199,10 +226,10 @@
       reloadActiveProfile(),
       reloadAvailableProfiles(),
     ]);
-    // Fire-and-forget: best-effort recommendation fetch. If the
-    // school has no Phase A yet the endpoint returns 409 and we
-    // surface that gracefully in the card.
+    // Fire-and-forget: best-effort recommendation fetch.
     fetchDecompRecommendation();
+    // Pre-fill solver params based on school size and constraints.
+    loadRecommendedParams();
   });
   async function reloadAvailableProfiles() {
     try {
@@ -452,14 +479,26 @@
     <!-- Step 3 -->
     <div class="card p-5">
       <h2 class="mb-3">3) Schedulazione orario (Phase B)</h2>
+      {#if paramRec && !paramRec.error}
+        <div class="mb-3 p-2.5 rounded border border-ink-200 bg-ink-50/50 text-[11.5px] leading-snug text-ink-500">
+          <span class="font-medium text-ink-700">🎯 Parametri consigliati:</span>
+          {paramRec.rationale}
+          <button type="button" class="ml-2 text-[10px] underline hover:text-ink-900"
+                  on:click={() => { step3._userTweaked = false; loadRecommendedParams(); }}
+                  disabled={paramRecLoading}>ricarica</button>
+          {#if step3._userTweaked}
+            <span class="ml-2 text-amber-600 text-[10px]">(modificati manualmente)</span>
+          {/if}
+        </div>
+      {/if}
       <div class="grid grid-cols-3 gap-3">
-        <div class="field"><label>K cluster</label><input type="number" bind:value={step3.k}/></div>
-        <div class="field"><label>time A (day_count)</label><input type="number" bind:value={step3.time_a}/></div>
-        <div class="field"><label>time bridges</label><input type="number" bind:value={step3.time_bridges}/></div>
-        <div class="field"><label>time cluster</label><input type="number" bind:value={step3.time_cluster}/></div>
-        <div class="field"><label>time ricucitura</label><input type="number" bind:value={step3.time_ricucitura}/></div>
-        <div class="field"><label>time monolitico</label><input type="number" bind:value={step3.time_mono}/></div>
-        <div class="field"><label>workers</label><input type="number" bind:value={step3.workers}/></div>
+        <div class="field"><label>K cluster</label><input type="number" bind:value={step3.k} on:change={markTweaked}/></div>
+        <div class="field"><label>time A (day_count)</label><input type="number" bind:value={step3.time_a} on:change={markTweaked}/></div>
+        <div class="field"><label>time bridges</label><input type="number" bind:value={step3.time_bridges} on:change={markTweaked}/></div>
+        <div class="field"><label>time cluster</label><input type="number" bind:value={step3.time_cluster} on:change={markTweaked}/></div>
+        <div class="field"><label>time ricucitura</label><input type="number" bind:value={step3.time_ricucitura} on:change={markTweaked}/></div>
+        <div class="field"><label>time monolitico</label><input type="number" bind:value={step3.time_mono} on:change={markTweaked}/></div>
+        <div class="field"><label>workers</label><input type="number" bind:value={step3.workers} on:change={markTweaked}/></div>
         <div class="field">
           <label use:tooltip={"Controlla il tradeoff qualita/velocita del solver CP-SAT. Veloce: si ferma prima, ideale per bozze. Bilanciato: buon compromesso (default). Approfondito: qualita' migliore, piu' lento. Massimo: non si ferma prima del tempo limite."}>Qualità soluzione</label>
           <select bind:value={step3.thoroughness} data-testid="optimize-thoroughness">
