@@ -33,6 +33,7 @@
     optimize_rooms: false,
     rooms_time_limit_s: 30,
     rooms_prefer_home: true,
+    thoroughness: 'balanced',  // fast | balanced | thorough | maximum
     // Phase 3: CP-SAT scope + Phase A interaction.
     // Cross-field rule (mirror of backend validator):
     //   day  + always   (default, legacy)
@@ -459,6 +460,15 @@
         <div class="field"><label>time ricucitura</label><input type="number" bind:value={step3.time_ricucitura}/></div>
         <div class="field"><label>time monolitico</label><input type="number" bind:value={step3.time_mono}/></div>
         <div class="field"><label>workers</label><input type="number" bind:value={step3.workers}/></div>
+        <div class="field">
+          <label use:tooltip={"Controlla il tradeoff qualita/velocita del solver CP-SAT. Veloce: si ferma prima, ideale per bozze. Bilanciato: buon compromesso (default). Approfondito: qualita' migliore, piu' lento. Massimo: non si ferma prima del tempo limite."}>Qualità soluzione</label>
+          <select bind:value={step3.thoroughness} data-testid="optimize-thoroughness">
+            <option value="fast">⚡ Veloce (bozze)</option>
+            <option value="balanced">⚖️ Bilanciato (default)</option>
+            <option value="thorough">🔍 Approfondito</option>
+            <option value="maximum">🎯 Massimo</option>
+          </select>
+        </div>
         <label class="flex gap-2 text-sm col-span-3"><input type="checkbox" bind:checked={step3.use_decomposition}/> Decomposizione spettrale</label>
       </div>
 
