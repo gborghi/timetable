@@ -1,6 +1,6 @@
 // Italian locale strings for piTantum (audit F2).
 // Import as: import { _ } from '$lib/locales/it';
-// Usage: {$_.schedule.title}
+// Usage: {_.schedule.hero}  (plain object, NOT a Svelte store — no $ prefix)
 
 export const _ = {
   nav: {

@@ -194,7 +194,7 @@
 
 <PageHero
   eyebrow={null}
-  title={$_.dashboard.hero}
+  title={_.dashboard.hero}
   description={tappaCorrente
     ? `Sei alla tappa ${tappaCorrente.n}. Ogni tappa raccoglie le pagine che servono: puoi tornare indietro in qualsiasi momento senza perdere il lavoro fatto.`
     : 'Tutte le tappe sono complete: la scuola ha un orario. Da qui puoi rigenerarlo, modificarlo o gestire assenze e supplenze.'} />
