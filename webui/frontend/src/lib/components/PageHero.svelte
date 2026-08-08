@@ -49,11 +49,6 @@
         <p class="eyebrow mb-1.5">{label}</p>
       {/if}
       <h1>{title}</h1>
-      {#if description}
-        <p class="mt-2 text-[13px] leading-[1.55] text-ink-500">
-          {description}
-        </p>
-      {/if}
       {#if $$slots.chips}
         <div class="mt-3 flex flex-wrap items-center gap-2">
           <slot name="chips" />
@@ -67,6 +62,12 @@
       </div>
     {/if}
   </div>
+
+  {#if description}
+    <p class="mt-2 text-[13px] leading-[1.55] text-ink-500">
+      {description}
+    </p>
+  {/if}
 
   <slot />
 </div>
