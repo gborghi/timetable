@@ -26,8 +26,8 @@ for p in (WEBUI, ENGINE, SCHEDULE):
 
 DATA = os.path.join(ENGINE, "scripts", "data")
 
-# Proven parameters — same used in the successful runs of 2026-08-06.
-PHASE_B_PAYLOAD = {
+# Shared base parameters — individual tests override respect_room_capacity.
+_BASE_PARAMS = {
     "k": 6,
     "time_a": 150,
     "time_mono": 300,
@@ -38,15 +38,27 @@ PHASE_B_PAYLOAD = {
     "use_decomposition": True,
     "cp_sat_scope": "day",
     "phase_a_mode": "always",
-    "respect_room_capacity": True,
     "rooms_prefer_home": True,
+    "log": True,
 }
+
+# liceo90 — room-of-class with turnazione. Standard room capacity is
+# enforced because rooms have kind='standard' (the DB was generated for
+# the traditional model where each class has a home room).
+L90_PARAMS = {**_BASE_PARAMS, "respect_room_capacity": True}
+
+# liceo90doc — room-of-teacher (aule per materia). Rooms have kind='area_*'
+# and are assigned in a SEPARATE rooms step after Phase B. Standard room
+# capacity is NOT enforced during Phase B because the area mapping is
+# handled by the rooms optimizer later (see docs/experiments.md: "Separate
+# (place → re-room into area pools)").
+L90DOC_PARAMS = {**_BASE_PARAMS, "respect_room_capacity": False}
 
 POLL_SEC = 20
 TIMEOUT_S = 1200  # 20 min per test
 
 
-def _setup_and_launch(tmp_path, src_name: str):
+def _setup_and_launch(tmp_path, src_name: str, params: dict):
     """Copy a pre-seeded DB, create plesso if missing, launch Phase B, poll."""
     from backend.main import app
     from backend.database import SessionLocal, engine as _global_engine
@@ -96,7 +108,7 @@ def _setup_and_launch(tmp_path, src_name: str):
     client.post("/api/dataset/clear?scope=solutions")
 
     # 5. Launch Phase B
-    resp = client.post("/api/optimize/phase-b", json=PHASE_B_PAYLOAD)
+    resp = client.post("/api/optimize/phase-b", json=params)
     assert resp.status_code == 200, f"Launch failed: {resp.text}"
     run_id = resp.json()["run_id"]
 
@@ -130,7 +142,7 @@ class TestLiceo90Turnazione:
     @pytest.fixture(scope="class")
     def result(self, tmp_path_factory):
         tmp = tmp_path_factory.mktemp("liceo90")
-        return _setup_and_launch(tmp, "liceo90")
+        return _setup_and_launch(tmp, "liceo90", L90_PARAMS)
 
     def test_feasible(self, result):
         assert result["feasible"], f"not feasible: {result}"
@@ -150,7 +162,7 @@ class TestLiceo90Doc:
     @pytest.fixture(scope="class")
     def result(self, tmp_path_factory):
         tmp = tmp_path_factory.mktemp("liceo90doc")
-        return _setup_and_launch(tmp, "liceo90doc")
+        return _setup_and_launch(tmp, "liceo90doc", L90DOC_PARAMS)
 
     def test_feasible(self, result):
         assert result["feasible"], f"not feasible: {result}"

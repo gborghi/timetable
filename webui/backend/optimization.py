@@ -1022,19 +1022,16 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                 # class in the gym free its ordinary seat -> rooms < classes.
                 try:
                     with SessionLocal() as _db_rc:
-                        # Standard rooms = all rooms whose kind is NOT
-                        # required by any subject (i.e. ordinary classrooms,
-                        # whatever their kind label). Rooms with
-                        # required_kind (palestra, lab_info, etc.) are
-                        # special rooms counted separately via
-                        # build_special_room_ctx.
-                        special_kinds = set(
-                            s.required_kind for s in _db_rc.query(models.Subject).all()
-                            if getattr(s, "required_kind", None)
-                        )
+                        # Standard rooms = rooms that host exactly 1 class
+                        # (multi_class_max <= 1). Special rooms (palestra
+                        # with multi_class_max=2) are counted separately
+                        # via build_special_room_ctx and excluded here.
+                        # This works for any kind label: 'standard',
+                        # 'area_*', etc. — the distinguishing factor is
+                        # whether the room supports multi-class sharing.
                         _total_room_capacity = (
                             _db_rc.query(models.Classroom)
-                            .filter(~models.Classroom.kind.in_(special_kinds))
+                            .filter(models.Classroom.multi_class_max <= 1)
                             .count() or None)
                 except Exception:
                     _total_room_capacity = None
