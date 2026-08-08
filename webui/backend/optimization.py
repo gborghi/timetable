@@ -951,6 +951,13 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                 _pa_class_flags = engine_io.class_flags_from_db(_db_pa)
                 _pa_cdl = engine_io.class_day_load_allowed_from_db(_db_pa)
                 _pa_cfd = engine_io.class_free_days_from_db(_db_pa)
+            # Build special-room ctx BEFORE Phase A so it can enforce
+            # per-day capacity caps on gym/lab subjects at day-count level.
+            try:
+                with SessionLocal() as _db_sr:
+                    _sr_ctx = cv2.build_special_room_ctx(_db_sr)
+            except Exception:
+                _sr_ctx = None
             dc_value = cv2.solve_phase_a(
                 profs, classes, triples, class_profs,
                 time_limit=time_a, workers=workers, log=log,
@@ -964,6 +971,7 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                 class_day_load_allowed=_pa_cdl,
                 class_free_days=_pa_cfd,
                 thoroughness=thoroughness,
+                special_room_ctx=_sr_ctx,
             )
             with open(os.path.join(ws, "phase_a_dc.pkl"), "wb") as f:
                 pickle.dump(dc_value, f)
@@ -987,13 +995,9 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                 print(f"[phase_b] plessi attivi: "
                       f"{len(_plessi_ctx[1])} classi con sede nota")
             # Special-room (gym/lab) capacity (finding 34). Built once.
-            # UNLIKE plessi (a per-teacher rule, disjoint across stages),
-            # this is a GLOBAL per-slot cap over ALL classes, so it is
-            # correct only where one model sees the whole slot: the
-            # monolithic per-day path below (and the week solver). The
-            # spectral stages decide disjoint class subsets, so a per-stage
-            # cap could not see cross-cluster demand -- it is deliberately
-            # NOT applied there. None -> no required_kind subjects.
+            # Also passed to Phase A so it distributes special-room
+            # lessons across days respecting per-day capacity (e.g.
+            # max 6 concurrent PE classes × 6 hours = 36 PE-hours/day).
             try:
                 with SessionLocal() as _db_sr:
                     _special_room_ctx = cv2.build_special_room_ctx(_db_sr)

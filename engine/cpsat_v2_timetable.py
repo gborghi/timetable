@@ -504,6 +504,7 @@ def build_phase_a_pragmas(
 def solve_phase_a(profs, classes, triples, class_profs,
                   time_limit=30, workers=8, log=True,
                   thoroughness: str = "balanced",
+                  special_room_ctx=None,
                   locked_day_count=None,
                   coteach_groups=None,
                   support_assignments=None,
@@ -513,7 +514,6 @@ def solve_phase_a(profs, classes, triples, class_profs,
                   class_flags=None,
                   class_day_load_allowed=None,
                   class_free_days=None,
-                  special_room_ctx=None,
                   day_load_caps=None):
     """Risolve Phase A. Se `locked_day_count` e' valorizzato, e' un
     dict (prof, class, subject, day) -> int che impone un FLOOR sul
@@ -1183,6 +1183,28 @@ def solve_phase_a(profs, classes, triples, class_profs,
     #   - uniform_class_pen / uniform_prof_pen: spalmatura ore.
     #   - n_sixth_hour: penalita' sulle 6e ore (richiesta Giovanni,
     #     SOFT (4)). Peso scelto per essere in scala con uniform_class
+    # ── Special-room capacity at day-count level ──────────────────
+    # Instead of letting Phase B per-day discover that 10 PE classes
+    # can't fit into 2 gyms, Phase A enforces a per-day cap:
+    #   sum_{triples with required_kind=K} day_count ≤ cap_K × |HOURS|
+    # This distributes special-room subjects evenly across days BEFORE
+    # the per-day solver runs, so Phase B inherits a feasible distribution.
+    if special_room_ctx:
+        subj_kind, kind_cap = special_room_ctx
+        slots_per_day = len(HOURS)
+        for d in DAYS:
+            kind_load: dict[str, list] = {}
+            for (p, cl, subj, dd), var in day_count.items():
+                if dd != d:
+                    continue
+                k = subj_kind.get(subj)
+                if k and k in kind_cap:
+                    kind_load.setdefault(k, []).append(var)
+            for k, vars_ in kind_load.items():
+                cap = kind_cap[k] * slots_per_day
+                if len(vars_) > 1:
+                    model.Add(sum(vars_) <= cap)
+
     #     (somma fra 0 e ~5000 per dataset reali).
     W_SIXTH = 50
     W_FIVE = 30                                # SOFT (D)
