@@ -983,7 +983,8 @@ def solve_phase_a(profs, classes, triples, class_profs,
             ad = model.NewIntVar(0, 12, f"adif_{p}_{cl}_{subj}_{d}")
             model.AddAbsEquality(ad, diff)
             abs_terms.append(ad)
-    uniform_class_pen = model.NewIntVar(0, 100000, "uclpen")
+    # Max = len(abs_terms) * 12 (each term ∈ [0,12]), min 1 to avoid 0-domain
+    uniform_class_pen = model.NewIntVar(0, max(1, len(abs_terms) * 12), "uclpen")
     if abs_terms:
         model.Add(uniform_class_pen == sum(abs_terms))
     else:
@@ -1064,8 +1065,9 @@ def solve_phase_a(profs, classes, triples, class_profs,
             model.Add(ld == 1).OnlyEnforceIf(is1)
             model.Add(ld != 1).OnlyEnforceIf(is1.Not())
             n_one_terms.append(is1)
-    n_five = model.NewIntVar(0, 100000, "n_five")
-    n_one = model.NewIntVar(0, 100000, "n_one")
+    # Domains: sum of n_five_terms / n_one_terms BoolVars — max is len(list)
+    n_five = model.NewIntVar(0, max(1, len(n_five_terms)), "n_five")
+    n_one  = model.NewIntVar(0, max(1, len(n_one_terms)),  "n_one")
     if n_five_terms:
         model.Add(n_five == sum(n_five_terms))
     else:
@@ -1097,7 +1099,9 @@ def solve_phase_a(profs, classes, triples, class_profs,
             model.Add(prof_day_load[(p, pref_day)] == 0).OnlyEnforceIf(
                 works.Not())
             freeday_pref_terms.append(weight * works)
-    freeday_pref_pen = model.NewIntVar(0, 100_000_000, "fdpref_pen")
+    # Max = sum of all free-day preference weights (each teacher: ≤3 prefs, weight 1-3)
+    _fd_max = max(1, (len(triples_by_prof) * 3 * 3))
+    freeday_pref_pen = model.NewIntVar(0, _fd_max, "fdpref_pen")
     if freeday_pref_terms:
         model.Add(freeday_pref_pen == sum(freeday_pref_terms))
     else:
@@ -1157,7 +1161,8 @@ def solve_phase_a(profs, classes, triples, class_profs,
     for _src in _pragmas:
         _compiler.compile(_src)
 
-    uniform_prof_pen = model.NewIntVar(0, 100000, "uppen")
+    # Max = len(abs_prof_terms) * 30 (each term ∈ [0,30]), min 1 to avoid 0-domain
+    uniform_prof_pen = model.NewIntVar(0, max(1, len(abs_prof_terms) * 30), "uppen")
     if abs_prof_terms:
         model.Add(uniform_prof_pen == sum(abs_prof_terms))
     else:
@@ -1213,8 +1218,17 @@ def solve_phase_a(profs, classes, triples, class_profs,
     solver.parameters.max_time_in_seconds = time_limit
     solver.parameters.num_search_workers = workers
     solver.parameters.log_search_progress = log
-    solver.parameters.linearization_level = 2
-    solver.parameters.cp_model_probing_level = 2
+    # Phase A is a linear day-count distribution model — it doesn't need
+    # the aggressive presolve that helps with interval/boolean models.
+    # linearization_level=1 is sufficient and faster.
+    solver.parameters.linearization_level = 1
+    # probing_level=1 (the default) suffices for linear feasibility
+    # models; level 2 adds significant presolve time for no benefit here.
+    solver.parameters.cp_model_probing_level = 1
+    # Stop when the objective is within 5% of the best possible bound.
+    # Phase A's objective (uniform distribution + free-day prefs) is a
+    # tie-breaker, not a hard quality gate — we don't need optimality.
+    solver.parameters.relative_gap_limit = 0.05
 
     t0 = time.time()
     _solvercfg.configure_solver(solver)
@@ -2142,6 +2156,11 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
     solver.parameters.num_search_workers = workers
     solver.parameters.log_search_progress = log
     solver.parameters.linearization_level = 1
+    # Per-day models are hard combinatorial problems (no-overlap,
+    # no-holes, coteach, etc.), so keep a tight gap to maintain
+    # solution quality. 2% stops the solver once the objective is
+    # close enough to the bound — most of the gain comes early.
+    solver.parameters.relative_gap_limit = 0.02
 
     _solvercfg.configure_solver(solver)
 

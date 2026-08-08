@@ -303,6 +303,18 @@ class ConstraintModel:
                                             subject, d, h)]
                                  for h in self.hours) == q)
 
+        # ---- inverted indices (perf): eliminate O(|slot|) scans ----
+        _tdh: dict = {}
+        _cdh: dict = {}
+        _cdh_detail: dict = {}
+        for (t, cl, s, d, h), v in self.slot.items():
+            _tdh.setdefault((t, d, h), []).append(v)
+            _cdh.setdefault((cl, d, h), []).append(v)
+            _cdh_detail.setdefault((cl, d, h), []).append((t, s, v))
+        self._tdh = {k: tuple(vs) for k, vs in _tdh.items()}
+        self._cdh = {k: tuple(vs) for k, vs in _cdh.items()}
+        self._cdh_detail = {k: tuple(vs) for k, vs in _cdh_detail.items()}
+
     def _build_slot_variables_weekly(self):
         """Weekly-mode variant of ``_build_slot_variables``: build slot
         BoolVars for every ``(t, cl, s, d, h)`` in scope and enforce the
@@ -356,6 +368,18 @@ class ConstraintModel:
                     if week_vars:
                         self.model.Add(sum(week_vars) == ore)
 
+        # ---- inverted indices (perf, same as per-day path) ----
+        _tdh: dict = {}
+        _cdh: dict = {}
+        _cdh_detail: dict = {}
+        for (t, cl, s, d, h), v in self.slot.items():
+            _tdh.setdefault((t, d, h), []).append(v)
+            _cdh.setdefault((cl, d, h), []).append(v)
+            _cdh_detail.setdefault((cl, d, h), []).append((t, s, v))
+        self._tdh = {k: tuple(vs) for k, vs in _tdh.items()}
+        self._cdh = {k: tuple(vs) for k, vs in _cdh.items()}
+        self._cdh_detail = {k: tuple(vs) for k, vs in _cdh_detail.items()}
+
     # ----- helpers -----
 
     def teachers_in_scope(self) -> list:
@@ -376,13 +400,11 @@ class ConstraintModel:
 
     def slots_for_teacher_day_hour(self, teacher: str, day: int,
                                     hour: int) -> list:
-        return [v for (t, _cl, _s, d, h), v in self.slot.items()
-                if t == teacher and d == day and h == hour]
+        return list(getattr(self, "_tdh", {}).get((teacher, day, hour), ()))
 
     def slots_for_class_day_hour(self, class_name: str, day: int,
                                   hour: int) -> list:
-        return [v for (_t, cl, _s, d, h), v in self.slot.items()
-                if cl == class_name and d == day and h == hour]
+        return list(getattr(self, "_cdh", {}).get((class_name, day, hour), ()))
 
     # ============================================================
     # HARD constraint methods
