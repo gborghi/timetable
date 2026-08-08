@@ -26,7 +26,14 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      use: {
+        ...devices['Desktop Chrome'],
+        // Use system Chromium directly (headless-shell download was failing).
+        launchOptions: {
+          executablePath: '/Applications/Chromium.app/Contents/MacOS/Chromium',
+          args: ['--headless=new'],
+        },
+      },
     },
   ],
 });

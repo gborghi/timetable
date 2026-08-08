@@ -44,7 +44,7 @@
     border: 1px solid var(--line);
     border-radius: 11px;
     background: var(--band);
-    padding: 10px;
+    padding: 12px;
     max-height: 70vh;
     overflow-y: auto;
     position: sticky;
@@ -57,14 +57,17 @@
     letter-spacing: 0.11em;
     text-transform: uppercase;
     color: var(--ink3);
-    padding: 0 2px 6px;
-    margin-bottom: 6px;
+    padding: 0 2px 8px;
+    margin-bottom: 8px;
     border-bottom: 1px solid var(--line);
+    display: flex;
+    align-items: center;
+    gap: 6px;
   }
   .cal-pool__empty {
     font-size: 11px;
     color: var(--ink3);
-    padding: 8px 4px;
+    padding: 12px 4px;
     text-align: center;
   }
   .cal-pool__list {
@@ -73,20 +76,22 @@
     padding: 0;
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 5px;
   }
   .cal-pool__item {
     border-style: solid;
     border-width: 1px;
     border-radius: 7px;
-    padding: 5px 7px;
+    padding: 6px 8px;
     cursor: grab;
     font-size: 11px;
+    transition: box-shadow 0.15s;
   }
+  .cal-pool__item:hover { box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
   .cal-pool__item:active { cursor: grabbing; }
   .cal-pool__item-title {
     font-weight: 600;
-    line-height: 1.2;
+    line-height: 1.25;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -94,5 +99,6 @@
   .cal-pool__item-sub {
     font-size: 9px;
     opacity: 0.8;
+    margin-top: 1px;
   }
 </style>
