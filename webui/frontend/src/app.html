@@ -23,25 +23,10 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet"
           href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&display=swap" />
-    <!-- Polyfill crypto.randomUUID() for HTTP origins where the
-         browser restricts it to secure contexts. SvelteKit uses it
-         internally for hydration IDs. -->
-    <script>
-      if (typeof crypto !== 'undefined' && !crypto.randomUUID) {
-        crypto.randomUUID = function() {
-          var buf = new Uint8Array(16);
-          crypto.getRandomValues(buf);
-          buf[6] = (buf[6] & 0x0f) | 0x40;
-          buf[8] = (buf[8] & 0x3f) | 0x80;
-          var h = function(b) { return b.toString(16).padStart(2, '0'); };
-          return [h(buf[0]),h(buf[1]),h(buf[2]),h(buf[3]),'-',
-                  h(buf[4]),h(buf[5]),'-',
-                  h(buf[6]),h(buf[7]),'-',
-                  h(buf[8]),h(buf[9]),'-',
-                  h(buf[10]),h(buf[11]),h(buf[12]),h(buf[13])].join('');
-        };
-      }
-    </script>
+    <!-- Polyfill crypto.randomUUID() for HTTP origins (Tailscale).
+         Must be an external classic script (not inline, not a module)
+         so it executes synchronously before any module imports. -->
+    <script src="/polyfills.js"></script>
     %sveltekit.head%
   </head>
   <body data-sveltekit-preload-data="hover" class="bg-paper text-ink-900 font-sans">
