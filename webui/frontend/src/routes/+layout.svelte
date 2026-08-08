@@ -100,7 +100,7 @@
   {/if}
 
   <header class="bg-white border-b border-ink-200">
-    <div class="max-w-[1500px] mx-auto px-6 min-h-[60px] flex items-center gap-4">
+    <div class="max-w-[1500px] mx-auto px-6 min-h-[60px] py-2 flex items-center gap-4">
       <a href="/" class="flex items-center gap-2.5 shrink-0"
          title={SENECA_LATIN}>
         <img src={LOGO_LIGHT} alt="piTantum"

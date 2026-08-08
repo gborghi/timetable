@@ -50,7 +50,7 @@
       {/if}
       <h1>{title}</h1>
       {#if description}
-        <p class="mt-2 max-w-[720px] text-[13px] leading-[1.55] text-ink-500">
+        <p class="mt-2 text-[13px] leading-[1.55] text-ink-500">
           {description}
         </p>
       {/if}
