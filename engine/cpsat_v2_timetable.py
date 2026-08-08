@@ -503,6 +503,7 @@ def build_phase_a_pragmas(
 # -----------------------------
 def solve_phase_a(profs, classes, triples, class_profs,
                   time_limit=30, workers=8, log=True,
+                  thoroughness: str = "balanced",
                   locked_day_count=None,
                   coteach_groups=None,
                   support_assignments=None,
@@ -1214,21 +1215,18 @@ def solve_phase_a(profs, classes, triples, class_profs,
             cp_model.SELECT_MIN_VALUE,
         )
 
+    # Thoroughness → gap / probing mapping
+    _tn = thoroughness
+    _gap = {"fast": 0.10, "balanced": 0.05, "thorough": 0.01}.get(_tn, 0.05)
+    _prob = {"fast": 0, "balanced": 1, "thorough": 2, "maximum": 2}.get(_tn, 1)
+
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = time_limit
     solver.parameters.num_search_workers = workers
     solver.parameters.log_search_progress = log
-    # Phase A is a linear day-count distribution model — it doesn't need
-    # the aggressive presolve that helps with interval/boolean models.
-    # linearization_level=1 is sufficient and faster.
     solver.parameters.linearization_level = 1
-    # probing_level=1 (the default) suffices for linear feasibility
-    # models; level 2 adds significant presolve time for no benefit here.
-    solver.parameters.cp_model_probing_level = 1
-    # Stop when the objective is within 5% of the best possible bound.
-    # Phase A's objective (uniform distribution + free-day prefs) is a
-    # tie-breaker, not a hard quality gate — we don't need optimality.
-    solver.parameters.relative_gap_limit = 0.05
+    solver.parameters.cp_model_probing_level = _prob
+    solver.parameters.relative_gap_limit = 0 if _tn == "maximum" else _gap
 
     t0 = time.time()
     _solvercfg.configure_solver(solver)

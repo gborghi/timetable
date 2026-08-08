@@ -410,6 +410,7 @@ def launch_phase_b(payload: schemas.PhaseBRunIn):
         cp_sat_scope=payload.cp_sat_scope,
         phase_a_mode=payload.phase_a_mode,
         respect_room_capacity=payload.respect_room_capacity,
+        thoroughness=payload.thoroughness,
         joint_vars=(payload.joint_vars.model_dump()
                     if payload.joint_vars else None),
     )

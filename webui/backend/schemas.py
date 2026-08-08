@@ -592,6 +592,12 @@ class PhaseBRunIn(BaseModel):
     workers: int = 8
     log: bool = False
     use_decomposition: bool = True
+    # Thoroughness: quality-vs-speed tradeoff for the CP-SAT solver.
+    #   "fast"      gap=0.10  probing=0  (quick, good enough for drafts)
+    #   "balanced"  gap=0.05  probing=1  (default, solid quality)
+    #   "thorough"  gap=0.01  probing=2  (best quality, slower)
+    #   "maximum"   gap=0     probing=2  (no early stop, max quality)
+    thoroughness: str = "balanced"
     # Per-step rooms toggle: when True, after Phase B persists the
     # solution the classroom-assignment step is run inline so that
     # gym/lab capacity is solved jointly with the timetable.

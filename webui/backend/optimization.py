@@ -750,6 +750,7 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                 cp_sat_scope: str = "day",
                 phase_a_mode: str = "always",
                 respect_room_capacity: bool = False,
+                thoroughness: str = "balanced",
                 joint_vars: dict | None = None) -> int:
     # Phase 3 -- enforce the same (cp_sat_scope, phase_a_mode)
     # cross-field rules as PhaseBRunIn so direct callers (full
@@ -962,6 +963,7 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                 class_flags=_pa_class_flags,
                 class_day_load_allowed=_pa_cdl,
                 class_free_days=_pa_cfd,
+                thoroughness=thoroughness,
             )
             with open(os.path.join(ws, "phase_a_dc.pkl"), "wb") as f:
                 pickle.dump(dc_value, f)
