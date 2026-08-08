@@ -1377,12 +1377,20 @@ def build_special_room_ctx(db):
             return None
         needed_kinds = set(subj_kind.values())
         kind_cap: dict[str, int] = {}
+        # Only constrain kinds where rooms support multi-class (gyms, labs).
+        # For kinds where every room has multi_class_max == 1 (e.g. area_*
+        # rooms in the liceo90doc model), the capacity constraint is
+        # redundant: it says "max N concurrent classes" when there are
+        # exactly N rooms, each hosting 1 class. Adding the constraint
+        # bloats the CP-SAT model without changing feasibility.
         for r in db.query(models.Classroom).all():
             k = getattr(r, "kind", None)
             if k not in needed_kinds:
                 continue
-            kind_cap[k] = kind_cap.get(k, 0) + int(
-                getattr(r, "multi_class_max", 1) or 1)
+            mc = int(getattr(r, "multi_class_max", 1) or 1)
+            if mc <= 1:
+                continue  # redundant constraint — skip
+            kind_cap[k] = kind_cap.get(k, 0) + mc
     except Exception:
         return None
     kind_cap = {k: c for k, c in kind_cap.items() if c >= 1}
