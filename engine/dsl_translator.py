@@ -269,16 +269,14 @@ def special_room_capacity_to_dsl(db, _models=None) -> list[tuple[str, str]]:
     rilassamento valido dell'insieme di quelle per plesso, e resta
     utile quando qualche classe non e' vincolata a nessuna sede.
     """
-    # For backward compatibility, allow passing _models=None.
-    # The preferred path uses engine_io to avoid direct backend import.
     if _models is None:
         try:
-            from webui.backend import engine_io  # type: ignore
-            # Use engine_io mappers instead of importing backend.models
+            from webui.backend import models as _models  # type: ignore
+        except ImportError:
             from backend import models as _models  # type: ignore
-        except (ImportError, ModuleNotFoundError):
-            # Fallback for tests that don't have engine_io available
-            from backend import models as _models  # type: ignore
+
+    subs_by_kind: dict[str, list[str]] = {}
+    for s in db.query(_models.Subject).all():
         kind = (getattr(s, "required_kind", None) or "").strip()
         if kind:
             subs_by_kind.setdefault(kind, []).append(s.name)
@@ -383,7 +381,7 @@ def coteach_group_to_dsl(class_name: str, subject: str,
       2. Teachers' hours coincide on the same slots (slot-equality).
 
     Returns a list of DSL strings (one per clause). If ``required``
-    is False, the rules are SOFT (compiler TODO(audit)).
+    is False, the rules are SOFT (compiler support pending).
     """
     if not teacher_names or len(teacher_names) < 2:
         return []
@@ -739,7 +737,7 @@ def load_all_dsl_constraints(db, *, _models=None,
         SQLAlchemy session.
     include_soft : bool
         when False (default), only HARD rules are returned. SOFT
-        translation is TODO(audit); the compiler currently logs SOFT rules
+        translation is pending; the compiler currently logs SOFT rules
         in diagnostics rather than enforcing them.
 
     Returns
@@ -763,16 +761,14 @@ def load_all_dsl_constraints(db, *, _models=None,
     """
     if _models is None:
         try:
-            from webui.backend import engine_io  # type: ignore
-            # Prefer engine_io mappers to avoid direct backend.models import
-            teachers = engine_io.teacher_names_by_id(db)
-            classes = engine_io.class_names_by_id(db)
-            rooms = engine_io.classroom_names_by_id(db)
-        except (ImportError, ModuleNotFoundError):
+            from webui.backend import models as _models  # type: ignore
+        except ImportError:
             from backend import models as _models  # type: ignore
-            teachers = {t.id: t.name for t in db.query(_models.Teacher).all()}
-            classes = {c.id: c.name for c in db.query(_models.SchoolClass).all()}
-            rooms = {r.id: r.name for r in db.query(_models.Classroom).all()}
+
+    out: list[dict] = []
+    teachers = {t.id: t.name for t in db.query(_models.Teacher).all()}
+    classes = {c.id: c.name for c in db.query(_models.SchoolClass).all()}
+    rooms = {r.id: r.name for r in db.query(_models.Classroom).all()}
 
     # 1. TeacherUnavailability
     for r in db.query(_models.TeacherUnavailability).all():
@@ -971,7 +967,7 @@ def load_all_dsl_constraints(db, *, _models=None,
             })
 
     # 5. CoteachGroup (HARD when required=True)
-    if hasattr(models, "CoteachGroup"):
+    if hasattr(_models, "CoteachGroup"):
         for g in db.query(_models.CoteachGroup).all():
             if not g.required and not include_soft:
                 continue
@@ -1028,7 +1024,7 @@ def load_all_dsl_constraints(db, *, _models=None,
         })
 
     # 7. CurriculumLogicalConstraint
-    if hasattr(models, "CurriculumLogicalConstraint"):
+    if hasattr(_models, "CurriculumLogicalConstraint"):
         for r in db.query(_models.CurriculumLogicalConstraint).all():
             is_hard = bool(r.is_hard) and (r.kind in ("hard", "enforced"))
             if not is_hard and not include_soft:
@@ -1049,7 +1045,7 @@ def load_all_dsl_constraints(db, *, _models=None,
     # DSLConstraintCompiler treats the expression as a top-level rule and
     # the entity scoping is informational (the rule body itself filters
     # via `forall l in lessons where l.teacher == ...`).
-    if hasattr(models, "GeneralConstraint"):
+    if hasattr(_models, "GeneralConstraint"):
         for r in db.query(_models.GeneralConstraint).all():
             is_hard = (r.level in ("hard", "enforced"))
             if not is_hard and not include_soft:

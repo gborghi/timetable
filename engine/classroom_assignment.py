@@ -122,6 +122,17 @@ def _normalize_classroom(cl: dict) -> dict:
     return out
 
 
+def _is_reserved_special_kind(kind: str) -> bool:
+    """True for rooms that must not host ordinary lessons.
+
+    Palestre (and the ``gym`` alias used by a few fixtures) and every
+    ``lab_*`` kind are reserved. Generic labels such as ``classroom``
+    or ``area_scientifico`` are ordinary rooms.
+    """
+    k = (kind or "standard").strip().lower()
+    return k in ("palestra", "gym") or k.startswith("lab_")
+
+
 def _can_host(room: dict, lesson: dict) -> bool:
     """HARD eligibility: subject compatibility + capacity + required-
     kind + aula base + room not unavailable on that slot."""
@@ -146,15 +157,15 @@ def _can_host(room: dict, lesson: dict) -> bool:
     req_kind = lesson.get("required_kind") or ""
     if req_kind and str(room.get("kind", "standard")) != req_kind:
         return False
-    # HARD room-kind reservation: a special-kind room (palestra / lab_*) is
-    # RESERVED for the subjects that require that kind -- an ordinary lesson,
-    # or one requiring a DIFFERENT kind, must NOT consume it and leave the
-    # real gym/lab subjects roomless. Palestre go only to Scienze motorie
-    # (required_kind='palestra'), each lab only to the subject that requires
-    # it. A room carrying an explicit ``subject_required`` allow-list (handled
-    # above) opts out of this default and is governed by that list instead.
-    room_kind = str(room.get("kind", "standard"))
-    if (room_kind != "standard" and req_kind != room_kind
+    # HARD room-kind reservation: palestra / gym / lab_* rooms are
+    # RESERVED for the subjects that require that kind -- an ordinary
+    # lesson, or one requiring a DIFFERENT kind, must NOT consume them
+    # and leave PE/lab hours roomless. Other kinds ("standard",
+    # "classroom", "area_*", ...) stay open to ordinary lessons.
+    # A room carrying an explicit ``subject_required`` allow-list
+    # (handled above) opts out of this default.
+    room_kind = str(room.get("kind", "standard") or "standard")
+    if (_is_reserved_special_kind(room_kind) and req_kind != room_kind
             and not room["subject_required"]):
         return False
     # HARD aula base: la lezione porta `home_room` quando la classe ha

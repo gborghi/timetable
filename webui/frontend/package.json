@@ -43,6 +43,7 @@
     "@tanstack/svelte-query": "^5.90.2",
     "cytoscape": "^3.33.3",
     "cytoscape-fcose": "^2.2.0",
-    "echarts": "^6.0.0"
+    "echarts": "^6.0.0",
+    "svelte-i18n": "^4.0.1"
   }
 }

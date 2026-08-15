@@ -661,8 +661,16 @@ def _create_constraint_via_dispatcher(db: Session, body: dict) -> dict:
 from pydantic import BaseModel as _BM   # noqa: E402
 
 
+from pydantic import field_validator
+
 class ImportStressIn(_BM):
     profile: str
+
+    @field_validator("profile")
+    @classmethod
+    def _check_profile(cls, v: str) -> str:
+        from ..schemas import _validate_profile
+        return _validate_profile(v)
 
 
 @router.post("/constraints/import-stress")
@@ -755,6 +763,9 @@ def constraints_import_stress(payload: ImportStressIn,
 
 
 # ----- Import: custom file (JSON / xlsx) ------------------------------
+
+# Maximum upload size for constraint files (50 MiB)
+_CONSTRAINTS_MAX_BYTES = 50 * 1024 * 1024
 
 def _normalize_record(rec: dict) -> dict | None:
     """Convert one record from the canonical JSON-import shape to a
@@ -901,6 +912,12 @@ async def constraints_import_file(
     valid ones. Returns:
       {n_total, n_loaded, n_errors, errors: [{idx, error, record}, ...]}
     """
+    # Check file size limit
+    if file.size is not None and file.size > _CONSTRAINTS_MAX_BYTES:
+        raise HTTPException(
+            413,
+            f"file troppo grande: {file.size} bytes > {_CONSTRAINTS_MAX_BYTES} bytes"
+        )
     blob = await file.read()
     if not blob:
         raise HTTPException(400, "file vuoto")
@@ -1290,6 +1307,12 @@ async def constraints_import_vincoli(
     """Import constraints from a 'Vincoli'-sheet xlsx/csv. Each row is
     mapped (DSL pragma or ORM insert) and created. Returns a report with
     per-row parse errors and per-intent creation outcomes."""
+    # Check file size limit
+    if file.size is not None and file.size > _CONSTRAINTS_MAX_BYTES:
+        raise HTTPException(
+            413,
+            f"file troppo grande: {file.size} bytes > {_CONSTRAINTS_MAX_BYTES} bytes"
+        )
     blob = await file.read()
     if not blob:
         raise HTTPException(400, "file vuoto")

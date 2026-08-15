@@ -179,6 +179,37 @@ def test_load_all_dsl_constraints_includes_teacher_unavail(
     assert tu["is_hard"] is True
 
 
+def test_load_all_dsl_constraints_includes_soft_teacher_unavail(
+    client_and_session,
+):
+    """SOFT TeacherUnavailability must survive the full loader walk.
+
+    Regression: a botched special-room rewrite raised NameError after
+    the unavailability loop, so ``include_soft=True`` dropped every
+    rule (including this one) and Phase B never saw the penalty.
+    """
+    from webui.backend import models
+    import dsl_translator as dt
+    client, TestSession = client_and_session
+    with TestSession() as db:
+        t = models.Teacher(name="T1", max_hours=18)
+        db.add(t)
+        db.flush()
+        db.add(models.TeacherUnavailability(
+            teacher_id=t.id, day=1, hour=12,
+            state="soft", soft_penalty=100))
+        db.commit()
+    with TestSession() as db:
+        hard_only = dt.load_all_dsl_constraints(db, include_soft=False)
+        soft = dt.load_all_dsl_constraints(db, include_soft=True)
+    assert not any(r["source"] == "teacher_unavailability"
+                   for r in hard_only)
+    tu = next(r for r in soft
+              if r["source"] == "teacher_unavailability")
+    assert tu["is_hard"] is False
+    assert tu["weight"] == 100
+
+
 def test_load_all_dsl_constraints_includes_general_constraint(
     client_and_session,
 ):

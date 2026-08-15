@@ -1,0 +1,20 @@
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/Users/g.borghi/ICT/timetable/webui/backend"
+    schedule:
+      interval: "weekly"
+    target-branch: "main"
+    reviewers:
+      - "g.borghi"
+    labels:
+      - "dependencies"
+  - package-ecosystem: "npm"
+    directory: "/Users/g.borghi/ICT/timetable/webui/frontend"
+    schedule:
+      interval: "weekly"
+    target-branch: "main"
+    reviewers:
+      - "g.borghi"
+    labels:
+      - "dependencies"

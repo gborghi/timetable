@@ -35,7 +35,11 @@ extend-exclude = [
 #   the residual flag-by-flag.
 select = [
     "F",   # pyflakes (undefined names, unused imports, dead code)
-    "S",   # flake8-bandit (security smells)
+    "E", "W", # pycodestyle (errors + warnings)
+    "B",   # flake8-bugbear
+    "I",   # isort
+    "S",   # flake8-bandit (security)
+    "UP",  # pyupgrade
 ]
 # Project-specific carve-outs:
 #   * S101 (assert) -- pytest relies on plain asserts.
@@ -76,6 +80,19 @@ ignore = [
 "webui/backend/engine_io.py" = ["F841"]
 "webui/backend/routers/monitor.py" = ["F841"]
 "webui/backend/routers/subjects.py" = ["F841"]
+# Engine module overrides
+"engine/**" = [
+    "F401",   # unused imports (star imports)
+    "F403",   # wildcard imports (star imports)
+    "F405",   # name may be undefined (star imports)
+    "F841",   # unused locals (debugging leftovers)
+    "E402",   # module level import not at top (legacy code)
+    "N802",   # function name doesn't match snake_case (numpy-style)
+    "N803",   # argument name doesn't match snake_case (numpy-style)
+    "N806",   # variable name doesn't match snake_case (numpy-style)
+    "N815",   # variable name doesn't match snake_case (numpy-style)
+    "S101",   # assert used (pytest)
+]
 
 [tool.pytest.ini_options]
 # Mirrors webui/backend/pytest.ini so `pytest` at repo root finds the

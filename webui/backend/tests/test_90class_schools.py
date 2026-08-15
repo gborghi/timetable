@@ -61,7 +61,7 @@ TIMEOUT_S = 1200  # 20 min per test
 def _setup_and_launch(tmp_path, src_name: str, params: dict):
     """Copy a pre-seeded DB, create plesso if missing, launch Phase B, poll."""
     from backend.main import app
-    from backend.database import SessionLocal, engine as _global_engine
+    from backend.db import SessionLocal, engine as _global_engine
     from backend import models  # noqa: F401
     from backend.db import Base
     from sqlalchemy import create_engine, inspect
@@ -97,41 +97,48 @@ def _setup_and_launch(tmp_path, src_name: str, params: dict):
             s.close()
 
     app.dependency_overrides.clear()
-    # Find the get_db dependency — it's typically in db.py
     from backend.db import get_db
-
     app.dependency_overrides[get_db] = _override_get_db
+    
+    # Also re-bind the global SessionLocal so background tasks use the test DB.
+    import backend.db
+    original_bind = backend.db.SessionLocal.kw['bind']
+    backend.db.SessionLocal.configure(bind=engine)
 
     client = TestClient(app)
 
-    # 4. Clear any existing solutions so we start fresh
-    client.post("/api/dataset/clear?scope=solutions")
+    try:
+        # 4. Clear any existing solutions so we start fresh
+        client.post("/api/dataset/clear?scope=solutions")
 
-    # 5. Launch Phase B
-    resp = client.post("/api/optimize/phase-b", json=params)
-    assert resp.status_code == 200, f"Launch failed: {resp.text}"
-    run_id = resp.json()["run_id"]
+        # 5. Launch Phase B
+        resp = client.post("/api/optimize/phase-b", json=params)
+        assert resp.status_code == 200, f"Launch failed: {resp.text}"
+        run_id = resp.json()["run_id"]
 
-    # 6. Poll until done
-    t0 = time.time()
-    while (time.time() - t0) < TIMEOUT_S:
-        r = client.get(f"/api/optimize/runs/{run_id}")
-        assert r.status_code == 200, f"Poll failed: {r.text}"
-        data = r.json()
-        status = data["status"]
-        if status in ("done", "failed"):
-            metrics = data.get("metrics", {})
-            return {
-                "run_id": run_id,
-                "status": status,
-                "feasible": metrics.get("feasible", False),
-                "coverage": metrics.get("coverage", 0.0),
-                "obj": data.get("obj_value"),
-                "elapsed_s": time.time() - t0,
-            }
-        time.sleep(POLL_SEC)
+        # 6. Poll until done
+        t0 = time.time()
+        while (time.time() - t0) < TIMEOUT_S:
+            r = client.get(f"/api/optimize/runs/{run_id}")
+            assert r.status_code == 200, f"Poll failed: {r.text}"
+            data = r.json()
+            status = data["status"]
+            if status in ("done", "failed"):
+                metrics = data.get("metrics", {})
+                return {
+                    "run_id": run_id,
+                    "status": status,
+                    "feasible": metrics.get("feasible", False),
+                    "coverage": metrics.get("coverage", 0.0),
+                    "obj": data.get("obj_value"),
+                    "elapsed_s": time.time() - t0,
+                }
+            time.sleep(POLL_SEC)
 
-    pytest.fail(f"Run {run_id} timed out after {TIMEOUT_S}s")
+        pytest.fail(f"Run {run_id} timed out after {TIMEOUT_S}s")
+    finally:
+        # Restore the original bind
+        backend.db.SessionLocal.configure(bind=original_bind)
 
 
 @pytest.mark.slow

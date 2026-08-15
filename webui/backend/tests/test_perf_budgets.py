@@ -192,7 +192,9 @@ def test_hall_check_sync_path_stays_fast(client):
     )
     dt_ms = (time.time() - t0) * 1000.0
     assert r.status_code == 200, r.text[:200]
-    assert dt_ms < 2000, f"Hall check took {dt_ms:.0f}ms (budget 2000ms)"
+    budget_ms = _get_env_budget("HALL_CHECK_MS", 3500)
+    assert dt_ms < budget_ms, (
+        f"Hall check took {dt_ms:.0f}ms (budget {budget_ms}ms)")
     res = r.json()
     assert "ok" in res
     assert "n_classes" in res

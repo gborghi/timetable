@@ -162,11 +162,33 @@ def init_db():
       alongside alembic.
     - For fresh DBs, `Base.metadata.create_all` builds the canonical
       schema directly; alembic_version is then stamped to head on
-      first start (TODO(audit): optional auto-stamp when DB is empty).
+      first start.
     """
     from . import models  # noqa: F401
+    from sqlalchemy import inspect
+    
+    insp = inspect(engine)
+    is_fresh = not bool(insp.get_table_names())
+    
     Base.metadata.create_all(bind=engine)
     _apply_lightweight_migrations()
+    
+    if is_fresh:
+        try:
+            from alembic import command
+            from alembic.config import Config
+
+            backend_dir = os.path.dirname(os.path.abspath(__file__))
+            ini_path = os.path.join(backend_dir, "alembic.ini")
+            if os.path.exists(ini_path):
+                alembic_cfg = Config(ini_path)
+                alembic_cfg.set_main_option(
+                    "script_location", os.path.join(backend_dir, "alembic"))
+                command.stamp(alembic_cfg, "head")
+        except Exception:
+            # Schema is already canonical via create_all; a stamp
+            # failure must not block startup.
+            pass
 
 
 def _apply_lightweight_migrations() -> None:

@@ -69,6 +69,7 @@
     clampToOpenWindow as _clampOpen,
   } from '$lib/calendar_layout.mjs';
   import { offGridLessons } from '$lib/off_grid';
+  import { calculateConflictKeys } from '$lib/scheduleValidation';
 
   export let value = [];
   export let onChange = (_v) => {};

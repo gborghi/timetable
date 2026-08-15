@@ -163,7 +163,11 @@ def test_can_host_blocks_wrong_kind():
     assert ca._can_host(palestra, lesson) is True
 
 
-def test_can_host_required_kind_empty_means_any():
+def test_can_host_required_kind_empty_means_any_standard():
+    """An ordinary lesson (empty required_kind) may sit in any
+    *standard* room. Special-kind rooms (palestra / lab_*) stay
+    reserved for the subjects that actually require them, otherwise
+    PE/lab hours get crowded out."""
     lesson = {
         "teacher": "T", "co_teachers": [],
         "class": "3A", "subject": "Mat", "day": 1, "hour": 1,
@@ -172,7 +176,13 @@ def test_can_host_required_kind_empty_means_any():
     standard = _make_room("Aula 12", capacity=30, kind="standard")
     palestra = _make_room("Palestra A", capacity=60, kind="palestra")
     assert ca._can_host(standard, lesson) is True
-    assert ca._can_host(palestra, lesson) is True
+    assert ca._can_host(palestra, lesson) is False
+    # Unofficial aliases used by fixtures / older imports: "classroom"
+    # is an ordinary room; "gym" is reserved like palestra.
+    classroom = _make_room("Aula 1A", capacity=30, kind="classroom")
+    gym = _make_room("Palestra B", capacity=60, kind="gym")
+    assert ca._can_host(classroom, lesson) is True
+    assert ca._can_host(gym, lesson) is False
 
 
 def test_solve_picks_palestra_for_eduf_subject():
