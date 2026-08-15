@@ -126,7 +126,7 @@ LIST_BUDGETS_MS = {
 }
 
 # Expose budgets for CI verification
-__-all__ = ["LIST_BUDGETS_MS"]
+__all__ = ["LIST_BUDGETS_MS"]
 
 
 @pytest.mark.parametrize("path,budget_ms", list(LIST_BUDGETS_MS.items()))
