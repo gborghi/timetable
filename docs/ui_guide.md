@@ -760,3 +760,34 @@ Lancia le 4 fasi di ottimizzazione (vedere [workflow.md](workflow.md)):
 Pulsante "Pipeline completa" che le incatena. Per ogni run, log
 in tempo reale via Server-Sent Events; obiettivo + metriche
 mostrati alla fine.
+
+#### Parametri Phase B
+
+La card Phase B espone diversi parametri di controllo:
+
+- **Thoroughness** (`fast | balanced | thorough | maximum`): controlla
+  quanto il solver CP-SAT approfondisce la ricerca. `balanced` è il
+  default; `fast` riduce i tempi accettando qualità inferiore (gap 15%);
+  `thorough` e `maximum` cercano l'ottimo esatto (utili per scuole
+  piccole o run notturni).
+- **Respect room capacity**: quando attivo, impone che in ogni slot il
+  numero di classi in aula standard non superi il totale delle aule.
+  Attivare solo se aule < classi (turnazione).
+- **Use decomposition**: attiva la decomposizione spettrale + temporale
+  (consigliato per >8 classi).
+- **CP-SAT scope / Phase A mode**: `day` + `always` (default) usa la
+  decomposizione temporale; `week` + `skip` o `soft_hint` risolve l'intera
+  settimana in un unico modello CP-SAT.
+
+Il pulsante **"Carica parametri consigliati"** chiama
+`GET /api/optimize/parameters/recommend` che analizza il DB e suggerisce
+valori ottimali per la scuola corrente. I parametri caricati possono
+comunque essere modificati manualmente.
+
+#### Decomposizioni alternative
+
+La card "Tecniche avanzate" espone decomposizioni alternative:
+temporale (per giorno, sempre applicabile), METIS (k-way partitioning),
+per curriculum. L'auto-detect (`GET /api/optimize/decomposition/recommend`)
+suggerisce la strategia migliore in base alla struttura del grafo
+classe-docente.

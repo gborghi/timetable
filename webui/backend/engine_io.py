@@ -1947,3 +1947,51 @@ def build_world(db) -> dict[str, list]:
         r["tags"] = cr_to_tags.get(r["name"], [])
     return out
 
+
+# ---------------------------------------------------------------------
+# ID -> name mappers for engine use (audit A5 fix)
+# ---------------------------------------------------------------------
+
+
+def teacher_names_by_id(db: Session) -> dict[int, str]:
+    """Map teacher IDs to names for engine constraint translation.
+    
+    Used by engine/dsl_translator.py to convert rows like
+    TeacherUnavailability.teacher_id -> teacher name string."""
+    return {t.id: t.name for t in db.query(models.Teacher).all()}
+
+
+def class_names_by_id(db: Session) -> dict[int, str]:
+    """Map class IDs to names for engine constraint translation."""
+    return {c.id: c.name for c in db.query(models.SchoolClass).all()}
+
+
+def classroom_names_by_id(db: Session) -> dict[int, str]:
+    """Map classroom IDs to names for engine constraint translation."""
+    return {r.id: r.name for r in db.query(models.Classroom).all()}
+
+
+def subject_names_by_id(db: Session) -> dict[int, str]:
+    """Map subject IDs to names for engine constraint translation."""
+    return {s.id: s.name for s in db.query(models.Subject).all()}
+
+
+def curriculum_names_by_id(db: Session) -> dict[int, str]:
+    """Map curriculum IDs to names for engine constraint translation."""
+    return {c.id: c.name for c in db.query(models.Curriculum).all()}
+
+
+def plesso_names_by_id(db: Session) -> dict[int, str]:
+    """Map plesso IDs to names for engine constraint translation."""
+    from ..routers.plessi import Plesso
+    return {p.id: p.name for p in db.query(Plesso).all()}
+
+
+# Legacy alias for backward compatibility with dsl_translator
+# The engine should use the above functions instead of importing backend.models
+Teacher = models.Teacher
+SchoolClass = models.SchoolClass
+Classroom = models.Classroom
+Subject = models.Subject
+Curriculum = models.Curriculum
+

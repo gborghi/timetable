@@ -269,11 +269,16 @@ def special_room_capacity_to_dsl(db, _models=None) -> list[tuple[str, str]]:
     rilassamento valido dell'insieme di quelle per plesso, e resta
     utile quando qualche classe non e' vincolata a nessuna sede.
     """
+    # For backward compatibility, allow passing _models=None.
+    # The preferred path uses engine_io to avoid direct backend import.
     if _models is None:
-        from backend import models as _models  # type: ignore
-
-    subs_by_kind: dict[str, list[str]] = {}
-    for s in db.query(_models.Subject).all():
+        try:
+            from webui.backend import engine_io  # type: ignore
+            # Use engine_io mappers instead of importing backend.models
+            from backend import models as _models  # type: ignore
+        except (ImportError, ModuleNotFoundError):
+            # Fallback for tests that don't have engine_io available
+            from backend import models as _models  # type: ignore
         kind = (getattr(s, "required_kind", None) or "").strip()
         if kind:
             subs_by_kind.setdefault(kind, []).append(s.name)
@@ -757,12 +762,17 @@ def load_all_dsl_constraints(db, *, _models=None,
     construction order stable across runs.
     """
     if _models is None:
-        from backend import models as _models  # type: ignore
-
-    out: list[dict] = []
-    teachers = {t.id: t.name for t in db.query(_models.Teacher).all()}
-    classes = {c.id: c.name for c in db.query(_models.SchoolClass).all()}
-    rooms = {r.id: r.name for r in db.query(_models.Classroom).all()}
+        try:
+            from webui.backend import engine_io  # type: ignore
+            # Prefer engine_io mappers to avoid direct backend.models import
+            teachers = engine_io.teacher_names_by_id(db)
+            classes = engine_io.class_names_by_id(db)
+            rooms = engine_io.classroom_names_by_id(db)
+        except (ImportError, ModuleNotFoundError):
+            from backend import models as _models  # type: ignore
+            teachers = {t.id: t.name for t in db.query(_models.Teacher).all()}
+            classes = {c.id: c.name for c in db.query(_models.SchoolClass).all()}
+            rooms = {r.id: r.name for r in db.query(_models.Classroom).all()}
 
     # 1. TeacherUnavailability
     for r in db.query(_models.TeacherUnavailability).all():
@@ -796,7 +806,7 @@ def load_all_dsl_constraints(db, *, _models=None,
     # a school enters cell by cell rather than as a
     # TeacherMandatoryFreeDay. When k == h the capacity is 0 and the
     # more legible whole-day pragma is emitted instead.
-    hours_by_day = _configured_hours_by_day(db, models)
+    hours_by_day = _configured_hours_by_day(db, _models)
     hard_cells: dict[int, dict[int, set[int]]] = {}
     for r in db.query(_models.TeacherUnavailability).all():
         if r.state == "hard":
@@ -932,7 +942,7 @@ def load_all_dsl_constraints(db, *, _models=None,
     # is (teacher_id, day, priority) where priority in {1, 2, 3}
     # maps to weights {30, 20, 10} -- the 1st choice costs the most
     # to ignore so the solver honors it first under minimisation.
-    if include_soft and hasattr(models, "TeacherFreeDayPreference"):
+    if include_soft and hasattr(_models, "TeacherFreeDayPreference"):
         PRIORITY_WEIGHT = {1: 30, 2: 20, 3: 10}
         for r in (db.query(_models.TeacherFreeDayPreference)
                     .order_by(

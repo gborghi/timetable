@@ -316,6 +316,73 @@ best strategy. The REST endpoint
 `GET /api/optimize/decomposition/recommend` exposes this
 function to the frontend.
 
+## Phase B solver parameters
+
+The Phase B card in the Workflow tab exposes key parameters that
+control CP-SAT behaviour. The backend provides automatic
+recommendations via `GET /api/optimize/parameters/recommend`, which
+analyses the current DB (class count, teachers, assignments,
+constraints, rooms) and suggests optimal values. The user can still
+override them.
+
+### Thoroughness — quality vs speed
+
+The **Thoroughness** selector (4 levels: `fast | balanced | thorough |
+maximum`) controls how deeply the solver explores the search space,
+mapping to two CP-SAT knobs:
+
+| Level | `relative_gap_limit` | `cp_model_probing_level` | Typical use |
+|---|---|---|---|
+| `fast` | 0.15 (15%) | 0 (off) | Quick tests, dry runs |
+| `balanced` | 0.05 (5%) | 1 (medium) | Default, normal use |
+| `thorough` | 0.01 (1%) | 2 (full) | Maximum quality, ~2× runtime |
+| `maximum` | 0 (none) | 2 (full) | Small schools or overnight runs |
+
+The **gap limit** tells the solver: "stop when the distance from the
+theoretical optimum is ≤ X%". Gap 0% = search for the exact optimum
+(may never finish on large schools). **Probing** is a CP-SAT technique
+that explores the solution space in depth before starting the main
+search.
+
+### `respect_room_capacity` — per-slot room cap
+
+When enabled, imposes a HARD constraint: in every (day, hour) the
+number of classes requesting a standard room must not exceed the
+total number of standard rooms. Essential when rooms are **fewer**
+than classes (e.g. 87 rooms for 90 classes with biennio rotation).
+If rooms ≥ classes the constraint is redundant and should stay off
+to keep the model lighter.
+
+### Special-room capacity in Phase A ("gyms first")
+
+Since August 2026, Phase A (day-hour distribution) respects
+special-room capacity **before** Phase B runs. The function
+`build_special_room_ctx` (in `optimization.py`) maps subjects to
+their required room kind (e.g. PE → gym) and computes per-kind
+capacity (e.g. 3 gyms × 2 classes = 6 slots). Inside
+`solve_phase_a`, for each day:
+
+```
+sum(hours_of_subjects_requiring_that_kind, day) ≤ kind_capacity × slots_per_day
+```
+
+This prevents Phase A from allocating more PE hours to a day than
+the gyms can host, which would cause INFEASIBLE in Phase B. This
+is the fix that brought temporal decomposition to 100% coverage on
+the 90-class model.
+
+### Automatic parameters
+
+The `GET /api/optimize/parameters/recommend` endpoint returns
+automatically-scaled parameters:
+- **Time limits** (time_a, time_mono): 30–150s for Phase A,
+  60–300s for monolithic, based on class count
+- **Workers**: 4 for ≤15 classes, 6 for ≤30, 8 above
+- **Thoroughness**: `fast` if 0 constraints, `balanced` for
+  complexity <200, `thorough` otherwise
+- **Decomposition**: on for >8 classes
+- **Room capacity**: on only if rooms < classes
+
 ## Integrated pipeline: recommended order
 
 ```

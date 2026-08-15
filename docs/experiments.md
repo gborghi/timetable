@@ -64,28 +64,58 @@ the fully-joint monolithic model does not scale to 90 classes. The
 temporal/spectral decomposition + a separate global room step solves the same
 school in ~2–3 min at 0 unplaced.
 
-## Curriculum decomposition — from broken to feasible
+## Temporal decomposition — from broken to 100% coverage
 
-Decomposing by *indirizzo* (curriculum) initially **produced no solution**: the
-per-day solves failed instantly (0.4 s) on 3–5 of the 6 days. Root causes and
-fixes (all committed):
+The temporal decomposition (split by day, 6 parallel CP-SAT instances) is the
+default strategy for large schools. After the August 2026 code changes it
+initially broke, producing **66–83% coverage** on liceo90. Root cause and fix:
 
-1. **Phase A ignored per-slot special-room capacity** → it over-allocated a
-   required-kind subject (PE) to a day the gyms could not host → per-day
-   INFEASIBLE. Fix: a HARD per-(kind, day) cap in Phase A (constraint-driven,
-   no hardcoded names).
-2. **Biennio free-day rotation was not passed** to the curriculum/metis Phase A
-   → all 90 classes present every day → rooms overfull. Fix: thread
-   `class_free_days`.
-3. **No recovery** when a day failed. Fix: a bounded retry that lowers the
-   failed day's total load cap, forcing redistribution.
+1. **Phase A ignored per-slot special-room capacity** → it over-allocated PE
+   hours to days the gyms could not host → per-day INFEASIBLE. Fix: moved the
+   `build_special_room_ctx` constraint from Phase B into Phase A
+   (`solve_phase_a`), so PE is distributed respecting gym capacity **before**
+   the per-day solves run. This is the "palestre fissate" (gyms first) approach.
+2. **Phase B gap limit was removed** → the per-day solver chased soft-penalty
+   optimality and timed out before finding ANY feasible solution. Fix: restored
+   `relative_gap_limit=0.02` on Phase B to keep the solver focused on finding a
+   feasible solution rather than perfecting soft scores.
+3. **Tight IntVar domains** made the model INFEASIBLE in 0.1s. Fix: bounds
+   computed from actual data (e.g. `len(abs_terms) * per_term_max`) instead
+   of hardcoded constants.
 
-| | before | after |
+| | before (broken) | after (fixed) |
 |---|---|---|
-| days solved | 3/6 → 5/6 → **6/6** | **6/6** |
-| coverage | none | **2763 lessons, full** |
-| biennio free | — | **36/36** |
-| hard-feasible | no | **yes** |
+| coverage | 66–83% (varies by run) | **100%** |
+| hard-feasible | sometimes no | **yes** |
+| time (liceo90) | N/A (incomplete) | **~13.7 min** |
+| objective | — | **13020** |
+| biennio free | partial | **36/36** |
+
+### Why Phase B needs a gap limit
+
+The per-day CP-SAT instances in temporal decomposition are **non-deterministic
+with 8 workers**. Without a gap limit, the solver may spend all its time budget
+chasing the theoretical optimum and never output a first feasible solution. The
+gap limit (`0.02 = 2%`) tells it: "any solution within 2% of the best bound is
+good enough — stop and return it." This is the difference between 67% and 100%
+coverage on the exact same model.
+
+### Special-room capacity: the "gyms first" approach
+
+`build_special_room_ctx` (in `optimization.py`) maps subjects to required room
+kinds via `Subject.required_kind` and computes per-kind capacity from
+`Classroom.multi_class_max`. For liceo90:
+
+- 3 palestre × `multi_class_max=2` = **6 PE slots per hour**
+- Phase A constraint: `sum(PE hours on day d) ≤ 6 × 6 hours = 36`
+
+This is applied in Phase A (day-count distribution), so when Phase B (per-day
+slot placement) starts, each day already has a feasible PE load. Without it,
+Phase A might put 8+ PE hours on a single day, and Phase B can only place 6 of
+them — guaranteed INFEASIBLE for that day.
+
+Rooms with `multi_class_max ≤ 1` (standard rooms, area labs) are skipped: the
+constraint is only meaningful for shared spaces.
 
 ## Model B — `liceo90doc` (room-of-the-teacher)
 
@@ -138,6 +168,7 @@ always in their own area". The theoretical 85 is unreachable.
 | per-class room minimisation | large | **25.3 → ~2.5 rooms/class** |
 | rooms decompose by day | worse (week coupling) | **2.59 → 6.83 (2.6× worse)** |
 | joint monolithic @ 90 classes | intractable | **2.8 M vars, best: inf** |
+| temporal decomposition | 100% coverage | **100% coverage, 13.7 min** (after Phase A gym fix) |
 | curriculum decomposition | fixable | **6/6 days, full coverage** |
 | teacher model room floor | 85 theoretical | **106 at full coverage** |
 | teacher stays put | few rooms | **1.95 rooms/teacher, 0 out-of-area** |

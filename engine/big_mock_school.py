@@ -21,10 +21,10 @@ import math
 import pickle
 from collections import defaultdict
 
-# Import mock_classes2 from engine/ (was in schedule/ — audit A4).
-# Note: mock_classes2.py has module-level side effects (Faker.seed,
+# Import mock_school_generator from engine/ (was schedule/mock_classes2.py — audit A4).
+# Note: mock_school_generator.py has module-level side effects (Faker.seed,
 # random.seed, cp_model creation); harmless for our pure-data use.
-import mock_classes2 as mc  # noqa: E402
+import mock_school_generator as mc  # noqa: E402
 
 
 PROFILES = {

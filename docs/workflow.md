@@ -39,16 +39,86 @@ concorso e le compatibility lists `teacher_compatible_classes`.
 
 ## Phase B: scheduling (orario settimanale)
 
-**Modulo**: `experiments/cpsat_v2_timetable.py` +
-`experiments/decomposition_spectral_v2.py`. **Lancio**:
-`POST /api/optimize/phase-b` con i 5 budget temporali e il flag
-`use_decomposition`.
+**Modulo**: `cpsat_v2_timetable.py` +
+`decomposition_spectral_v2.py`. **Lancio**:
+`POST /api/optimize/phase-b` con i budget temporali, il flag
+`use_decomposition`, `thoroughness` e `respect_room_capacity`.
 
 Input: la tabella `assignments` + `school_classes` (con i HARD-toggles)
 + matrici di disponibilita' + vincoli logici.
 
 Output: la tabella `lessons`, una riga per ora di lezione
 `(teacher, class, subject, day, hour)` per ogni slot della settimana.
+
+### Parametri intelligenti (Smart Recommendations)
+
+L'endpoint `GET /api/optimize/parameters/recommend` analizza il DB
+corrente (numero classi, docenti, cattedre, vincoli, aule) e restituisce
+parametri consigliati per Phase B:
+
+- **time_a**, **time_mono** — scalati per dimensione scuola
+  (30–150s per Phase A, 60–300s per monolitico)
+- **workers** — 4–8 in base al numero di classi
+- **thoroughness** — `fast` se 0 vincoli, `balanced` per complessità
+  &lt;200, `thorough` altrimenti
+- **use_decomposition** — `true` per scuole con &gt;8 classi
+- **respect_room_capacity** — `true` solo se aule &lt; classi (turnazione)
+
+Il frontend espone un pulsante "Carica parametri consigliati" che popola
+i campi automaticamente. L'utente può comunque modificarli manualmente
+dopo il caricamento.
+
+### Thoroughness — qualità vs velocità
+
+Il parametro `thoroughness` (4 livelli: `fast | balanced | thorough |
+maximum`) controlla quanto il solver CP-SAT approfondisce la ricerca,
+mappandosi su due knob CP-SAT:
+
+| Livello | `relative_gap_limit` | `cp_model_probing_level` | Uso tipico |
+|---|---|---|---|
+| `fast` | 0.15 (15%) | 0 (spento) | Test rapidi, verifiche |
+| `balanced` | 0.05 (5%) | 1 (medio) | Default, uso normale |
+| `thorough` | 0.01 (1%) | 2 (completo) | Qualità massima |
+| `maximum` | 0 (nessuno) | 2 (completo) | Scuole piccole, run notturni |
+
+Il **gap limit** dice al solver: "fermati quando la distanza dall'ottimo
+teorico è ≤ X%". Gap 0% = cerca l'ottimo esatto (può non terminare).
+Il **probing** è una tecnica CP-SAT che esplora lo spazio in profondità
+prima di avviare la ricerca principale: spento su `fast`, attivo sugli
+altri livelli.
+
+### `respect_room_capacity` — capienza aule per slot
+
+Quando attivo, impone un vincolo HARD: in ogni `(giorno, ora)` il numero
+di classi che richiedono un'aula standard non può superare il numero
+totale di aule standard. È indispensabile quando il numero di aule è
+**inferiore** al numero di classi (es. 87 aule per 90 classi con
+turnazione del biennio).
+
+Se le aule sono ≥ classi, il vincolo è ridondante e va lasciato spento
+per non appesantire il modello.
+
+### Capienza aule speciali in Phase A ("palestre fissate")
+
+Da agosto 2026, la Phase A (distribuzione ore-per-giorno) rispetta la
+capienza delle aule speciali **prima** di passare alla Phase B. Per ogni
+tipo di aula speciale (es. palestra) e per ogni giorno, il solver impone:
+
+```
+sum(ore_di_materie_che_richiedono_quel_tipo, giorno) ≤ capienza_tipo × ore_per_giorno
+```
+
+Dove `capienza_tipo` è il `multi_class_max` dell'aula (es. 2 per le
+palestre, che ospitano due classi in contemporanea).
+
+Questo evita che la Phase A distribuisca in un giorno più ore di
+ginnastica di quante le palestre possano ospitare, causando
+INFEASIBLE nella Phase B. È il fix che ha portato la decomposizione
+temporale al 100% di copertura sul modello da 90 classi.
+
+La logica è in `build_special_room_ctx` (chiamata da `optimization.py`
+prima di Phase A) e nel vincolo `model.Add(sum(vars) <= cap)` dentro
+`solve_phase_a`.
 
 ### Decomposizione spettrale
 

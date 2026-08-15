@@ -1,9 +1,7 @@
-r"""Smoke tests per engine_diagnostics.
+"""Engine diagnostics smoke tests via pytest.
 
 Carica la soluzione optimised del profilo small e verifica che le tre
-funzioni diagnostic ritornino strutture sensate. Usa:
-
-    python engine/test_engine_diagnostics.py
+funzioni diagnostic ritornino strutture sensate.
 """
 from __future__ import annotations
 
@@ -11,22 +9,32 @@ import os
 import pickle
 import sys
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-if HERE not in sys.path:
-    sys.path.insert(0, HERE)
+import pytest
 
-import engine_diagnostics as diag  # noqa: E402
-import metaheuristics as meta  # noqa: E402
+# Add parent for engine imports
+PARENT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ENGINE = os.path.join(PARENT, "engine")
+if ENGINE not in sys.path:
+    sys.path.insert(0, ENGINE)
+
+# Add engine/scripts for engine_diagnostics
+SCRIPTS = os.path.join(PARENT, "scripts")
+if SCRIPTS not in sys.path:
+    sys.path.insert(0, SCRIPTS)
+
+# Skip if dependencies missing
+cv2 = pytest.importorskip("cpsat_v2_timetable")
+meta = pytest.importorskip("metaheuristics")
+diag = pytest.importorskip("engine_diagnostics")
 
 
-def main():
-    profs_path = os.path.join(HERE, "profs_small.pkl")
-    sol_path = os.path.join(HERE, "solution_timetable_small_optimized.pkl")
-    dc_path = os.path.join(HERE, "phase_a_dc_small.pkl")
+def test_engine_diagnostics():
+    """Smoke test for engine diagnostics via pytest."""
+    profs_path = os.path.join(PARENT, "scripts", "data", "small", "profs_small.pkl")
+    sol_path = os.path.join(PARENT, "scripts", "data", "small", "solution_timetable_small_optimized.pkl")
+    dc_path = os.path.join(PARENT, "scripts", "data", "small", "phase_a_dc_small.pkl")
     if not os.path.exists(sol_path):
-        print(f"SKIP: {sol_path} non esiste; runna prima "
-              f"run_full_pipeline.py --profile small.")
-        return 0
+        pytest.skip(f"SKIP: {sol_path} non esiste")
     with open(profs_path, "rb") as f:
         profs = pickle.load(f)
     with open(sol_path, "rb") as f:
@@ -101,9 +109,8 @@ def main():
         assert not wn2["ok"], "doveva trovare un PROF_OVERLAP"
 
     print("[test] all green")
-    return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    pytest.main([__file__, "-v"])
 # Moved from engine/scripts/ (audit T3)

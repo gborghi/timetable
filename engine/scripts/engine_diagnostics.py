@@ -29,9 +29,12 @@ import sys
 import time
 from collections import defaultdict
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-if HERE not in sys.path:
-    sys.path.insert(0, HERE)
+# Allow running as main script or imported from webui/tests
+# Add engine/ to allow imports of sibling modules
+SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
+PARENT_DIR = os.path.dirname(SCRIPTS_DIR)
+if PARENT_DIR not in sys.path:
+    sys.path.insert(0, PARENT_DIR)
 
 import cpsat_v2_timetable as cv2  # noqa: E402
 import metaheuristics as meta  # noqa: E402

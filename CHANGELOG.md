@@ -7,25 +7,61 @@ loosely; commit hashes refer to the canonical history on `main`.
 
 ## [Unreleased]
 
+### Added
+
+- **Thoroughness selector in Phase B** (`fast | balanced | thorough | maximum`).
+  Maps to CP-SAT `relative_gap_limit` (0.15/0.05/0.01/0) and
+  `cp_model_probing_level` (0/1/2/2). Lets users trade quality for speed.
+- **Smart parameter recommendations** (`GET /api/optimize/parameters/recommend`).
+  Analyses the current DB (class count, teachers, assignments, constraints,
+  rooms) and suggests time limits, workers, thoroughness, decomposition, and
+  room-capacity settings. Frontend button "Carica parametri consigliati" in the
+  Phase B card auto-populates the form.
+- **Phase A special-room capacity ("palestre fissate")**. `build_special_room_ctx`
+  now feeds into `solve_phase_a` so per-day PE distribution respects gym capacity
+  (e.g. 3 gyms × 2 classes = max 6 PE slots/hour) before Phase B runs.
+
+### Changed
+
+- **`respect_room_capacity` constraint uses `multi_class_max ≤ 1` filter** instead
+  of hardcoded `kind == "standard"` — area-based room kinds (liceo90doc) are now
+  correctly counted as standard rooms.
+- **Inverted indices in CP-SAT model**: `_tdh`, `_cdh`, `_cdh_detail` dicts provide
+  O(1) lookup for `slots_for_teacher_day_hour` and `slots_for_class_day_hour`,
+  replacing O(N) full-dict scans during model construction.
+- **Tight IntVar domains**: `n_five`, `n_one`, `freeday_pref_pen`, `uniform_pen`
+  bounds are computed from actual data (term count, triples, assignments) instead
+  of hardcoded constants.
+
+### Fixed
+
+- **Temporal decomposition broken after August changes**: Phase A was distributing
+  PE hours without respecting gym capacity, causing per-day INFEASIBLE. Fixed by
+  moving special-room capacity constraint from Phase B to Phase A. Result: 100%
+  coverage on 90-class model (was 66–83%).
+- **Phase B gap limit restored**: `relative_gap_limit=0.02` on per-day solves
+  prevents the solver from chasing soft-penalty optimality and timing out before
+  finding any feasible solution. Critical for non-deterministic 8-worker runs.
+- **`cg_helpers._seed_patterns` NameError**: extracted function referenced `DAYS`
+  and `HOURS` globals from `column_generation.py`. Fixed by adding `days` and
+  `hours` parameters.
+- **Frontend `crypto.randomUUID` polyfill** for HTTP origins (Tailscale IPs):
+  `static/polyfills.js` provides a `getRandomValues`-based fallback loaded as a
+  classic blocking `<script>` before any module code.
+
 ### Documentation
 
-- **Vintage editorial restyle of the manual (IT + EN)**.
-  EB Garamond with old-style figures, Tschichold-style page
-  geometry (inner 2.8 cm, outer 4.2 cm, ornamented foot), Roman
-  chapter numerals framed by `decofour` rosettes (from
-  `fourier-orns`), three-line drop caps with the opening text in
-  small caps, italic automark running heads (chapter on verso,
-  section on recto), fleurons enclosing the page number at the
-  foot, native KOMA-Script chapter format. New title page in
-  Aldine cover style with thick + thin rules, Senecan epigraph,
-  module stemma, year in Roman numerals.
-- **New chapter "Calendario settimanale, Tab Ore e operazioni
-  in massa"** (IT) / "Weekly calendar, working-hours tab, bulk
-  operations" (EN), covering `WeeklyCalendarView`, the conflict
-  modal, the Ore tab, the live `workingHoursStore` and bulk
-  actions on `/assignments`.
-- **New chapter "Qualita end-to-end"** (IT/EN) on the Cypress
-  suite, conventions, lessons learned.
+- **Guida vicepreside** (`webui/data/vicepreside_liceo90/index.html`) updated with
+  thoroughness selector, smart parameter recommendations, Phase A palestra fix,
+  and parameter table.
+- `docs/workflow.md`: new sections on smart parameters, thoroughness,
+  `respect_room_capacity`, and special-room capacity in Phase A.
+- `docs/optimization_strategies.md` + `docs/optimization_strategies_en.md`: new
+  "Parametri del solver Phase B" / "Phase B solver parameters" section.
+- `docs/ui_guide.md`: expanded `/optimize` section with Phase B parameters,
+  thoroughness, and decomposition alternatives.
+- `docs/experiments.md`: temporal decomposition section rewritten with the fix
+  story, gap limit rationale, and gyms-first approach explanation.
 
 ## 2026-05 cycle (Web UI rebirth)
 

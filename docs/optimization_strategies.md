@@ -571,6 +571,75 @@ espone questa funzione al frontend, che la usa per mostrare
 un tooltip "Suggerimento" nella card delle decomposizioni del
 tab Workflow.
 
+## Parametri del solver Phase B
+
+La card Phase B nel tab Workflow espone alcuni parametri chiave che
+controllano il comportamento del CP-SAT. Il backend fornisce
+raccomandazioni automatiche via
+`GET /api/optimize/parameters/recommend`, che analizza il DB corrente
+(numero classi, docenti, cattedre, vincoli, aule) e suggerisce valori
+ottimali. L'utente pu\`o comunque modificarli.
+
+### Thoroughness — qualit\`a vs velocit\`a
+
+Il selettore **Thoroughness** (4 livelli: `fast | balanced | thorough |
+maximum`) controlla quanto il solver approfondisce la ricerca,
+mappandosi su due knob CP-SAT:
+
+| Livello | `relative_gap_limit` | `cp_model_probing_level` | Uso tipico |
+|---|---|---|---|
+| `fast` | 0.15 (15%) | 0 (spento) | Test rapidi, verifiche preliminari |
+| `balanced` | 0.05 (5%) | 1 (medio) | Default, uso normale |
+| `thorough` | 0.01 (1%) | 2 (completo) | Qualit\`a massima, tempi ~2\× |
+| `maximum` | 0 (nessuno) | 2 (completo) | Scuole piccole o run notturni |
+
+Il **gap limit** dice al solver: "fermati quando la distanza
+dall'ottimo teorico \`e ≤ X%". Gap 0% = cerca l'ottimo esatto (pu\`o
+non terminare mai su scuole grandi). Il **probing** \`e una tecnica
+CP-SAT che esplora lo spazio delle soluzioni in profondit\`a prima di
+avviare la ricerca principale.
+
+### `respect_room_capacity` — capienza aule per slot
+
+Quando attivo, impone un vincolo HARD: in ogni (giorno, ora) il
+numero di classi che richiedono un'aula standard non pu\`o superare
+il numero totale di aule standard. \`E indispensabile quando le
+aule sono **inferiori** alle classi (es. 87 aule per 90 classi con
+turnazione del biennio). Se le aule sono ≥ classi, il vincolo \`e
+ridondante e va lasciato spento.
+
+### Capienza aule speciali in Phase A ("palestre fissate")
+
+Da agosto 2026, la Phase A (distribuzione ore-per-giorno) rispetta
+la capienza delle aule speciali **prima** di passare alla Phase B.
+La funzione `build_special_room_ctx` (in `optimization.py`) mappa
+le materie al tipo di aula richiesto (es. Scienze motorie →
+palestra) e calcola la capienza per tipo (es. 3 palestre × 2 classi
+= 6 posti per slot). Dentro `solve_phase_a`, per ogni giorno viene
+imposto:
+
+```
+sum(ore_di_materie_che_richiedono_quel_tipo, giorno) ≤ capienza_tipo × ore_per_giorno
+```
+
+Questo evita che la Phase A distribuisca in un giorno pi\`u ore di
+ginnastica di quante le palestre possano ospitare, causando
+INFEASIBLE nella Phase B. \`E il fix che ha portato la
+decomposizione temporale al 100% di copertura sul modello da 90
+classi.
+
+### Parametri automatici
+
+L'endpoint `GET /api/optimize/parameters/recommend` restituisce
+parametri scalati automaticamente:
+- **Tempi** (time_a, time_mono): 30–150s per Phase A, 60–300s per
+  monolitico, in base al numero di classi
+- **Workers**: 4 per ≤15 classi, 6 per ≤30, 8 oltre
+- **Thoroughness**: `fast` se 0 vincoli, `balanced` per
+  complessit\`a <200, `thorough` altrimenti
+- **Decomposizione**: attiva per >8 classi
+- **Capienza aule**: attiva solo se aule < classi
+
 ## Pipeline integrata: ordine consigliato
 
 ```
