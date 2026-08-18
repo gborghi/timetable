@@ -17,12 +17,14 @@ SQLite ALTER TABLE working. No code change needed when switching.
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.normpath(os.path.join(HERE, "..", "data"))
-os.makedirs(DATA_DIR, exist_ok=True)
+# Use pathlib.Path for cross-platform compatibility (Windows/macOS/Linux)
+HERE = Path(__file__).resolve().parent
+DATA_DIR = HERE.parent / "data"
+DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def _resolve_db_url() -> str:
@@ -34,7 +36,9 @@ def _resolve_db_url() -> str:
     env_url = os.environ.get("PITANTUM_DB_URL")
     if env_url:
         return env_url.strip()
-    return f"sqlite:///{os.path.join(DATA_DIR, 'timetable.db')}"
+    # Use pathlib.Path for cross-platform compatibility
+    db_path = DATA_DIR / "timetable.db"
+    return f"sqlite:///{db_path}"
 
 
 DB_URL = _resolve_db_url()
@@ -178,12 +182,13 @@ def init_db():
             from alembic import command
             from alembic.config import Config
 
-            backend_dir = os.path.dirname(os.path.abspath(__file__))
-            ini_path = os.path.join(backend_dir, "alembic.ini")
-            if os.path.exists(ini_path):
+            # Use pathlib.Path for cross-platform compatibility
+            backend_dir = Path(__file__).resolve().parent
+            ini_path = backend_dir / "alembic.ini"
+            if ini_path.exists():
                 alembic_cfg = Config(ini_path)
                 alembic_cfg.set_main_option(
-                    "script_location", os.path.join(backend_dir, "alembic"))
+                    "script_location", str(backend_dir / "alembic"))
                 command.stamp(alembic_cfg, "head")
         except Exception:
             # Schema is already canonical via create_all; a stamp

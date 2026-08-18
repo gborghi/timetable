@@ -11,18 +11,18 @@ port 8000 is NEVER contacted.
 """
 from __future__ import annotations
 
-import os
 import sys
-import tempfile
+from pathlib import Path
 
 import pytest
 
 # Make the backend package importable regardless of cwd.
-HERE = os.path.dirname(os.path.abspath(__file__))
-PARENT_DIR = os.path.dirname(HERE)
-WEBUI_DIR = os.path.dirname(PARENT_DIR)
-if WEBUI_DIR not in sys.path:
-    sys.path.insert(0, WEBUI_DIR)
+# Use pathlib.Path for cross-platform compatibility (Windows/macOS/Linux)
+HERE = Path(__file__).resolve().parent
+PARENT_DIR = HERE.parent
+WEBUI_DIR = PARENT_DIR.parent
+if str(WEBUI_DIR) not in sys.path:
+    sys.path.insert(0, str(WEBUI_DIR))
 
 
 @pytest.fixture(scope="session", autouse=True)
