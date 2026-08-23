@@ -286,6 +286,63 @@ def format_infeasibility(expl: dict) -> str:
     return f" Causa: {s}" if s else ""
 
 
+def days_from_room_penalties(penalties: dict | None) -> set[int]:
+    """Days that carry a room-λ (hour-only keys have no day)."""
+    out: set[int] = set()
+    for k in (penalties or {}):
+        if isinstance(k, tuple) and len(k) == 2:
+            out.add(int(k[0]))
+    return out
+
+
+def refine_days_with_room_penalties(
+        sol: dict, profs: dict, dc_value: dict,
+        room_slot_penalties: dict | None, *,
+        locked_by_day: dict | None = None,
+        time_limit: float = 30.0, workers: int = 4,
+        **solve_kw) -> tuple[dict, dict]:
+    """Re-solve the days named by ``room_slot_penalties`` with λ in
+    the soft objective, warm-started from the incumbent.
+
+    Days without a (day, hour) key are left untouched. A failed
+    re-solve keeps the incumbent day. Returns ``(new_sol, info)``.
+    """
+    info = {
+        "retried_days": [],
+        "replaced_days": [],
+        "failed_days": [],
+        "accepted": False,
+    }
+    days = days_from_room_penalties(room_slot_penalties)
+    if not sol or not days:
+        return sol, info
+    locks = locked_by_day or {}
+    merged = dict(sol)
+    any_replaced = False
+    for d in sorted(days):
+        info["retried_days"].append(int(d))
+        warm = {k: v for k, v in sol.items()
+                if v and len(k) == 5 and k[3] == d}
+        out, _st = solve_day(
+            d, profs, dc_value,
+            locked_slots_for_day=locks.get(d),
+            warm_start=warm or None,
+            room_slot_penalties=room_slot_penalties,
+            time_limit=time_limit, workers=workers,
+            **solve_kw)
+        if out is None:
+            info["failed_days"].append(int(d))
+            continue
+        for k in list(merged):
+            if len(k) == 5 and k[3] == d:
+                del merged[k]
+        merged.update(out)
+        info["replaced_days"].append(int(d))
+        any_replaced = True
+    info["accepted"] = any_replaced
+    return merged, info
+
+
 def fix_and_optimize_two_days(
         d_ok: int, d_fail: int, profs: dict, dc_value: dict,
         sol_ok: dict, *,

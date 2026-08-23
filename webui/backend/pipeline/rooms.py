@@ -298,6 +298,109 @@ def _apply_rooms_to_solution(sid: int, *, time_limit_s: float,
             "room_slot_penalties": room_slot_penalties}
 
 
+def retry_unplaced_days_with_lambda(
+        sid: int, rooms_metrics: dict[str, Any], *,
+        time_limit_s: float, workers: int, prefer_home: bool,
+        log_prefix: str = "rooms") -> dict[str, Any]:
+    """Second Phase B pass on days whose room step left lessons unplaced.
+
+    Folds ``room_slot_penalties`` into the day objective, warm-starts
+    from the incumbent, and only keeps a day that stays HARD-feasible.
+    Then re-runs the room step. No-op when every lesson already has a
+    room or λ has no (day, hour) keys.
+    """
+    pens = (rooms_metrics or {}).get("room_slot_penalties") or {}
+    if not pens or not rooms_metrics.get("rooms_unplaced"):
+        return rooms_metrics
+    try:
+        import decomposition_temporal as dec_t  # type: ignore
+        import metaheuristics as meta  # type: ignore
+        import cpsat_v2_timetable as cv2  # type: ignore
+    except ImportError:
+        return rooms_metrics
+    days = dec_t.days_from_room_penalties(pens)
+    if not days:
+        return rooms_metrics
+    from .hard_check import _hard_check_ctx, _load_dsl_hard_expressions
+    from .preflight import _locked_slots_by_day, _read_locked_lessons
+    with SessionLocal() as db:
+        sol = engine_io.lessons_to_solution_dict(db, sid)
+        profs = engine_io.profs_dict_from_db(db)
+        locked_snap = _read_locked_lessons(db)
+        hard_ctx = _hard_check_ctx(db)
+        solve_kw = dict(
+            coteach_groups=engine_io.coteach_groups_for_solver(db) or None,
+            support_assignments=engine_io.support_assignments_from_db(db)
+            or None,
+            parallel_groups=engine_io.parallel_groups_for_solver(db) or None,
+            group_assignments=engine_io.group_assignments_for_solver(db)
+            or None,
+            class_flags=engine_io.class_flags_from_db(db),
+            special_room_ctx=_build_sr_ctx(db),
+            plessi_ctx=_build_plessi_ctx(db),
+            dsl_hard_expressions=_load_dsl_hard_expressions(db),
+        )
+    dc_value = _dc_from_sol(sol)
+    print(f"[{log_prefix}] Phase B λ-retry sui giorni {sorted(days)}")
+    new_sol, info = dec_t.refine_days_with_room_penalties(
+        sol, profs, dc_value, pens,
+        locked_by_day=_locked_slots_by_day(locked_snap) or None,
+        time_limit=max(5.0, float(time_limit_s)),
+        workers=workers,
+        **solve_kw)
+    rooms_metrics = dict(rooms_metrics)
+    rooms_metrics["phase_b_lambda_retry"] = {
+        k: info[k] for k in ("retried_days", "replaced_days",
+                             "failed_days", "accepted")
+    }
+    if not info.get("accepted") or new_sol is sol:
+        print(f"[{log_prefix}] λ-retry: nessuna giornata sostituita")
+        return rooms_metrics
+    if not meta.is_hard_feasible(new_sol, profs, verbose=False, **hard_ctx):
+        print(f"[{log_prefix}] λ-retry scartato: non HARD-feasible")
+        rooms_metrics["phase_b_lambda_retry"]["accepted"] = False
+        rooms_metrics["phase_b_lambda_retry"]["reason"] = "not_hard_feasible"
+        return rooms_metrics
+    with SessionLocal() as db:
+        engine_io.replace_solution_lessons(db, sid, new_sol)
+    print(f"[{log_prefix}] λ-retry ha sostituito i giorni "
+          f"{info.get('replaced_days')}; riassegno aule")
+    again = _apply_rooms_to_solution(
+        sid, time_limit_s=time_limit_s, workers=workers,
+        prefer_home=prefer_home, log_prefix=f"{log_prefix}.lambda",
+        log=False)
+    again["phase_b_lambda_retry"] = rooms_metrics["phase_b_lambda_retry"]
+    again["phase_b_lambda_retried"] = True
+    return again
+
+
+def _dc_from_sol(sol: dict) -> dict:
+    out: dict = {}
+    for k, v in (sol or {}).items():
+        if not v or len(k) != 5:
+            continue
+        p, cl, s, d, _h = k
+        key = (p, cl, s, d)
+        out[key] = out.get(key, 0) + 1
+    return out
+
+
+def _build_sr_ctx(db):
+    try:
+        import cpsat_v2_timetable as cv2  # type: ignore
+        return cv2.build_special_room_ctx(db)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _build_plessi_ctx(db):
+    try:
+        import cpsat_v2_timetable as cv2  # type: ignore
+        return cv2.build_plessi_ctx(db)
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def run_classroom_assignment(time_limit_s: float, workers: int, log: bool,
                              prefer_home: bool = True) -> int:
     """Step 'Assegna aule' — uses engine/classroom_assignment.py."""

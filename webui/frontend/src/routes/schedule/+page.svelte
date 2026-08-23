@@ -793,6 +793,21 @@
       <a class="btn"
          href={downloadUrl('/api/schedule/export/pdf-teachers')}
          data-testid="schedule-export-pdf-teachers">pdf docenti</a>
+      <a class="btn"
+         href={downloadUrl('/api/schedule/export/xlsx-global')}
+         data-testid="schedule-export-xlsx-global">xlsx tabellone A3</a>
+      <a class="btn"
+         href={downloadUrl('/api/schedule/export/latex')}
+         data-testid="schedule-export-latex">latex</a>
+      <a class="btn"
+         href={downloadUrl('/api/schedule/export/latex?compile=true')}
+         data-testid="schedule-export-latex-pdf">latex pdf</a>
+      <a class="btn"
+         href={downloadUrl('/api/schedule/export/latex-global')}
+         data-testid="schedule-export-latex-global">latex A3</a>
+      <a class="btn"
+         href={downloadUrl('/api/schedule/export/latex-global?compile=true')}
+         data-testid="schedule-export-latex-global-pdf">latex A3 pdf</a>
       {#if !legacyMode}
         <a class="btn" href="?legacy=true"
            data-testid="schedule-legacy-link">vista legacy</a>

@@ -145,6 +145,9 @@ from .pipeline.rooms import (
 )
 from .pipeline.rooms import _unplaced_from_status as _unplaced_from_status
 from .pipeline.rooms import auto_generate_classrooms as auto_generate_classrooms
+from .pipeline.rooms import (
+    retry_unplaced_days_with_lambda as retry_unplaced_days_with_lambda,
+)
 from .pipeline.rooms import run_classroom_assignment as run_classroom_assignment
 
 # ----------------------------------------------------------------------
@@ -1403,6 +1406,12 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                         workers=workers, prefer_home=rooms_prefer_home,
                         log_prefix="phaseB.rooms", log=False,
                     )
+                if rooms_metrics.get("rooms_unplaced"):
+                    rooms_metrics = retry_unplaced_days_with_lambda(
+                        sid, rooms_metrics,
+                        time_limit_s=rooms_time_limit_s,
+                        workers=workers, prefer_home=rooms_prefer_home,
+                        log_prefix="phaseB.rooms")
             except Exception as e:  # noqa: BLE001
                 print(f"[phaseB] rooms step failed: {e}")
                 rooms_metrics = {"rooms_error": str(e)}
@@ -2116,6 +2125,13 @@ def run_meta(stage: str, budget_s: float, workers: int, log: bool,
                           hard_violations_count=0,
                           placed_lessons_count=sum(int(v) for v in
                                                     sol.values()))
+            _plessi_ctx_meta = None
+            try:
+                import cpsat_v2_timetable as _cv2m  # type: ignore
+                with SessionLocal() as _db_pl:
+                    _plessi_ctx_meta = _cv2m.build_plessi_ctx(_db_pl)
+            except Exception:  # noqa: BLE001
+                _plessi_ctx_meta = None
             c3_kwargs = dict(
                 coteach_groups=coteach_groups_meta or None,
                 support_assignments=support_assignments_meta or None,
@@ -2125,6 +2141,7 @@ def run_meta(stage: str, budget_s: float, workers: int, log: bool,
                 special_room_ctx=special_room_ctx_meta,
                 soft_rules=soft_rules,
                 dsl_hard_expressions=dsl_hard_expressions,
+                plessi_ctx=_plessi_ctx_meta,
             )
             if stage == "lns":
                 new_sol, _hist = meta.run_lns(
@@ -2223,6 +2240,12 @@ def run_meta(stage: str, budget_s: float, workers: int, log: bool,
                     workers=workers, prefer_home=rooms_prefer_home,
                     log_prefix=f"{stage}.rooms", log=False,
                 )
+                if rooms_metrics.get("rooms_unplaced"):
+                    rooms_metrics = retry_unplaced_days_with_lambda(
+                        sid, rooms_metrics,
+                        time_limit_s=rooms_time_limit_s,
+                        workers=workers, prefer_home=rooms_prefer_home,
+                        log_prefix=f"{stage}.rooms")
             except Exception as e:  # noqa: BLE001
                 print(f"[{stage}] rooms step failed: {e}")
                 rooms_metrics = {"rooms_error": str(e)}
@@ -2624,6 +2647,12 @@ def run_full_pipeline(profile: str,
                     workers=workers, prefer_home=prefer_home,
                     log_prefix=f"{stage_label}.rooms", log=False,
                 )
+                if rm.get("rooms_unplaced"):
+                    rm = retry_unplaced_days_with_lambda(
+                        state["sid"], rm,
+                        time_limit_s=tlim, workers=workers,
+                        prefer_home=prefer_home,
+                        log_prefix=f"{stage_label}.rooms")
                 state["rooms_metrics"] = {**state["rooms_metrics"], **rm}
             except Exception as e:  # noqa: BLE001
                 print(f"[{stage_label}] rooms step failed: {e}")
@@ -3187,11 +3216,19 @@ def run_full_pipeline(profile: str,
                         os.path.dirname(__file__), "..", "..", "engine",
                     ))
                     import lagrangian as lag_mod  # type: ignore
+                    _plessi_full = None
+                    try:
+                        import cpsat_v2_timetable as _cv2f  # type: ignore
+                        with SessionLocal() as _db_plf:
+                            _plessi_full = _cv2f.build_plessi_ctx(_db_plf)
+                    except Exception:  # noqa: BLE001
+                        _plessi_full = None
                     new_sol, _info = lag_mod.run_lagrangian(
                         sol, profs, dc_value,
                         time_budget_s=budget_lns,
                         classes_clusters=classes_clusters,
                         log=True,
+                        plessi_ctx=_plessi_full,
                     )
                 else:  # "ils"
                     new_sol = meta.run_ils(

@@ -86,6 +86,15 @@ describe('/schedule -- empty state (no active Solution)', () => {
     cy.get('[data-testid="schedule-export-pdf-teachers"]')
       .should('have.attr', 'href')
       .and('include', '/api/schedule/export/pdf-teachers');
+    cy.get('[data-testid="schedule-export-xlsx-global"]')
+      .should('have.attr', 'href')
+      .and('include', '/api/schedule/export/xlsx-global');
+    cy.get('[data-testid="schedule-export-latex"]')
+      .should('have.attr', 'href')
+      .and('include', '/api/schedule/export/latex');
+    cy.get('[data-testid="schedule-export-latex-global"]')
+      .should('have.attr', 'href')
+      .and('include', '/api/schedule/export/latex-global');
   });
 
   it('clicking view buttons does not crash without a solution', () => {

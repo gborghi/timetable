@@ -104,6 +104,35 @@ def _cluster_profs(profs: dict, cluster_classes: set[str]) -> dict:
     return sub
 
 
+def clusters_from_plesso_pins(
+        class_to_plesso: dict | None,
+        all_classes=None) -> dict[int, set[str]]:
+    """Partition classes by known plesso pin.
+
+    Teachers whose cattedre span two pins become the Lagrangian
+    bridges -- that is the teacher-plesso cut. Unpinned classes land
+    in a trailing cluster so they are not dropped. Empty / a single
+    non-empty part returns {} (nothing to dualize).
+    """
+    if not class_to_plesso:
+        return {}
+    by_pl: dict[int, set[str]] = {}
+    for cl, pid in class_to_plesso.items():
+        if cl is None or pid is None:
+            continue
+        by_pl.setdefault(int(pid), set()).add(cl)
+    if all_classes is not None:
+        covered = set().union(*by_pl.values()) if by_pl else set()
+        missing = set(all_classes) - covered
+        if missing:
+            nxt = (max(by_pl) + 1) if by_pl else 0
+            by_pl[nxt] = missing
+    nonempty = {k: v for k, v in by_pl.items() if v}
+    if len(nonempty) < 2:
+        return {}
+    return nonempty
+
+
 def run_lagrangian(sol: dict, profs: dict, dc_value: dict,
                    *, time_budget_s: float = 60.0,
                    max_iter: int = 8,
@@ -121,7 +150,9 @@ def run_lagrangian(sol: dict, profs: dict, dc_value: dict,
                    total_room_capacity=None,
                    db=None,
                    dsl_hard_expressions=None,
-                   soft_rules=None) -> tuple[dict, dict]:
+                   soft_rules=None,
+                   class_to_plesso: dict | None = None,
+                   plessi_ctx=None) -> tuple[dict, dict]:
     """Genuine Lagrangian relaxation of the cross-cluster bridge coupling.
 
     Returns ``(best_sol, info)``. ``best_sol`` is the reconstructed week when
@@ -145,6 +176,7 @@ def run_lagrangian(sol: dict, profs: dict, dc_value: dict,
         "mode": None,
         "duration_s": None,
         "warnings": [],
+        "cluster_source": None,
     }
 
     def _finish(result_sol):
@@ -157,6 +189,24 @@ def run_lagrangian(sol: dict, profs: dict, dc_value: dict,
                   f"dual_bound={info['dual_bound']} "
                   f"in {info['duration_s']:.1f}s")
         return result_sol, info
+
+    # Teacher-plesso cut: when the caller did not supply a partition,
+    # cluster classes by their known site so a teacher who commutes
+    # between plessi is the bridge. ``plessi_ctx`` is ``(PlessiData,
+    # class_to_plesso)`` from ``build_plessi_ctx``.
+    if plessi_ctx and class_to_plesso is None:
+        try:
+            class_to_plesso = plessi_ctx[1]
+        except Exception:  # noqa: BLE001
+            class_to_plesso = None
+    cluster_source = "caller" if classes_clusters else None
+    if not classes_clusters:
+        auto = clusters_from_plesso_pins(
+            class_to_plesso, _all_classes(profs))
+        if auto:
+            classes_clusters = auto
+            cluster_source = "plesso"
+    info["cluster_source"] = cluster_source
 
     # --- degradation guards: return the input unchanged (never regress) ---
     if not classes_clusters:

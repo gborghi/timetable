@@ -916,3 +916,68 @@ def export_pdf_teachers(db: Session = Depends(get_db)):
         buf, media_type="application/pdf",
         headers={"Content-Disposition": 'attachment; filename="orario_docenti.pdf"'},
     )
+
+
+@router.get("/export/xlsx-global")
+def export_xlsx_global(db: Session = Depends(get_db)):
+    """Teacher × day-hour board, A3 landscape, class in each cell."""
+    import exporters  # type: ignore
+    tmpdir = tempfile.mkdtemp(prefix="webui_export_")
+    school_p, profs_p, sol_p = _write_pickles(db, tmpdir)
+    out_path = os.path.join(tmpdir, "orario_globale_docenti.xlsx")
+    exporters.export_global_teacher_board_to_xlsx(
+        sol_p, school_p, profs_p, out_path
+    )
+    return FileResponse(
+        out_path, filename="orario_globale_docenti.xlsx",
+        media_type=("application/"
+                    "vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+    )
+
+
+def _latex_response(tex_path: str, filename: str, *, compile_pdf: bool):
+    import exporters  # type: ignore
+    if not compile_pdf:
+        return FileResponse(
+            tex_path, filename=filename,
+            media_type="application/x-tex",
+        )
+    pdf = exporters.compile_latex(tex_path)
+    if pdf is None:
+        raise HTTPException(
+            503,
+            "compilatore LaTeX non disponibile o compilazione fallita; "
+            "scarica il .tex e compilalo in locale",
+        )
+    return FileResponse(
+        pdf, filename=os.path.basename(pdf),
+        media_type="application/pdf",
+    )
+
+
+@router.get("/export/latex")
+def export_latex(compile: bool = Query(False),
+                 db: Session = Depends(get_db)):
+    """Class + teacher boards as LaTeX (or compiled PDF if compile=1)."""
+    import exporters  # type: ignore
+    tmpdir = tempfile.mkdtemp(prefix="webui_export_")
+    school_p, profs_p, sol_p = _write_pickles(db, tmpdir)
+    tex_path = os.path.join(tmpdir, "orario.tex")
+    exporters.export_schedules_to_latex(sol_p, school_p, profs_p, tex_path)
+    return _latex_response(tex_path, "orario.tex", compile_pdf=compile)
+
+
+@router.get("/export/latex-global")
+def export_latex_global(compile: bool = Query(False),
+                        db: Session = Depends(get_db)):
+    """A3 teacher × day-hour board as LaTeX (or compiled PDF)."""
+    import exporters  # type: ignore
+    tmpdir = tempfile.mkdtemp(prefix="webui_export_")
+    school_p, profs_p, sol_p = _write_pickles(db, tmpdir)
+    tex_path = os.path.join(tmpdir, "orario_globale_docenti.tex")
+    exporters.export_global_teacher_board_to_latex(
+        sol_p, school_p, profs_p, tex_path
+    )
+    return _latex_response(
+        tex_path, "orario_globale_docenti.tex", compile_pdf=compile,
+    )
