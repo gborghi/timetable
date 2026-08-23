@@ -146,7 +146,22 @@ del codice in cui il concetto vive.
   della stessa classe di concorso. \`E
   \texttt{is\_potenziamento=True} su \texttt{assignments}
   e tipicamente \emph{non} si traduce in ore in compresenza:
-  sono ore separate.
+  sono ore separate. Non va confuso con la
+  \emph{disposizione}: il potenziamento \`e una cattedra
+  senza classe e senza \texttt{Lesson}; la disposizione
+  ha uno slot esatto.
+
+\item[Disposizione.]\index{Disposizione}\index{Ore di disposizione}
+  \emph{Alias}: ore di disposizione, standby, ora a
+  disposizione. Ora in cui il docente \`e in servizio senza
+  classe n\'e aula, pronto per una supplenza. Quota
+  settimanale su \texttt{teachers.disposizione\_hours};
+  policy scolastica in
+  \texttt{school\_disposizione\_config}. In orario \`e una
+  \texttt{Lesson} sentinella
+  (\texttt{class\_name=\_\_disposizione\_\_}). Nel tab
+  Assenze e supplenze il docente resta disponibile (badge
+  \textbf{DISP}). Il piazzamento prescinde dalla materia.
 
 \item[Gruppo articolato.]\index{Gruppo articolato}
   \emph{Alias}: classe articolata, articolata, group (codice).

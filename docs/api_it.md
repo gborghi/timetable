@@ -61,6 +61,27 @@ Tutte le azioni della UI passano da endpoint REST sotto
   fallback di `import-profile`; l'upload utente e' stato rimosso.
 - `/api/diagnostics/*` -- statistica asincrona (montecarlo,
   bipartite, correlazioni, distribuzioni).
+- `/api/coverage/*` -- griglia settimanale assenze / supplenze
+  (`GET /week`, `GET /cell`) e policy delle ore di
+  disposizione usata da quella griglia:
+  - `GET /api/coverage/disposizione` -- config scolastica
+    (`max_total_hours`, `eligibility` = `all`|`under_contract`,
+    `slot_priorities`, `placed_hours` sulla soluzione attiva).
+  - `PUT /api/coverage/disposizione` -- salva la policy e
+    ripiazza le ore di disposizione sulla soluzione attiva.
+  - `POST /api/coverage/disposizione/place` -- solo ripiazza
+    (dopo un cambio di quote per docente, o per annullare uno
+    spostamento manuale).
+  La quota settimanale per docente e' `Teacher.disposizione_hours`
+  su `POST`/`PUT /api/teachers` (`null` in PUT lascia la quota
+  invariata). Le ore piazzate sono `Lesson` sentinella
+  (`class_name=__disposizione__`) e si spostano con il
+  consueto `/api/schedule/move-lesson`.
+  `GET /api/coverage/cell` marca ogni docente disponibile con
+  `is_disposizione` / `is_hole` / `kind`, piu'
+  `matches_lesson_subject` / `matches_absent_subjects`.
+- `/api/absences`, `/api/substitutions` -- CRUD della stessa
+  griglia (invariati).
 - `/api/health` -- liveness probe (200 OK + versione).
 
 Schemi: `webui/backend/schemas.py` (Pydantic v2). OpenAPI JSON:

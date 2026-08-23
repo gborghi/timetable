@@ -180,6 +180,7 @@ class TeacherBase(BaseModel):
     max_hours: int = 18
     completion_hours: int = 0
     exemption_hours: int = 0
+    disposizione_hours: int | None = 0
     graduatoria_score: float | None = Field(
         default=None,
         description="Punteggio in graduatoria provinciale (0-300). "
@@ -1479,3 +1480,21 @@ class WorkingHoursConfigOut(BaseModel):
                     "of slots (engine integration is simplest in "
                     "this case)"
     )
+
+
+class DisposizioneSlotPriority(BaseModel):
+    day: int = Field(ge=1, le=6)
+    hour: int = Field(ge=8, le=13)
+    weight: int = Field(ge=0, le=100, default=1)
+
+
+class DisposizioneConfigIn(BaseModel):
+    max_total_hours: int | None = Field(default=None, ge=0)
+    eligibility: Literal["all", "under_contract"] = "all"
+    slot_priorities: list[DisposizioneSlotPriority] = Field(
+        default_factory=list)
+
+
+class DisposizioneConfigOut(DisposizioneConfigIn):
+    placed_hours: int = 0
+    model_config = ConfigDict(from_attributes=True)

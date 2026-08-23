@@ -11,6 +11,10 @@
   let weekStart = mondayOf(new Date());
   let coverage = null;        // WeekCoverageOut
   let allTeachers = [];
+  let dispConfig = null;      // school-wide disposizione policy
+  let dispCap = '';
+  let dispEligibility = 'all';
+  let showDispPanel = false;
 
   // modals
   let absencesModal = null;   // { date, day }
@@ -49,6 +53,43 @@
     try {
       coverage = await api.get('/api/coverage/week?week_start=' + weekStart);
       allTeachers = await api.get('/api/teachers');
+      try {
+        dispConfig = await api.get('/api/coverage/disposizione');
+        dispCap = dispConfig.max_total_hours == null
+          ? '' : String(dispConfig.max_total_hours);
+        dispEligibility = dispConfig.eligibility || 'all';
+      } catch { /* older backends without the endpoint */ }
+    } catch (e) {
+      flash('Errore: ' + e.message, 'error');
+    }
+  }
+
+  async function saveDispConfig() {
+    try {
+      const cap = dispCap === '' ? null : Number(dispCap);
+      dispConfig = await api.put('/api/coverage/disposizione', {
+        max_total_hours: (cap === null || Number.isNaN(cap)) ? null : cap,
+        eligibility: dispEligibility,
+        slot_priorities: (dispConfig && dispConfig.slot_priorities) || [],
+      });
+      dispCap = dispConfig.max_total_hours == null
+        ? '' : String(dispConfig.max_total_hours);
+      flash('Politica disposizione salvata'
+            + (dispConfig.placed_hours
+               ? ` (${dispConfig.placed_hours} ore piazzate)` : ''),
+            'success');
+      await load();
+    } catch (e) {
+      flash('Errore: ' + e.message, 'error');
+    }
+  }
+
+  async function replaceDisp() {
+    try {
+      const r = await api.post('/api/coverage/disposizione/place', {});
+      flash(`Disposizione ripiazzata: ${r.placed_hours || 0} ore`,
+            'success');
+      await load();
     } catch (e) {
       flash('Errore: ' + e.message, 'error');
     }
@@ -134,6 +175,8 @@
       const detail = await api.get(
         `/api/coverage/cell?date=${date}&day=${day}&hour=${hour}`
       );
+      availFilter = 'all';
+      availQuery = '';
       cellModal = { date, day, hour, detail };
     } catch (e) { flash('Errore: ' + e.message, 'error'); }
   }
@@ -192,6 +235,44 @@
                     || cellModal.detail.uncovered.length === 0
                     || cellModal.detail.uncovered.every((u) => u.substitute_teacher_id);
 
+  // Selection chips in the substitutions pane. Disposizione placement
+  // stays subject-agnostic; these only filter who is shown/draggable.
+  let availFilter = 'all';
+  let availQuery = '';
+
+  $: uncoveredSubjects = !cellModal || !cellModal.detail
+    ? []
+    : [...new Set((cellModal.detail.uncovered || [])
+        .map((u) => u.subject)
+        .filter(Boolean))];
+
+  $: filteredAvailable = !cellModal || !cellModal.detail
+    ? []
+    : (cellModal.detail.available || []).filter((t) => {
+        const q = availQuery.trim().toLowerCase();
+        if (q) {
+          const hay = [
+            t.display, t.name, t.group,
+            ...(t.subjects || []),
+          ].filter(Boolean).join(' ').toLowerCase();
+          if (!hay.includes(q)) return false;
+        }
+        if (availFilter === 'same_subject') return !!t.matches_lesson_subject;
+        if (availFilter === 'same_as_absent') return !!t.matches_absent_subjects;
+        if (availFilter === 'disposizione') return !!t.is_disposizione;
+        if (availFilter === 'hole') return !!t.is_hole;
+        if (availFilter === 'free') return t.kind === 'free';
+        if (availFilter === 'potenziamento') return !!t.is_potenziamento;
+        if (availFilter === 'under_hours') {
+          return (t.scheduled_hours || 0) < (t.max_hours || 0);
+        }
+        return true;
+      });
+
+  function setAvailFilter(next) {
+    availFilter = next;
+  }
+
   async function closeCellModal() {
     if (cellModal && cellModal.detail
         && cellModal.detail.uncovered.some((u) => !u.substitute_teacher_id)) {
@@ -215,6 +296,10 @@
               data-testid="absences-next-week">settimana succ. &gt;</button>
       <button class="btn" on:click={() => { weekStart = mondayOf(new Date()); load(); }}
               data-testid="absences-today">oggi</button>
+      <button class="btn" on:click={() => (showDispPanel = !showDispPanel)}
+              data-testid="absences-disp-toggle">
+        {showDispPanel ? 'Chiudi disposizione' : 'Ore di disposizione'}
+      </button>
     </svelte:fragment>
   </PageHero>
 
@@ -223,11 +308,50 @@
   {:else if !coverage.has_active_solution}
     <p class="text-sm text-amber-700">Nessuna soluzione attiva: importa o calcola un orario per usare questa pagina.</p>
   {:else}
+    {#if showDispPanel}
+      <div class="card p-3 space-y-2" data-testid="disp-policy-panel">
+        <h3 class="!text-base">Ore di disposizione</h3>
+        <p class="text-xs text-ink-500">
+          Quota per docente nella scheda Docenti. Qui il tetto scolastico,
+          chi è eleggibile, e il ripiazzamento sulla soluzione attiva
+          (senza classe né aula). Le ore si spostano a mano dal tab Orario.
+        </p>
+        <div class="flex flex-wrap items-end gap-3">
+          <label class="text-sm">
+            Tetto scolastico
+            <input type="number" min="0" class="block px-2 py-1 border border-ink-200 rounded text-sm w-28"
+                   bind:value={dispCap} placeholder="nessun tetto"
+                   data-testid="disp-cap-input"/>
+          </label>
+          <label class="text-sm">
+            Assegna a
+            <select class="block px-2 py-1 border border-ink-200 rounded text-sm"
+                    bind:value={dispEligibility}
+                    data-testid="disp-eligibility">
+              <option value="all">tutti i docenti con quota</option>
+              <option value="under_contract">solo sotto le ore contrattuali</option>
+            </select>
+          </label>
+          <button class="btn-primary" on:click={saveDispConfig}
+                  data-testid="disp-save">Salva e piazza</button>
+          <button class="btn" on:click={replaceDisp}
+                  data-testid="disp-replace">Ripiazza ora</button>
+          {#if dispConfig}
+            <span class="text-xs text-ink-500">
+              {dispConfig.placed_hours ?? 0} ore in orario
+            </span>
+          {/if}
+        </div>
+      </div>
+    {/if}
+
     <p class="text-xs text-ink-500">
       Click sull'<strong>intestazione di un giorno</strong> per registrare le assenze;
       click su una <strong>cella</strong> per vedere chi e disponibile e
       assegnare supplenze (drag-drop). Le celle rosse hanno classi scoperte;
-      verdi sono coperte.
+      verdi sono coperte. In lista: <strong>DISP</strong> = disposizione ufficiale,
+      <strong>BUCO</strong> = ora vuota tra prima e ultima lezione (priorità
+      più alta tra i liberi), gli altri sono semplicemente liberi.
     </p>
 
     <div class="card overflow-x-auto">
@@ -294,7 +418,19 @@
                       <div class="text-xs text-ink-300">-</div>
                     {/if}
                     <div class="text-[10px] text-ink-500">
-                      {cell?.n_available_teachers ?? 0} disp.
+                      {cell?.n_available_teachers ?? 0} liberi
+                      {#if cell?.n_disposizione_teachers}
+                        <span class="ml-1 text-sky-700 font-semibold"
+                              title="In disposizione ufficiale">
+                          {cell.n_disposizione_teachers} disp
+                        </span>
+                      {/if}
+                      {#if cell?.n_hole_teachers}
+                        <span class="ml-1 text-amber-800 font-semibold"
+                              title="Buco tra prima e ultima ora">
+                          {cell.n_hole_teachers} buco
+                        </span>
+                      {/if}
                     </div>
                   </button>
                 </td>
@@ -436,38 +572,143 @@
       <div>
         <h3 class="!text-base mb-2">
           Docenti disponibili
-          <span class="pill ml-1">{cellModal.detail.available.length}</span>
+          <span class="pill ml-1">{filteredAvailable.length}</span>
+          {#if filteredAvailable.length !== cellModal.detail.available.length}
+            <span class="text-[11px] text-ink-400 font-normal">
+              / {cellModal.detail.available.length}
+            </span>
+          {/if}
         </h3>
         <p class="text-[11px] text-ink-500 mb-2">
           Esclusi: docenti assenti oggi, in giorno libero, gia' impegnati
-          o gia' usati come supplenti.
+          o gia' usati come supplenti. La disposizione non dipende dalla
+          materia: i filtri qui sotto selezionano solo chi mostrare.
         </p>
+        <div class="mb-2 space-y-1" data-testid="avail-filters">
+          <input class="w-full px-2 py-1 border border-ink-200 rounded text-sm"
+                 placeholder="filtra per nome, classe di concorso, materia..."
+                 bind:value={availQuery}
+                 data-testid="avail-query"/>
+          <div class="flex flex-wrap gap-1">
+            <button class="btn !text-[10px] !px-2 !py-0.5"
+                    class:!bg-ink-800={availFilter === 'all'}
+                    class:!text-white={availFilter === 'all'}
+                    on:click={() => setAvailFilter('all')}
+                    data-testid="avail-filter-all">Tutti</button>
+            <button class="btn !text-[10px] !px-2 !py-0.5"
+                    class:!bg-sky-700={availFilter === 'same_subject'}
+                    class:!text-white={availFilter === 'same_subject'}
+                    on:click={() => setAvailFilter('same_subject')}
+                    title={uncoveredSubjects.length
+                      ? ('Stessa materia della lezione: ' + uncoveredSubjects.join(', '))
+                      : 'Stessa materia della lezione scoperta'}
+                    data-testid="avail-filter-same-subject">
+              Stessa materia{uncoveredSubjects.length ? ` (${uncoveredSubjects.join(', ')})` : ''}
+            </button>
+            <button class="btn !text-[10px] !px-2 !py-0.5"
+                    class:!bg-sky-700={availFilter === 'same_as_absent'}
+                    class:!text-white={availFilter === 'same_as_absent'}
+                    on:click={() => setAvailFilter('same_as_absent')}
+                    title="Docenti che insegnano almeno una materia del collega assente"
+                    data-testid="avail-filter-same-as-absent">
+              Materie del collega
+            </button>
+            <button class="btn !text-[10px] !px-2 !py-0.5"
+                    class:!bg-sky-600={availFilter === 'disposizione'}
+                    class:!text-white={availFilter === 'disposizione'}
+                    on:click={() => setAvailFilter('disposizione')}
+                    data-testid="avail-filter-disp">Disposizione</button>
+            <button class="btn !text-[10px] !px-2 !py-0.5"
+                    class:!bg-amber-700={availFilter === 'hole'}
+                    class:!text-white={availFilter === 'hole'}
+                    on:click={() => setAvailFilter('hole')}
+                    data-testid="avail-filter-hole">Buco</button>
+            <button class="btn !text-[10px] !px-2 !py-0.5"
+                    class:!bg-ink-500={availFilter === 'free'}
+                    class:!text-white={availFilter === 'free'}
+                    on:click={() => setAvailFilter('free')}
+                    data-testid="avail-filter-free">Liberi</button>
+            <button class="btn !text-[10px] !px-2 !py-0.5"
+                    class:!bg-purple-700={availFilter === 'potenziamento'}
+                    class:!text-white={availFilter === 'potenziamento'}
+                    on:click={() => setAvailFilter('potenziamento')}
+                    data-testid="avail-filter-pot">Potenziamento</button>
+            <button class="btn !text-[10px] !px-2 !py-0.5"
+                    class:!bg-ink-700={availFilter === 'under_hours'}
+                    class:!text-white={availFilter === 'under_hours'}
+                    on:click={() => setAvailFilter('under_hours')}
+                    data-testid="avail-filter-under">Sotto contratto</button>
+          </div>
+        </div>
         {#if cellModal.detail.available.length === 0}
           <p class="text-xs text-ink-400 italic">Nessun docente disponibile.</p>
+        {:else if filteredAvailable.length === 0}
+          <p class="text-xs text-ink-400 italic">
+            Nessun docente con questo filtro.
+            <button class="underline" on:click={() => { availFilter = 'all'; availQuery = ''; }}>
+              Mostra tutti
+            </button>
+          </p>
         {:else}
           <p class="text-[11px] text-ink-400 mb-1">
             <span class="pill !text-[9px]"
+              style="background:#bae6fd;color:#0c4a6e;">DISP</span>
+            disposizione ufficiale ·
+            <span class="pill !text-[9px]"
+              style="background:#fde68a;color:#78350f;font-weight:700;">BUCO</span>
+            buco (meno scomodo) ·
+            <span class="pill !text-[9px]"
+              style="background:#e5e7eb;color:#374151;">LIBERO</span>
+            semplicemente libero ·
+            <span class="pill !text-[9px]"
               style="background:#e9d5ff;color:#581c87;">POT</span>
-            in cima = docenti con ore di potenziamento
-            (Legge 107), priorita' supplenze.
+            potenziamento (Legge 107).
           </p>
           <ul class="space-y-1 max-h-96 overflow-auto">
-            {#each cellModal.detail.available as t}
+            {#each filteredAvailable as t}
               <li class="card !shadow-none p-2 cursor-grab
                          hover:bg-accent-500/10 active:cursor-grabbing"
-                  class:!border-purple-300={t.is_potenziamento}
-                  class:!bg-purple-50={t.is_potenziamento}
+                  class:!border-sky-400={t.is_disposizione}
+                  class:!bg-sky-50={t.is_disposizione}
+                  class:!border-amber-500={t.is_hole && !t.is_disposizione}
+                  class:!bg-amber-100={t.is_hole && !t.is_disposizione}
+                  class:!border-purple-300={t.is_potenziamento && !t.is_disposizione && !t.is_hole}
+                  class:!bg-purple-50={t.is_potenziamento && !t.is_disposizione && !t.is_hole}
+                  class:!ring-2={t.is_hole}
+                  class:!ring-amber-500={t.is_hole}
                   draggable="true"
                   on:dragstart={(ev) => onDragStart(ev, t)}
                   on:dragend={onDragEnd}
                   title="Trascina su una classe scoperta">
                 <div class="flex items-baseline justify-between">
                   <strong>
+                    {#if t.is_disposizione}
+                      <span class="pill !text-[9px]"
+                        style="background:#bae6fd;color:#0c4a6e;"
+                        title="In disposizione ufficiale in questa ora"
+                      >DISP</span>
+                    {:else if t.is_hole}
+                      <span class="pill !text-[9px] font-bold"
+                        style="background:#fde68a;color:#78350f;"
+                        title="Buco tra prima e ultima lezione: coprire e' meno scomodo"
+                      >BUCO</span>
+                    {:else}
+                      <span class="pill !text-[9px]"
+                        style="background:#e5e7eb;color:#374151;"
+                        title="Semplicemente libero in questa ora"
+                      >LIBERO</span>
+                    {/if}
                     {#if t.is_potenziamento}
                       <span class="pill !text-[9px]"
                         style="background:#e9d5ff;color:#581c87;"
                         title={`${t.potenziamento_hours}h di potenziamento`}
                       >POT</span>
+                    {/if}
+                    {#if t.matches_lesson_subject}
+                      <span class="pill !text-[9px]"
+                        style="background:#dbeafe;color:#1e3a8a;"
+                        title="Insegna la materia della lezione scoperta"
+                      >MAT</span>
                     {/if}
                     {t.display}
                   </strong>

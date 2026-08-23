@@ -130,6 +130,7 @@
       max_hours: TEACHER_DEFAULTS.max_hours,
       completion_hours: TEACHER_DEFAULTS.completion_hours,
       exemption_hours: TEACHER_DEFAULTS.exemption_hours,
+      disposizione_hours: TEACHER_DEFAULTS.disposizione_hours,
       graduatoria_score: null,
       free_day: TEACHER_DEFAULTS.free_day,
       max_consecutive: TEACHER_DEFAULTS.max_consecutive,
@@ -508,6 +509,7 @@
       <div class="field"><label title="Numero massimo di ore settimanali che il docente può insegnare.">Max ore-cattedra</label><input type="number" bind:value={editing.max_hours} data-testid="teacher-max-hours-input"/></div>
       <div class="field"><label title="Ore che il docente completa in questa scuola (spezzone / part-time). Facoltativo.">Ore di completamento</label><input type="number" bind:value={editing.completion_hours}/></div>
       <div class="field"><label title="Ore di esonero dall'insegnamento (es. per incarichi o funzioni strumentali). Facoltativo.">Ore di esonero</label><input type="number" bind:value={editing.exemption_hours}/></div>
+      <div class="field"><label title="Ore settimanali di disposizione (standby per supplenze). L'ottimizzatore le piazza senza classe né aula; restano disponibili in Assenze e supplenze e si possono spostare a mano.">Ore di disposizione</label><input type="number" min="0" bind:value={editing.disposizione_hours} data-testid="teacher-disposizione-hours-input"/></div>
       <div class="field">
         <label title="Punteggio in graduatoria provinciale (0-300). Usato dal preset 'Anzianita' di Phase A per assegnare i docenti piu' anziani agli indirizzi pesanti.">
           Punteggio graduatoria

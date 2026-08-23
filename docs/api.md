@@ -58,6 +58,27 @@ Major resource families:
   fallback for `import-profile`; user pickle upload is gone.
 - `/api/diagnostics/*` -- async statistics (montecarlo,
   bipartite, correlations, distributions).
+- `/api/coverage/*` -- weekly absence / substitution board
+  (`GET /week`, `GET /cell`) plus the disposizione (standby)
+  policy used by that board:
+  - `GET /api/coverage/disposizione` -- school-wide config
+    (`max_total_hours`, `eligibility` = `all`|`under_contract`,
+    `slot_priorities`, `placed_hours` on the active solution).
+  - `PUT /api/coverage/disposizione` -- save the policy and
+    re-place standby hours on the active solution.
+  - `POST /api/coverage/disposizione/place` -- re-place only
+    (after changing per-teacher quotas, or to undo a manual
+    move).
+  Per-teacher weekly quota is `Teacher.disposizione_hours`
+  on `POST`/`PUT /api/teachers` (`null` on PUT leaves the
+  existing quota unchanged). Placed hours are sentinel
+  `Lesson` rows (`class_name=__disposizione__`) and move
+  with the ordinary `/api/schedule/move-lesson`.
+  `GET /api/coverage/cell` flags each available teacher with
+  `is_disposizione` / `is_hole` / `kind`, plus
+  `matches_lesson_subject` / `matches_absent_subjects`.
+- `/api/absences`, `/api/substitutions` -- CRUD for the same
+  board (unchanged).
 - `/api/health` -- liveness probe (200 OK + version).
 
 Schemas: `webui/backend/schemas.py` (Pydantic v2). OpenAPI JSON:

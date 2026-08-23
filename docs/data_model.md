@@ -3,8 +3,9 @@
 Core entities (SQLAlchemy 2.0 models in
 `webui/backend/models.py`):
 
-- `Teacher`, `SchoolClass`, `Subject`, `Classroom`, `Curriculum`,
-  `Student`.
+- `Teacher` (includes `disposizione_hours`, weekly standby
+  quota for substitutions), `SchoolClass`, `Subject`,
+  `Classroom`, `Curriculum`, `Student`.
 - `Assignment` (teacher → class/group cattedra; carries `locked`,
   `coteach_group_id`, `is_support`, `is_potenziamento`,
   `parallel_group_id`, `group_id`).
@@ -13,7 +14,16 @@ Core entities (SQLAlchemy 2.0 models in
 - `StudyGroup` + `GroupMembership` + `GroupSubjectHours`
   (Task C3: cross-class study groups).
 - `Solution`, `Lesson` (per-slot output of the solver;
-  `Lesson.group_name` for C3).
+  `Lesson.group_name` for C3). Standby hours are sentinel
+  `Lesson` rows with `class_name=__disposizione__` and
+  `subject=Disposizione` — visible on the teacher / slot
+  timetable, filtered out of the class view, rooms, and
+  coverage busy-set.
+- `Absence`, `SubstituteAssignment` (daily coverage board).
+- `SchoolDisposizioneConfig` (one row per tenant: school-wide
+  cap `max_total_hours`, `eligibility` = `all`|`under_contract`,
+  `slot_priorities_json`). Per-teacher quotas stay on
+  `Teacher.disposizione_hours`.
 - `*Unavailability`, `*Preference` matrices (5-state:
   allowed/soft/hard/preferred/enforced).
 - `LogicalUnavailability`, `CurriculumLogicalConstraint`,

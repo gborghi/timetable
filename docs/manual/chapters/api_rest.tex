@@ -77,7 +77,16 @@ curl http://127.0.0.1:8000/api/monitor/event/1/lessons
         \texttt{move-lesson}, \texttt{move-preview},
         \texttt{lesson/\{lid\}/classroom}.
   \item \textbf{Coverage}: \texttt{/api/coverage/week|cell},
+        \texttt{/api/coverage/disposizione}
+        (\texttt{GET}/\texttt{PUT} policy scolastica;
+        \texttt{POST \ldots/place} ripiazza le ore di
+        disposizione sulla soluzione attiva),
         \texttt{/api/absences}, \texttt{/api/substitutions}.
+        Quota per docente: \texttt{Teacher.disposizione\_hours}
+        su \texttt{/api/teachers}. Le ore piazzate sono
+        \texttt{Lesson} sentinella
+        (\texttt{class\_name=\_\_disposizione\_\_}) e si
+        spostano con \texttt{/api/schedule/move-lesson}.
   \item \textbf{Optimization}:
         \texttt{/api/optimize/assignment|phase-b|lns|sa|ts|ils|full|classroom-assignment}.
   \item \textbf{Monitor}: \texttt{/api/monitor/events|summary|constraints|conflicts},

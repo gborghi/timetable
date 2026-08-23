@@ -528,7 +528,8 @@ def validate_hard_placement(db: Session, *, add: tuple,
         return {"ok": False, "baseline_infeasible": False, "new_sol": None,
                 "reason": (f"Il docente {p} ha indisponibilita HARD "
                            f"in giorno {d} ora {h}.")}
-    if (cl, d, h) in av["class_hard"]:
+    if cl != "__disposizione__" and _subj != "Disposizione" \
+            and (cl, d, h) in av["class_hard"]:
         return {"ok": False, "baseline_infeasible": False, "new_sol": None,
                 "reason": (f"La classe {cl} ha indisponibilita HARD "
                            f"in giorno {d} ora {h}.")}

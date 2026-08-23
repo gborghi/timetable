@@ -307,6 +307,55 @@ Salvato in `dc_value` con chiave `("__pot__", prof, d)` per Phase B.
 **Pre-flight**: `class_id` deve essere NULL; cap settimanale 30 ore
 (5 ore/giorno x 6 giorni).
 
+### C1.4 -- Ore di disposizione (standby per supplenze)
+
+Caso d'uso: ogni docente puo' avere una quota settimanale di
+ore di tipo *disposizione* (standby). Non sono lezioni: non
+hanno classe ne' aula. Servono a massimizzare la presenza di
+docenti di servizio negli slot piu' critici (sabato, lunedi
+prima ora, prime ore in generale, o una griglia custom).
+
+**Modello dati**:
+```
+Teacher.disposizione_hours = 2          # quota settimanale
+SchoolDisposizioneConfig(               # una riga per tenant
+    max_total_hours=None,               # tetto scolastico (NULL = nessuno)
+    eligibility="all",                  # all | under_contract
+    slot_priorities_json=None)          # NULL = pesi built-in
+Lesson(teacher=..., class_name="__disposizione__",
+       subject="Disposizione", day=..., hour=...)
+```
+
+**Semantica**:
+- il piazzamento e' indipendente dalla materia;
+- la sentinella *non* occupa il docente in coverage: resta
+  disponibile per una supplenza (flag `is_disposizione`);
+- *non* entra nel carico classe, nelle aule, in H1/H2/H3,
+  in H_C (6 ore consecutive), nella vista orario per classe;
+- si sposta a mano con `/api/schedule/move-lesson` come
+  qualsiasi altra lezione (viste per docente / per slot);
+- distinta dal potenziamento: il potenziamento e' una
+  cattedra `is_potenziamento` senza `Lesson`; la disposizione
+  e' una `Lesson` sentinella con slot esatto.
+
+**Piazzamento**: greedy post-solve (`webui/backend/disposizione.py`),
+non un vincolo CP-SAT. Dopo `import_solution_into_db` il
+pipeline chiama `persist_disposizione_for_solution` (try/except:
+un fallimento non invalida l'orario). Pesi default: sabato
+12..5, lunedi 8=10, altre prime ore 6, seconde ore 3-4, resto 1.
+Eligibilita' `under_contract` = ore di cattedra assegnate
+(escluso potenziamento) < `max_hours`. Un tetto scolastico
+scala le quote in proporzione (largest remainder).
+
+**Visibilita' in `/assenze-supplenze`**: badge **DISP** (sky)
+sui docenti in disposizione ufficiale; **BUCO** (ambra) su
+chi ha un buco fra prima e ultima lezione reale del giorno;
+**LIBERO** sugli altri liberi; **MAT** su chi insegna la
+stessa materia della lezione / del collega assente. Ordinamento
+disp > buco > pot > carico. Filtri combinabili nel modal
+cella (stessa materia, materie del collega, disp/buco/libero/
+pot/sotto contratto + ricerca testuale).
+
 ### C2 -- Parallel groups intra-class
 
 Caso d'uso: religione + alternativa in 3B, stessa ora, prof diversi,

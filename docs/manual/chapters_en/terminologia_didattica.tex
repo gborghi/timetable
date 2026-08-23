@@ -144,7 +144,21 @@ tables or the code modules where the concept lives.
   usually delivered by a second teacher of the same competition
   class. It is \texttt{is\_potenziamento=True} on
   \texttt{assignments} and typically does \emph{not} translate
-  into co-teaching hours: they are separate hours.
+  into co-teaching hours: they are separate hours. Not to be
+  confused with \emph{disposizione}: potenziamento is a
+  class-less cattedra with no \texttt{Lesson}; disposizione
+  has an exact slot.
+
+\item[Disposizione (Standby hours).]\index{Disposizione}
+  \emph{Aliases}: ore di disposizione, standby, on-call hour.
+  An hour in which the teacher is on duty with no class and no
+  room, ready for a substitution. Weekly quota on
+  \texttt{teachers.disposizione\_hours}; school policy in
+  \texttt{school\_disposizione\_config}. On the timetable it is
+  a sentinel \texttt{Lesson}
+  (\texttt{class\_name=\_\_disposizione\_\_}). On the Absences
+  and substitutions tab the teacher stays available (badge
+  \textbf{DISP}). Placement is subject-agnostic.
 
 \item[Gruppo articolato (Articulated group).]\index{Articulated group}
   \emph{Aliases}: classe articolata, articulated class, group

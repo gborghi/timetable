@@ -284,6 +284,11 @@ CRUD docenti. Il modal di edit ha:
   `last_name + first_name` in `syncName()`.
 - Matricola, Classe di concorso, Max ore-cattedra, Ore di
   completamento / esonero
+- **Ore di disposizione** (opzionale, default 0): quota
+  settimanale di standby per le supplenze. L'ottimizzatore le
+  piazza senza classe ne' aula; restano disponibili nel tab
+  Assenze e supplenze e si spostano a mano dal tab Orario
+  (vedere sotto).
 - **Punteggio graduatoria** (opzionale, range tipico 0-300):
   punteggio in graduatoria provinciale del docente. Usato dal preset
   Phase-A "Anzianita' -> indirizzi pesanti" (vedere
@@ -506,7 +511,8 @@ In fondo: lista delle soluzioni salvate con bottone "attiva" e
 
 Vista settimanale. In alto: date picker per la settimana
 (default lunedi corrente) + bottoni "settimana prec.", "settimana
-succ.", "oggi".
+succ.", "oggi" + bottone **Ore di disposizione** (apre il pannello
+di policy scolastica).
 
 Tabella 6 colonne giorno x 6 righe ora. Le celle si colorano:
 
@@ -514,6 +520,10 @@ Tabella 6 colonne giorno x 6 righe ora. Le celle si colorano:
 - ambra: assenze ma nessuna ora persa
 - rosso: ore scoperte
 - verde: ore scoperte ma tutte coperte da supplenti
+
+Sotto lo stato, ogni cella mostra quanti docenti sono **liberi**
+in quello slot, quanti in **disposizione ufficiale** (`N disp`)
+e quanti hanno un **buco** (`N buco`).
 
 Click sull'**intestazione di un giorno** apre il modal "Assenze"
 dove si selezionano i docenti assenti (con filtro testuale) e i
@@ -527,6 +537,71 @@ impegnati, gia' usati come supplenti). Drag-and-drop di un docente
 su una classe scoperta crea la supplenza. Quando tutte le scoperte
 sono coperte, il bottone "Salva e chiudi" e' abilitato; chiudere
 con scoperte residue chiede conferma.
+
+#### Colori e badge nella lista dei disponibili
+
+L'ordinamento predefinito e' disposizione > buco > potenziamento >
+carico residuo (non piu' solo `graduatoria_score`). Ogni riga
+porta un badge:
+
+- **DISP** (sky): il docente e' ufficialmente in disposizione
+  in quello slot (supplenza extra non retribuita come ora di
+  cattedra). Resta disponibile: la disposizione *non* occupa
+  la cella come una lezione.
+- **BUCO** (ambra, enfasi): ora vuota strettamente fra la prima
+  e l'ultima lezione reale del giorno. Piu' comodo da usare
+  come supplente, anche se non e' in disposizione.
+- **LIBERO**: semplicemente libero in quello slot.
+- **POT** (viola): organico potenziato (Legge 107).
+- **MAT**: insegna la stessa materia della lezione scoperta
+  (o almeno una materia del collega assente).
+
+La disposizione e' indipendente dalla materia: il piazzamento
+non guarda le abilitazioni. I filtri del modal selezionano
+solo chi mostrare.
+
+#### Filtri combinabili nel modal cella
+
+Sopra la lista: campo di ricerca (nome, classe di concorso,
+materie) + chip di selezione (un filtro alla volta, piu' il
+testo):
+
+- Tutti
+- Stessa materia (della lezione scoperta)
+- Materie del collega (almeno una materia del docente assente)
+- Disposizione / Buco / Liberi / Potenziamento / Sotto contratto
+
+I filtri si azzerano ogni volta che si apre il modal.
+
+#### Ore di disposizione (policy scolastica)
+
+Il pannello (bottone in hero, `data-testid=disp-policy-panel`)
+imposta:
+
+- **Tetto scolastico**: cap totale di ore di disposizione
+  sulla scuola (`NULL` = nessun tetto). Se il tetto e' sotto
+  la somma delle quote, le quote vengono scalate in
+  proporzione (largest remainder).
+- **Assegna a**: `tutti i docenti con quota` oppure
+  `solo sotto le ore contrattuali` (cattedra assegnata, escluso
+  potenziamento, < `max_hours`).
+- **Salva e piazza** / **Ripiazza ora**: ricalcola le ore
+  sulla soluzione attiva, senza classe ne' aula.
+
+La quota per docente si imposta nella scheda Docenti
+(`Ore di disposizione`). I pesi di default privilegiano il
+sabato, il lunedi prima ora e le prime ore in generale;
+si possono sovrascrivere via API (`slot_priorities`).
+Dopo il piazzamento automatico le ore si spostano a mano
+dal tab Orario (viste per docente / per slot, stesso
+drag-and-drop di `/move-lesson`).
+
+Le ore di disposizione *non* sono potenziamento: il
+potenziamento e' una cattedra senza classe (`is_potenziamento`,
+nessuna `Lesson`); la disposizione e' una `Lesson` sentinella
+(`class_name=__disposizione__`, `subject=Disposizione`)
+visibile nell'orario del docente ma invisibile alle classi
+e alle aule.
 
 ### Monitor (`/monitor`)
 

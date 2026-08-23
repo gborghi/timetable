@@ -42,6 +42,11 @@ lezione il sabato").
 lezioni. Esempio: il professore ha lezione alle 8, alle 10 e
 alle 11; le 9 \`e un buco. Il sistema penalizza i buchi nel
 SOFT score perch\'e il docente preferisce avere ore consecutive.
+Nel tab Assenze e supplenze un buco \`e l'ora strettamente
+compresa fra la prima e l'ultima lezione *reale* del giorno
+(le ore di disposizione non contano): il docente \`e libero
+e viene evidenziato in ambra (badge **BUCO**) perch\'e \`e
+meno scomodo da usare come supplente.
 
 ## C
 
@@ -93,6 +98,21 @@ identifica gruppi di classi che condividono pochi docenti, in
 modo che si possano pianificare quasi indipendentemente. Vedi
 *Cluster*.
 
+**Disposizione (ore di).** Ore di standby per le supplenze,
+senza classe n\'e aula. Ogni docente ha una quota settimanale
+(`Teacher.disposizione_hours`); la scuola pu\`o imporre un
+tetto totale e scegliere se assegnarle a tutti o solo a chi
+\`e sotto le ore contrattuali. Il piazzamento \`e indipendente
+dalla materia: privilegia gli slot con peso alto (default:
+sabato, luned\`i prima ora, prime ore). In orario sono
+`Lesson` sentinella (`class_name=__disposizione__`). Nel tab
+Assenze e supplenze il docente resta disponibile (badge
+**DISP**). Non sono potenziamento: il potenziamento \`e una
+cattedra senza `Lesson`; la disposizione ha uno slot esatto
+e si sposta a mano. Vedi [`ui_guide.md`](ui_guide.md)
+(Assenze e supplenze) e [`constraints.md`](constraints.md)
+(C1.4).
+
 **Distribuzione oraria.** Il modo in cui le ore di una materia
 vengono spalmate sui giorni della settimana. piTantum cerca di
 distribuire (es. 5 ore di mate su 5 giorni diversi anzich\'e
@@ -133,7 +153,11 @@ contraddicono).
 **General DSL.** Vedi *DSL* e [`general_dsl.md`](general_dsl.md).
 
 **Graduatoria score.** Punteggio di graduatoria di un docente.
-Usato dal modulo "supplenze" per ordinare le candidature.
+Usato dal preset Phase A ``Anzianita''' per allineare i
+docenti piu' anziani agli indirizzi pesanti. Nel tab Assenze
+e supplenze l'ordinamento primario e' disposizione > buco >
+potenziamento > carico residuo; il punteggio resta un
+tie-break secondario.
 
 **Group / Gruppo articolato.** Insieme di studenti raggruppati
 trasversalmente, di solito provenienti da pi\`u classi, che fanno

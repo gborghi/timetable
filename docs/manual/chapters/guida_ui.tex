@@ -397,11 +397,18 @@ in fondo a destra, una matita per aprire il modal di edit.
 \item[Punteggio di graduatoria.] Numero che pesa nella scelta
   delle cattedre (preset \emph{Anzianita} della Phase A): a
   parit\`a di idoneit\`a, il punteggio pi\`u alto vince.
+\item[Ore di disposizione.] Quota settimanale di standby per
+  le supplenze (default 0). L'ottimizzatore le piazza senza
+  classe n\'e aula; restano disponibili nel tab Assenze e
+  supplenze e si spostano a mano dal tab Orario
+  (vedi~\cref{sec:tab_assenze_supplenze}).
 \item[Giorni liberi richiesti / preferiti.] Quanti giorni di
   riposo settimanale sono dovuti (default 1, da contratto) e
   quali sono i preferiti (es.\ sabato).
 \item[Flag sostegno / potenziamento.] Marcatori funzionali, usati
-  da alcuni vincoli specializzati.
+  da alcuni vincoli specializzati. Non vanno confusi con le
+  ore di disposizione: il potenziamento \`e una cattedra
+  senza classe, la disposizione \`e uno slot esatto.
 \end{description}
 
 \subsection{Matrice di indisponibilit\`a}
@@ -808,6 +815,7 @@ ottimizza dopo}.
 
 \section{Assenze e supplenze}
 \label{sec:tab_assenze_supplenze}
+\index{Disposizione}\index{Supplenze}\index{Assenze}
 
 Tab per la gestione operativa quotidiana, una volta che
 l'orario \`e in produzione. Vista settimanale 6$\times$6:
@@ -817,18 +825,87 @@ l'orario \`e in produzione. Vista settimanale 6$\times$6:
   cui spuntare i docenti assenti per quel giorno;
 \item le celle dell'orario di un docente assente diventano
   rosse (classe scoperta);
-\item click su una cella rossa: apre un modal a due colonne --
+\item click su una cella: apre un modal a due colonne --
   classi scoperte a sinistra, docenti disponibili a destra --
   con drag-and-drop per assegnare una supplenza;
-\item i docenti disponibili sono ordinati per
-  \texttt{graduatoria\_score}: pi\`u alto = pi\`u indicato come
-  supplente.
+\item ogni cella della griglia riporta anche quanti docenti
+  sono liberi, quanti in disposizione ufficiale
+  (\texttt{N disp}) e quanti hanno un buco (\texttt{N buco}).
 \end{itemize}
+
+\subsection{Colori, badge e ordinamento}
+
+I docenti disponibili \emph{non} sono pi\`u ordinati solo per
+\texttt{graduatoria\_score}. L'ordine \`e disposizione,
+poi buco, poi potenziamento, poi carico residuo. Ogni riga
+porta un badge:
+
+\begin{itemize}
+\item \textbf{DISP} (azzurro) -- il docente \`e ufficialmente
+  in disposizione in quello slot. Resta disponibile: la
+  disposizione \emph{non} occupa la cella come una lezione.
+\item \textbf{BUCO} (ambra, enfasi) -- ora vuota strettamente
+  fra la prima e l'ultima lezione reale del giorno. Meno
+  scomodo da usare come supplente, anche se non \`e in
+  disposizione.
+\item \textbf{LIBERO} -- semplicemente libero in quello slot.
+\item \textbf{POT} (viola) -- organico potenziato
+  (Legge~107).
+\item \textbf{MAT} -- insegna la stessa materia della lezione
+  scoperta, oppure almeno una materia del collega assente.
+\end{itemize}
+
+La disposizione \emph{prescinde dalla materia}: il
+piazzamento non guarda le abilitazioni. I filtri del modal
+selezionano solo chi mostrare.
+
+\subsection{Filtri del modal cella}
+
+Sopra la lista: campo di ricerca (nome, classe di concorso,
+materie) e chip di selezione (un filtro alla volta, pi\`u il
+testo). I chip sono: Tutti, Stessa materia (della lezione
+scoperta), Materie del collega, Disposizione, Buco, Liberi,
+Potenziamento, Sotto contratto. Si azzerano ogni volta che
+si apre il modal.
+
+\subsection{Ore di disposizione}
+
+Il bottone \emph{Ore di disposizione} in cima alla pagina
+apre il pannello di policy scolastica
+(\texttt{data-testid=disp-policy-panel}):
+
+\begin{itemize}
+\item \textbf{Tetto scolastico} -- cap totale di ore di
+  disposizione sulla scuola (vuoto = nessun tetto). Se il
+  tetto \`e sotto la somma delle quote, le quote vengono
+  scalate in proporzione.
+\item \textbf{Assegna a} -- tutti i docenti con quota,
+  oppure solo chi \`e sotto le ore contrattuali (cattedra
+  assegnata, escluso potenziamento, $<$ \texttt{max\_hours}).
+\item \textbf{Salva e piazza} / \textbf{Ripiazza ora} --
+  ricalcola le ore sulla soluzione attiva, senza classe
+  n\'e aula.
+\end{itemize}
+
+La quota per docente si imposta nella scheda Docenti
+(\emph{Ore di disposizione}). I pesi di default privilegiano
+il sabato, il luned\`i prima ora e le prime ore in generale.
+Dopo il piazzamento automatico le ore si spostano a mano dal
+tab Orario (viste per docente / per slot), con lo stesso
+drag-and-drop delle lezioni.
+
+Le ore di disposizione \emph{non} sono potenziamento: il
+potenziamento \`e una cattedra senza classe
+(\texttt{is\_potenziamento}, nessuna \texttt{Lesson}); la
+disposizione \`e una \texttt{Lesson} sentinella
+(\texttt{class\_name=\_\_disposizione\_\_}) visibile
+nell'orario del docente ma invisibile alle classi e alle
+aule.
 
 \paragraph{Suggerimento.} Una cella verde indica una supplenza
 \emph{coperta}. Una cella ancora rossa al termine della
 sessione segnala una scopertura: tipicamente serve un docente
-fuori graduatoria o una variazione d'orario.
+fuori organico o una variazione d'orario.
 
 \grokfig{fig_tab_diagnostica_icona}{Pittogramma del tab
 Diagnostica: stetoscopio salvia su un grafico con picco anomalo

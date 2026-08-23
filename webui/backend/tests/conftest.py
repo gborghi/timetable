@@ -220,6 +220,12 @@ def _apply_migrations_on(engine):
             conn.execute(text(
                 "ALTER TABLE teachers ADD COLUMN graduatoria_score FLOAT"
             ))
+        if insp.has_table("teachers") and not has_column(
+                "teachers", "disposizione_hours"):
+            conn.execute(text(
+                "ALTER TABLE teachers ADD COLUMN "
+                "disposizione_hours INTEGER NOT NULL DEFAULT 0"
+            ))
         timestamped = ("subjects", "teachers", "school_classes",
                        "classrooms", "curricula", "students",
                        "study_groups")

@@ -93,7 +93,7 @@ def class_day_hours(sol, cls_set):
     """Per ogni (cl, d): lista di hours occupate, ordinate."""
     cls_h = defaultdict(list)
     for (p, cl, subj, d, h), v in sol.items():
-        if v == 1:
+        if v == 1 and cl != "__disposizione__" and subj != "Disposizione":
             cls_h[(cl, d)].append(h)
     out = {(cl, d): sorted(set(cls_h.get((cl, d), [])))
            for cl in cls_set for d in DAYS}
@@ -297,6 +297,8 @@ def is_hard_feasible(sol, profs, verbose=False,
     for (p, cl, subj, d, h), v in sol.items():
         if v != 1:
             continue
+        if cl == "__disposizione__" or subj == "Disposizione":
+            continue                    # standby: no class, no room
         if (p, cl, subj) in support_keys:
             continue                    # sostegno: not a class slot
         # Resolve busy_key for this (cl, subj):
@@ -368,6 +370,8 @@ def is_hard_feasible(sol, profs, verbose=False,
     for (p, cl, subj, d, h), v in sol.items():
         if v != 1:
             continue
+        if cl == "__disposizione__" or subj == "Disposizione":
+            continue
         if (p, cl, subj) in support_keys:
             continue
         if (p, cl, subj) in grp_keys:
@@ -410,9 +414,15 @@ def is_hard_feasible(sol, profs, verbose=False,
     # perche' no-holes prof? Falso, il prof puo' avere buchi. Ma
     # 6 ore in giornata = tutti 6 gli slot occupati = 6 consecutive
     # banner.)
+    # H_C counts teaching hours only: disposizione is standby, not a
+    # sixth consecutive lesson.
+    teach_pd: dict = defaultdict(set)
+    for (p, cl, subj, d, h), v in sol.items():
+        if v == 1 and cl != "__disposizione__" and subj != "Disposizione":
+            teach_pd[(p, d)].add(h)
     for p in profs_set:
         for d in DAYS:
-            hrs = pd_h.get((p, d), [])
+            hrs = sorted(teach_pd.get((p, d), []))
             if len(hrs) >= 6:
                 if hrs == list(range(hrs[0], hrs[0] + 6)):
                     if verbose: print(f"  HC viol: prof {p} d{d}")

@@ -940,6 +940,11 @@ def import_solution_into_db(db: Session, solution_dict: dict,
     db.commit()
     if make_active:
         set_active_solution(db, sol.id)
+    try:
+        from .disposizione import persist_disposizione_for_solution
+        persist_disposizione_for_solution(db, sol.id)
+    except Exception:
+        pass
     return sol.id
 
 
@@ -1561,6 +1566,8 @@ def lessons_for_classroom_step(db: Session, solution_id: int,
     for l in db.query(models.Lesson).filter(
         models.Lesson.solution_id == solution_id
     ).all():
+        if l.class_name == "__disposizione__" or l.subject == "Disposizione":
+            continue
         co = []
         if l.cotaught_with:
             co = [s.strip() for s in l.cotaught_with.split(",") if s.strip()]

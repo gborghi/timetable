@@ -309,8 +309,12 @@ Il campo \`e usato in due punti:
 
 \begin{enumerate}
 \item \textbf{Modulo supplenze}: quando il sistema cerca un
-  candidato per coprire un'assenza, ordina la rosa per
-  \texttt{graduatoria\_score} decrescente.
+  candidato per coprire un'assenza, l'ordinamento primario
+  \`e disposizione $>$ buco $>$ potenziamento $>$ carico
+  residuo; \texttt{graduatoria\_score} resta un
+  tie-break secondario. I filtri del modal (stessa materia,
+  materie del collega, \ldots) restringono la rosa prima
+  dell'ordinamento.
 \item \textbf{Phase A, criterio ``Anzianita''}: il DSL della
   funzione obiettivo della Phase A include un preset
   \textbf{Anzianita} che, oltre ai criteri standard di bilancio

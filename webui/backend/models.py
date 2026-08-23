@@ -119,6 +119,12 @@ class Teacher(TenantMixin, TimestampMixin, Base):
     max_hours: Mapped[int] = mapped_column(Integer, default=18)
     completion_hours: Mapped[int] = mapped_column(Integer, default=0)
     exemption_hours: Mapped[int] = mapped_column(Integer, default=0)
+    disposizione_hours: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False,
+        comment="Ore settimanali di disposizione (standby per "
+                "supplenze). Piazzate senza classe/aula; restano "
+                "disponibili in Assenze e supplenze."
+    )
     graduatoria_score: Mapped[float | None] = mapped_column(
         Float, nullable=True,
         comment="Punteggio in graduatoria provinciale (range tipico "
@@ -1746,6 +1752,34 @@ class SubstituteAssignment(Base):
     __table_args__ = (
         UniqueConstraint("date", "day", "hour", "class_name",
                          name="uq_sub_slot"),
+    )
+
+
+class SchoolDisposizioneConfig(TenantMixin, Base):
+    """School-wide disposizione (standby) policy used by coverage
+    and by the post-solve placer.
+
+    Per-teacher quotas live on ``Teacher.disposizione_hours``. This
+    row only holds the school cap, who is eligible, and the custom
+    slot priorities the placer maximises (Saturday, Monday first
+    hour, first hours in general, or a fully custom grid).
+    """
+    __tablename__ = "school_disposizione_config"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    max_total_hours: Mapped[int | None] = mapped_column(
+        Integer, nullable=True,
+        comment="Cap scolastico sulle ore di disposizione; NULL = nessun tetto"
+    )
+    eligibility: Mapped[str] = mapped_column(
+        String(24), default="all", server_default="all", nullable=False,
+        comment="all | under_contract (solo docenti sotto max_hours)"
+    )
+    slot_priorities_json: Mapped[str | None] = mapped_column(
+        Text, nullable=True,
+        comment="JSON list of {day, hour, weight}; empty = built-in defaults"
+    )
+    __table_args__ = (
+        UniqueConstraint("tenant_id", name="uq_disposizione_config_tenant"),
     )
 
 

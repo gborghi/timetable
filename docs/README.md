@@ -15,7 +15,7 @@ per una versione PDF stampabile con copertina e indice, vedere
 | [data_model.md](data_model.md)             | schema SQLAlchemy (tutte le tabelle e relazioni), strategie di migrazione idempotente, formato pickle dell'engine |
 | [constraints.md](constraints.md)           | i 5 stati dei vincoli (HARD / SOFT / PREFERRED / ENFORCED / ALLOWED), matrice di disponibilita', vincoli logici DSL, predicate atoms, mapping CP-SAT |
 | [workflow.md](workflow.md)                 | pipeline di ottimizzazione: Phase A assegnazione, Phase B con decomposizione spettrale, cascata metaeuristica LNS / SA / TS / ILS, classroom assignment, drag-and-drop con preview |
-| [ui_guide.md](ui_guide.md)                 | guida tab per tab della webui: Dashboard, Docenti, Classi, Indirizzi, Studenti, Gruppi, Materie, Aule, Compresenze, Cattedre, Orario, Assenze e supplenze, Monitor, Vincoli, Workflow |
+| [ui_guide.md](ui_guide.md)                 | guida tab per tab della webui: Dashboard, Docenti, Classi, Indirizzi, Studenti, Gruppi, Materie, Aule, Compresenze, Cattedre, Orario, Assenze e supplenze (disposizione, filtri MAT/DISP/BUCO), Monitor, Vincoli, Workflow |
 | [api.md](api.md)                           | reference REST: gruppi di endpoint, formati request/response, esempi curl |
 | [extending.md](extending.md)               | come aggiungere un nuovo tipo di vincolo, una nuova tabella, una nuova pagina UI |
 | [experiments.md](experiments.md) ([IT](experiments_it.md)) | esperimenti e benchmark: due scuole da 90 classi (aula-classe `liceo90` vs aula-docente `liceo90doc`), decomposizioni temporale/curriculum/joint, statistiche previsto vs ottenuto |

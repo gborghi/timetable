@@ -48,6 +48,7 @@ export const TEACHER_DEFAULTS = {
   max_hours: 18,
   completion_hours: 0,
   exemption_hours: 0,
+  disposizione_hours: 0,
   // No more than 5 consecutive hours teaching the same day.
   max_consecutive: 5,
   // Nessuna compresenza: il docente prenota sempre un'aula propria.

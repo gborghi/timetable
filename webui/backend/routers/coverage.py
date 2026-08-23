@@ -39,6 +39,14 @@ from sqlalchemy.orm import Session
 
 from .. import models, engine_io
 from ..db import get_db
+from ..disposizione import (
+    apply_disposizione_to_active,
+    config_to_out,
+    get_or_create_config,
+    is_disposizione_lesson,
+)
+from .. import schemas
+from ..tenant import current_tenant_id
 
 router = APIRouter(tags=["coverage"])
 
@@ -114,6 +122,8 @@ class CellSummary(BaseModel):
     n_uncovered: int = 0
     n_covered: int = 0
     n_available_teachers: int = 0
+    n_disposizione_teachers: int = 0
+    n_hole_teachers: int = 0
     status: str = "ok"  # ok | red | green | mixed
 
 
@@ -139,6 +149,7 @@ class UncoveredLesson(BaseModel):
     subject: str | None
     original_teacher_name: str
     original_teacher_display: str
+    original_teacher_subjects: list[str] = Field(default_factory=list)
     substitute_id: int | None = None
     substitute_teacher_id: int | None = None
     substitute_teacher_name: str | None = None
@@ -155,6 +166,11 @@ class AvailableTeacher(BaseModel):
     max_hours: int = 0
     is_potenziamento: bool = False
     potenziamento_hours: int = 0
+    is_disposizione: bool = False
+    is_hole: bool = False
+    kind: str = "free"  # disposizione | hole | free
+    matches_lesson_subject: bool = False
+    matches_absent_subjects: bool = False
 
 
 class CoverageCellDetail(BaseModel):
@@ -358,15 +374,25 @@ def _compute_coverage_for_date(db: Session, date: dt.date,
             models.Lesson.day == day,
         ).all()
 
-    # busy_teacher_per_slot: who is teaching at (day, hour) in solution
+    # busy_teacher_per_slot: who is teaching at (day, hour) in solution.
+    # Disposizione standby is NOT busy: those teachers stay available
+    # for substitutions (that is the point of the hour).
     busy_by_slot: dict[tuple, set[str]] = {}
+    disp_by_slot: dict[tuple, set[str]] = {}
+    teaching_hours: dict[str, set[int]] = {}
     for l in lessons_in_day:
+        if is_disposizione_lesson(l.class_name, l.subject):
+            disp_by_slot.setdefault((l.day, l.hour), set()).add(l.teacher_name)
+            continue
         busy_by_slot.setdefault((l.day, l.hour), set()).add(l.teacher_name)
+        teaching_hours.setdefault(l.teacher_name, set()).add(l.hour)
 
     # uncovered per slot: lessons whose teacher is absent and no substitute
     uncovered_by_slot: dict[tuple, list[models.Lesson]] = {}
     covered_by_slot: dict[tuple, list[models.Lesson]] = {}
     for l in lessons_in_day:
+        if is_disposizione_lesson(l.class_name, l.subject):
+            continue
         if l.teacher_name not in absent_teacher_names:
             continue
         key = (l.day, l.hour, l.class_name)
@@ -390,15 +416,23 @@ def _compute_coverage_for_date(db: Session, date: dt.date,
             uncov = uncovered_by_slot.get(slot, [])
             cov = covered_by_slot.get(slot, [])
             n_absent = sum(
-                1 for tn in (l.teacher_name for l in lessons_in_day
-                             if l.hour == hour)
-                if tn in absent_teacher_names
+                1 for l in lessons_in_day
+                if l.hour == hour
+                and l.teacher_name in absent_teacher_names
+                and not is_disposizione_lesson(l.class_name, l.subject)
             )
             available = _available_teachers(
                 teachers, day, hour, absent_teacher_ids,
                 busy_by_slot.get(slot, set()),
                 sub_acting_by_slot.get(slot, set()),
                 teacher_by_name,
+            )
+            avail_names = {t.name for t in available}
+            n_disp = len(disp_by_slot.get(slot, set()) & avail_names)
+            n_hole = sum(
+                1 for t in available
+                if _is_hole_hour(teaching_hours.get(t.name, set()), hour)
+                and t.name not in disp_by_slot.get(slot, set())
             )
             if uncov:
                 status = "red"
@@ -414,6 +448,8 @@ def _compute_coverage_for_date(db: Session, date: dt.date,
                 n_uncovered=len(uncov),
                 n_covered=len(cov),
                 n_available_teachers=len(available),
+                n_disposizione_teachers=n_disp,
+                n_hole_teachers=n_hole,
                 status=status,
             ))
 
@@ -434,8 +470,18 @@ def _compute_coverage_for_date(db: Session, date: dt.date,
         "uncovered_by_slot": uncovered_by_slot,
         "covered_by_slot": covered_by_slot,
         "busy_by_slot": busy_by_slot,
+        "disp_by_slot": disp_by_slot,
+        "teaching_hours": teaching_hours,
         "cells": cells,
     }
+
+
+def _is_hole_hour(hours: set[int], hour: int) -> bool:
+    """True when ``hour`` sits in a gap between the teacher's first
+    and last real lesson of the day (not itself a lesson)."""
+    if not hours or hour in hours:
+        return False
+    return min(hours) < hour < max(hours)
 
 
 def _available_teachers(teachers: list[models.Teacher],
@@ -516,6 +562,8 @@ def coverage_cell(date: dt.date = Query(...),
             original_teacher_name=l.teacher_name,
             original_teacher_display=(_teacher_display(orig)
                                       if orig else l.teacher_name),
+            original_teacher_subjects=([ts.subject for ts in orig.subjects]
+                                       if orig else []),
             substitute_id=sub.id if sub else None,
             substitute_teacher_id=(sub.substitute_teacher_id
                                    if sub else None),
@@ -529,6 +577,8 @@ def coverage_cell(date: dt.date = Query(...),
         for l in db.query(models.Lesson).filter(
             models.Lesson.solution_id == info["active"].id
         ).all():
+            if is_disposizione_lesson(l.class_name, l.subject):
+                continue
             teacher_total[l.teacher_name] = teacher_total.get(
                 l.teacher_name, 0
             ) + 1
@@ -549,22 +599,49 @@ def coverage_cell(date: dt.date = Query(...),
         pot_hours_by_teacher[a.teacher_id] = (
             pot_hours_by_teacher.get(a.teacher_id, 0)
             + int(a.hours or 0))
+    disp_names = info.get("disp_by_slot", {}).get(slot, set())
+    teaching_hours = info.get("teaching_hours", {})
+    lesson_subjects = {
+        (u.subject or "").strip()
+        for u in out.uncovered if (u.subject or "").strip()
+    }
+    absent_subjects: set[str] = set()
+    for u in out.uncovered:
+        absent_subjects.update(u.original_teacher_subjects or [])
     avail_entries = []
     for t in avail:
+        is_disp = t.name in disp_names
+        is_hole = (not is_disp) and _is_hole_hour(
+            teaching_hours.get(t.name, set()), hour)
+        if is_disp:
+            kind = "disposizione"
+        elif is_hole:
+            kind = "hole"
+        else:
+            kind = "free"
+        t_subjects = [ts.subject for ts in t.subjects]
+        t_subj_set = {s for s in t_subjects if s}
         avail_entries.append(AvailableTeacher(
             id=t.id, name=t.name,
             display=_teacher_display(t),
             group=t.group,
-            subjects=[ts.subject for ts in t.subjects],
+            subjects=t_subjects,
             scheduled_hours=teacher_total.get(t.name, 0),
             max_hours=t.max_hours,
             is_potenziamento=t.id in pot_hours_by_teacher,
             potenziamento_hours=pot_hours_by_teacher.get(t.id, 0),
+            is_disposizione=is_disp,
+            is_hole=is_hole,
+            kind=kind,
+            matches_lesson_subject=bool(t_subj_set & lesson_subjects),
+            matches_absent_subjects=bool(t_subj_set & absent_subjects),
         ))
-    # Sort: potenziamento first (descending by pot hours), then the
-    # rest by scheduled_hours ASC (less-loaded teachers preferred).
+    # Sort: official disposizione first, then hole hours (covering
+    # then is less annoying), then potenziamento, then lighter load.
     avail_entries.sort(
         key=lambda e: (
+            0 if e.is_disposizione else 1,
+            0 if e.is_hole else 1,
             0 if e.is_potenziamento else 1,
             -e.potenziamento_hours,
             e.scheduled_hours,
@@ -578,3 +655,53 @@ def coverage_cell(date: dt.date = Query(...),
     else:
         out.status = "ok"
     return out
+
+
+# ---------- disposizione (standby hours) ----------
+
+
+@router.get("/api/coverage/disposizione",
+            response_model=schemas.DisposizioneConfigOut)
+def get_disposizione_config(db: Session = Depends(get_db),
+                            tenant_id: int = Depends(current_tenant_id)):
+    row = get_or_create_config(db, tenant_id)
+    placed = 0
+    active = engine_io.get_active_solution(db)
+    if active is not None:
+        placed = db.query(models.Lesson).filter(
+            models.Lesson.solution_id == active.id,
+            models.Lesson.class_name == "__disposizione__",
+        ).count()
+    return config_to_out(row, placed_hours=placed)
+
+
+@router.put("/api/coverage/disposizione",
+            response_model=schemas.DisposizioneConfigOut)
+def put_disposizione_config(payload: schemas.DisposizioneConfigIn,
+                            db: Session = Depends(get_db),
+                            tenant_id: int = Depends(current_tenant_id)):
+    import json as _json
+    row = get_or_create_config(db, tenant_id)
+    row.max_total_hours = payload.max_total_hours
+    row.eligibility = payload.eligibility
+    if payload.slot_priorities:
+        row.slot_priorities_json = _json.dumps([
+            {"day": p.day, "hour": p.hour, "weight": p.weight}
+            for p in payload.slot_priorities
+        ])
+    else:
+        row.slot_priorities_json = None
+    db.commit()
+    db.refresh(row)
+    stats = apply_disposizione_to_active(db)
+    return config_to_out(row, placed_hours=int(stats.get("placed_hours", 0)))
+
+
+@router.post("/api/coverage/disposizione/place")
+def place_disposizione_now(db: Session = Depends(get_db)):
+    """Re-place disposizione hours on the active solution.
+
+    Used after changing per-teacher quotas, or to restore the
+    optimizer placement after a manual move.
+    """
+    return apply_disposizione_to_active(db)

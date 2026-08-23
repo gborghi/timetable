@@ -210,6 +210,7 @@ def _to_out(t: models.Teacher, db=None,
         max_hours=t.max_hours,
         completion_hours=t.completion_hours,
         exemption_hours=t.exemption_hours,
+        disposizione_hours=int(getattr(t, "disposizione_hours", 0) or 0),
         graduatoria_score=t.graduatoria_score,
         free_day=t.free_day,
         preferred_free_days=pfd_list,
@@ -278,6 +279,8 @@ def list_teachers(q: str | None = Query(None,
         for l in db.query(models.Lesson).filter(
             models.Lesson.solution_id == active_sol.id
         ).all():
+            if l.class_name == "__disposizione__" or l.subject == "Disposizione":
+                continue
             sched_by_t[l.teacher_name] = sched_by_t.get(l.teacher_name, 0) + 1
     out = []
     for t in rows:
@@ -319,6 +322,8 @@ def _apply_payload(t: models.Teacher, p: schemas.TeacherIn,
     t.max_hours = p.max_hours
     t.completion_hours = p.completion_hours
     t.exemption_hours = p.exemption_hours
+    if p.disposizione_hours is not None:
+        t.disposizione_hours = max(0, int(p.disposizione_hours))
     t.graduatoria_score = p.graduatoria_score
     t.free_day = p.free_day
     t.max_consecutive = p.max_consecutive

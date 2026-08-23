@@ -124,7 +124,9 @@ def view_by_class(class_name: str | None = None,
     q = db.query(models.Lesson).filter(models.Lesson.solution_id == a.id)
     if class_name:
         q = q.filter(models.Lesson.class_name == class_name)
-    rows = q.all()
+    rows = [l for l in q.all()
+            if l.class_name != "__disposizione__"
+            and l.subject != "Disposizione"]
     classes = sorted({l.class_name for l in rows})
     grid: dict[str, dict[int, dict[int, dict | None]]] = {
         c: {d: {h: None for h in HOURS} for d in DAYS} for c in classes

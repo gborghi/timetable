@@ -35,7 +35,13 @@ unique lower-cased, descrizione opzionale, cancellazione cascata.
 
 \subsection*{Coverage e Run}
 \texttt{absences}, \texttt{substitute\_assignments},
+\texttt{school\_disposizione\_config} (una riga per tenant:
+tetto scolastico, eleggibilit\`a, pesi degli slot),
 \texttt{runs}, \texttt{run\_logs}, \texttt{app\_state}.
+La quota per docente vive su
+\texttt{teachers.disposizione\_hours}; le ore piazzate
+sono righe \texttt{lessons} sentinella
+(\texttt{class\_name=\_\_disposizione\_\_}).
 
 \subsection*{Viste salvate}
 \texttt{saved\_views}: query DSL + sort multi-livello salvati per

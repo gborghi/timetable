@@ -63,6 +63,27 @@ keyboard shortcuts
 ALLOWED / RESET), but with columns driven by the active working
 days and slot times rendered from the configuration.
 
+\section*{Absences and substitutions}
+
+The \texttt{/assenze-supplenze} tab is the daily coverage
+board. Week cells show uncovered / covered counts plus how
+many teachers are merely free, officially on disposizione
+(\texttt{N disp}) and sitting in a hole hour
+(\texttt{N buco}). The cell modal lists available teachers
+in the order disposizione $>$ hole $>$ potenziamento $>$ residual
+load, with badges \textbf{DISP} / \textbf{BUCO} /
+\textbf{LIBERO} / \textbf{POT} / \textbf{MAT}. Combinable
+filters (same lesson subject, same subjects as the absent
+teacher, disp / hole / free / potenziamento / under contract,
+plus a name search) select whom to show; disposizione
+placement itself is subject-agnostic. The \emph{Ore di
+disposizione} panel sets the school-wide cap and eligibility
+(\texttt{all} or \texttt{under\_contract}) and re-places
+standby hours on the active solution. Per-teacher quotas live
+on the Teachers card; hours then move by hand from the
+Timetable tab (teacher / slot views) via the ordinary
+\texttt{/move-lesson} drag-and-drop.
+
 \medskip
 \noindent
 \textit{This chapter is an English summary of the corresponding Italian chapter. The full per-tab walkthrough remains in the Italian edition (\texttt{docs/manual/chapters/guida\_ui.tex}); for the typical step-by-step procedures see also \texttt{docs/manual/chapters/workflow\_tipici.tex}.}

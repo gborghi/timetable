@@ -689,10 +689,57 @@ ciascuno, escludendo il sabato).
 
 \textbf{Visibilit\`a nel tab Assenze/Supplenze:} quando un
 docente \`e assente, il sistema cerca un supplente fra i
-disponibili. I docenti di potenziamento vengono mostrati per
-primi, con un badge \textbf{POT} viola e un bordo dello
-stesso colore: l'idea \`e che la loro disponibilit\`a sia
-specificamente progettata per coprire questi buchi.
+disponibili. I docenti di potenziamento portano un badge
+\textbf{POT} viola. Non sono per\`o i primi della lista:
+l'ordine \`e disposizione ufficiale (\textbf{DISP}), poi
+buco (\textbf{BUCO}), poi potenziamento, poi gli altri
+liberi. Il potenziamento resta una cattedra senza
+\texttt{Lesson}; le ore di disposizione, invece, sono
+slot esatti (vedi sotto).
+
+\subsection{Ore di disposizione (standby)}
+\index{Disposizione}
+
+\textbf{Caso d'uso:} ogni docente pu\`o avere una quota
+settimanale di ore di tipo \emph{disposizione}. Non sono
+lezioni: non hanno classe n\'e aula. Servono a massimizzare
+la presenza di docenti di servizio negli slot pi\`u
+critici (sabato, luned\`i prima ora, prime ore in
+generale, o una griglia custom).
+
+\textbf{Configurazione:}
+\begin{enumerate}
+\item Tab \texttt{/teachers}: campo \emph{Ore di
+disposizione} sulla scheda del docente (quota settimanale).
+\item Tab \texttt{/assenze-supplenze}, bottone \emph{Ore di
+disposizione}: tetto scolastico, eleggibilit\`a
+(\texttt{all} oppure \texttt{under\_contract}),
+\emph{Salva e piazza}.
+\end{enumerate}
+
+\textbf{Cosa fa il sistema:} un piazzatore greedy
+post-solve (\texttt{webui/backend/disposizione.py}),
+\emph{non} un vincolo CP-SAT, scrive
+\texttt{Lesson} sentinella con
+\texttt{class\_name=\_\_disposizione\_\_} e
+\texttt{subject=Disposizione}. La sentinella non entra
+nel carico classe, nelle aule, in H1/H2/H3 n\'e in H\_C
+(sei ore consecutive). In coverage il docente resta
+disponibile (\texttt{is\_disposizione=true}). Il
+piazzamento \`e indipendente dalla materia. Un tetto
+scolastico scala le quote in proporzione. Dopo il
+piazzamento automatico le ore si spostano a mano con
+\texttt{/api/schedule/move-lesson} (viste Orario per
+docente / per slot).
+
+\textbf{Visibilit\`a nel tab Assenze/Supplenze:} badge
+\textbf{DISP} azzurro sui docenti in disposizione
+ufficiale; \textbf{BUCO} ambra su chi ha un buco fra
+prima e ultima lezione reale del giorno; \textbf{MAT} su
+chi insegna la stessa materia della lezione o del
+collega assente. Filtri combinabili nel modal cella
+(stessa materia, materie del collega, disp / buco /
+libero / pot / sotto contratto + ricerca testuale).
 
 \section{Religione, alternativa e parallelismi intra-classe}
 

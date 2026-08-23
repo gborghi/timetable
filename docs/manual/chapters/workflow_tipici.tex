@@ -256,9 +256,16 @@ piazzare le supplenze per oggi.
   classi scoperte.
 \item Per ogni cella rossa, click sulla cella. Si apre un
   modal a due colonne: \emph{classi scoperte} a sinistra,
-  \emph{docenti disponibili} a destra. I docenti disponibili
-  sono ordinati per \texttt{graduatoria\_score}: i pi\`u
-  indicati appaiono in cima.
+  \emph{docenti disponibili} a destra. In cima alla lista
+  stanno i docenti in disposizione ufficiale (badge
+  \textbf{DISP}), poi chi ha un buco (badge \textbf{BUCO},
+  evidenziato), poi il potenziamento, poi gli altri liberi.
+\item Se vuoi un collega della stessa materia, usa i chip
+  \emph{Stessa materia} o \emph{Materie del collega} (e,
+  se serve, la ricerca per nome). La disposizione
+  prescinde dalla materia: i filtri selezionano solo chi
+  mostrare. Il badge \textbf{MAT} marca chi insegna la
+  stessa disciplina della lezione scoperta.
 \item Trascina un docente sulla classe scoperta; la cella
   diventa verde.
 \item Se tutte le celle sono verdi, la giornata \`e coperta.
@@ -266,12 +273,21 @@ piazzare le supplenze per oggi.
   destra; verr\`a stampato e affisso.
 \end{enumerate}
 
+\paragraph{Prima della prima volta.} Imposta la quota di
+disposizione nella scheda di ciascun docente e, dal bottone
+\emph{Ore di disposizione} della stessa tab, il tetto
+scolastico e chi \`e eleggibile. \emph{Salva e piazza}
+riempie gli slot ad alta priorit\`a (sabato, prime ore).
+Le ore si spostano poi a mano dal tab Orario.
+
 \begin{esempiobox}[title=Caso reale]
 Liceo Galileo, marted\`{\i} ore 7:45. Sono assenti Bianchi
 (matematica, 4 ore), Rossi (storia, 2 ore) e Verdi (inglese,
-3 ore): nove celle scoperte. Il sistema propone in cima alle
-liste tre supplenti coerenti per ciascuna materia, ordinati
-per punteggio. La copertura si chiude in dodici minuti.
+3 ore): nove celle scoperte. Il sistema mette in cima i
+docenti in disposizione e chi ha un buco; il chip
+\emph{Stessa materia} restringe la rosa ai colleghi di
+matematica / storia / inglese. La copertura si chiude in
+dodici minuti.
 \end{esempiobox}
 
 \grokfig{fig_backup_snapshot}{La clessidra del backup con le

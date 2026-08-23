@@ -377,6 +377,12 @@ def _apply_lightweight_migrations() -> None:
         # `teacher_compresenza_hours` is a new table, so create_all()
         # already made it -- only the column needs the fallback.
         if insp.has_table("teachers") and not has_column(
+                "teachers", "disposizione_hours"):
+            conn.execute(text(
+                "ALTER TABLE teachers ADD COLUMN "
+                "disposizione_hours INTEGER NOT NULL DEFAULT 0"
+            ))
+        if insp.has_table("teachers") and not has_column(
                 "teachers", "compresenza"):
             conn.execute(text(
                 "ALTER TABLE teachers ADD COLUMN "

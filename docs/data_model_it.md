@@ -3,8 +3,9 @@
 Entita' principali (modelli SQLAlchemy 2.0 in
 `webui/backend/models.py`):
 
-- `Teacher`, `SchoolClass`, `Subject`, `Classroom`,
-  `Curriculum`, `Student`.
+- `Teacher` (include `disposizione_hours`, quota settimanale
+  di standby per le supplenze), `SchoolClass`, `Subject`,
+  `Classroom`, `Curriculum`, `Student`.
 - `Assignment` (cattedra docente → classe/gruppo; porta
   `locked`, `coteach_group_id`, `is_support`,
   `is_potenziamento`, `parallel_group_id`, `group_id`).
@@ -13,7 +14,17 @@ Entita' principali (modelli SQLAlchemy 2.0 in
 - `StudyGroup` + `GroupMembership` + `GroupSubjectHours`
   (Task C3: gruppi di studio inter-classe).
 - `Solution`, `Lesson` (output del solver per slot;
-  `Lesson.group_name` per C3).
+  `Lesson.group_name` per C3). Le ore di disposizione sono
+  `Lesson` sentinella con `class_name=__disposizione__` e
+  `subject=Disposizione` -- visibili nell'orario per docente
+  / per slot, filtrate dalla vista classe, dalle aule e dal
+  busy-set di coverage.
+- `Absence`, `SubstituteAssignment` (griglia quotidiana
+  assenze / supplenze).
+- `SchoolDisposizioneConfig` (una riga per tenant: tetto
+  scolastico `max_total_hours`, `eligibility` =
+  `all`|`under_contract`, `slot_priorities_json`). Le quote
+  per docente restano su `Teacher.disposizione_hours`.
 - `*Unavailability`, `*Preference` (matrici a 5 stati:
   allowed/soft/hard/preferred/enforced).
 - `LogicalUnavailability`, `CurriculumLogicalConstraint`,

@@ -1,7 +1,7 @@
 \chapter{Data model}
 \label{ch:modello_dati_en}
 
-Tables: schools, school_classes, teachers, subjects, classrooms, assignments, lessons, runs, study_groups, coteach_groups, parallel_groups, support_assignments, locks. SQLAlchemy 2.0 ORM. Alembic migrations + lightweight in-code migrations in db.py.
+Tables: schools, school_classes, teachers (includes disposizione\_hours), subjects, classrooms, assignments, lessons (standby hours are sentinel rows with class\_name=\_\_disposizione\_\_), absences, substitute\_assignments, school\_disposizione\_config, runs, study\_groups, coteach\_groups, parallel\_groups, support\_assignments, locks. SQLAlchemy 2.0 ORM. Alembic migrations + lightweight in-code migrations in db.py.
 
 \medskip
 \noindent
