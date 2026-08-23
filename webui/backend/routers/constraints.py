@@ -760,10 +760,21 @@ def validate_general(payload: schemas.GeneralConstraintIn):
     try:
         tree = parse(payload.expression)
     except DSLError as e:
-        return {"ok": False, "errors": [str(e)], "warnings": [], "n_atoms": 0}
+        spans = []
+        start = getattr(e, "pos", None)
+        end = getattr(e, "end", None)
+        if start is not None:
+            spans.append({
+                "start": int(start),
+                "end": int(end if end is not None else start + 1),
+                "message": str(e),
+            })
+        return {"ok": False, "errors": [str(e)], "warnings": [],
+                "n_atoms": 0, "error_spans": spans}
     res = validate(tree)
     return {"ok": res.ok, "errors": res.errors,
-            "warnings": res.warnings, "n_atoms": res.n_atoms}
+            "warnings": res.warnings, "n_atoms": res.n_atoms,
+            "error_spans": []}
 
 
 @router.get("/general", response_model=list[schemas.GeneralConstraintOut])

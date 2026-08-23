@@ -104,6 +104,7 @@ from .pipeline.moves import (
 )
 from .pipeline.moves import preview_moves_for_lesson as preview_moves_for_lesson
 from .pipeline.moves import validate_and_apply_move as validate_and_apply_move
+from .pipeline.moves import validate_and_apply_swap as validate_and_apply_swap
 from .pipeline.moves import validate_hard_placement as validate_hard_placement
 from .pipeline.preflight import (
     _LOCK_MAX_PER_DAY_PROF_CL as _LOCK_MAX_PER_DAY_PROF_CL,
@@ -1279,6 +1280,9 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                 # the call is byte-identical to the pre-wiring path (zero
                 # drift on non-DSL runs). ``_dsl_hard`` was loaded once above.
                 _dsl_sink: list[str] = []
+                _prev_day = None
+                _prev_out = None
+                import decomposition_temporal as _dec_t  # type: ignore
                 for d in DAYS:
                     raise_if_cancelled(rid)
                     out, status = cv2.solve_phase_b_for_day(
@@ -1296,15 +1300,46 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                         class_flags=_class_flags,
                         total_room_capacity=_total_room_capacity,
                         diagnostics_sink=_dsl_sink,
+                        warm_start=_dec_t.hint_from_day(_prev_out, d),
                     )
-                    if out is None and locked_by_day.get(d):
-                        raise RuntimeError(
-                            f"Phase B (giorno {d}) INFEASIBLE: i lock di "
-                            f"quel giorno sono incompatibili con i vincoli "
-                            f"correnti. Rimuovi o adatta lock e ritenta."
+                    if out is None and _prev_out is not None:
+                        print(f"[phaseB] giorno {d} INFEASIBLE; "
+                              f"2-day F&O con giorno {_prev_day}")
+                        _new_prev, out = _dec_t.fix_and_optimize_two_days(
+                            _prev_day, d, profs, dc_value, _prev_out,
+                            time_limit=time_mono, workers=workers,
+                            locked_by_day=locked_by_day,
+                            coteach_groups=coteach_groups or None,
+                            support_assignments=support_assignments or None,
+                            parallel_groups=parallel_groups or None,
+                            group_assignments=group_assignments or None,
+                            special_room_ctx=_special_room_ctx,
+                            class_flags=_class_flags,
+                            total_room_capacity=_total_room_capacity,
+                            plessi_ctx=_plessi_ctx,
+                            dsl_hard_expressions=_dsl_hard or None,
                         )
+                        if _new_prev is not None and _new_prev is not _prev_out:
+                            for _k in list(full_solution):
+                                if len(_k) == 5 and _k[3] == _prev_day:
+                                    del full_solution[_k]
+                            full_solution.update(_new_prev)
+                            _prev_out = _new_prev
+                    if out is None:
+                        _expl = _dec_t.explain_day_infeasibility(
+                            profs, dc_value, d)
+                        _why = _dec_t.format_infeasibility(_expl)
+                        if locked_by_day.get(d):
+                            raise RuntimeError(
+                                f"Phase B (giorno {d}) INFEASIBLE: i lock di "
+                                f"quel giorno sono incompatibili con i vincoli "
+                                f"correnti.{_why} Rimuovi o adatta lock e "
+                                "ritenta."
+                            )
+                        print(f"[phaseB] giorno {d} INFEASIBLE.{_why}")
                     if out is not None:
                         full_solution.update(out)
+                        _prev_day, _prev_out = d, out
                 # Surface what the per-day CP could not enforce (RunLog).
                 for _ln in _per_day_dsl_warning_lines(_dsl_sink):
                     print(_ln)

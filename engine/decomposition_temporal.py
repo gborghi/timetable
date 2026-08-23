@@ -136,7 +136,9 @@ def solve_day(day: int, profs: dict, dc_value: dict, *,
               support_assignments: list | None = None,
               parallel_groups: list | None = None,
               plessi_ctx=None,
-              dsl_hard_expressions: list | None = None):
+              dsl_hard_expressions: list | None = None,
+              warm_start=None,
+              room_slot_penalties=None):
     """Risolve il sotto-problema CP-SAT del giorno `day`.
 
     Riusa `cpsat_v2_timetable.solve_phase_b_for_day`. Le ore
@@ -160,13 +162,168 @@ def solve_day(day: int, profs: dict, dc_value: dict, *,
         enforce_no_holes=enforce_no_holes,
         locked_slots_for_day=locked_slots_for_day,
         coteach_groups=coteach_groups,
+        support_assignments=support_assignments,
+        parallel_groups=parallel_groups,
         group_assignments=group_assignments,
         special_room_ctx=special_room_ctx,
         class_flags=class_flags,
         total_room_capacity=total_room_capacity,
+        plessi_ctx=plessi_ctx,
         via_dsl=bool(dsl_hard_expressions),
         dsl_hard_expressions=dsl_hard_expressions or None,
+        warm_start=warm_start,
+        room_slot_penalties=room_slot_penalties,
     )
+
+
+def hint_from_day(sol: dict | None, target_day: int) -> dict:
+    """Map a neighbour day's occupancy onto ``target_day`` as a warm start.
+
+    Same (teacher, class, subject, hour) cells, new day. Empty / None
+    yields {}. Best-effort: CP-SAT may ignore the hint.
+    """
+    if not sol:
+        return {}
+    out = {}
+    for k, v in sol.items():
+        if not v:
+            continue
+        if len(k) != 5:
+            continue
+        p, cl, subj, _d, h = k
+        out[(p, cl, subj, target_day, h)] = 1
+    return out
+
+
+def explain_day_infeasibility(profs, dc_value, day) -> dict:
+    """Human-readable IIS-ish report for a failed Phase B day.
+
+    Hall (prof hours that day exceed the busiest class they teach),
+    class load in {1,2,3} (HARD-2 band), prof overload (> max hours
+    per day). Computed from ``dc_value`` so it does not depend on
+    ``engine/scripts`` being importable or on the full ``profs``
+    shape. ``profs`` is accepted for API compatibility.
+    """
+    del profs  # unused; kept so call sites stay (profs, dc, day)
+    from collections import defaultdict
+    prof_classes_day = defaultdict(set)
+    prof_hours_day = defaultdict(int)
+    cl_load_day = defaultdict(int)
+    for key, cnt in (dc_value or {}).items():
+        if not cnt:
+            continue
+        if len(key) != 4:
+            continue
+        p, cl, _subj, d = key
+        if d != day:
+            continue
+        prof_classes_day[p].add(cl)
+        prof_hours_day[p] += int(cnt)
+        cl_load_day[cl] += int(cnt)
+
+    hall_violations = []
+    for p, cls in prof_classes_day.items():
+        if not cls:
+            continue
+        max_load = max(cl_load_day[c] for c in cls)
+        if prof_hours_day[p] > max_load:
+            hall_violations.append(dict(
+                prof=p,
+                prof_hours=prof_hours_day[p],
+                max_class_load=max_load,
+                n_classes=len(cls),
+                classes=sorted(cls),
+            ))
+
+    class_load_outliers = [
+        dict(**{"class": cl}, day_load=load)
+        for cl, load in cl_load_day.items()
+        if load in (1, 2, 3)
+    ]
+    max_prof = getattr(cv2, "MAX_PROF_HOURS_PER_DAY", 5)
+    prof_overload = [
+        dict(prof=p, total_hours_in_day=h)
+        for p, h in prof_hours_day.items()
+        if h > max_prof
+    ]
+
+    summary_parts = []
+    if hall_violations:
+        summary_parts.append(
+            f"{len(hall_violations)} violazioni Hall (prof con piu' "
+            f"ore del max-load delle sue classi)"
+        )
+    if class_load_outliers:
+        summary_parts.append(
+            f"{len(class_load_outliers)} classi con load 1/2/3 (HARD-2 "
+            f"violato a monte)"
+        )
+    if prof_overload:
+        summary_parts.append(
+            f"{len(prof_overload)} docenti con > {max_prof} ore in un "
+            f"giorno (HARD-C)"
+        )
+    if not summary_parts:
+        summary_parts.append(
+            "Nessuna violazione strutturale evidente. "
+            "Causa probabile: combinatoria slot+coppie consecutive "
+            "(motorie / mat-ita doppia), oppure no-holes troppo stretto."
+        )
+    return dict(
+        day=day,
+        hall_violations=hall_violations,
+        class_load_outliers=class_load_outliers,
+        prof_overload=prof_overload,
+        summary=" | ".join(summary_parts),
+    )
+
+
+def format_infeasibility(expl: dict) -> str:
+    """One-line suffix for a Phase B INFEASIBLE RuntimeError / log."""
+    if not expl:
+        return ""
+    s = expl.get("summary") or ""
+    return f" Causa: {s}" if s else ""
+
+
+def fix_and_optimize_two_days(
+        d_ok: int, d_fail: int, profs: dict, dc_value: dict,
+        sol_ok: dict, *,
+        time_limit: float = 30.0, workers: int = 4,
+        enforce_no_holes: bool = True,
+        locked_by_day: dict | None = None,
+        **solve_kw) -> tuple[dict | None, dict | None]:
+    """2-day fix-and-optimize: re-solve the failed day using the
+    neighbour as a warm start; if that still fails, re-solve the
+    neighbour (hinted by its own incumbent) then retry the failed day.
+
+    Returns ``(new_sol_ok, new_sol_fail)``. Either may be None.
+    """
+    kw = dict(solve_kw)
+    kw.setdefault("time_limit", time_limit)
+    kw.setdefault("workers", workers)
+    kw.setdefault("enforce_no_holes", enforce_no_holes)
+    locks = locked_by_day or {}
+    out_fail, _ = solve_day(
+        d_fail, profs, dc_value,
+        locked_slots_for_day=locks.get(d_fail),
+        warm_start=hint_from_day(sol_ok, d_fail),
+        **kw)
+    if out_fail is not None:
+        return sol_ok, out_fail
+    out_ok, _ = solve_day(
+        d_ok, profs, dc_value,
+        locked_slots_for_day=locks.get(d_ok),
+        warm_start=sol_ok,
+        **kw)
+    if out_ok is None:
+        out_ok = sol_ok
+    out_fail, _ = solve_day(
+        d_fail, profs, dc_value,
+        locked_slots_for_day=locks.get(d_fail),
+        warm_start=hint_from_day(out_ok, d_fail),
+        **kw)
+    return out_ok, out_fail
 
 
 # ProcessPoolExecutor worker: passes the path to the profs pickle
@@ -463,34 +620,56 @@ def run_temporal_pipeline(profs_path: str, *,
         if log_progress:
             print(f"[temporal] step 2/3: {len(DAYS)} days sequential "
                   f"({time_day}s/day)")
+        prev_day = None
+        prev_out = None
+        day_kw = dict(
+            time_limit=time_day, workers=cpsat_workers_per_day,
+            enforce_no_holes=enforce_no_holes, log=False,
+            coteach_groups=coteach_groups,
+            group_assignments=group_assignments,
+            special_room_ctx=special_room_ctx,
+            class_flags=class_flags,
+            total_room_capacity=total_room_capacity,
+            support_assignments=support_assignments,
+            parallel_groups=parallel_groups,
+            plessi_ctx=plessi_ctx,
+            dsl_hard_expressions=dsl_hard_expressions,
+        )
         for d in DAYS:
             t = time.time()
             out, status = solve_day(
                 d, profs, dc_value,
-                time_limit=time_day, workers=cpsat_workers_per_day,
-                enforce_no_holes=enforce_no_holes, log=False,
                 locked_slots_for_day=(locked_by_day or {}).get(d, None),
-                coteach_groups=coteach_groups,
-                group_assignments=group_assignments,
-                special_room_ctx=special_room_ctx,
-                class_flags=class_flags,
-                total_room_capacity=total_room_capacity,
-                support_assignments=support_assignments,
-                parallel_groups=parallel_groups,
-                plessi_ctx=plessi_ctx,
-                dsl_hard_expressions=dsl_hard_expressions,
-            )
+                warm_start=hint_from_day(prev_out, d),
+                **day_kw)
             dt = time.time() - t
             days_per_day[d] = dt
+            if out is None and prev_out is not None and prev_day is not None:
+                if log_progress:
+                    print(f"[temporal]   day {d} INFEASIBLE; "
+                          f"2-day F&O with day {prev_day}")
+                new_prev, out = fix_and_optimize_two_days(
+                    prev_day, d, profs, dc_value, prev_out,
+                    locked_by_day=locked_by_day,
+                    **day_kw)
+                if new_prev is not None and new_prev is not prev_out:
+                    for k in list(full_solution):
+                        if len(k) == 5 and k[3] == prev_day:
+                            del full_solution[k]
+                    full_solution.update(new_prev)
+                    prev_out = new_prev
             if out is None:
                 failed_days.append(d)
+                expl = explain_day_infeasibility(profs, dc_value, d)
                 if log_progress:
-                    print(f"[temporal]   day {d} INFEASIBLE in {dt:.1f}s")
+                    print(f"[temporal]   day {d} INFEASIBLE in {dt:.1f}s"
+                          f"{format_infeasibility(expl)}")
             else:
                 full_solution.update(out)
                 occ = sum(1 for v in out.values() if v == 1)
                 if log_progress:
                     print(f"[temporal]   day {d} ok in {dt:.1f}s -- {occ} occ")
+                prev_day, prev_out = d, out
 
     elapsed_days_total = time.time() - days_t0
     elapsed_days_max = max(days_per_day.values()) if days_per_day else 0.0

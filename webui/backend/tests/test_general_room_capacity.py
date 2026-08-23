@@ -97,3 +97,53 @@ def test_without_exclusion_the_same_slot_is_over_cap():
     n = pb.add_general_room_capacity_phase_b(m, slot, 2, day=0)
     assert n == 1
     assert cp_model.CpSolver().Solve(m) == cp_model.INFEASIBLE
+
+
+def test_plesso_cap_rejects_overflow_inside_one_plesso():
+    """Three classes of plesso 1, two ordinary rooms there: INFEASIBLE
+    even when the school-wide cap would still fit."""
+    m = cp_model.CpModel()
+    slot = {}
+    for cl in ("1A", "1B", "1C"):
+        v = m.NewBoolVar(cl)
+        slot[("T", cl, "X", 0, 8)] = v
+        m.Add(v == 1)
+    n = pb.add_general_room_capacity_phase_b(
+        m, slot, 10, day=0,
+        plesso_caps={1: 2},
+        class_to_plesso={"1A": 1, "1B": 1, "1C": 1})
+    assert n == 1
+    assert cp_model.CpSolver().Solve(m) == cp_model.INFEASIBLE
+
+
+def test_plesso_cap_ignores_unpinned_classes():
+    """A class with no plesso pin does not consume the per-plesso cap."""
+    m = cp_model.CpModel()
+    slot = {}
+    for cl in ("1A", "1B", "1C"):
+        v = m.NewBoolVar(cl)
+        slot[("T", cl, "X", 0, 8)] = v
+        m.Add(v == 1)
+    n = pb.add_general_room_capacity_phase_b(
+        m, slot, 10, day=0,
+        plesso_caps={1: 2},
+        class_to_plesso={"1A": 1, "1B": 1})  # 1C unpinned
+    assert n == 0
+    assert cp_model.CpSolver().Solve(m) in (
+        cp_model.OPTIMAL, cp_model.FEASIBLE)
+
+
+def test_plesso_cap_alone_without_global_n_rooms():
+    """n_rooms=0 disables the school-wide cap; per-plesso still applies."""
+    m = cp_model.CpModel()
+    slot = {}
+    for cl in ("1A", "1B", "1C"):
+        v = m.NewBoolVar(cl)
+        slot[("T", cl, "X", 0, 8)] = v
+        m.Add(v == 1)
+    n = pb.add_general_room_capacity_phase_b(
+        m, slot, 0, day=0,
+        plesso_caps={1: 2},
+        class_to_plesso={"1A": 1, "1B": 1, "1C": 1})
+    assert n == 1
+    assert cp_model.CpSolver().Solve(m) == cp_model.INFEASIBLE

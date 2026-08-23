@@ -34,6 +34,9 @@
   export let showUnbind = true;
   // Override the label of the destructive primary action.
   export let deleteLabel = 'Elimina evento confliggente';
+  // When set, offer an atomic two-lesson swap instead of only delete.
+  export let showSwap = false;
+  export let swapLabel = 'Scambia';
 
   $: hasTeacher = (details.teacher_busy || []).length > 0;
   $: hasClass   = (details.class_busy   || []).length > 0;
@@ -107,6 +110,10 @@
        parzialmente perche' la riga IS la tupla) elimina la lezione.</p>
     <p><b>Elimina</b>: rimuove l'INTERA lezione confliggente da ogni
        categoria.</p>
+    {#if showSwap}
+    <p><b>Scambia</b>: le due lezioni si scambiano lo slot, senza
+       cancellarne nessuna. Annullabile dal toast.</p>
+    {/if}
   </div>
 
   <div class="flex justify-end gap-2 mt-4">
@@ -114,6 +121,11 @@
     {#if showUnbind}
       <button class="btn-amber" on:click={() => onResolve('unbind')} data-testid="schedule-conflict-unbind">
         Svincola evento confliggente
+      </button>
+    {/if}
+    {#if showSwap}
+      <button class="btn-amber" on:click={() => onResolve('swap')} data-testid="schedule-conflict-swap">
+        {swapLabel}
       </button>
     {/if}
     <button class="btn-red" on:click={() => onResolve('delete')} data-testid="schedule-conflict-delete">

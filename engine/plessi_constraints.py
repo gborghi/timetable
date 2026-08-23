@@ -81,6 +81,9 @@ class PlessiData:
 
     commuting_rules: list[CommutingRule] = field(default_factory=list)
     entity_policies: list[EntityPolicy] = field(default_factory=list)
+    standard_rooms_per_plesso: dict[int, int] = field(default_factory=dict)
+    """``plesso_id -> n`` ordinary rooms (multi_class_max <= 1). Used
+    by Phase B to cap concurrent classes of that plesso per slot."""
 
 
 # ---------- Rule resolution ----------
@@ -1002,9 +1005,16 @@ def load_plessi_data(db) -> PlessiData:
     from backend import models  # type: ignore
 
     data = PlessiData()
-    data.classroom_to_plesso = {
-        c.name: c.plesso_id for c in db.query(models.Classroom).all()
-    }
+    rooms = list(db.query(models.Classroom).all())
+    data.classroom_to_plesso = {c.name: c.plesso_id for c in rooms}
+    for c in rooms:
+        if c.plesso_id is None:
+            continue
+        mc = int(getattr(c, "multi_class_max", 1) or 1)
+        if mc > 1:
+            continue
+        data.standard_rooms_per_plesso[c.plesso_id] = (
+            data.standard_rooms_per_plesso.get(c.plesso_id, 0) + 1)
     data.teacher_name_to_id = {
         t.name: t.id for t in db.query(models.Teacher).all()
     }

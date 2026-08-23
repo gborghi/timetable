@@ -431,6 +431,9 @@
           day, hour,
           subject: `${head} -> ${DAY_NAMES_IT[day]} ${hour}:00`,
           details: r.conflicts,
+          swapWith: r.swap_with ?? null,
+          originDay: _oldDay,
+          originHour: _oldHour,
         });
         // Hold the in-flight lock until the modal closes, otherwise a
         // second synthetic drop can POST /move again and reopen it.
@@ -559,7 +562,74 @@
     await refreshDataset();
   }
 
-  async function resolveDropConflict() {
+  async function resolveDropSwap() {
+    if (!$dropConflictStore || dropResolveInFlight) return;
+    const dc = $dropConflictStore;
+    if (dc.kind !== 'move' || dc.swapWith == null) return;
+    conflictEpoch += 1;
+    dropResolveInFlight = true;
+    ignoreConflictsUntil = Date.now() + 30_000;
+    dropConflictStore.set(null);
+    try {
+      const r = await api.post('/api/lessons/' + dc.sourceId + '/swap',
+                               { other_id: dc.swapWith });
+      if (r && r.accepted === false && r.needs_unlock) {
+        const ok = await confirmDialog(
+          'Una delle due lezioni e bloccata. Scambiarle le sblocca. Procedere?',
+          { title: 'Lezione bloccata', confirmLabel: 'Sblocca e scambia',
+            danger: false });
+        if (!ok) {
+          await loadCalendar();
+          return;
+        }
+        const r2 = await api.post('/api/lessons/' + dc.sourceId + '/swap',
+                                  { other_id: dc.swapWith, unlock: true });
+        if (r2 && r2.accepted === false) {
+          flash('Scambio rifiutato: ' + (r2.reason || 'vincolo violato'),
+                'error');
+        } else {
+          flash(r2?.reason || 'Lezioni scambiate', 'success');
+        }
+      } else if (r && r.accepted === false) {
+        flash('Scambio rifiutato: ' + (r.reason || 'vincolo violato'),
+              'error');
+      } else {
+        const canUndo = r && r.accepted && !r.room_cleared
+          && dc.originDay != null && dc.originHour != null;
+        flash(r?.reason || 'Lezioni scambiate', 'success',
+          canUndo ? { action: {
+            label: 'Annulla',
+            fn: async () => {
+              try {
+                await api.post('/api/lessons/' + dc.sourceId + '/swap',
+                                { other_id: dc.swapWith });
+                await loadCalendar();
+                await refreshDataset();
+                flash('Scambio annullato', 'success');
+              } catch (e) {
+                flash('Annullamento fallito: ' + (e.message || e), 'error');
+              }
+            },
+          } } : undefined);
+      }
+      await loadCalendar();
+      await refreshDataset();
+    } catch (e) {
+      flash('Errore scambio: ' + e.message, 'error');
+      await loadCalendar();
+      await refreshDataset();
+    } finally {
+      dropResolveInFlight = false;
+      dropConflictStore.set(null);
+      movingLessonIds.delete(dc.sourceId);
+    }
+  }
+
+  async function resolveDropConflict(strategy) {
+    if (strategy === 'swap') {
+      await resolveDropSwap();
+      return;
+    }
     if (!$dropConflictStore || dropResolveInFlight) return;
     const dc = $dropConflictStore;
     conflictEpoch += 1;
@@ -984,6 +1054,8 @@
                                        class_busy: [],
                                        room_busy: [] }}
                          showUnbind={false}
+                         showSwap={!!$dropConflictStore.swapWith
+                                   && $dropConflictStore.kind === 'move'}
                          deleteLabel="Sostituisci"
                          onCancel={cancelDropConflict}
                          onResolve={resolveDropConflict}/>

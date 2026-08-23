@@ -115,7 +115,14 @@ _KEYWORDS = {
 
 
 class DSLError(ValueError):
-    pass
+    """Parse/tokenize failure. ``pos``/``end`` are 0-based char offsets
+    when known (unknown token); otherwise None."""
+
+    def __init__(self, message, *, pos=None, end=None, token=None):
+        super().__init__(message)
+        self.pos = pos
+        self.end = end
+        self.token = token
 
 
 def tokenize(text: str) -> list[tuple[str, Any]]:
@@ -126,7 +133,10 @@ def tokenize(text: str) -> list[tuple[str, Any]]:
         if not m:
             raise DSLError(
                 f"Token sconosciuto a colonna {pos+1}: "
-                f"'{text[pos:pos+20]}'"
+                f"'{text[pos:pos+20]}'",
+                pos=pos,
+                end=min(len(text), pos + 1),
+                token=text[pos:pos + 1],
             )
         pos = m.end()
         for k, v in m.groupdict().items():

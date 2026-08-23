@@ -263,10 +263,14 @@ Solver:
   The invariant `sum(subj_busy) == pr` guarantees the class does not
   hold other lessons in the group's slot.
 
-Supported pipelines: monolithic + `decomposition_temporal`. The other
-decomposed pipelines (`spectral_v2`, `curriculum`, `metis`,
-`column_generation`) ignore `group_assignments` for now --
-follow-up tracked in AUDIT.md.
+Supported pipelines: every production path honours `group_assignments`.
+The spectral A/B/C stages (and any per-cluster cut) still do not
+model `group_slot`; when groups, coteach, sostegno, parallel,
+special-room capacity, plesso commuting or HARD DSL are present the
+loop forces the monolithic per-day solver (`force_mono_for_groups` /
+`_needs_mono`), which does. Column generation already walks groups
+via `_profs_iter_with_groups`. Lagrangian still refuses groups
+(inter-class coupling).
 
 Example: group "Spagnolo cross-class" with 5 students from 2A + 7 from
 2B, 3h/week, ProfSpa: add `Assignment(teacher=ProfSpa,

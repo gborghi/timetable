@@ -64,8 +64,11 @@ rehearses June findings without reopening the files.
    `APIKeyMiddleware` (`X-API-Key` / Bearer). Unset key = open
    API. Production boot fails closed if the key is missing.
 4. **Groups “solver-side wiring” TODO** — the comment is gone.
-   C3 groups are modelled; README still admits
-   spectral / curriculum / metis / CG ignore `group_assignments`.
+   C3 groups are modelled. Spectral A/B/C still omit `group_slot`;
+   the loop falls back to the monolithic per-day solver whenever
+   groups / coteach / sostegno / parallel / special rooms / plessi /
+   HARD DSL are present, so those hours are not dropped. CG is
+   group-aware. Lagrangian still refuses groups.
 5. **“Only 5 engine tests, no E2E”** — 136 backend tests + 37
    Cypress specs + Playwright + 5 root tests. CI runs ruff,
    pytest (fast), svelte-check, vite build, docker buildx.
@@ -199,7 +202,9 @@ flag on today is a data leak.
 
 ### P2 — honest incompletes, not bugs
 
-- C3 groups: monolithic + temporal only.
+- C3 groups: honoured on every production path via the monolithic
+  per-day fallback (spectral stages still do not model `group_slot`
+  themselves). Lagrangian remains the exception.
 - Some native soft families still “TODO d’obiettivo”.
 - Phase A cannot migrate 1:1 onto slot-Bool DSL.
 - `run_manager` is in-process: gunicorn `-w 1` is mandatory

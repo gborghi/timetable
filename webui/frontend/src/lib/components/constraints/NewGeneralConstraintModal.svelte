@@ -153,6 +153,7 @@
     <div class="field">
       <label>Espressione DSL *</label>
       <DslEditor bind:value={expression}
+                 errorSpans={validateResult?.error_spans || []}
                  on:input={onExpressionChange}
                  testid="dsl-expression"
                  placeholder="forall l in lessons where l.teacher == Borghi: l.hour != 6"/>

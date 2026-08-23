@@ -45,6 +45,11 @@ class LessonMoveIn(BaseModel):
     unlock: bool = False
 
 
+class LessonSwapIn(BaseModel):
+    other_id: int
+    unlock: bool = False
+
+
 class RescheduleIn(BaseModel):
     day: int
     hour: int
@@ -203,10 +208,12 @@ def move_lesson_by_id(lesson_id: int,
         )
         if (cinfo["teacher_busy"] or cinfo["class_busy"]
                 or cinfo["room_busy"]):
+            swap_with = _unique_conflict_id(cinfo)
             return {
                 "accepted": False,
                 "reason": "Slot di destinazione occupato.",
                 "lesson_id": lesson_id,
+                "swap_with": swap_with,
                 "conflicts": {
                     "teacher_busy": _summarise_conflicts(
                         cinfo["teacher_busy"]),
@@ -219,6 +226,36 @@ def move_lesson_by_id(lesson_id: int,
     out = optimization.validate_and_apply_move(db, src, dst,
                                                unlock=payload.unlock)
     out["lesson_id"] = lesson_id
+    return out
+
+
+def _unique_conflict_id(cinfo: dict) -> int | None:
+    """Single occupant across teacher/class/room buckets, or None."""
+    ids: set[int] = set()
+    for bucket in ("teacher_busy", "class_busy", "room_busy"):
+        for row in cinfo.get(bucket) or []:
+            lid = getattr(row, "id", None)
+            if lid is None and isinstance(row, dict):
+                lid = row.get("lesson_id")
+            if lid is not None:
+                ids.add(int(lid))
+    return next(iter(ids)) if len(ids) == 1 else None
+
+
+@router.post("/{lesson_id}/swap")
+def swap_lesson_by_id(lesson_id: int,
+                      payload: LessonSwapIn,
+                      db: Session = Depends(get_db)):
+    """Exchange (day, hour) of ``lesson_id`` with ``other_id`` atomically.
+
+    Same HARD / pin semantics as /move. Used by the calendar drop
+    modal's "Scambia" action so a collision becomes a two-lesson swap
+    instead of a delete-and-retry.
+    """
+    out = optimization.validate_and_apply_swap(
+        db, lesson_id, payload.other_id, unlock=payload.unlock)
+    out["lesson_id"] = lesson_id
+    out["other_id"] = payload.other_id
     return out
 
 

@@ -301,3 +301,30 @@ def test_load_plessi_data_from_db(app_with_temp_db):
     assert data.commuting_rules[0].min_gap_hours == 1
     assert len(data.entity_policies) == 1
     assert data.entity_policies[0].policy == "single_plesso_per_day"
+    assert data.standard_rooms_per_plesso[p1_id] == 1
+    assert data.standard_rooms_per_plesso[p2_id] == 1
+
+
+def test_load_plessi_data_counts_ordinary_rooms_only(app_with_temp_db):
+    """multi_class_max>1 (aula condivisa) does not consume a standard seat."""
+    import plessi_constraints as pc
+    from backend import models
+    _app, TestSession = app_with_temp_db
+    with TestSession() as db:
+        p = models.Plesso(name="C", code="C")
+        db.add(p)
+        db.commit()
+        pid = p.id
+        db.add_all([
+            models.Classroom(name="A1", plesso_id=pid, kind="standard",
+                             multi_class_max=1),
+            models.Classroom(name="A2", plesso_id=pid, kind="standard",
+                             multi_class_max=1),
+            models.Classroom(name="LAB", plesso_id=pid, kind="lab",
+                             multi_class_max=3),
+            models.Classroom(name="ORPHAN", plesso_id=None, kind="standard"),
+        ])
+        db.commit()
+        data = pc.load_plessi_data(db)
+    assert data.standard_rooms_per_plesso[pid] == 2
+    assert None not in data.standard_rooms_per_plesso

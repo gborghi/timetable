@@ -687,3 +687,146 @@ def validate_and_apply_move(db: Session, src: tuple, dst: tuple,
         "room_cleared": room_cleared,
         "cleared_room": cleared_room,
     }
+
+
+def validate_and_apply_swap(db: Session, lesson_a_id: int, lesson_b_id: int,
+                            *, unlock: bool = False) -> dict[str, Any]:
+    """Atomic two-lesson hour swap under the same HARD gate as a move.
+
+    Each lesson keeps teacher / class / subject and exchanges (day, hour)
+    with the other. Rows are updated in place so ids (and undo) survive.
+    A pin on either row is refused unless ``unlock=True``; both pins are
+    then dropped (the pin named an hour, and the hour changed).
+    """
+    import metaheuristics as meta  # type: ignore
+    if int(lesson_a_id) == int(lesson_b_id):
+        return {"accepted": False, "reason": "Non si puo` scambiare una "
+                                             "lezione con se stessa."}
+    active = engine_io.get_active_solution(db)
+    if active is None:
+        return {"accepted": False, "reason": "Nessuna soluzione attiva"}
+    a = db.get(models.Lesson, int(lesson_a_id))
+    b = db.get(models.Lesson, int(lesson_b_id))
+    if a is None or b is None:
+        return {"accepted": False, "reason": "Lezione non trovata"}
+    if a.solution_id != active.id or b.solution_id != active.id:
+        return {"accepted": False,
+                "reason": "Entrambe le lezioni devono stare nella "
+                          "soluzione attiva."}
+    if (a.day, a.hour) == (b.day, b.hour):
+        return {"accepted": False,
+                "reason": "Le due lezioni occupano gia` lo stesso slot."}
+    if (a.locked or b.locked) and not unlock:
+        return {"accepted": False, "needs_unlock": True,
+                "reason": ("Una delle due lezioni e` bloccata nel suo "
+                           "slot. Scambiarle le sblocchera`.")}
+
+    src_a = (a.teacher_name, a.class_name, a.subject, a.day, a.hour)
+    src_b = (b.teacher_name, b.class_name, b.subject, b.day, b.hour)
+    dst_a = (a.teacher_name, a.class_name, a.subject, b.day, b.hour)
+    dst_b = (b.teacher_name, b.class_name, b.subject, a.day, a.hour)
+
+    sol = engine_io.lessons_to_solution_dict(db, active.id)
+    profs = engine_io.profs_dict_from_db(db)
+    if src_a not in sol or src_b not in sol:
+        return {"accepted": False, "reason": "Lezione di origine non trovata"}
+
+    av = _availability_constraints(db)
+    for p, cl, _s, d, h in (dst_a, dst_b):
+        if (p, d, h) in av["teacher_hard"]:
+            return {"accepted": False,
+                    "reason": (f"Il docente {p} ha indisponibilita HARD "
+                               f"in giorno {d} ora {h}.")}
+        if (cl, d, h) in av["class_hard"]:
+            return {"accepted": False,
+                    "reason": (f"La classe {cl} ha indisponibilita HARD "
+                               f"in giorno {d} ora {h}.")}
+
+    new_sol = dict(sol)
+    new_sol[src_a] = 0
+    new_sol[src_b] = 0
+    new_sol[dst_a] = 1
+    new_sol[dst_b] = 1
+
+    hard_ctx = _hard_check_ctx(db)
+    baseline_infeasible = False
+    if not meta.is_hard_feasible(new_sol, profs, verbose=False, **hard_ctx):
+        if meta.is_hard_feasible(sol, profs, verbose=False, **hard_ctx):
+            return {"accepted": False,
+                    "reason": "Scambio rifiutato: viola almeno un "
+                              "vincolo HARD."}
+        baseline_infeasible = True
+
+    ok_hard, _soft_pen, msg = _logical_check_for_solution(db, new_sol)
+    if not ok_hard:
+        return {"accepted": False,
+                "reason": ("Scambio rifiutato: "
+                           + (msg or "vincolo logico HARD violato."))}
+
+    v0, m0 = meta.compute_soft(sol, profs)
+    v1, m1 = meta.compute_soft(new_sol, profs)
+    v0 += availability_soft_penalty(sol, db)
+    v1 += availability_soft_penalty(new_sol, db)
+    _ok0, soft0, _ = _logical_check_for_solution(db, sol)
+    _ok1, soft1, _ = _logical_check_for_solution(db, new_sol)
+    v0 += soft0
+    v1 += soft1
+
+    old_a = (a.day, a.hour, a.classroom_name)
+    old_b = (b.day, b.hour, b.classroom_name)
+    a.day, a.hour = old_b[0], old_b[1]
+    b.day, b.hour = old_a[0], old_a[1]
+    if unlock:
+        a.locked = False
+        b.locked = False
+
+    def _room_ok(room: str | None, day: int, hour: int,
+                 keep_ids: set[int]) -> bool:
+        if not room:
+            return True
+        if (room, day, hour) in av["room_hard"]:
+            return False
+        other = db.query(models.Lesson).filter(
+            models.Lesson.solution_id == active.id,
+            models.Lesson.day == day,
+            models.Lesson.hour == hour,
+            models.Lesson.classroom_name == room,
+            models.Lesson.id.notin_(list(keep_ids)),
+        ).first()
+        return other is None
+
+    room_cleared = False
+    cleared_room = None
+    if not _room_ok(a.classroom_name, a.day, a.hour, {a.id, b.id}):
+        cleared_room = a.classroom_name
+        a.classroom_name = None
+        room_cleared = True
+    if not _room_ok(b.classroom_name, b.day, b.hour, {a.id, b.id}):
+        cleared_room = cleared_room or b.classroom_name
+        b.classroom_name = None
+        room_cleared = True
+
+    active.obj_value = float(v1)
+    active.metrics_json = json.dumps(
+        {**m1, "feasible": not baseline_infeasible})
+    db.commit()
+    return {
+        "accepted": True,
+        "baseline_infeasible": baseline_infeasible,
+        "reason": ("Scambio: miglioramento di "
+                   f"{int(v0 - v1)} punti SOFT" if v1 < v0 else
+                   ("Scambio: stesso valore SOFT" if v1 == v0
+                    else f"Scambio: peggioramento di {int(v1 - v0)} "
+                         "punti SOFT")),
+        "obj_before": float(v0),
+        "obj_after": float(v1),
+        "delta": float(v1 - v0),
+        "metrics_before": m0,
+        "metrics_after": m1,
+        "room_cleared": room_cleared,
+        "cleared_room": cleared_room,
+        "swapped": [
+            {"id": a.id, "day": a.day, "hour": a.hour},
+            {"id": b.id, "day": b.day, "hour": b.hour},
+        ],
+    }

@@ -311,3 +311,157 @@ def test_delete_unscheduled_drops_pool_row(app_with_temp_db):
         assert s.query(models.UnscheduledLesson).count() == 0
     finally:
         s.close()
+
+
+def _seed_two_teachers(SessionLocal):
+    """Two teachers, same class, two hours -- a drop is a class conflict
+    and a swap is well-defined."""
+    from backend import models
+
+    s = SessionLocal()
+    try:
+        teaA = models.Teacher(name="TeaA", max_hours=18)
+        teaB = models.Teacher(name="TeaB", max_hours=18)
+        cls1A = models.SchoolClass(name="1A", n_students=20)
+        s.add_all([teaA, teaB, cls1A])
+        s.flush()
+        s.add_all([
+            models.TeacherSubject(teacher_id=teaA.id, subject="Mat"),
+            models.TeacherSubject(teacher_id=teaB.id, subject="Ita"),
+        ])
+        s.flush()
+        s.add_all([
+            models.Assignment(class_id=cls1A.id, teacher_id=teaA.id,
+                              subject="Mat", hours=4),
+            models.Assignment(class_id=cls1A.id, teacher_id=teaB.id,
+                              subject="Ita", hours=4),
+        ])
+        sol = models.Solution(name="t", kind="manual", is_active=True)
+        s.add(sol)
+        s.flush()
+        l1 = models.Lesson(solution_id=sol.id, teacher_name="TeaA",
+                           class_name="1A", subject="Mat", day=1, hour=8)
+        l2 = models.Lesson(solution_id=sol.id, teacher_name="TeaB",
+                           class_name="1A", subject="Ita", day=1, hour=9)
+        s.add_all([l1, l2])
+        s.commit()
+        return sol.id, l1.id, l2.id
+    finally:
+        s.close()
+
+
+def test_move_onto_occupied_reports_swap_with(app_with_temp_db):
+    from fastapi.testclient import TestClient
+
+    app, SessionLocal = app_with_temp_db
+    _, l1, l2 = _seed_two_teachers(SessionLocal)
+    client = TestClient(app)
+    r = client.post(f"/api/lessons/{l1}/move", json={"day": 1, "hour": 9})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["accepted"] is False
+    assert body["swap_with"] == l2
+    assert any(c["lesson_id"] == l2
+               for c in body["conflicts"]["class_busy"])
+
+
+def test_swap_two_lessons_exchanges_hours(app_with_temp_db):
+    from fastapi.testclient import TestClient
+    from backend import models
+
+    app, SessionLocal = app_with_temp_db
+    _, l1, l2 = _seed_two_teachers(SessionLocal)
+    client = TestClient(app)
+    r = client.post(f"/api/lessons/{l1}/swap", json={"other_id": l2})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["accepted"] is True
+    with SessionLocal() as s:
+        a = s.get(models.Lesson, l1)
+        b = s.get(models.Lesson, l2)
+        assert (a.day, a.hour) == (1, 9)
+        assert (b.day, b.hour) == (1, 8)
+        assert a.teacher_name == "TeaA" and b.teacher_name == "TeaB"
+
+
+def test_swap_self_rejected(app_with_temp_db):
+    from fastapi.testclient import TestClient
+
+    app, SessionLocal = app_with_temp_db
+    _, l1, _ = _seed_two_teachers(SessionLocal)
+    client = TestClient(app)
+    r = client.post(f"/api/lessons/{l1}/swap", json={"other_id": l1})
+    assert r.status_code == 200
+    assert r.json()["accepted"] is False
+
+
+def test_swap_pinned_asks_before_unlocking(app_with_temp_db):
+    from fastapi.testclient import TestClient
+    from backend import models
+
+    app, SessionLocal = app_with_temp_db
+    _, l1, l2 = _seed_two_teachers(SessionLocal)
+    with SessionLocal() as s:
+        s.get(models.Lesson, l1).locked = True
+        s.commit()
+    client = TestClient(app)
+    r = client.post(f"/api/lessons/{l1}/swap", json={"other_id": l2})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["accepted"] is False
+    assert body["needs_unlock"] is True
+    with SessionLocal() as s:
+        a = s.get(models.Lesson, l1)
+        b = s.get(models.Lesson, l2)
+        assert (a.day, a.hour, a.locked) == (1, 8, True)
+        assert (b.day, b.hour) == (1, 9)
+
+
+def test_swap_with_unlock_succeeds_and_unpins(app_with_temp_db):
+    from fastapi.testclient import TestClient
+    from backend import models
+
+    app, SessionLocal = app_with_temp_db
+    _, l1, l2 = _seed_two_teachers(SessionLocal)
+    with SessionLocal() as s:
+        s.get(models.Lesson, l1).locked = True
+        s.commit()
+    client = TestClient(app)
+    r = client.post(f"/api/lessons/{l1}/swap",
+                    json={"other_id": l2, "unlock": True})
+    assert r.status_code == 200
+    assert r.json()["accepted"] is True
+    with SessionLocal() as s:
+        a = s.get(models.Lesson, l1)
+        b = s.get(models.Lesson, l2)
+        assert (a.day, a.hour) == (1, 9)
+        assert (b.day, b.hour) == (1, 8)
+        assert a.locked is False and b.locked is False
+
+
+def test_swap_unknown_other_rejected(app_with_temp_db):
+    from fastapi.testclient import TestClient
+
+    app, SessionLocal = app_with_temp_db
+    _, l1, _ = _seed_two_teachers(SessionLocal)
+    client = TestClient(app)
+    r = client.post(f"/api/lessons/{l1}/swap", json={"other_id": 99999})
+    assert r.status_code == 200
+    assert r.json()["accepted"] is False
+
+
+def test_swap_same_slot_rejected(app_with_temp_db):
+    """Two lessons already on the same cell cannot swap with each other."""
+    from fastapi.testclient import TestClient
+    from backend import models
+
+    app, SessionLocal = app_with_temp_db
+    _, l1, l2 = _seed_two_teachers(SessionLocal)
+    with SessionLocal() as s:
+        b = s.get(models.Lesson, l2)
+        b.day, b.hour = 1, 8
+        s.commit()
+    client = TestClient(app)
+    r = client.post(f"/api/lessons/{l1}/swap", json={"other_id": l2})
+    assert r.status_code == 200
+    assert r.json()["accepted"] is False

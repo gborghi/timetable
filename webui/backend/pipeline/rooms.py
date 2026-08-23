@@ -104,6 +104,25 @@ def _apply_joint_room_map(sid: int, room_map: dict,
     }
 
 
+def _room_slot_penalties(lessons: list[dict], result: dict | None,
+                         *, weight: int = 80) -> dict[tuple[int, int], int]:
+    """λ on (day, hour) cells where a lesson stayed unplaced.
+
+    Next Phase B day-solve can fold these into the soft objective so
+    over-subscribed hours become expensive. Empty when every lesson
+    got a real room.
+    """
+    placed = set(result or {})
+    penalties: dict[tuple[int, int], int] = {}
+    for L in lessons:
+        key = (L["class"], L["subject"], int(L["day"]), int(L["hour"]))
+        if key in placed:
+            continue
+        slot = (int(L["day"]), int(L["hour"]))
+        penalties[slot] = penalties.get(slot, 0) + int(weight)
+    return penalties
+
+
 def _unplaced_from_status(status: str | None) -> int:
     """Parse the ``.../UNPLACED:<n>`` suffix the room solver appends when a
     capacity/plesso shortage forced it to leave lessons without a real room.
@@ -268,10 +287,15 @@ def _apply_rooms_to_solution(sid: int, *, time_limit_s: float,
     # was truncated and the greedy placed more, so `rooms_fallback` here
     # says "what you are looking at is the greedy's mapping", not "the
     # exact solve died".
+    room_slot_penalties = _room_slot_penalties(lessons, result)
+    if room_slot_penalties:
+        print(f"[{log_prefix}] {len(room_slot_penalties)} slot "
+              "sovraffollati: λ per la prossima Phase B")
     return {"rooms_assigned": n_rooms, "rooms_total_lessons": len(lessons),
             "rooms_exact_status": status, "rooms_fallback": rooms_fallback,
             "rooms_unplaced": rooms_unplaced,
-            "rooms_rescued": rooms_rescued}
+            "rooms_rescued": rooms_rescued,
+            "room_slot_penalties": room_slot_penalties}
 
 
 def run_classroom_assignment(time_limit_s: float, workers: int, log: bool,

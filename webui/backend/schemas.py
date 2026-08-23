@@ -798,6 +798,10 @@ class GeneralConstraintValidateOut(BaseModel):
     errors: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     n_atoms: int = 0
+    error_spans: list[dict] = Field(
+        default_factory=list,
+        description="0-based {start,end,message} spans for the editor squiggle",
+    )
 
 
 class ConstraintCreateIn(BaseModel):

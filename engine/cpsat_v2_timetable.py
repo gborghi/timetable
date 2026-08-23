@@ -1352,7 +1352,8 @@ def build_plessi_ctx(db):
         pl = _pc.load_plessi_data(db)
     except Exception:
         return None
-    if not pl.commuting_rules and not pl.entity_policies:
+    if (not pl.commuting_rules and not pl.entity_policies
+            and not getattr(pl, "standard_rooms_per_plesso", None)):
         return None
     pins = _pc.class_plesso_pins(pl)
     if not pins:
@@ -1491,7 +1492,9 @@ def add_special_room_capacity_phase_b(model, slot, ctx, *, day=None) -> int:
 
 
 def add_general_room_capacity_phase_b(model, slot, n_rooms, *,
-                                      day=None, subj_kind=None) -> int:
+                                      day=None, subj_kind=None,
+                                      plesso_caps=None,
+                                      class_to_plesso=None) -> int:
     """HARD: at most ``n_rooms`` distinct classes may be in session in the
     same (day, hour) cell -- a school cannot seat more concurrent classes
     than it has rooms. The general-room twin of
@@ -1510,12 +1513,15 @@ def add_general_room_capacity_phase_b(model, slot, n_rooms, *,
 
     Counts per (class, cell) like the special cap, so co-teaching / codocenza
     on one class occupy one room, not two. Emitted only where the candidate
-    classes exceed the cap. ``n_rooms <= 0`` disables it. Returns the number
-    of constraints emitted.
+    classes exceed the cap. ``n_rooms <= 0`` disables the *global* cap.
+
+    ``plesso_caps`` (optional ``{plesso_id: n_standard_rooms}``) plus
+    ``class_to_plesso`` (``{class_name: plesso_id}``) add a second HARD
+    cap: classes of one plesso cannot occupy more ordinary rooms than
+    that plesso owns, even when the school-wide count would still fit.
+    Classes without a pin are ignored by the per-plesso cap (they still
+    count against ``n_rooms``). Either cap may be used alone.
     """
-    if not n_rooms or int(n_rooms) <= 0:
-        return 0
-    cap = int(n_rooms)
     from collections import defaultdict
     buckets: dict[tuple[int, int], dict[str, list]] = defaultdict(
         lambda: defaultdict(list))
@@ -1526,21 +1532,44 @@ def add_general_room_capacity_phase_b(model, slot, n_rooms, *,
             continue   # required-kind lesson -> special room, not a standard
                        # seat; don't count it against ``n_rooms``
         buckets[(d, h)][cl].append(var)
-    n = 0
-    for (d, h), per_class in buckets.items():
-        if len(per_class) <= cap:
-            continue  # can never exceed capacity -> no constraint needed
-        occ_terms = []
+
+    def _occ_terms(per_class, tag):
+        terms = []
         for cl, vars_ in per_class.items():
             if len(vars_) == 1:
-                occ_terms.append(vars_[0])
+                terms.append(vars_[0])
             else:
-                occ = model.NewBoolVar(f"genroom_{cl}_d{d}_h{h}")
+                occ = model.NewBoolVar(f"{tag}_{cl}")
                 for v in vars_:
                     model.Add(occ >= v)
-                occ_terms.append(occ)
-        model.Add(sum(occ_terms) <= cap)
-        n += 1
+                terms.append(occ)
+        return terms
+
+    n = 0
+    global_cap = int(n_rooms) if n_rooms else 0
+    if global_cap > 0:
+        for (d, h), per_class in buckets.items():
+            if len(per_class) <= global_cap:
+                continue
+            model.Add(sum(_occ_terms(per_class, f"genroom_d{d}_h{h}"))
+                      <= global_cap)
+            n += 1
+
+    if plesso_caps and class_to_plesso:
+        for (d, h), per_class in buckets.items():
+            by_pl: dict = defaultdict(dict)
+            for cl, vars_ in per_class.items():
+                pid = class_to_plesso.get(cl)
+                if pid is None:
+                    continue
+                by_pl[pid][cl] = vars_
+            for pid, cls_map in by_pl.items():
+                pcap = int(plesso_caps.get(pid, 0) or 0)
+                if pcap <= 0 or len(cls_map) <= pcap:
+                    continue
+                model.Add(sum(_occ_terms(
+                    cls_map, f"genroom_p{pid}_d{d}_h{h}")) <= pcap)
+                n += 1
     return n
 
 
@@ -1564,7 +1593,9 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
                           *,
                           lagrangian_penalties=None,
                           diagnostics_sink=None,
-                          _models=None):
+                          _models=None,
+                          warm_start=None,
+                          room_slot_penalties=None):
     r"""Risolve il sotto-problema di un singolo giorno.
 
     Se enforce_no_holes=True (default) impone ai profili di classe la
@@ -1968,6 +1999,15 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
             _w = lagrangian_penalties.get((_p, _h))
             if _w:
                 compiler.soft_cost_terms.append((int(round(_w)), _var))
+    # Soft pressure from a failed room step: occupy an over-subscribed
+    # hour and the next Phase B day-solve prefers another slot.
+    if room_slot_penalties:
+        for (_p, _cl, _s, _h), _var in slot.items():
+            _w = room_slot_penalties.get(_h)
+            if _w is None:
+                _w = room_slot_penalties.get((day, _h))
+            if _w:
+                compiler.soft_cost_terms.append((int(round(_w)), _var))
 
     # ---- Plessi: dove sta il docente, ora per ora ----
     # `plessi_data=None` qui sopra non e' una svista: il compiler DSL
@@ -2013,18 +2053,31 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
     # to before). If the day genuinely has more concurrent classes than rooms
     # the per-day solve returns infeasible -- an honest "add rooms / relax"
     # signal rather than a silently over-booked timetable.
-    if total_room_capacity:
+    if total_room_capacity or (
+            plessi_ctx and getattr(plessi_ctx[0], "classroom_to_plesso", None)):
         # Cap the ORDINARY (standard-seeking) load only: a required-kind
         # lesson sits in its lab/gym, freeing its ordinary seat for another
         # class (the gym-sharing that lets rooms < classes). ``subj_kind``
         # comes from the special-room ctx so PE / lab hours are excluded and
         # ``total_room_capacity`` is read as the STANDARD-room count.
+        # When plessi are configured, also cap each plesso at the number of
+        # ordinary rooms it actually owns.
         _sk = special_room_ctx[0] if special_room_ctx else None
+        _pl_caps = None
+        _cl_to_pl = None
+        if plessi_ctx:
+            _pl, _pins = plessi_ctx
+            _cl_to_pl = _pins or None
+            _pl_caps = dict(getattr(_pl, "standard_rooms_per_plesso", None)
+                            or {}) or None
         n_gr = add_general_room_capacity_phase_b(
-            model, slot_5, total_room_capacity, day=day, subj_kind=_sk)
+            model, slot_5, total_room_capacity, day=day, subj_kind=_sk,
+            plesso_caps=_pl_caps, class_to_plesso=_cl_to_pl)
         if log and n_gr:
             print(f"[phaseB.day{day}] capienza aule standard "
-                  f"({total_room_capacity}): {n_gr} vincoli per-slot")
+                  f"({total_room_capacity}"
+                  f"{', per-plesso' if _pl_caps else ''}): "
+                  f"{n_gr} vincoli per-slot")
 
     _soft_classes = sorted({k[1] for k in slot})
     for _src in _dt.build_soft_pragmas(
@@ -2194,6 +2247,30 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
 
     _solvercfg.configure_solver(solver)
 
+    # Inter-day warm start: AddHint on this day's slot vars from a
+    # previous day's occupancy (or a 2-day F&O neighbour). Best-effort;
+    # CP-SAT may ignore the hint.
+    if warm_start:
+        for _k, _v in warm_start.items():
+            if not _v:
+                continue
+            if len(_k) == 5:
+                _p, _cl, _s, _d, _h = _k
+                if _d != day:
+                    _key = (_p, _cl, _s, _h)
+                else:
+                    _key = (_p, _cl, _s, _h)
+            elif len(_k) == 4:
+                _key = _k
+            else:
+                continue
+            _var = slot.get(_key)
+            if _var is not None:
+                try:
+                    model.AddHint(_var, 1)
+                except Exception:  # noqa: BLE001
+                    pass
+
     # ---- DSL HARD-rule refinement gate (audit H6/H12) ----
     # When at least one hard DSL rule could NOT be compiled natively, the
     # model does not enforce it. Mirror the proven week path
@@ -2331,6 +2408,7 @@ def _diagnose_phaseb_infeasibility(day, profs, triples, dc_value):
     if n_violations == 0:
         print("  Nessuna violazione Hall evidente. Causa diversa "
               "(probabile: HARD (2) e capacita\' slot).")
+    return n_violations
 
 
 def main():
