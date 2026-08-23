@@ -76,7 +76,12 @@ ignore = [
 # Legacy monoliths flagged by the audit for future extraction.
 # F841 (unused locals) is mostly debugging-leftover code that needs
 # a careful read before deletion; do NOT block CI on it for now.
-"webui/backend/optimization.py" = ["F841"]
+"webui/backend/optimization.py" = ["F841", "E402", "E741", "E702", "I001"]
+# Pieces extracted from optimization.py (audit 2026-08-23). Same
+# inherited style as the facade: stray `l` names, inline-if, unused
+# locals, and the engine_paths side-effect import. Do not block CI
+# on them; they are the original text.
+"webui/backend/pipeline/**" = ["F841", "E741", "E701", "E402"]
 "webui/backend/engine_io.py" = ["F841"]
 "webui/backend/routers/monitor.py" = ["F841"]
 "webui/backend/routers/subjects.py" = ["F841"]

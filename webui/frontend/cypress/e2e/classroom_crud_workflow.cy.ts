@@ -141,9 +141,8 @@ describe('Tab Aule CRUD workflow (UI-only)', () => {
     cy.contains('tr', name)
       .find('[data-testid="classroom-edit-btn"]')
       .click();
-    // scrollIntoView(): il calendario sta in fondo a una modale alta
-    // ~2000px dentro un wrapper `position: fixed`; nel viewport di
-    // default (1000x660) senza scroll `be.visible` non passa mai.
+    // scrollIntoView(): il calendario sta sotto la piega del
+    // [data-testid=modal-body] (dialog limitato al viewport).
     cy.get('.weekly-calendar', { timeout: 10000 })
       .scrollIntoView()
       .should('be.visible');

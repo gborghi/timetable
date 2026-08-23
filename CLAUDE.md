@@ -74,8 +74,9 @@ fallback: run `alembic upgrade head`.
 `PITANTUM_DB_URL` (default local SQLite), `PITANTUM_ENV` (`prod` turns API-key + CORS
 into fail-fast), `PITANTUM_API_KEY`, `PITANTUM_CORS_ORIGINS`, `PITANTUM_LOG_LEVEL` /
 `PITANTUM_LOG_JSON`, `PITANTUM_DEFAULT_TENANT_ID`, `PITANTUM_DB_POOL_SIZE` /
-`PITANTUM_DB_MAX_OVERFLOW`, `PITANTUM_ALLOW_PICKLE_UPLOAD` (pickle ingest is off by
-default — the `S301` ruff carve-out exists because of this gate).
+`PITANTUM_DB_MAX_OVERFLOW`. User pickle upload (`/api/dataset/upload-pickle`)
+was removed; checked-in engine pickles remain a fallback for
+`import-profile`. Use `/api/dashboard/import-db` for SQLite snapshots.
 
 ### Lint
 ```
@@ -180,8 +181,8 @@ ORM rows ──dsl_translator.*_to_dsl()──▶ DSL strings ──general_dsl 
   → `add_nogood` for the exact violating assignment → re-solve, bounded by
   `max_iters`. This is what makes a solver *completely* DSL-compliant even for rules
   the compiler can't model. Natively-compiled rules pass at iteration 0 for free.
-- Phase A has its own objective compiler: `webui/backend/utils/objective_dsl.py` →
-  `cpsat_assignment_dsl.py`.
+- Phase A has its own objective compiler: `engine/objective_dsl.py` →
+  `engine/cpsat_assignment_dsl.py` (`webui/backend/utils/objective_dsl.py` is a shim).
 
 When adding a constraint kind: write the `*_to_dsl` translator first, and only add a
 native compilation path if the gate's refinement loop proves too slow. Adding a

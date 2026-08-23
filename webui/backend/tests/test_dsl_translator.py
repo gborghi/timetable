@@ -144,10 +144,11 @@ def test_coteach_group_skip_when_fewer_than_two_teachers():
 def test_load_all_dsl_constraints_aggregates_clean_db(client_and_session):
     """Empty DB returns no rules without errors (defensive shape:
     the loader skips tables that have no rows)."""
+    from webui.backend import models
     import dsl_translator as dt
     client, TestSession = client_and_session
     with TestSession() as db:
-        rules = dt.load_all_dsl_constraints(db)
+        rules = dt.load_all_dsl_constraints(db, _models=models)
     assert rules == []
 
 
@@ -169,7 +170,7 @@ def test_load_all_dsl_constraints_includes_teacher_unavail(
             teacher_id=t.id, day=2, hour=10, state="hard"))
         db.commit()
     with TestSession() as db:
-        rules = dt.load_all_dsl_constraints(db)
+        rules = dt.load_all_dsl_constraints(db, _models=models)
     assert any(r["source"] == "teacher_unavailability"
                 for r in rules), rules
     # DSL parses.
@@ -200,8 +201,10 @@ def test_load_all_dsl_constraints_includes_soft_teacher_unavail(
             state="soft", soft_penalty=100))
         db.commit()
     with TestSession() as db:
-        hard_only = dt.load_all_dsl_constraints(db, include_soft=False)
-        soft = dt.load_all_dsl_constraints(db, include_soft=True)
+        hard_only = dt.load_all_dsl_constraints(
+            db, _models=models, include_soft=False)
+        soft = dt.load_all_dsl_constraints(
+            db, _models=models, include_soft=True)
     assert not any(r["source"] == "teacher_unavailability"
                    for r in hard_only)
     tu = next(r for r in soft
@@ -244,7 +247,7 @@ def test_load_all_dsl_constraints_includes_general_constraint(
         db.commit()
 
     with TestSession() as db:
-        rules = dt.load_all_dsl_constraints(db)
+        rules = dt.load_all_dsl_constraints(db, _models=models)
     sources = [r["source"] for r in rules]
     gc_rules = [r for r in rules if r["source"] == "general_constraint"]
     assert len(gc_rules) == 2, (
@@ -259,7 +262,8 @@ def test_load_all_dsl_constraints_includes_general_constraint(
 
     # include_soft=True now returns the soft rule too.
     with TestSession() as db:
-        rules_full = dt.load_all_dsl_constraints(db, include_soft=True)
+        rules_full = dt.load_all_dsl_constraints(
+            db, _models=models, include_soft=True)
     gc_full = [r for r in rules_full
                 if r["source"] == "general_constraint"]
     assert len(gc_full) == 3

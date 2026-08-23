@@ -212,11 +212,7 @@ def test_translator_calcola_i_posti_e_salta_i_tipi_senza_aule():
         SchoolClass=type("SchoolClass", (), {}),
         PlessoEntityPolicy=type("PlessoEntityPolicy", (), {}),
     )
-    sys.modules.setdefault("webui", types.ModuleType("webui"))
-    sys.modules["webui.backend"] = types.ModuleType("webui.backend")
-    sys.modules["webui.backend.models"] = fake
-
-    out = dsl_translator.special_room_capacity_to_dsl(_DB())
+    out = dsl_translator.special_room_capacity_to_dsl(_DB(), _models=fake)
     assert len(out) == 1, out
     kind, clause = out[0]
     assert kind == "palestra"

@@ -55,6 +55,7 @@
                   ...(details.room_busy    || [])].some((r) => r.locked);
 </script>
 
+{#if open}
 <Modal {open} {title} onClose={onCancel}>
   <div data-testid="schedule-conflict-modal">
   {#if subject}
@@ -121,3 +122,4 @@
   </div>
   </div>
 </Modal>
+{/if}

@@ -185,10 +185,8 @@ describe('Tab Docenti CRUD workflow (UI-only)', () => {
       .find('[data-testid="teacher-edit-btn"]')
       .click();
 
-    // scrollIntoView() is required: the calendar sits ~680px down a
-    // 2100px-tall modal body inside a `position: fixed` wrapper, so in
-    // the default 1000x660 viewport Cypress considers it overflowed by
-    // other elements and be.visible can never pass.
+    // scrollIntoView() is required: the calendar sits below the fold
+    // inside [data-testid=modal-body] (viewport-capped dialog).
     cy.get('.weekly-calendar', { timeout: 10000 })
       .scrollIntoView()
       .should('be.visible');

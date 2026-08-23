@@ -3,39 +3,17 @@ from __future__ import annotations
 
 import logging
 import os
-import pickle
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Response
+from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
-from .. import models, schemas, optimization, engine_io
+from .. import models, schemas, optimization
 from ..db import get_db
 from ..services.dataset_state import compute_state
 
 router = APIRouter(prefix="/api/dataset", tags=["dataset"])
 
 log = logging.getLogger("pitantum.dataset")
-
-
-# Upload-pickle is a known RCE surface (pickle.loads on untrusted
-# bytes). It is disabled by default and only re-enabled by an explicit
-# env flag plus a non-empty PITANTUM_API_KEY -- so the endpoint is
-# never reachable anonymously and an operator has to consciously opt
-# in for trusted, locally-uploaded pickles.
-_UPLOAD_PICKLE_FLAG = "PITANTUM_ALLOW_PICKLE_UPLOAD"
-
-# Hard cap on uploaded pickle payload size. 64 MiB covers the largest
-# legitimate scenarios (mega-profile school dumps) while bounding the
-# damage of a malicious / accidental over-large upload.
-_UPLOAD_PICKLE_MAX_BYTES = 64 * 1024 * 1024
-
-
-def _pickle_upload_enabled() -> bool:
-    flag = os.environ.get(_UPLOAD_PICKLE_FLAG, "").strip().lower()
-    if flag not in ("1", "true", "yes", "on"):
-        return False
-    # Require an API key to be configured -- never expose unauthenticated.
-    return bool(os.environ.get("PITANTUM_API_KEY", "").strip())
 
 
 @router.get("/state")
@@ -172,78 +150,6 @@ def list_profiles():
             "has_decomposed_solution": has_dec,
         })
     return profiles
-
-
-@router.post("/upload-pickle")
-async def upload_pickle(kind: str, file: UploadFile = File(...),
-                        db: Session = Depends(get_db)):
-    """Upload a pickle file. `kind` is one of school/profs/solution.
-
-    Disabled by default. `pickle.loads()` on user-controlled bytes is
-    arbitrary code execution; the endpoint is only reachable when both
-    PITANTUM_ALLOW_PICKLE_UPLOAD=1 *and* PITANTUM_API_KEY are set. Use
-    the SQLite snapshot import path (engine_io.import_profile_sqlite_into_db,
-    surfaced by /api/dashboard/import-db) for the safe equivalent.
-    """
-    if not _pickle_upload_enabled():
-        raise HTTPException(
-            403,
-            "Endpoint disabilitato per motivi di sicurezza "
-            "(pickle.loads esegue codice arbitrario). "
-            "Usare /api/dashboard/import-db con uno snapshot SQLite. "
-            "Per riabilitare in un contesto fidato: settare "
-            f"{_UPLOAD_PICKLE_FLAG}=1 e PITANTUM_API_KEY.",
-        )
-    if kind not in ("school", "profs", "solution"):
-        raise HTTPException(400, f"unknown kind {kind}")
-    data = await file.read()
-    if len(data) > _UPLOAD_PICKLE_MAX_BYTES:
-        raise HTTPException(
-            413,
-            f"File troppo grande ({len(data)} bytes); "
-            f"max {_UPLOAD_PICKLE_MAX_BYTES} bytes.",
-        )
-    log.warning(
-        "pickle upload accepted kind=%s size=%d filename=%r",
-        kind, len(data), file.filename,
-    )
-    try:
-        obj = pickle.loads(data)  # noqa: S301 -- gated by env flag above
-    except Exception as exc:
-        raise HTTPException(400, f"Pickle non valido: {exc}") from exc
-    headers = {"X-Pickle-Upload-Enabled": "true"}
-    if kind == "school":
-        engine_io.import_school_into_db(db, obj, replace=True)
-        return JSONResponse(
-            {"ok": True, "imported": "school",
-             "n_classes": len(obj.get("classes", []))},
-            headers=headers,
-        )
-    if kind == "profs":
-        n = engine_io.import_profs_into_db(db, obj)
-        return JSONResponse(
-            {"ok": True, "imported": "profs", "n_assignments": n},
-            headers=headers,
-        )
-    # solution
-    from .. import engine_io as ei
-    profs = ei.profs_dict_from_db(db)
-    v, m = 0.0, {}
-    try:
-        import metaheuristics as meta  # type: ignore
-        v, m = meta.compute_soft(obj, profs)
-    except Exception:
-        log.exception("metaheuristics.compute_soft failed for upload-pickle")
-    sid = ei.import_solution_into_db(
-        db, obj, name=file.filename or "uploaded",
-        kind="imported", obj_value=float(v),
-        metrics=m, make_active=True,
-    )
-    return JSONResponse(
-        {"ok": True, "imported": "solution",
-         "solution_id": sid, "obj_value": v, "metrics": m},
-        headers=headers,
-    )
 
 
 @router.post("/clear")

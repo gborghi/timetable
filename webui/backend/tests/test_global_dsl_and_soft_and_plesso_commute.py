@@ -99,7 +99,7 @@ def test_constraints_tab_global_dsl_loads_as_hard(app_with_temp_db):
     )
 
     with TestSession() as db:
-        rules = dt.load_all_dsl_constraints(db)
+        rules = dt.load_all_dsl_constraints(db, _models=models)
     gc_rules = [r for r in rules if r["source"] == "general_constraint"]
     assert len(gc_rules) == 1
     r0 = gc_rules[0]
@@ -138,7 +138,7 @@ def test_constraints_tab_global_dsl_solver_blocks_violator(
         label="(global) no last hour",
     )
     with TestSession() as db:
-        rules = dt.load_all_dsl_constraints(db)
+        rules = dt.load_all_dsl_constraints(db, _models=models)
     exprs = [r["expression"] for r in rules
               if r["source"] == "general_constraint"]
     assert len(exprs) == 1
@@ -403,7 +403,8 @@ def test_soft_general_dsl_loader_path_via_db(app_with_temp_db):
     assert r.status_code == 200, r.text
 
     with TestSession() as db:
-        rules = dt.load_all_dsl_constraints(db, include_soft=True)
+        rules = dt.load_all_dsl_constraints(
+            db, _models=models, include_soft=True)
     soft = [x for x in rules
              if x["source"] == "general_constraint"
              and x.get("is_hard") is False]

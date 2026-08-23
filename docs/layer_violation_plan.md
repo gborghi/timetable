@@ -1,23 +1,22 @@
 # Engine → WebUI Layer Violation — Fix Plan (audit A5)
 
-## Current violations
+## Status: closed (2026-08-23)
 
-1. `engine/dsl_translator.py` imports `webui.backend.models` (lines 274, 764)
-2. `engine/general_dsl.py` imports `webui.backend.models` (lines 727, 740)
-3. `engine/cpsat_assignment_dsl.py` injects webui path (line 36)
+The two remaining engine→ORM holes named by AUDIT.md are closed.
 
-## Root cause
+1. `engine/dsl_translator.py` no longer imports `webui.backend.models`.
+   `load_all_dsl_constraints` and `special_room_capacity_to_dsl` require
+   `_models` from the caller and raise `TypeError` if it is omitted.
+   Production webui already passed `_models=models`; engine callers
+   (`solve_phase_b_for_day`, `is_hard_feasible`,
+   `add_all_dsl_constraints_from_db`, `PhaseBDaySolver`) now accept and
+   forward `_models`.
+2. `engine/general_dsl.py` already had `build_world()` in
+   `webui/backend/engine_io.py` and no longer imports the ORM.
+3. `engine/cpsat_assignment_dsl.py` no longer injects `webui/` onto
+   `sys.path`. The Phase-A compiler lives in `engine/objective_dsl.py`;
+   `webui/backend/utils/objective_dsl.py` is a re-export shim.
 
-The `build_world()` function needs entity name lookups that currently go through
-the ORM. The engine should receive pre-built dictionaries instead.
-
-## Fix plan
-
-1. Move `build_world()` from `engine/general_dsl.py` to `webui/backend/engine_io.py`
-   (where all other DB→dict conversions live)
-2. `engine_io` pre-resolves all entity names into a `world` dict
-3. Pass `world` as a parameter to `general_dsl._eval()` and `dsl_translator.*_to_dsl()`
-4. Remove all `webui.backend` imports from engine/
-
-## Estimated effort: 2-3 days
-## Risk: Medium (changes the DSL evaluation interface)
+Callers that still hold a live Session and want DB-driven DSL must pass
+the models module. Engine-only paths should keep using pre-built
+`dsl_hard_expressions` / `extra_dsl_expressions` instead of a Session.

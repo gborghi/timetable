@@ -51,6 +51,16 @@ export function gridHeight(range, pxPerHour = PX_PER_HOUR) {
   return (range.hi - range.lo) * pxPerHour;
 }
 
+/** Integer hour labels for the time column. Cheap (~12 nodes);
+ *  the per-day hour *cells* are CSS lines, not DOM. */
+export function bgHourList(range) {
+  const lo = range?.lo ?? BG_START_DEFAULT;
+  const hi = range?.hi ?? BG_END_DEFAULT;
+  const out = [];
+  for (let h = lo; h <= hi; h += 1) out.push(h);
+  return out;
+}
+
 /** Inverse of pxFromTime: convert a pixel offset back to an HH:MM
  * string, snapping to ``snapMinutes`` (default 15 min). Clamps the
  * result inside the [range.lo*60, range.hi*60] minute window so the

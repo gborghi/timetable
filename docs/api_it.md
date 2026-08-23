@@ -56,8 +56,9 @@ Tutte le azioni della UI passano da endpoint REST sotto
   UI /monitor (event-rows, summary, conflicts).
 - `/api/bulk/events/{dry-run,apply}` -- operazioni bulk da
   /monitor (set_classroom, clear_classroom, set_lock).
-- `/api/dataset/{state,clear,mock,import-profile,upload-pickle}`
-  -- ciclo di vita dei dati.
+- `/api/dataset/{state,clear,mock,import-profile}`
+  -- ciclo di vita dei dati. I pickle in-repo restano un
+  fallback di `import-profile`; l'upload utente e' stato rimosso.
 - `/api/diagnostics/*` -- statistica asincrona (montecarlo,
   bipartite, correlazioni, distribuzioni).
 - `/api/health` -- liveness probe (200 OK + versione).

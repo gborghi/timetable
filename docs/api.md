@@ -53,8 +53,9 @@ Major resource families:
   UI (event-rows, summary, conflicts).
 - `/api/bulk/events/{dry-run,apply}` -- bulk operations from
   /monitor (set_classroom, clear_classroom, set_lock).
-- `/api/dataset/{state,clear,mock,import-profile,upload-pickle}`
-  -- data lifecycle.
+- `/api/dataset/{state,clear,mock,import-profile}`
+  -- data lifecycle. Checked-in engine pickles are still a
+  fallback for `import-profile`; user pickle upload is gone.
 - `/api/diagnostics/*` -- async statistics (montecarlo,
   bipartite, correlations, distributions).
 - `/api/health` -- liveness probe (200 OK + version).

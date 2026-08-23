@@ -22,9 +22,11 @@ metaheuristics, and Ryan-Foster nodes.
 
 This module is the translation layer. Each ``*_to_dsl(row)`` function
 returns a DSL string that the parser/compiler accepts verbatim. The
-loader ``load_all_dsl_constraints(db, scope=None)`` aggregates over
-every table and returns a list of ``(label, kind, expression, weight)``
-tuples ready to feed into ``ConstraintModel.add_all_dsl_constraints``.
+loader ``load_all_dsl_constraints(db, *, _models, scope=None)``
+aggregates over every table and returns a list of ``(label, kind,
+expression, weight)`` tuples ready to feed into
+``ConstraintModel.add_all_dsl_constraints``. ``_models`` is required
+(the ORM module from the caller); the engine never imports it.
 
 Mapping invariants
 ------------------
@@ -270,10 +272,9 @@ def special_room_capacity_to_dsl(db, _models=None) -> list[tuple[str, str]]:
     utile quando qualche classe non e' vincolata a nessuna sede.
     """
     if _models is None:
-        try:
-            from webui.backend import models as _models  # type: ignore
-        except ImportError:
-            from backend import models as _models  # type: ignore
+        raise TypeError(
+            "special_room_capacity_to_dsl requires _models from the "
+            "caller; the engine must not import webui.backend.models")
 
     subs_by_kind: dict[str, list[str]] = {}
     for s in db.query(_models.Subject).all():
@@ -735,6 +736,9 @@ def load_all_dsl_constraints(db, *, _models=None,
     ----------
     db : Session
         SQLAlchemy session.
+    _models : module
+        ORM module from the caller (``webui.backend.models``). Required;
+        the engine never imports it.
     include_soft : bool
         when False (default), only HARD rules are returned. SOFT
         translation is pending; the compiler currently logs SOFT rules
@@ -760,10 +764,9 @@ def load_all_dsl_constraints(db, *, _models=None,
     construction order stable across runs.
     """
     if _models is None:
-        try:
-            from webui.backend import models as _models  # type: ignore
-        except ImportError:
-            from backend import models as _models  # type: ignore
+        raise TypeError(
+            "load_all_dsl_constraints requires _models from the "
+            "caller; the engine must not import webui.backend.models")
 
     out: list[dict] = []
     teachers = {t.id: t.name for t in db.query(_models.Teacher).all()}

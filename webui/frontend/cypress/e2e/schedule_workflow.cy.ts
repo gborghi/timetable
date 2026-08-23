@@ -137,26 +137,46 @@ describe('/schedule -- with active Solution (imported profile)', () => {
   it('view toggle: global -> classe -> docente -> aula popola il '
      + 'selettore entita', () => {
     // In vista globale il filtro entita' non esiste.
+    cy.get('[data-testid="schedule-view-bar"]')
+      .should('have.attr', 'data-active-view', 'global');
     cy.get('[data-testid="schedule-entity-select"]').should('not.exist');
 
-    for (const view of ['classes', 'teachers', 'rooms']) {
-      cy.get(`[data-testid="schedule-view-${view}"]`).click();
-      cy.get('[data-testid="schedule-entity-select"]', { timeout: 10000 })
+    const views: Array<{ btn: string; active: string }> = [
+      { btn: 'classes', active: 'class' },
+      { btn: 'teachers', active: 'teacher' },
+      { btn: 'rooms', active: 'room' },
+    ];
+    for (const { btn, active } of views) {
+      // Una visita per vista: dopo un cambio filtro il calendario
+      // si ridisegna e in Electron il click successivo sulla stessa
+      // pagina puo' cadere su un bottone appena sostituito.
+      cy.visit('/schedule');
+      cy.get('[data-testid="schedule-view-bar"]')
+        .should('have.attr', 'data-active-view', 'global');
+      cy.get(`[data-testid="schedule-view-${btn}"]`).click();
+      cy.get('[data-testid="schedule-view-bar"]')
+        .should('have.attr', 'data-active-view', active);
+      cy.get(`[data-testid="schedule-view-${btn}"]`)
+        .should('have.attr', 'aria-pressed', 'true');
+      cy.get('[data-testid="schedule-entity-select"]')
         .should('be.visible')
         .find('option').should('have.length.gte', 1);
       cy.get('[data-testid="schedule-entity-filter"]').should('exist');
     }
 
-    cy.get('[data-testid="schedule-view-global"]').click();
+    cy.visit('/schedule');
+    cy.get('[data-testid="schedule-view-global"]')
+      .should('have.attr', 'aria-pressed', 'true');
+    cy.get('[data-testid="schedule-view-bar"]')
+      .should('have.attr', 'data-active-view', 'global');
     cy.get('[data-testid="schedule-entity-select"]').should('not.exist');
   });
 
   it('the class filter limits the calendar to the chosen class', () => {
-    // Il conteggio degli eventi e' l'unico segnale affidabile: nella
-    // vista per classe le card NON ripetono il nome della classe (sta
-    // nel titolo del calendario), quindi non si puo' asserire sul
-    // testo dei singoli eventi.
-    cy.get('[data-testid^="sched-lesson-"]').its('length')
+    // Il titolo e il conteggio delle card visibili: overflow non
+    // montate, e le card per classe non ripetono il nome classe.
+    cy.get('[data-testid^="sched-lesson-"].cal-event--schedule')
+      .its('length')
       .then((globalCount) => {
         cy.get('[data-testid="schedule-view-classes"]').click();
         cy.get('[data-testid="schedule-entity-select"]', { timeout: 10000 })
@@ -164,7 +184,9 @@ describe('/schedule -- with active Solution (imported profile)', () => {
             const name = $opt.val() as string;
             cy.get('[data-testid="schedule-entity-select"]').select(name);
             cy.get('.weekly-calendar').should('contain.text', name);
-            cy.get('[data-testid^="sched-lesson-"]')
+            cy.get('[data-testid="schedule-calendar-card"]')
+              .should('contain.text', `Orario classe ${name}`);
+            cy.get('[data-testid^="sched-lesson-"].cal-event--schedule')
               .should('have.length.greaterThan', 0)
               .and('have.length.lessThan', globalCount);
           });

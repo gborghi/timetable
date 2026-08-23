@@ -4,7 +4,7 @@ DSL-based objective.
 Mirrors `cpsat_v2_assignment.solve_assignment` but instead of hard-
 coded weights it accepts a DSL expression (a string) which gets
 compiled to a linear objective via
-`webui.backend.utils.objective_dsl.compile_to_objective`.
+`engine.objective_dsl.compile_to_objective`.
 
 Used by the new "criterion / custom" workflow on Phase A
 (/api/optimize/phase-a). The presets expose pre-made DSL strings;
@@ -12,8 +12,6 @@ Used by the new "criterion / custom" workflow on Phase A
 """
 from __future__ import annotations
 
-import os
-import sys
 import time
 from typing import Any
 
@@ -26,15 +24,12 @@ except ImportError:  # direct script import (no package context)
 
 
 def _import_dsl():
-    # Make the backend package importable when this file is invoked
-    # standalone or via run_manager (which adds engine/ to path
-    # but not webui/).
-    here = os.path.dirname(os.path.abspath(__file__))
-    repo_root = os.path.dirname(here)
-    webui_root = os.path.join(repo_root, "webui")
-    if webui_root not in sys.path:
-        sys.path.insert(0, webui_root)
-    from backend.utils import objective_dsl as dsl  # noqa: WPS433
+    # Compiler lives in engine/ (sibling). Do not inject webui/ onto
+    # sys.path — that was the engine→ORM layer leak.
+    try:
+        from . import objective_dsl as dsl  # type: ignore
+    except ImportError:  # invoked as a flat script from engine/
+        import objective_dsl as dsl  # type: ignore
     return dsl
 
 

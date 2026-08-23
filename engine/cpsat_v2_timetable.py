@@ -1563,7 +1563,8 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
                           total_room_capacity=None,
                           *,
                           lagrangian_penalties=None,
-                          diagnostics_sink=None):
+                          diagnostics_sink=None,
+                          _models=None):
     r"""Risolve il sotto-problema di un singolo giorno.
 
     Se enforce_no_holes=True (default) impone ai profili di classe la
@@ -2072,7 +2073,7 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
                     # weighted ``soft_cost_terms`` (summed by the objective
                     # set above) instead of being promoted to HARD.
                     rules = _dt.load_all_dsl_constraints(
-                        db, include_soft=True)
+                        db, _models=_models, include_soft=True)
                     _saved_hard = compiler.is_hard
                     _saved_w = compiler.soft_weight
                     try:

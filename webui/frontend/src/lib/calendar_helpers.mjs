@@ -93,6 +93,55 @@ export function primaryLesson(lst) {
   return lst.find((l) => !isSupportLesson(l)) || lst[0];
 }
 
+/** Max full lesson cards painted inside one global-view slot.
+ *  Overflow is listed only in the Compresenza popup — it is not
+ *  mounted, so a 90-class global grid stays O(slots × cap). */
+export const SLOT_STACK_CAP = 3;
+
+/**
+ * Decide which lessons of a slot get a full card.
+ * Filtered views (class / teacher / room) keep the existing
+ * compresenza collapse (one primary + the rest overflow).
+ * Global view stacks up to SLOT_STACK_CAP cards.
+ * Overflow is NOT mounted; open the +N button to see the rest.
+ * @param {object[]} lst
+ * @param {{type:string|null, id:string|null}} filter_by
+ * @param {number} [cap]
+ * @returns {{visible:object[], overflow:object[], collapsed:boolean}}
+ */
+export function slotRenderPlan(lst, filter_by, cap = SLOT_STACK_CAP) {
+  const rows = Array.isArray(lst) ? lst : [];
+  if (rows.length === 0) {
+    return { visible: [], overflow: [], collapsed: false };
+  }
+  if (filter_by?.type && rows.length > 1) {
+    const main = primaryLesson(rows);
+    return {
+      visible: [main],
+      overflow: rows.filter((l) => l !== main),
+      collapsed: true,
+    };
+  }
+  if (rows.length > cap) {
+    return {
+      visible: rows.slice(0, cap),
+      overflow: rows.slice(cap),
+      collapsed: true,
+    };
+  }
+  return { visible: rows, overflow: [], collapsed: false };
+}
+
+/** Cards a slot would mount. Used to prove a 90-class grid stays
+ *  bounded: empty slots mount 0 cards, filtered stacks mount 1,
+ *  global stacks mount at most `cap`. */
+export function mountedCardCount(nLessons, filter_by, cap = SLOT_STACK_CAP) {
+  const n = Number(nLessons) || 0;
+  if (n <= 0) return 0;
+  if (filter_by?.type && n > 1) return 1;
+  return Math.min(n, cap);
+}
+
 /**
  * Format one row of the compresenza popup.
  * "subject — teacher · class @ room", dropping empty parts.

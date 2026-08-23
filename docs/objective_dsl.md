@@ -2,8 +2,9 @@
 
 A small linear-expression language used to describe what the
 Phase-A solver (assegnazione docenti -> classi) should optimise.
-Lives in `webui/backend/utils/objective_dsl.py`. Compiled to a CP-SAT
-`LinearExpr` at solve time by `experiments/cpsat_assignment_dsl.py`.
+Lives in `engine/objective_dsl.py` (`webui/backend/utils/objective_dsl.py`
+is a re-export shim). Compiled to a CP-SAT `LinearExpr` at solve time
+by `engine/cpsat_assignment_dsl.py`.
 
 The five built-in **presets** that ship with piTantum are themselves
 expressions in this DSL (see the `PRESETS` constant in the parser
@@ -210,13 +211,13 @@ validator is happy.)
 To add a new predicate:
 
 1. Add the name + arity to `PREDICATES` in
-   `webui/backend/utils/objective_dsl.py`.
+   `engine/objective_dsl.py`.
 2. Add a branch in `_predicate_per_teacher()` that wires the
    `OnlyEnforceIf` reification using the model variables in the
    `CompileContext`.
 3. If new model variables are needed, expose them on
    `CompileContext` (e.g. `teacher_seniority`) and populate them in
-   `experiments/cpsat_assignment_dsl.py::solve_assignment_dsl`.
+   `engine/cpsat_assignment_dsl.py::solve_assignment_dsl`.
 
 To add a new scalar variable:
 

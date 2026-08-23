@@ -3,7 +3,7 @@ post-audit roadmap (Round 1).
 
 Covers:
   * `profile` field whitelist on ImportPickleIn / MockGenIn (path traversal).
-  * `/api/dataset/upload-pickle` disabled by default (RCE surface).
+  * `/api/dataset/upload-pickle` is gone (was an RCE surface).
   * `/api/dashboard/import-db` rejects oversize / zip-bomb payloads.
   * `IntegrityError` -> 409 response no longer leaks raw SQL / column
     names in the `hint` field.
@@ -65,46 +65,20 @@ def test_mock_generation_rejects_traversal(client, bad_profile):
     assert r.status_code == 422
 
 
-# ---------- upload-pickle disabled by default ----------
+# ---------- upload-pickle removed ----------
 
-def test_upload_pickle_disabled_by_default(client, monkeypatch):
-    """RCE-prone endpoint must be 403 unless explicitly enabled."""
-    monkeypatch.delenv("PITANTUM_ALLOW_PICKLE_UPLOAD", raising=False)
-    monkeypatch.delenv("PITANTUM_API_KEY", raising=False)
-    payload = pickle.dumps({"classes": [], "teachers": []})
-    r = client.post(
-        "/api/dataset/upload-pickle?kind=school",
-        files={"file": ("school.pkl", payload, "application/octet-stream")},
-    )
-    assert r.status_code == 403
-    assert "disabilitato" in r.text.lower() or "disable" in r.text.lower()
-
-
-def test_upload_pickle_requires_api_key_even_when_flag_set(client, monkeypatch):
-    """The flag alone isn't enough -- the endpoint must also be
-    protected by the API-key middleware (i.e. PITANTUM_API_KEY set)."""
-    monkeypatch.setenv("PITANTUM_ALLOW_PICKLE_UPLOAD", "1")
-    monkeypatch.delenv("PITANTUM_API_KEY", raising=False)
-    payload = pickle.dumps({"classes": [], "teachers": []})
-    r = client.post(
-        "/api/dataset/upload-pickle?kind=school",
-        files={"file": ("school.pkl", payload, "application/octet-stream")},
-    )
-    assert r.status_code == 403
-
-
-def test_upload_pickle_rejects_unknown_kind(client, monkeypatch):
-    """Even when enabled, unknown `kind` values are 400 before any
-    pickle.loads call -- defence in depth."""
+def test_upload_pickle_endpoint_gone(client, monkeypatch):
+    """The RCE surface is deleted, not merely gated. Flag + API key
+    must not bring pickle.loads back."""
     monkeypatch.setenv("PITANTUM_ALLOW_PICKLE_UPLOAD", "1")
     monkeypatch.setenv("PITANTUM_API_KEY", "test-key")
-    payload = pickle.dumps({})
+    payload = pickle.dumps({"classes": [], "teachers": []})
     r = client.post(
-        "/api/dataset/upload-pickle?kind=evil",
-        files={"file": ("x.pkl", payload, "application/octet-stream")},
+        "/api/dataset/upload-pickle?kind=school",
+        files={"file": ("school.pkl", payload, "application/octet-stream")},
         headers={"X-API-Key": "test-key"},
     )
-    assert r.status_code == 400
+    assert r.status_code == 404
 
 
 # ---------- import-db size + zip-bomb limits ----------

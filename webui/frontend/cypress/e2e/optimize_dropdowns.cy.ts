@@ -97,4 +97,14 @@ describe('Tab Optimize dropdowns', () => {
       }
     });
   });
+
+  it('pipeline order + toggles survive a reload', () => {
+    cy.get('[data-testid="optimize-pipeline-rooms"]')
+      .should('not.be.checked')
+      .check();
+    cy.get('[data-testid="optimize-pipeline-rooms"]').should('be.checked');
+    cy.reload();
+    expandPanel('optimize-advanced');
+    cy.get('[data-testid="optimize-pipeline-rooms"]').should('be.checked');
+  });
 });

@@ -155,10 +155,11 @@ def test_api_persists_then_loader_picks_up_general_constraints(
     correctly when the rows arrive through the API path that Fix 2
     exposes from the teacher tab."""
     import dsl_translator as dt
+    from webui.backend import models
     TS = rossi_db_with_constraints["TestSession"]
     rossi_id = rossi_db_with_constraints["rossi_id"]
     with TS() as db:
-        rules = dt.load_all_dsl_constraints(db)
+        rules = dt.load_all_dsl_constraints(db, _models=models)
     gc_rules = [r for r in rules if r["source"] == "general_constraint"]
     assert len(gc_rules) == 2, gc_rules
     assert all(r["scope_kind"] == "teacher" for r in gc_rules), gc_rules
@@ -282,11 +283,12 @@ def test_full_rossi_solution_passes_post_hoc_evaluator(
     """
     import dsl_translator as dt
     import metaheuristics as meta
+    from webui.backend import models
     from webui.backend.utils import general_dsl as gd
 
     TS = rossi_db_with_constraints["TestSession"]
     with TS() as db:
-        rules = dt.load_all_dsl_constraints(db)
+        rules = dt.load_all_dsl_constraints(db, _models=models)
     gc_exprs = [r["expression"] for r in rules
                  if r["source"] == "general_constraint"]
     assert len(gc_exprs) == 2, gc_exprs
@@ -341,10 +343,11 @@ def test_post_hoc_evaluator_rejects_constructed_violation(
     test_compile_time_blocks_consecutive_day_dc_for_3a."""
     import dsl_translator as dt
     import metaheuristics as meta
+    from webui.backend import models
 
     TS = rossi_db_with_constraints["TestSession"]
     with TS() as db:
-        rules = dt.load_all_dsl_constraints(db)
+        rules = dt.load_all_dsl_constraints(db, _models=models)
     gc_exprs = [r["expression"] for r in rules
                  if r["source"] == "general_constraint"]
 

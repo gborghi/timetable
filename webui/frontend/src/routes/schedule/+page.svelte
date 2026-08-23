@@ -28,6 +28,7 @@
    * exercised.
    */
   import { onMount } from 'svelte';
+  import { writable } from 'svelte/store';
   import { page } from '$app/stores';
   import { api, downloadUrl } from '$lib/api';
   import { humanMetricsLine } from '$lib/metrics_labels';
@@ -47,8 +48,14 @@
   $: legacyMode = $page.url.searchParams.get('legacy') === 'true';
 
   // --- Calendar-view state -----------------------------------------
-  let view = 'global';      // 'global' | 'class' | 'teacher' | 'room'
-  let entityId = '';         // selected name (when view !== 'global')
+  // Vista e conflitto in store: in Svelte 5 le assegnazioni a `let`
+  // dentro handler/async a volte non invalidano il template (e
+  // history.replaceState faceva remountare la pagina su uno stato
+  // vecchio). Lo store aggiorna sempre i sottoscrittori.
+  const VIEW_VALUES = ['global', 'class', 'teacher', 'room'];
+  const viewStore = writable('global');
+  const entityIdStore = writable('');
+  const dropConflictStore = writable(null);
   let entityFilter = '';     // autocomplete typed text
   let workingHoursConfig = null;
   let lessons = [];          // flat list of scheduled Lessons
@@ -81,9 +88,14 @@
   // move/reschedule because the destination slot already holds rows
   // sharing teacher / class / room, we capture them here so the user
   // can pick "Sostituisci" (delete conflicts + retry) or "Annulla".
-  let dropConflict = null;
+  // dropConflict vive in dropConflictStore.
   // { kind: 'move' | 'reschedule', sourceId, day, hour,
   //   subject, details: { teacher_busy, class_busy, room_busy } }
+  // While Sostituisci is in flight, ignore a second "slot occupato"
+  // so the modal cannot reopen on the retry /move.
+  let dropResolveInFlight = false;
+  let ignoreConflictsUntil = 0;
+  let conflictEpoch = 0;
 
   // --- Legacy state (kept for ?legacy=true fallback) ---------------
   let classData = null;
@@ -104,21 +116,36 @@
     return [...set].sort();
   })();
 
-  $: entitySource = view === 'class' ? classNames
-    : view === 'teacher' ? teacherNames
-    : view === 'room' ? roomNames : [];
+  $: entitySource = $viewStore === 'class' ? classNames
+    : $viewStore === 'teacher' ? teacherNames
+    : $viewStore === 'room' ? roomNames : [];
   $: filteredEntities = entitySource.filter(
     (n) => !entityFilter || n.toLowerCase().includes(entityFilter.toLowerCase()));
 
-  $: calendarFilter = view === 'global'
+  $: calendarFilter = $viewStore === 'global'
     ? { type: null, id: null }
-    : { type: view, id: entityId || null };
+    : { type: $viewStore, id: $entityIdStore || null };
 
-  $: calendarTitle = view === 'global'
+  // Filter here (not only inside WeeklyCalendarView): Svelte 5
+  // `export let` + `$:` on the child can keep the previous lesson
+  // list after the title has already switched.
+  $: visibleLessons = (() => {
+    const t = calendarFilter.type;
+    const id = calendarFilter.id;
+    if (!t || !id) return lessons;
+    return lessons.filter((l) => {
+      if (t === 'class') return l.class_name === id;
+      if (t === 'teacher') return l.teacher_name === id;
+      if (t === 'room') return l.classroom_name === id;
+      return true;
+    });
+  })();
+
+  $: calendarTitle = $viewStore === 'global'
     ? 'Orario globale'
-    : view === 'class' ? `Orario classe ${entityId || '...'}`
-    : view === 'teacher' ? `Orario docente ${entityId || '...'}`
-    : `Orario aula ${entityId || '...'}`;
+    : $viewStore === 'class' ? `Orario classe ${$entityIdStore || '...'}`
+    : $viewStore === 'teacher' ? `Orario docente ${$entityIdStore || '...'}`
+    : `Orario aula ${$entityIdStore || '...'}`;
 
   // Dismissible how-to strip above the calendar: the drag/click
   // affordances otherwise live only in hover tooltips.
@@ -131,6 +158,9 @@
   onMount(async () => {
     try { helpDismissed = localStorage.getItem('pt_schedule_help_dismissed') === '1'; }
     catch (_e) { /**/ }
+    ignoreConflictsUntil = 0;
+    dropResolveInFlight = false;
+    dropConflictStore.set(null);
     if (legacyMode) {
       await loadLegacy();
       return;
@@ -173,13 +203,8 @@
       summary = summaryData
         ? { obj_value: summaryData.obj_value, metrics: summaryData.metrics }
         : null;
-      // Default entity selection so the autocomplete starts useful.
-      if (view === 'class' && !entityId && classNames.length) {
-        entityId = classNames[0];
-      } else if (view === 'teacher' && !entityId && teacherNames.length) {
-        entityId = teacherNames[0];
-      } else if (view === 'room' && !entityId && roomNames.length) {
-        entityId = roomNames[0];
+      if ($viewStore !== 'global' && !$entityIdStore) {
+        entityIdStore.set(defaultEntityFor($viewStore));
       }
     } catch (e) {
       flash('Errore caricamento orario: ' + e.message, 'error');
@@ -188,13 +213,31 @@
     }
   }
 
-  function onSelectView(v) {
-    view = v;
-    entityId = '';
+  function defaultEntityFor(nextView) {
+    if (nextView === 'class') return classNames[0] || '';
+    if (nextView === 'teacher') return teacherNames[0] || '';
+    if (nextView === 'room') return roomNames[0] || '';
+    return '';
+  }
+
+  function selectView(nextView) {
+    const next = VIEW_VALUES.includes(nextView) ? nextView : 'global';
     entityFilter = '';
-    if (v === 'class' && classNames.length) entityId = classNames[0];
-    if (v === 'teacher' && teacherNames.length) entityId = teacherNames[0];
-    if (v === 'room' && roomNames.length) entityId = roomNames[0];
+    viewStore.set(next);
+    entityIdStore.set(next === 'global' ? '' : defaultEntityFor(next));
+  }
+
+  function onViewBarClick(ev) {
+    const el = ev.target;
+    const btn = (el && el.nodeType === 1 ? el : el?.parentElement)
+      ?.closest?.('[data-view]');
+    if (!btn) return;
+    ev.preventDefault();
+    selectView(btn.getAttribute('data-view'));
+  }
+
+  function onEntityIdChange(nextId) {
+    entityIdStore.set(nextId || '');
   }
 
   // The "cerca" box only *filters* the list; picking a datalist suggestion
@@ -206,9 +249,9 @@
     const q = entityFilter.trim().toLowerCase();
     if (!q) return;
     const exact = entitySource.find((n) => n.toLowerCase() === q);
-    if (exact) { if (exact !== entityId) entityId = exact; return; }
+    if (exact) { if (exact !== $entityIdStore) onEntityIdChange(exact); return; }
     if (!strict && filteredEntities.length === 1) {
-      entityId = filteredEntities[0];
+      onEntityIdChange(filteredEntities[0]);
     }
   }
 
@@ -332,7 +375,14 @@
       (l) => (l.id === lessonId ? { ...l, day, hour } : l));
   }
 
+  const movingLessonIds = new Set();
   async function onLessonMove(lessonId, day, hour) {
+    // A synthetic Cypress drag can deliver drop twice; a second in-flight
+    // /move would reopen the conflict modal after Sostituisci closed it.
+    if (movingLessonIds.has(lessonId)) return;
+    movingLessonIds.add(lessonId);
+    const moveEpoch = conflictEpoch;
+    try {
     // Remember the origin slot so an accepted move can be undone and a
     // rejected one reverted.
     const _src0 = lessons.find((l) => l.id === lessonId);
@@ -365,18 +415,26 @@
       if (r && r.accepted === false && r.conflicts) {
         // Snap back before prompting the "Sostituisci o annulla" modal.
         _optimisticMove(lessonId, _oldDay, _oldHour);
+        if (dropResolveInFlight || $dropConflictStore
+            || Date.now() < ignoreConflictsUntil
+            || moveEpoch !== conflictEpoch) {
+          flash('Mossa rifiutata: ' + (r.reason || 'vincolo violato'), 'error');
+          return;
+        }
         const src = lessons.find((l) => l.id === lessonId);
         const head = src
           ? `${src.class_name} / ${src.teacher_name}`
           : `lezione #${lessonId}`;
-        dropConflict = {
+        dropConflictStore.set({
           kind: 'move',
           sourceId: lessonId,
           day, hour,
           subject: `${head} -> ${DAY_NAMES_IT[day]} ${hour}:00`,
           details: r.conflicts,
-        };
-        return;
+        });
+        // Hold the in-flight lock until the modal closes, otherwise a
+        // second synthetic drop can POST /move again and reopen it.
+        return 'conflict';
       }
       if (r && r.accepted === false) {
         _optimisticMove(lessonId, _oldDay, _oldHour);  // snap back
@@ -417,6 +475,9 @@
       _optimisticMove(lessonId, _oldDay, _oldHour);  // network error: snap back
       flash('Errore: ' + e.message, 'error');
     }
+    } finally {
+      if (!$dropConflictStore) movingLessonIds.delete(lessonId);
+    }
   }
   async function onUnscheduledDrop(unschedId, day, hour) {
     try {
@@ -425,8 +486,12 @@
         { day, hour });
       if (r && r.accepted === false) {
         if (r.conflicts) {
+          if (dropResolveInFlight || Date.now() < ignoreConflictsUntil) {
+            flash(r.reason || 'Spostamento rifiutato', 'error');
+            return;
+          }
           const src = unscheduled.find((u) => u.id === unschedId);
-          dropConflict = {
+          dropConflictStore.set({
             kind: 'reschedule',
             sourceId: unschedId,
             day, hour,
@@ -435,7 +500,7 @@
                 + `${DAY_NAMES_IT[day]} ${hour}:00`
               : `${DAY_NAMES_IT[day]} ${hour}:00`,
             details: r.conflicts,
-          };
+          });
           return;
         }
         // No `conflicts` payload means the slot was free but the HARD
@@ -455,10 +520,52 @@
   // is only wired to /api/schedule/lesson; for our drop flow the
   // frontend orchestrates the deletion+retry to keep both endpoints
   // free of resolution-strategy plumbing.
+  async function retryAfterReplace(kind, sourceId, day, hour) {
+    // Dopo Sostituisci gli occupanti sono gia' cancellati. Un secondo
+    // rifiuto HARD (disponibilita', buco, vincolo logico) non e' piu'
+    // "slot occupato": mostriamo il motivo e NON riapriamo la stessa
+    // modale, altrimenti Cypress (e l'utente) restano chiusi in un
+    // loop Sostituisci -> retry -> conflitto.
+    try {
+      if (kind === 'move') {
+        const r = await api.post('/api/lessons/' + sourceId + '/move',
+                                 { day, hour });
+        if (r && r.accepted === false) {
+          flash('Mossa rifiutata: ' + (r.reason || 'vincolo violato'), 'error');
+        } else {
+          flash(r?.reason || 'Lezione spostata', 'success');
+          if (r && r.accepted && r.room_cleared) {
+            roomClearedNotice = {
+              room: r.cleared_room, day, hour,
+              class_name: r.class_name || '', teacher: r.teacher_name || '',
+              subject: r.subject || '',
+            };
+          }
+        }
+      } else {
+        const r = await api.post(
+          '/api/lessons/unscheduled/' + sourceId + '/reschedule',
+          { day, hour });
+        if (r && r.accepted === false) {
+          flash(r.reason || 'Spostamento rifiutato', 'error');
+        } else {
+          flash('Lezione ripiazzata', 'success');
+        }
+      }
+    } catch (e) {
+      flash('Errore: ' + e.message, 'error');
+    }
+    await loadCalendar();
+    await refreshDataset();
+  }
+
   async function resolveDropConflict() {
-    if (!dropConflict) return;
-    const dc = dropConflict;
-    dropConflict = null;
+    if (!$dropConflictStore || dropResolveInFlight) return;
+    const dc = $dropConflictStore;
+    conflictEpoch += 1;
+    dropResolveInFlight = true;
+    ignoreConflictsUntil = Date.now() + 30_000;
+    dropConflictStore.set(null);
     const ids = new Set();
     for (const bucket of ['teacher_busy', 'class_busy', 'room_busy']) {
       for (const r of (dc.details?.[bucket] || [])) {
@@ -482,18 +589,24 @@
                              { ids: [...ids], force: true });
         }
       }
-      if (dc.kind === 'move') {
-        await onLessonMove(dc.sourceId, dc.day, dc.hour);
-      } else {
-        await onUnscheduledDrop(dc.sourceId, dc.day, dc.hour);
-      }
+      await retryAfterReplace(dc.kind, dc.sourceId, dc.day, dc.hour);
     } catch (e) {
       flash('Errore risoluzione conflitto: ' + e.message, 'error');
       await loadCalendar();
       await refreshDataset();
+    } finally {
+      dropResolveInFlight = false;
+      dropConflictStore.set(null);
+      movingLessonIds.delete(dc.sourceId);
     }
   }
-  function cancelDropConflict() { dropConflict = null; }
+  function cancelDropConflict() {
+    const id = $dropConflictStore?.sourceId;
+    conflictEpoch += 1;
+    dropConflictStore.set(null);
+    ignoreConflictsUntil = Date.now() + 2000;
+    if (id != null) movingLessonIds.delete(id);
+  }
   function onSlotClick(day, hour) {
     if (pendingMoveLessonId) {
       const id = pendingMoveLessonId;
@@ -501,14 +614,17 @@
       onLessonMove(id, day, hour);
       return;
     }
-    addLessonMode = view === 'class' ? 'class'
-      : view === 'teacher' ? 'teacher'
-      : view === 'room' ? 'room' : 'slot';
+    addLessonMode = $viewStore === 'class' ? 'class'
+      : $viewStore === 'teacher' ? 'teacher'
+      : $viewStore === 'room' ? 'room' : 'slot';
     addLessonDay = day;
     addLessonHour = hour;
-    addLessonPreset = view === 'class' && entityId ? { class_name: entityId }
-      : view === 'teacher' && entityId ? { teacher_name: entityId }
-      : view === 'room' && entityId ? { classroom_name: entityId }
+    addLessonPreset = $viewStore === 'class' && $entityIdStore
+      ? { class_name: $entityIdStore }
+      : $viewStore === 'teacher' && $entityIdStore
+        ? { teacher_name: $entityIdStore }
+      : $viewStore === 'room' && $entityIdStore
+        ? { classroom_name: $entityIdStore }
       : {};
     addLessonOpen = true;
   }
@@ -668,34 +784,53 @@
            data-testid="schedule-empty-state">
         Nessuna soluzione attiva. Vai al
         <a class="text-accent-500 underline" href="/optimize">Workflow</a>
-        e lancia almeno la Phase B, oppure importa un pickle dalla
+        e lancia almeno la Phase B, oppure importa uno snapshot SQLite
+        dalla
         <a class="text-accent-500 underline" href="/">Dashboard</a>.
       </div>
     {/if}
 
-    <div class="card px-3.5 py-2.5 flex items-center gap-3 flex-wrap"
-         data-testid="schedule-view-bar">
+    <div class="card px-3.5 py-2.5 flex flex-col gap-2"
+         data-testid="schedule-view-bar"
+         data-active-view={$viewStore}>
+      <div class="flex items-center gap-3 flex-wrap">
       <span class="eyebrow">Vista</span>
-      <div class="flex gap-1">
-        <button class="btn !text-xs"
-                class:bg-ink-100={view === 'global'}
-                on:click={() => onSelectView('global')}
+      <div class="flex gap-1" aria-label="Vista orario"
+           data-testid="schedule-view-buttons"
+           on:click={onViewBarClick}>
+        <button type="button" class="btn !text-xs"
+                class:bg-ink-100={$viewStore === 'global'}
+                aria-pressed={$viewStore === 'global'}
+                data-view="global"
                 data-testid="schedule-view-global">Globale</button>
-        <button class="btn !text-xs"
-                class:bg-ink-100={view === 'class'}
-                on:click={() => onSelectView('class')}
+        <button type="button" class="btn !text-xs"
+                class:bg-ink-100={$viewStore === 'class'}
+                aria-pressed={$viewStore === 'class'}
+                data-view="class"
                 data-testid="schedule-view-classes">Per classe</button>
-        <button class="btn !text-xs"
-                class:bg-ink-100={view === 'teacher'}
-                on:click={() => onSelectView('teacher')}
+        <button type="button" class="btn !text-xs"
+                class:bg-ink-100={$viewStore === 'teacher'}
+                aria-pressed={$viewStore === 'teacher'}
+                data-view="teacher"
                 data-testid="schedule-view-teachers">Per docente</button>
-        <button class="btn !text-xs"
-                class:bg-ink-100={view === 'room'}
-                on:click={() => onSelectView('room')}
+        <button type="button" class="btn !text-xs"
+                class:bg-ink-100={$viewStore === 'room'}
+                aria-pressed={$viewStore === 'room'}
+                data-view="room"
                 data-testid="schedule-view-rooms">Per aula</button>
       </div>
-      {#if view !== 'global'}
-        <div class="flex items-center gap-2 ml-2">
+      {#if pendingMoveLessonId}
+        <span class="ml-auto px-2 py-1 rounded bg-amber-100 border border-amber-300 text-xs"
+              data-testid="schedule-pending-move">
+          Modalita sposta -- click su uno slot vuoto per confermare
+          <button class="ml-2 underline"
+                  on:click={() => (pendingMoveLessonId = null)}>annulla</button>
+        </span>
+      {/if}
+      </div>
+      {#if $viewStore !== 'global'}
+        <div class="flex items-center gap-2"
+             data-testid="schedule-entity-controls">
           <input type="text" placeholder="cerca..."
                  bind:value={entityFilter}
                  list="schedule-entity-list"
@@ -706,20 +841,13 @@
           <datalist id="schedule-entity-list">
             {#each filteredEntities as n}<option value={n}></option>{/each}
           </datalist>
-          <select bind:value={entityId}
+          <select value={$entityIdStore}
+                  on:change={(e) => onEntityIdChange(e.currentTarget.value)}
                   class="px-2 py-1 rounded border border-ink-200 text-sm"
                   data-testid="schedule-entity-select">
             {#each filteredEntities as n}<option value={n}>{n}</option>{/each}
           </select>
         </div>
-      {/if}
-      {#if pendingMoveLessonId}
-        <span class="ml-auto px-2 py-1 rounded bg-amber-100 border border-amber-300 text-xs"
-              data-testid="schedule-pending-move">
-          Modalita sposta -- click su uno slot vuoto per confermare
-          <button class="ml-2 underline"
-                  on:click={() => (pendingMoveLessonId = null)}>annulla</button>
-        </span>
       {/if}
     </div>
 
@@ -739,16 +867,18 @@
                     on:click={dismissHelp} aria-label="Nascondi aiuto">✕</button>
           </div>
         {/if}
+        {#key `${$viewStore}:${$entityIdStore}`}
         <WeeklyCalendarView mode="schedule"
                             title={calendarTitle}
                             config={workingHoursConfig}
-                            {lessons}
+                            lessons={visibleLessons}
                             unscheduled_lessons={unscheduled}
                             filter_by={calendarFilter}
                             on_lesson_click={onLessonClick}
                             on_slot_click={onSlotClick}
                             on_lesson_move={onLessonMove}
                             on_unscheduled_drop={onUnscheduledDrop}/>
+        {/key}
       </div>
     {/if}
   {/if}
@@ -845,10 +975,11 @@
                   onActivate={activateSolution}
                   onDelete={delSolution}/>
 
-  <ScheduleConflictModal open={dropConflict !== null}
+  {#if $dropConflictStore}
+  <ScheduleConflictModal open={true}
                          title="Slot di destinazione occupato"
-                         subject={dropConflict?.subject || ''}
-                         details={dropConflict?.details
+                         subject={$dropConflictStore.subject || ''}
+                         details={$dropConflictStore.details
                                   || { teacher_busy: [],
                                        class_busy: [],
                                        room_busy: [] }}
@@ -856,6 +987,7 @@
                          deleteLabel="Sostituisci"
                          onCancel={cancelDropConflict}
                          onResolve={resolveDropConflict}/>
+  {/if}
 </div>
 
 <style>

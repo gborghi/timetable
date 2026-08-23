@@ -89,7 +89,8 @@ def test_loader_emits_max_consecutive_pragma():
                             min_free_days=0))
     sess.commit()
 
-    rules = load_all_dsl_constraints(sess, include_soft=False)
+    rules = load_all_dsl_constraints(
+        sess, _models=models, include_soft=False)
     matching = [r for r in rules
                 if r["expression"] == 'teacher_max_consecutive("Rossi Mario", 3)']
     assert len(matching) == 1, [r["expression"] for r in rules]
@@ -113,6 +114,7 @@ def test_loader_skips_max_consecutive_when_non_binding():
                             min_free_days=0))
     sess.commit()
 
-    rules = load_all_dsl_constraints(sess, include_soft=False)
+    rules = load_all_dsl_constraints(
+        sess, _models=models, include_soft=False)
     assert not any("teacher_max_consecutive" in r["expression"]
                    for r in rules), [r["expression"] for r in rules]

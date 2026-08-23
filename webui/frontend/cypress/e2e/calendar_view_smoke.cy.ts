@@ -88,11 +88,9 @@ describe('WeeklyCalendarView in Tab Docenti edit modal (view mode)', () => {
     // we don't assert on them. Instead assert the calendar is
     // present with its legend.
     //
-    // scrollIntoView() is mandatory, not cosmetic: the calendar sits
-    // ~680px down a 2100px-tall modal body, and the modal wrapper is
-    // `position: fixed`. In the default 1000x660 viewport Cypress
-    // therefore considers it "overflowed by other elements" and
-    // `be.visible` can never pass without scrolling first.
+    // scrollIntoView() is still required: the calendar sits below the
+    // fold inside [data-testid=modal-body] (viewport-capped dialog).
+    // Cypress `be.visible` fails if the node is clipped by that scroller.
     cy.get('.weekly-calendar', { timeout: 10000 })
       .scrollIntoView()
       .should('be.visible');
@@ -146,7 +144,7 @@ describe('WeeklyCalendarView is wired to the working-hours config', () => {
       .first()
       .click();
 
-    // Same modal-scroll caveat as the test above.
+    // Same modal-body scroll caveat as the test above.
     cy.contains(/Nessun giorno lavorativo|Vai al tab/i,
                 { timeout: 10000 })
       .scrollIntoView()

@@ -11,6 +11,7 @@ import {
   BG_END_DEFAULT,
   timeToHours,
   bgRangeFor,
+  bgHourList,
   pxFromTime,
   pxDuration,
   gridHeight,
@@ -101,6 +102,15 @@ test("pxDuration: very short slots have a 24px floor", () => {
 test("gridHeight: matches (hi - lo) * PX_PER_HOUR", () => {
   assert.equal(gridHeight({ lo: 7, hi: 19 }), 12 * PX_PER_HOUR);
   assert.equal(gridHeight({ lo: 6, hi: 22 }), 16 * PX_PER_HOUR);
+});
+
+test("bgHourList: inclusive integer hours for the time column", () => {
+  assert.deepEqual(bgHourList({ lo: 7, hi: 9 }), [7, 8, 9]);
+  assert.deepEqual(bgHourList(null), bgHourList({
+    lo: BG_START_DEFAULT, hi: BG_END_DEFAULT,
+  }));
+  // Labels stay O(hours), not O(days × hours × classes).
+  assert.ok(bgHourList({ lo: 7, hi: 19 }).length <= 13);
 });
 
 test("pxToTime: round-trips with pxFromTime under 15-min snap", () => {

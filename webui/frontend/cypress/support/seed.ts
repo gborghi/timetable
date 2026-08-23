@@ -128,7 +128,26 @@ export function seedSmallProfileAndRunPhaseA(
     timeoutSeconds = 180,
     pollMs = 2000): Cypress.Chainable {
   return clearDataset().then(() => {
-    // /api/dataset/mock returns {run_id} -- async generation.
+    // Prefer the checked-in SQLite snapshot: it already carries
+    // anagrafica + an active Solution, so the calendar specs do
+    // not depend on live mock generation (which used to import
+    // the retired mock_classes2 module). Fall back to /mock +
+    // Phase A when the snapshot import is unavailable.
+    return cy.request({
+      method: 'POST',
+      url: `${BACKEND}/api/dataset/import-profile`,
+      failOnStatusCode: false,
+      body: {
+        profile: 'small', use_optimized: false,
+        import_curricula: true, import_classrooms: true,
+        import_students: false,
+      },
+      timeout: 60000,
+    });
+  }).then((imp: any) => {
+    if ([200, 201].includes(imp.status) && imp.body?.run_id) {
+      return waitForRun(imp.body.run_id, 60, pollMs);
+    }
     return cy.request({
       method: 'POST',
       url: `${BACKEND}/api/dataset/mock`,
@@ -138,25 +157,20 @@ export function seedSmallProfileAndRunPhaseA(
         margin: 0.25,
       },
       timeout: 60000,
+    }).then((r) => waitForRun(r.body.run_id, 60, pollMs)).then(() => {
+      return cy.request({
+        method: 'POST',
+        url: `${BACKEND}/api/optimize/assignment`,
+        body: {
+          time_limit_s: 30, workers: 4, log: false,
+          criterion: 'balance_weight',
+        },
+      });
+    }).then((r) => {
+      const runId = r.body.run_id;
+      expect(runId).to.be.a('number');
+      return waitForRun(runId, timeoutSeconds, pollMs);
     });
-  }).then((r) => {
-    const runId = r.body.run_id;
-    return waitForRun(runId, 60, pollMs);
-  }).then(() => {
-    // Phase A (assignment) -- runs synchronously in a background
-    // thread, returns {run_id}.
-    return cy.request({
-      method: 'POST',
-      url: `${BACKEND}/api/optimize/assignment`,
-      body: {
-        time_limit_s: 30, workers: 4, log: false,
-        criterion: 'balance_weight',
-      },
-    });
-  }).then((r) => {
-    const runId = r.body.run_id;
-    expect(runId).to.be.a('number');
-    return waitForRun(runId, timeoutSeconds, pollMs);
   });
 }
 

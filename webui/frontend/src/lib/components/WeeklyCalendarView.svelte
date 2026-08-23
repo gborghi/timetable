@@ -54,12 +54,12 @@
     colourFor,
     lessonLabel,
     lessonParts,
-    isSupportLesson,
-    primaryLesson,
+    slotRenderPlan,
   } from '$lib/calendar_helpers.mjs';
   import {
     PX_PER_HOUR,
     bgRangeFor,
+    bgHourList,
     pxFromTime as _pxFromTime,
     pxDuration as _pxDuration,
     gridHeight as _gridHeight,
@@ -204,11 +204,6 @@
   // school slots). Pure layout helpers live in $lib/calendar_layout
   // so they can be unit-tested.
   $: bgRange = bgRangeFor(activeDays);
-  $: bgHours = (() => {
-    const out = [];
-    for (let h = bgRange.lo; h <= bgRange.hi; h += 1) out.push(h);
-    return out;
-  })();
   $: gridHeightPx = _gridHeight(bgRange);
 
   function _key(d, h) { return d + '-' + h; }
@@ -338,12 +333,7 @@
     mode === 'edit' ? editActiveDays : activeDays);
   $: displayActiveDays = mode === 'edit' ? editActiveDays : activeDays;
   $: displayBgRange = mode === 'edit' ? editBgRange : bgRange;
-  $: displayBgHours = (() => {
-    const out = [];
-    for (let h = displayBgRange.lo; h <= displayBgRange.hi; h += 1)
-      out.push(h);
-    return out;
-  })();
+  $: displayBgHours = bgHourList(displayBgRange);
   $: displayGridHeightPx = _gridHeight(displayBgRange);
 
   function _commitEditingDays(nextDays) {
@@ -629,15 +619,17 @@
   // teacher / class / room of the dragged one.
   // ---------------------------------------------------------------
 
-  // Filter lessons according to filter_by (when set).
+  // Primitive deps so Svelte 5 `$:` re-runs when the parent swaps
+  // the filter object (export-let object identity is not enough).
+  $: filterType = filter_by?.type || null;
+  $: filterId = filter_by?.id || null;
   $: filteredLessons = (() => {
     if (mode !== 'schedule' || !Array.isArray(lessons)) return [];
-    const t = filter_by?.type, id = filter_by?.id;
-    if (!t || !id) return lessons;
+    if (!filterType || !filterId) return lessons;
     return lessons.filter((l) => {
-      if (t === 'class')   return l.class_name === id;
-      if (t === 'teacher') return l.teacher_name === id;
-      if (t === 'room')    return l.classroom_name === id;
+      if (filterType === 'class')   return l.class_name === filterId;
+      if (filterType === 'teacher') return l.teacher_name === filterId;
+      if (filterType === 'room')    return l.classroom_name === filterId;
       return true;
     });
   })();
@@ -711,7 +703,9 @@
 
   // Colour palette helpers live in $lib/calendar_helpers.mjs (audit Q1).
   // Thin wrapper so UnscheduledPool prop signature stays unchanged.
-  function _colourFor(lesson) { return colourFor(lesson, filter_by); }
+  function _colourFor(lesson) {
+    return colourFor(lesson, { type: filterType, id: filterId });
+  }
 
   function _onLessonDragStart(ev, lesson) {
     dragSource = { kind: 'lesson', lesson };
@@ -801,6 +795,7 @@
   }
   function _onSlotDrop(ev, day, hour) {
     ev.preventDefault();
+    ev.stopPropagation();
     const k = day + '-' + hour;
     const ds = dragSource;
     dragSource = null;
@@ -825,10 +820,15 @@
   }
   // Lesson helpers live in $lib/calendar_helpers.mjs (audit Q1).
   // Thin wrappers so the template calls stay concise.
-  function _lessonLabel(l) { return lessonLabel(l, filter_by); }
-  function _lessonParts(l) { return lessonParts(l, filter_by); }
-  const _isSupportLesson = isSupportLesson;
-  const _primaryLesson = primaryLesson;
+  function _lessonLabel(l) {
+    return lessonLabel(l, { type: filterType, id: filterId });
+  }
+  function _lessonParts(l) {
+    return lessonParts(l, { type: filterType, id: filterId });
+  }
+  function _slotPlan(lst) {
+    return slotRenderPlan(lst, { type: filterType, id: filterId });
+  }
 
   function _openCompresenza(ev, key, lst, timeLabel) {
     ev.stopPropagation();
@@ -995,19 +995,15 @@
             <div class="cal-day-col" data-day={dnum}
                  bind:this={d._colEl}
                  on:mousedown={(e) => onEditDayMouseDown(e, dayId, d._colEl)}>
-              <!-- background hour gridlines (non-clickable in view
-                   mode; serves as drag-to-create surface in edit) -->
-              {#each displayBgHours as h}
-                <div class="cal-hour-bg"
-                     class:cal-hour-bg--editable={mode === 'edit'}
-                     class:cal-hour-bg--schedule-reject={mode === 'schedule' && dragSource && !configuredSlots.has(dnum + '-' + h)}
-                     style="top: {(h - displayBgRange.lo) * PX_PER_HOUR}px"
-                     aria-disabled={mode !== 'edit'}
-                     title={mode === 'edit'
-                       ? `Trascina per creare uno slot a partire da ${String(h).padStart(2, '0')}:00`
-                       : `Ora ${String(h).padStart(2, '0')}:00 -- nessuno slot configurato qui`}></div>
-              {/each}
+              <!-- Hour lines are CSS on .cal-day-col (not one node
+                   per hour × day). Edit mode still mounts the cells
+                   so drag-to-create has a hit target. -->
               {#if mode === 'edit'}
+                {#each displayBgHours as h}
+                  <div class="cal-hour-bg cal-hour-bg--editable"
+                       style="top: {(h - displayBgRange.lo) * PX_PER_HOUR}px"
+                       title={`Trascina per creare uno slot a partire da ${String(h).padStart(2, '0')}:00`}></div>
+                {/each}
                 <!-- EDIT MODE: events are draggable rectangles the
                      user manipulates to define the working-hours
                      layout itself. -->
@@ -1140,15 +1136,16 @@
                         {slot.start_time}-{slot.end_time}
                       </div>
                     {:else}
-                      {@const isCompresenza = !!filter_by?.type && lst.length > 1}
-                      {@const renderList = isCompresenza ? [_primaryLesson(lst)] : lst}
+                      {@const plan = _slotPlan(lst)}
+                      {@const isCompresenza = plan.collapsed}
+                      {@const renderList = plan.visible}
                       {#each renderList as l, lIdx}
                         {@const col = _colourFor(l)}
                         {@const parts = _lessonParts(l)}
                         <div class="cal-event cal-event--schedule"
                              class:cal-event--conflict={isConflict && dragSource}
                              style={`background:${col.bg};border-color:${col.bd};color:${col.fg};` +
-                                    (!isCompresenza && lst.length > 1 ? `width:${100 / lst.length}%;left:${(100 / lst.length) * lIdx}%;` : '')}
+                                    (!isCompresenza && renderList.length > 1 ? `width:${100 / renderList.length}%;left:${(100 / renderList.length) * lIdx}%;` : '')}
                              draggable="true"
                              role="button"
                              tabindex="0"

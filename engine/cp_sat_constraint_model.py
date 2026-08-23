@@ -1389,7 +1389,8 @@ class ConstraintModel:
             )
 
     def add_all_dsl_constraints_from_db(self, db, *,
-                                          include_soft: bool = False):
+                                          include_soft: bool = False,
+                                          _models=None):
         """Aggregate every constraint table (TeacherUnavailability,
         ClassUnavailability, ClassroomUnavailability,
         TeacherMandatoryFreeDay, CoteachGroup, LogicalUnavailability,
@@ -1413,7 +1414,7 @@ class ConstraintModel:
         except ImportError:
             import dsl_translator as dt  # type: ignore
         rules = dt.load_all_dsl_constraints(
-            db, include_soft=include_soft)
+            db, _models=_models, include_soft=include_soft)
         for r in rules:
             self.add_dsl_constraint(
                 r["expression"],
@@ -2008,12 +2009,14 @@ class PhaseBDaySolver:
         extra_dsl_expressions: list | None = None,
         special_room_ctx: Any = None,
         total_room_capacity: int | None = None,
+        _models=None,
     ):
         self.profs = profs
         self.dc_value = dc_value
         self.day = int(day)
         self.config = config or ConstraintConfig()
         self.db = db
+        self._models = _models
         # finding 34: capacita' aule speciali (palestra/lab). Il repair di
         # giornata (metaheuristics._cp_repair) gira nel post-processing dove
         # `db` NON e' passato (la sessione e' chiusa): senza questo ctx
@@ -2141,6 +2144,7 @@ class PhaseBDaySolver:
             parallel_groups=parallel_groups,
             group_assignments=group_assignments,
             db=self.db if via_dsl else None,
+            _models=self._models if via_dsl else None,
             via_dsl=via_dsl,
             extra_dsl_expressions=(
                 self.extra_dsl_expressions if via_dsl else None),

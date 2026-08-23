@@ -69,23 +69,25 @@
 <svelte:window on:keydown={onKey}/>
 
 {#if open}
-  <div class="fixed inset-0 z-40 flex items-start justify-center bg-ink-900/40 backdrop-blur-sm overflow-auto py-12 px-4"
+  <div class="fixed inset-0 z-40 flex items-center justify-center bg-ink-900/40 backdrop-blur-sm p-4"
        on:click|self={onClose}
-       role="presentation">
-    <div class="card w-full max-w-3xl outline-none"
+       role="presentation"
+       data-testid="modal-overlay">
+    <div class="card flex w-full max-w-3xl max-h-[calc(100vh-2rem)] flex-col outline-none"
          bind:this={dialog}
          role="dialog"
          aria-modal="true"
          aria-labelledby="modal-title"
          aria-describedby={describedBy}
-         tabindex="-1">
-      <div class="flex items-center justify-between border-b border-ink-100 px-4 py-3">
+         tabindex="-1"
+         data-testid="modal-dialog">
+      <div class="flex shrink-0 items-center justify-between border-b border-ink-100 px-4 py-3">
         <h2 id="modal-title" class="font-semibold">{title}</h2>
         <button class="btn !px-2 !py-1 focus-ring"
                 aria-label="Chiudi finestra"
                 on:click={onClose}>Chiudi</button>
       </div>
-      <div class="p-4">
+      <div class="min-h-0 overflow-y-auto p-4" data-testid="modal-body">
         <slot />
       </div>
     </div>

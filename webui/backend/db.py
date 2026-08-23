@@ -18,8 +18,12 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import logging
+
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
+
+log = logging.getLogger("pitantum.db")
 
 # Use pathlib.Path for cross-platform compatibility (Windows/macOS/Linux)
 HERE = Path(__file__).resolve().parent
@@ -650,3 +654,42 @@ def _apply_lightweight_migrations() -> None:
                             "s": f"{h:02d}:00", "e": f"{h+1:02d}:00",
                             "l": f"{i+1}ª ora", "leg": h,
                         })
+
+        # Integrity CHECKs (audit 2026-08-23). Auto-fix the derived
+        # `required` flag. XOR violators are only reported: adding a
+        # CHECK on SQLite needs a table rebuild, which is Alembic's
+        # job (revision c8d9e0f1a2b3). A dirty existing DB must not
+        # crash startup.
+        _audit_integrity_on_startup(conn)
+
+
+def _audit_integrity_on_startup(conn) -> None:
+    """Fix derived ``required`` and log leftover XOR rows.
+
+    Called from the lightweight-migration transaction. Never raises:
+    a dirty school DB must still boot so the operator can inspect
+    the rows. Adding the CHECKs themselves is Alembic's job.
+    """
+    try:
+        from .integrity_checks import (
+            audit_integrity,
+            fix_derived_required,
+            format_audit_error,
+            xor_violations,
+        )
+    except Exception:
+        log.exception("integrity_checks import failed")
+        return
+    try:
+        n_fixed = fix_derived_required(conn)
+        if n_fixed:
+            log.warning(
+                "integrity: rewrote required on %d classroom_subject_"
+                "preferences row(s) to match state='enforced'",
+                n_fixed,
+            )
+        report = audit_integrity(conn)
+        if xor_violations(report):
+            log.error(format_audit_error(report))
+    except Exception:
+        log.exception("integrity audit on startup failed")

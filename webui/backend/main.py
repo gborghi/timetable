@@ -123,16 +123,6 @@ def _check_production_security() -> None:
             "impostata. Rifiuto di avviare un backend senza "
             "autenticazione in produzione."
         )
-    if os.environ.get("PITANTUM_ALLOW_PICKLE_UPLOAD", "").strip().lower() in (
-        "1", "true", "yes", "on",
-    ):
-        # Warn loudly but don't block: an admin who really wants to
-        # accept pickles in prod has to keep both flags set.
-        log.warning(
-            "PITANTUM_ALLOW_PICKLE_UPLOAD attivo in produzione. "
-            "Questo endpoint esegue pickle.loads su input utente "
-            "-- vulnerabilita RCE se non strettamente controllato."
-        )
     if not os.environ.get("PITANTUM_CORS_ORIGINS", "").strip():
         raise RuntimeError(
             "PITANTUM_ENV=production ma PITANTUM_CORS_ORIGINS non e' "

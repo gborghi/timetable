@@ -221,7 +221,8 @@ def is_hard_feasible(sol, profs, verbose=False,
                      class_flags=None,
                      special_room_ctx=None,
                      dsl_hard_expressions=None,
-                     db=None):
+                     db=None,
+                     _models=None):
     """Ritorna True se la soluzione rispetta tutti gli HARD.
 
     Task C1/C2/C3: optional checks for coteach (principal + codoc
@@ -586,7 +587,7 @@ def is_hard_feasible(sol, profs, verbose=False,
             except ImportError:
                 import dsl_translator as _dt  # type: ignore
             rules = _dt.load_all_dsl_constraints(
-                db, include_soft=False)
+                db, _models=_models, include_soft=False)
             expressions = [r["expression"] for r in rules
                            if r.get("is_hard")]
         except Exception as exc:  # noqa: BLE001
@@ -769,7 +770,8 @@ def _cp_repair(sol, profs, dc_value, free_keys, time_limit, workers=4,
                special_room_ctx=None,  # finding 34: palestra/lab capienza
                db=None,
                via_dsl=False,
-               extra_dsl_expressions=None):
+               extra_dsl_expressions=None,
+               _models=None):
     """OO repair via ``PhaseBDaySolver``.
 
     The free variables are those whose 5-tuple key is in ``free_keys``;
@@ -822,6 +824,7 @@ def _cp_repair(sol, profs, dc_value, free_keys, time_limit, workers=4,
             db=db,
             extra_dsl_expressions=list(extra_dsl_expressions or []),
             special_room_ctx=special_room_ctx,
+            _models=_models,
         )
         out, _status = solver.solve(
             time_limit_s=float(time_limit),

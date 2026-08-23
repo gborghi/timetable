@@ -91,7 +91,7 @@ def test_per_day_soft_unavailability_steers_away_from_penalized_slot():
         1, profs, classes, triples, class_profs, dc_value,
         time_limit=8, workers=2, log=False,
         enforce_no_holes=False,
-        via_dsl=True, db=db)
+        via_dsl=True, db=db, _models=models)
 
     # (a) FUNCTIONAL: feasible, non-empty placement.
     assert out is not None, status
@@ -133,7 +133,7 @@ def test_per_day_soft_unavailability_on_only_slot_stays_feasible():
         1, profs, classes, triples, class_profs, dc_value,
         time_limit=8, workers=2, log=False,
         enforce_no_holes=False,
-        via_dsl=True, db=db)
+        via_dsl=True, db=db, _models=models)
 
     assert out is not None, (
         f"a SOFT rule must not be promoted to HARD; got {status}")

@@ -9,6 +9,7 @@
   import { api } from '$lib/api';
   import { flash } from '$lib/stores';
   import Modal from '$lib/components/Modal.svelte';
+  import DslEditor from '$lib/components/DslEditor.svelte';
 
   export let open = false;
   export let onClose = () => { open = false; };
@@ -151,12 +152,10 @@
 
     <div class="field">
       <label>Espressione DSL *</label>
-      <textarea class="w-full h-28 font-mono text-xs px-2 py-1.5
-                       rounded-md border border-ink-200"
-                bind:value={expression}
-                on:input={onExpressionChange}
-                data-testid="dsl-expression"
-                placeholder="forall l in lessons where l.teacher == Borghi: l.hour != 6"></textarea>
+      <DslEditor bind:value={expression}
+                 on:input={onExpressionChange}
+                 testid="dsl-expression"
+                 placeholder="forall l in lessons where l.teacher == Borghi: l.hour != 6"/>
     </div>
 
     <!-- Live validation feedback -->

@@ -69,16 +69,26 @@
   .cal-day-col {
     position: relative;
     border-left: 1px solid var(--line2);
+    background-color: var(--band);
+    background-image: repeating-linear-gradient(
+      to bottom,
+      var(--line2) 0,
+      var(--line2) 1px,
+      transparent 1px,
+      transparent var(--hour-px, 40px)
+    );
+    background-size: 100% var(--hour-px, 40px);
   }
   .cal-day-col:first-of-type { border-left: none; }
-  /* Background hour gridlines: visible but inert. */
+  /* Edit-mode hour cells only: hit target for drag-to-create.
+     View / schedule paint the same lines via the column gradient. */
   .cal-hour-bg {
     position: absolute;
     left: 0;
     right: 0;
     height: var(--hour-px, 40px);
     border-top: 1px dashed var(--line2);
-    background: var(--band);
+    background: transparent;
     cursor: not-allowed;
     pointer-events: none;
   }
@@ -366,14 +376,6 @@
     border: 2px solid #f59e0b !important;
     border-style: solid !important;
   }
-  /* Background grid cells light up red while a drag is in progress
-     and the cursor is over an unconfigured hour. */
-  .cal-grid--schedule .cal-hour-bg.cal-hour-bg--schedule-reject,
-  .cal-hour-bg--schedule-reject {
-    background: #fee2e2 !important;
-    cursor: not-allowed;
-  }
-
   /* Schedule events: positioned inside their slot via flex; coloured
      by deterministic palette via inline style. */
   .cal-event--schedule {

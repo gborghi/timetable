@@ -279,7 +279,8 @@ def test_small_profile_emits_at_least_one_free_day_per_teacher():
     Session = sessionmaker(bind=engine, future=True)
     sess = Session()
     try:
-        rules = load_all_dsl_constraints(sess, include_soft=True)
+        rules = load_all_dsl_constraints(
+            sess, _models=models, include_soft=True)
         n_teachers = sess.query(models.Teacher).count()
     except OperationalError as exc:
         # The profile .sqlite files are generated artifacts (gitignored),

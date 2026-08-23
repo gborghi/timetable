@@ -11,6 +11,11 @@
   import AdvancedTechniquesCard from
     '$lib/components/optimize/AdvancedTechniquesCard.svelte';
   import { PIPELINE_LABEL } from '$lib/pipeline_labels';
+  import {
+    DEFAULT_PIPELINE,
+    loadPipeline,
+    savePipeline,
+  } from '$lib/pipeline_persist.mjs';
   import { tooltip } from '$lib/actions/tooltip';
 
   let runId = null;
@@ -165,24 +170,9 @@
   //   - vns (OFF; rifinitura, attivabile per qualita' massima)
   //   - ils (ON)
   //   - cg, rooms (OFF; specialised stages)
-  let pipelineList = [
-    { key: 'hall_check',        enabled: true  },
-    { key: 'phase_a',           enabled: true  },
-    { key: 'decomp_spectral',   enabled: true  },
-    { key: 'decomp_temporal',   enabled: false },
-    { key: 'decomp_metis',      enabled: false },
-    { key: 'decomp_curriculum', enabled: false },
-    { key: 'phase_b',           enabled: true  },
-    { key: 'cg',                enabled: false },
-    { key: 'lns',               enabled: true  },
-    { key: 'alns',              enabled: true  },
-    { key: 'sa',                enabled: true  },
-    { key: 'ts',                enabled: true  },
-    { key: 'vns',               enabled: false },
-    { key: 'lagrangian',        enabled: false },
-    { key: 'ils',               enabled: true  },
-    { key: 'rooms',             enabled: false },
-  ];
+  let pipelineList = DEFAULT_PIPELINE.map((d) => ({ ...d }));
+  let pipelineHydrated = false;
+  $: if (pipelineHydrated) savePipeline(pipelineList);
   let stepFull = {
     profile: '', workers: 8, time_assign: 30,
     budget_lns: 60, budget_sa: 30, budget_ts: 30, budget_ils: 60,
@@ -219,8 +209,15 @@
     [next[i], next[j]] = [next[j], next[i]];
     pipelineList = next;
   }
+  function togglePipelineItem(i, enabled) {
+    const next = pipelineList.slice();
+    next[i] = { ...next[i], enabled: !!enabled };
+    pipelineList = next;
+  }
 
   onMount(async () => {
+    pipelineList = loadPipeline();
+    pipelineHydrated = true;
     await Promise.all([
       reloadRuns(),
       reloadActiveProfile(),
@@ -963,7 +960,9 @@
                       class="text-ink-400 hover:text-ink-700 text-[10px] disabled:opacity-30"
                       on:click={() => movePipelineItem(i, 1)} disabled={i === pipelineList.length - 1}>&#x25BC;</button>
             </span>
-            <input type="checkbox" bind:checked={item.enabled}/>
+            <input type="checkbox" checked={item.enabled}
+                   data-testid={'optimize-pipeline-' + item.key}
+                   on:change={(e) => togglePipelineItem(i, e.currentTarget.checked)}/>
             <span class="text-sm flex-1">{PIPELINE_LABEL[item.key]}</span>
             <span class="text-xs text-ink-400">{i + 1}</span>
           </li>
