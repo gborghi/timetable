@@ -312,15 +312,29 @@ def to_profs_pkl(cattedre, teachers, day_map):
     """
     import random
     rng = random.Random(123)
-    days_indices = list(range(1, 7))
+    try:
+        import working_hours_config as _whc  # type: ignore
+        days_indices = list(_whc.get_days()) or list(_whc.DEFAULT_DAYS)
+    except Exception:
+        days_indices = [1, 2, 3, 4, 5, 6]
     out = {}
     for t in teachers:
         n = t["name"]
         if n not in cattedre:
             continue                  # docente "scartato" senza cattedre
-        first = day_map.get(t["free_day"], 1)
+        first = day_map.get(t["free_day"]) if day_map else None
+        if first is None:
+            raw = t.get("free_day")
+            try:
+                first = int(raw) if raw not in (None, "") else None
+            except (TypeError, ValueError):
+                first = None
+        if first is None or first not in days_indices:
+            first = days_indices[0] if days_indices else 1
         candidates = [d for d in days_indices if d != first]
         rng.shuffle(candidates)
+        while len(candidates) < 2:
+            candidates.append(candidates[0] if candidates else first)
         glibero = [first, candidates[0], candidates[1]]
         classi = {}
         for cname, subjmap in cattedre[n].items():

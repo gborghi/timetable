@@ -22,6 +22,8 @@ webui/frontend/src/lib/constants.ts.
 """
 from __future__ import annotations
 
+import re
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -41,6 +43,63 @@ _DEFAULT_DAYS = [
     ("FRI", "Venerdi",   4, 5),
     ("SAT", "Sabato",    5, 6),
 ]
+
+
+_CODE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,31}$")
+_TRAILING_NUM = re.compile(r"^(.*?)(\d+)$")
+
+
+def _norm_code(raw: str) -> str:
+    code = str(raw or "").strip()
+    if not _CODE_RE.match(code):
+        raise ValueError(
+            "Codice giorno non valido: usa lettere/cifre/_/- "
+            "(es. lun1, mar2, MON). Deve iniziare con una lettera."
+        )
+    return code
+
+
+def _bump_token(token: str) -> str:
+    m = _TRAILING_NUM.match(token)
+    if m:
+        return f"{m.group(1)}{int(m.group(2)) + 1}"
+    return f"{token}2"
+
+
+def _copy_slots(db: Session, src: models.WorkingDay, dest_id: int) -> None:
+    for s in sorted(src.slots, key=lambda x: x.slot_index):
+        db.add(models.WorkingHourSlot(
+            day_id=dest_id,
+            slot_index=s.slot_index,
+            start_time=s.start_time,
+            end_time=s.end_time,
+            label=s.label,
+            legacy_hour_number=s.legacy_hour_number,
+        ))
+
+
+def _next_position_legacy(db: Session, tid: int) -> tuple[int, int]:
+    rows = (
+        db.query(models.WorkingDay)
+        .filter(models.WorkingDay.tenant_id == tid)
+        .all()
+    )
+    pos = (max((r.position for r in rows), default=-1) + 1)
+    legacy = (max((r.legacy_day_number for r in rows), default=0) + 1)
+    return pos, legacy
+
+
+def _seed_default_slots(db: Session, day_id: int) -> None:
+    for i in range(6):
+        h = 8 + i
+        db.add(models.WorkingHourSlot(
+            day_id=day_id,
+            slot_index=i,
+            start_time=f"{h:02d}:00",
+            end_time=f"{h + 1:02d}:00",
+            label=f"{i + 1}ª ora",
+            legacy_hour_number=h,
+        ))
 
 
 def _validate_hhmm(s: str) -> str:
@@ -167,23 +226,111 @@ def create_day(
     db: Session = Depends(get_db),
     tid: int = Depends(current_tenant_id),
 ):
+    try:
+        code = _norm_code(payload.code)
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from e
+    pos, legacy = _next_position_legacy(db, tid)
+    existing = (
+        db.query(models.WorkingDay)
+        .filter(models.WorkingDay.tenant_id == tid)
+        .all()
+    )
+    used_pos = {r.position for r in existing}
+    used_leg = {r.legacy_day_number for r in existing}
+    used_code = {r.code.lower() for r in existing}
+    if code.lower() in used_code:
+        raise HTTPException(400, f"Codice già usato: {code}")
+    position = payload.position if payload.position not in used_pos else pos
+    legacy_n = (
+        payload.legacy_day_number
+        if payload.legacy_day_number not in used_leg
+        else legacy
+    )
     d = models.WorkingDay(
         tenant_id=tid,
-        code=payload.code.upper(),
-        label=payload.label,
-        position=payload.position,
-        legacy_day_number=payload.legacy_day_number,
+        code=code,
+        label=payload.label.strip(),
+        position=position,
+        legacy_day_number=legacy_n,
         is_active=payload.is_active,
     )
     db.add(d)
     try:
+        db.flush()
+        src = None
+        if payload.clone_slots_from:
+            src = (
+                db.query(models.WorkingDay)
+                .filter(models.WorkingDay.id == payload.clone_slots_from,
+                        models.WorkingDay.tenant_id == tid)
+                .first()
+            )
+        if src is not None:
+            _copy_slots(db, src, d.id)
+        else:
+            _seed_default_slots(db, d.id)
         db.commit()
         db.refresh(d)
+    except HTTPException:
+        raise
     except Exception as e:  # noqa: BLE001
         db.rollback()
-        raise HTTPException(
-            400, f"Giorno non creato: {e}") from e
+        raise HTTPException(400, f"Giorno non creato: {e}") from e
     return _serialize_day(d)
+
+
+@router.post("/duplicate-cycle", response_model=schemas.WorkingHoursConfigOut)
+def duplicate_cycle(
+    db: Session = Depends(get_db),
+    tid: int = Depends(current_tenant_id),
+):
+    """Append a copy of every *active* day (MON → MON2, Gatto → Gatto2).
+
+    Convenience for a longer flat calendar. There is no 'week 2'
+    object: the timetable is just a longer sequence of named days
+    with their own stable numeric IDs.
+    """
+    days = (
+        db.query(models.WorkingDay)
+        .filter(models.WorkingDay.tenant_id == tid)
+        .order_by(models.WorkingDay.position)
+        .all()
+    )
+    active = [d for d in days if d.is_active]
+    if not active:
+        raise HTTPException(400, "Nessun giorno attivo da duplicare.")
+    used_code = {d.code.lower() for d in days}
+    pos, legacy = _next_position_legacy(db, tid)
+    created = []
+    for src in active:
+        code = src.code
+        label = src.label
+        for _ in range(40):
+            code = _bump_token(code)
+            if code.lower() not in used_code:
+                break
+        else:
+            raise HTTPException(400, f"Impossibile derivare un codice da {src.code}")
+        label = _bump_token(label) if _TRAILING_NUM.match(src.label.strip()) \
+            else f"{src.label.strip()} 2"
+        used_code.add(code.lower())
+        d = models.WorkingDay(
+            tenant_id=tid,
+            code=code,
+            label=label,
+            position=pos,
+            legacy_day_number=legacy,
+            is_active=True,
+        )
+        db.add(d)
+        db.flush()
+        _copy_slots(db, src, d.id)
+        created.append(d)
+        pos += 1
+        legacy += 1
+    db.commit()
+    return get_config(db=db, tid=tid)
 
 
 @router.put("/days/{day_id}", response_model=schemas.WorkingDayOut)
@@ -203,7 +350,10 @@ def update_day(
         raise HTTPException(404, f"WorkingDay {day_id} non trovato")
     fields = payload.model_dump(exclude_unset=True)
     if "code" in fields and fields["code"] is not None:
-        fields["code"] = fields["code"].upper()
+        try:
+            fields["code"] = _norm_code(fields["code"])
+        except ValueError as e:
+            raise HTTPException(422, str(e)) from e
     for k, v in fields.items():
         setattr(d, k, v)
     try:

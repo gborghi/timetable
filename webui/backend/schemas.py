@@ -142,7 +142,8 @@ class UnavailabilitySlot(BaseModel):
 
 class FreeDayPref(BaseModel):
     """One ordered preference for a free day. Up to 3 entries allowed
-    in `preferred_free_days`. day=1..6 (Lun..Sab); is_hard=True means
+    in `preferred_free_days`. day is a configured calendar ID
+    (default seed 1..6 = Lun..Sab); is_hard=True means
     the day is fully blocked; SOFT means the model pays soft_penalty
     for every busy hour on that day."""
     day: int
@@ -165,7 +166,7 @@ class FreeDayPrioritiesIn(BaseModel):
     """PATCH payload for /api/teachers/{id}/free-day-preferences.
 
     Replaces the teacher's full set of priority preferences. Empty
-    list clears them. Server enforces day in 1..6, priority in 1..3,
+    list clears them. Server enforces a configured day ID, priority in 1..3,
     no duplicate days, no duplicate priorities."""
     preferences: list[FreeDayPriorityPref] = Field(default_factory=list)
 
@@ -233,8 +234,8 @@ class CompresenzaHour(BaseModel):
     la lista viene comunque conservata, cosi' passare da 'oraria' a
     'sempre' e ritorno non perde la griglia gia' compilata.
     """
-    day: int = Field(ge=1, le=6, description="1=Lunedi'")
-    hour: int = Field(description="numerazione legacy 8..13")
+    day: int = Field(ge=1, le=400, description="ID giorno (legacy_day_number)")
+    hour: int = Field(description="codice ora (legacy_hour_number)")
 
 
 class TeacherIn(TeacherBase):
@@ -1430,23 +1431,26 @@ class WorkingHourSlotOut(WorkingHourSlotIn):
 
 
 class WorkingDayIn(BaseModel):
-    code: str = Field(min_length=2, max_length=8,
-                      description="MON | TUE | ... | SUN")
-    label: str = Field(min_length=1, max_length=32)
-    position: int = Field(ge=0, le=6,
+    code: str = Field(min_length=1, max_length=32,
+                      description="slug unico (etichetta tecnica): MON, Gatto, lun1, …")
+    label: str = Field(min_length=1, max_length=64)
+    position: int = Field(ge=0, le=366,
                           description="0-based engine day_idx")
-    legacy_day_number: int = Field(ge=1, le=7,
-                                   description="1..7 (MON..SUN) -- "
-                                               "kept for legacy "
-                                               "*_unavailability rows")
+    legacy_day_number: int = Field(ge=1, le=400,
+                                   description="chiave usata da "
+                                               "*_unavailability")
     is_active: bool = True
+    clone_slots_from: int | None = Field(
+        default=None,
+        description="opzionale: copia gli slot da questo working_day.id",
+    )
 
 
 class WorkingDayPatch(BaseModel):
-    code: str | None = None
-    label: str | None = None
-    position: int | None = None
-    legacy_day_number: int | None = None
+    code: str | None = Field(default=None, min_length=1, max_length=32)
+    label: str | None = Field(default=None, min_length=1, max_length=64)
+    position: int | None = Field(default=None, ge=0, le=366)
+    legacy_day_number: int | None = Field(default=None, ge=1, le=400)
     is_active: bool | None = None
 
 
@@ -1483,8 +1487,8 @@ class WorkingHoursConfigOut(BaseModel):
 
 
 class DisposizioneSlotPriority(BaseModel):
-    day: int = Field(ge=1, le=6)
-    hour: int = Field(ge=8, le=13)
+    day: int = Field(ge=1, le=400)
+    hour: int = Field(ge=0, le=23)
     weight: int = Field(ge=0, le=100, default=1)
 
 

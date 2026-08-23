@@ -728,7 +728,14 @@ _DAY_NAMES = {1: "lun", 2: "mar", 3: "mer", 4: "gio",
 
 
 def _day_name(d: int) -> str:
-    return _DAY_NAMES.get(d, "?")
+    try:
+        import working_hours_config as _whc  # type: ignore
+        label = _whc.get_day_label(int(d), default="")
+        if label:
+            return label
+    except Exception:
+        pass
+    return _DAY_NAMES.get(d, str(d))
 
 
 def _resolve_path(env: dict, path: list[str]) -> Any:

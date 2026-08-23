@@ -13,9 +13,9 @@
    */
   import { onMount } from 'svelte';
   import { api } from '$lib/api';
-  import { flash } from '$lib/stores';
+  import { flash, workingHoursConfig } from '$lib/stores';
   import Modal from '$lib/components/Modal.svelte';
-  import { DAYS, HOURS, DAY_NAMES_IT } from '$lib/constants';
+  import { calendarDays, calendarHours, calendarDayName } from '$lib/constants';
 
   export let open = false;
   export let onClose = () => { open = false; };
@@ -175,7 +175,7 @@
     : scope === 'teacher_room' ? (ownerId != null && ownerId2 != null)
     : ownerId != null;
   $: step3Valid =
-    kind === 'matrix_slot' ? (DAYS.includes(day) && HOURS.includes(hour))
+    kind === 'matrix_slot' ? (calendarDays($workingHoursConfig).includes(day) && calendarHours($workingHoursConfig).includes(hour))
     : kind === 'logical' ? (!!expression && expression.trim().length > 0)
     : kind === 'room_pref' ? true
     : kind === 'coteach' ? (!!subject && nTeachers >= 2)
@@ -209,7 +209,7 @@
     const lvl = LEVELS.find((l) => l.value === level)?.label || level;
     const sc = SCOPE_OPTIONS.find((s) => s.value === scope)?.label || scope;
     if (kind === 'matrix_slot') {
-      return `${sc} ${ownerName}: cella ${DAY_NAMES_IT[day] || day} ${hour}:00 marcata ${lvl}.`;
+      return `${sc} ${ownerName}: cella ${calendarDayName(day, $workingHoursConfig)} ${hour}:00 marcata ${lvl}.`;
     }
     if (kind === 'logical') {
       return `${sc} ${ownerName}: vincolo logico ${lvl} -- "${expression}".`
@@ -379,13 +379,13 @@
             <div class="field">
               <label>Giorno *</label>
               <select bind:value={day} data-testid="wizard-day">
-                {#each DAYS as d}<option value={d}>{DAY_NAMES_IT[d]}</option>{/each}
+                {#each calendarDays($workingHoursConfig) as d}<option value={d}>{calendarDayName(d, $workingHoursConfig)}</option>{/each}
               </select>
             </div>
             <div class="field">
               <label>Ora *</label>
               <select bind:value={hour} data-testid="wizard-hour">
-                {#each HOURS as h}<option value={h}>{h}:00</option>{/each}
+                {#each calendarHours($workingHoursConfig) as h}<option value={h}>{h}:00</option>{/each}
               </select>
             </div>
           </div>

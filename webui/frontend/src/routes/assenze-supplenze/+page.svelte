@@ -3,8 +3,8 @@
   import { confirmDialog } from '$lib/confirm';
   import { onMount } from 'svelte';
   import { api } from '$lib/api';
-  import { flash } from '$lib/stores';
-  import { DAYS, HOURS, DAY_NAMES_IT } from '$lib/constants';
+  import { flash, workingHoursConfig } from '$lib/stores';
+  import { calendarHours, calendarDayName } from '$lib/constants';
   import Modal from '$lib/components/Modal.svelte';
 
   // ----- state -----
@@ -47,6 +47,8 @@
     const d = new Date(s);
     return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`;
   }
+  $: calHours = calendarHours($workingHoursConfig);
+  $: calName = (d) => calendarDayName(d, $workingHoursConfig);
 
   // ----- load -----
   async function load() {
@@ -364,7 +366,7 @@
                 <button class="block w-full px-2 py-1 hover:bg-ink-100 rounded font-semibold"
                         on:click={() => openAbsencesModal(d)}
                         title="Click per registrare assenze">
-                  {DAY_NAMES_IT[d.day]} {fmtDateShort(d.date)}
+                  {calName(d.day)} {fmtDateShort(d.date)}
                   {#if d.n_absences > 0}
                     <span class="pill pill-amber !text-[9px] ml-1">{d.n_absences} assenti</span>
                   {/if}
@@ -387,7 +389,9 @@
           </tr>
         </thead>
         <tbody>
-          {#each HOURS as h}
+          {#each (coverage.days[0]?.cells?.length
+                    ? coverage.days[0].cells.map((c) => c.hour)
+                    : calHours) as h}
             <tr>
               <td class="text-center font-mono text-xs bg-ink-50">{h}:00</td>
               {#each coverage.days as d}
@@ -445,7 +449,7 @@
 
 <!-- ABSENCES MODAL -->
 <Modal open={!!absencesModal}
-       title={absencesModal ? `Assenze - ${DAY_NAMES_IT[absencesModal.day]} ${fmtDateShort(absencesModal.date)}` : ''}
+       title={absencesModal ? `Assenze - ${calName(absencesModal.day)} ${fmtDateShort(absencesModal.date)}` : ''}
        onClose={() => (absencesModal = null)}>
   {#if absencesModal}
     <div class="space-y-3">
@@ -516,7 +520,7 @@
 <!-- CELL MODAL -->
 <Modal open={!!cellModal}
        title={cellModal
-         ? `${DAY_NAMES_IT[cellModal.day]} ${fmtDateShort(cellModal.date)} - ore ${cellModal.hour}:00`
+         ? `${calName(cellModal.day)} ${fmtDateShort(cellModal.date)} - ore ${cellModal.hour}:00`
          : ''}
        onClose={closeCellModal}>
   {#if cellModal && cellModal.detail}

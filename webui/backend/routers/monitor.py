@@ -158,6 +158,17 @@ _DAY_NAMES_IT_FULL = {
 }
 
 
+def _day_name(day_id: int) -> str:
+    try:
+        from working_hours_config import get_day_label
+        label = get_day_label(int(day_id), default="")
+        if label:
+            return label
+    except Exception:
+        pass
+    return _DAY_NAMES_IT_FULL.get(day_id, str(day_id))
+
+
 def _build_event_rows(db: Session) -> list[dict]:
     """Lesson-level events with placeholder rows for unscheduled hours.
 
@@ -215,7 +226,7 @@ def _build_event_rows(db: Session) -> list[dict]:
                 "class_nickname": c.nickname,
                 "subject": a.subject,
                 "day": l.day,
-                "day_name": _DAY_NAMES_IT_FULL.get(l.day, ""),
+                "day_name": _day_name(l.day),
                 "hour": l.hour,
                 "classroom_name": l.classroom_name or "",
                 "group_name": group_name or "",

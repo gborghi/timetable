@@ -18,6 +18,30 @@ DAY_TO_INT = {
     "Lunedi": 1, "Martedi": 2, "Mercoledi": 3,
     "Giovedi": 4, "Venerdi": 5, "Sabato": 6,
 }
+
+
+def _hours_full(db=None) -> list[int]:
+    try:
+        from ..engine_io import configured_days_hours
+        _days, hours = configured_days_hours(db)
+        if hours:
+            return hours
+    except Exception:
+        pass
+    return list(range(8, 14))
+
+
+def _active_day_ids(db=None) -> set[int]:
+    try:
+        from ..engine_io import configured_days_hours
+        days, _hours = configured_days_hours(db)
+        if days:
+            return set(days)
+    except Exception:
+        pass
+    return {1, 2, 3, 4, 5, 6}
+
+
 HOURS_FULL = list(range(8, 14))
 
 
@@ -34,7 +58,8 @@ def _is_synthetic_cell(u) -> bool:
 
 
 def _autofill_free_day_cells(t: models.Teacher,
-                             persisted: list[models.TeacherUnavailability]
+                             persisted: list[models.TeacherUnavailability],
+                             db=None,
                              ) -> list[schemas.UnavailabilitySlot]:
     """Ensure that all 6 cells of the teacher's free_day(s) are surfaced
     as HARD/SOFT red/amber, even if not yet persisted in DB. Persisted
@@ -55,9 +80,14 @@ def _autofill_free_day_cells(t: models.Teacher,
         for p in persisted
     ]
     autofilled: set[tuple[int, int]] = set()
-    fd = DAY_TO_INT.get(t.free_day or "")
+    hours = _hours_full(db)
+    try:
+        from ..engine_io import resolve_free_day
+        fd = resolve_free_day(t.free_day, db)
+    except Exception:
+        fd = DAY_TO_INT.get(t.free_day or "")
     if fd is not None:
-        for h in HOURS_FULL:
+        for h in hours:
             if (fd, h) not in persisted_by_dh and (fd, h) not in autofilled:
                 out.append(schemas.UnavailabilitySlot(
                     day=fd, hour=h, state="hard",
@@ -77,13 +107,13 @@ def _autofill_free_day_cells(t: models.Teacher,
                     if not isinstance(it, dict):
                         continue
                     d = int(it.get("day", 0))
-                    if d < 1 or d > 6:
+                    if d not in _active_day_ids(db):
                         continue
                     is_hard = bool(it.get("is_hard", True))
                     pen = it.get("soft_penalty")
                     state = "hard" if is_hard else "soft"
                     label = ["1a", "2a", "3a"][idx] if idx < 3 else f"{idx+1}a"
-                    for h in HOURS_FULL:
+                    for h in hours:
                         if (d, h) in persisted_by_dh:
                             continue
                         if (d, h) in autofilled:
@@ -230,7 +260,8 @@ def _to_out(t: models.Teacher, db=None,
         pref_no_one_weight=t.pref_no_one_weight,
         preferred_days_csv=t.preferred_days_csv,
         subjects=[s.subject for s in t.subjects],
-        unavailability=_autofill_free_day_cells(t, list(t.unavailability)),
+        unavailability=_autofill_free_day_cells(
+            t, list(t.unavailability), db),
         mandatory_free_days=[m.day for m in t.mandatory_free_days],
         compatible_classes=[c.class_name for c in t.compatible_classes],
         # `classroom_prefs` gia\` pronte = chiamata da una lista, che le
@@ -337,9 +368,10 @@ def _apply_payload(t: models.Teacher, p: schemas.TeacherIn,
     import json as _json
     pfd = []
     seen_days: set[int] = set()
+    allowed_days = _active_day_ids(db)
     for it in (p.preferred_free_days or [])[:3]:
         d = int(it.day)
-        if d in seen_days or d < 1 or d > 6:
+        if d in seen_days or d not in allowed_days:
             continue
         seen_days.add(d)
         pfd.append({
@@ -349,10 +381,11 @@ def _apply_payload(t: models.Teacher, p: schemas.TeacherIn,
                               if it.soft_penalty is not None else None),
         })
     t.preferred_free_days_json = _json.dumps(pfd) if pfd else None
-    # Min free days per week (HARD floor). Default 1, range 0..6.
+    # Min free days per cycle (HARD floor). Default 1, range 0..N
+    # where N is the configured calendar length.
     rc = int(p.min_free_days if p.min_free_days is not None
              else 1)
-    rc = max(0, min(6, rc))
+    rc = max(0, min(len(allowed_days) or 6, rc))
     t.min_free_days = rc
     # Replace subject set
     if t.id is not None:
@@ -581,22 +614,24 @@ def replace_free_day_priorities(
     """Replace the teacher's full set of priority preferences.
 
     Validation:
-    - day must be in 1..6 (Lun..Sab)
+    - day must be a configured calendar ID
     - priority must be in 1..3
     - no duplicate days
     - no duplicate priorities
     Empty list clears all preferences.
     """
     _ensure_teacher(db, teacher_id)
+    allowed_days = _active_day_ids(db)
     seen_days: set[int] = set()
     seen_pri: set[int] = set()
     cleaned: list[schemas.FreeDayPriorityPref] = []
     for p in payload.preferences:
         d = int(p.day)
         pr = int(p.priority)
-        if d < 1 or d > 6:
+        if d not in allowed_days:
             raise HTTPException(
-                400, f"day must be in 1..6 (got {d})")
+                400, f"day must be a configured calendar ID "
+                     f"(got {d}; active={sorted(allowed_days)})")
         if pr < 1 or pr > 3:
             raise HTTPException(
                 400, f"priority must be in 1..3 (got {pr})")

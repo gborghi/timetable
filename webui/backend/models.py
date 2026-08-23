@@ -1800,31 +1800,30 @@ class GroupSubjectHours(Base):
 
 
 class WorkingDay(TenantMixin, Base):
-    """Tab Ore: a working day of the week.
+    """Tab Ore: one day of the configured calendar.
 
-    `code` is the canonical 3-letter ISO code (MON, TUE, ..., SUN);
-    `position` is 0-based and determines the column order in the
-    weekly calendar view. The engine uses `position` as `day_idx`.
-
-    `legacy_day_number` lets us keep backwards compatibility with the
-    legacy DAYS=[1..6] convention used by existing
-    TeacherUnavailability / ClassUnavailability rows: when the default
-    config (lun-sab) is in place, MON.legacy_day_number=1, TUE=2, ...
-    SAT=6. Custom configs can keep these numbers stable so old data
-    doesn't drift.
+    `code` and `label` are free-text display names (MON, Gatto, lun1,
+    …). `position` is 0-based display order. The engine key is
+    `legacy_day_number`: a stable numeric ID that does not change when
+    the day is renamed. Default seed is lun–sab with IDs 1..6 so
+    historical unavailability rows keep working.
     """
     __tablename__ = "working_days"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    code: Mapped[str] = mapped_column(String(8), index=True,
-                                      comment="MON | TUE | ... | SUN")
-    label: Mapped[str] = mapped_column(String(32),
-                                       comment="display label, e.g. 'Lunedi'")
+    code: Mapped[str] = mapped_column(
+        String(32), index=True,
+        comment="slug unico (MON, lun1, mer2, …) — non più solo ISO",
+    )
+    label: Mapped[str] = mapped_column(
+        String(64),
+        comment="etichetta visibile, es. 'Lunedì 2'",
+    )
     position: Mapped[int] = mapped_column(Integer, index=True,
                                           comment="0-based engine day_idx")
     legacy_day_number: Mapped[int] = mapped_column(
         Integer, index=True,
-        comment="day number used by legacy *_unavailability tables"
-                " (1..7 for MON..SUN)"
+        comment="stable numeric day ID used by the engine and "
+                "*_unavailability tables (default seed: 1..6 = lun..sab)"
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True,
                                             comment="False -> not a working day")

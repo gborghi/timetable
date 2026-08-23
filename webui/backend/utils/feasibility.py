@@ -54,14 +54,32 @@ from sqlalchemy.orm import Session
 from .. import models
 
 
-_DAYS = list(range(1, 7))
-_HOURS = list(range(8, 14))
+def _grid() -> tuple[list[int], list[int]]:
+    try:
+        from working_hours_config import (
+            get_days, get_hours, DEFAULT_DAYS, DEFAULT_HOURS,
+        )
+        days = list(get_days()) or list(DEFAULT_DAYS)
+        hours = list(get_hours()) or list(DEFAULT_HOURS)
+        return days, hours
+    except Exception:
+        return [1, 2, 3, 4, 5, 6], [8, 9, 10, 11, 12, 13]
+
+
+_DAYS, _HOURS = _grid()
 _DAY_CODE = {1: "Lun", 2: "Mar", 3: "Mer", 4: "Gio",
              5: "Ven", 6: "Sab"}
 
 
 def _slot_label(d: int, h: int) -> str:
-    return f"{_DAY_CODE.get(d, '?')}{h}"
+    try:
+        from working_hours_config import get_day_label
+        label = get_day_label(int(d), default="")
+        if label:
+            return f"{label}{h}"
+    except Exception:
+        pass
+    return f"{_DAY_CODE.get(d, str(d))}{h}"
 
 
 def _teacher_display(t: models.Teacher) -> str:
@@ -96,6 +114,7 @@ def feasibility_check(db: Session, *, time_limit_s: float = 30.0
         }
 
     t_start = time.time()
+    _DAYS, _HOURS = _grid()
     teachers = {t.id: t for t in db.query(models.Teacher).all()}
     classes = {c.id: c for c in db.query(models.SchoolClass).all()}
     rooms = {r.id: r for r in db.query(models.Classroom).all()}

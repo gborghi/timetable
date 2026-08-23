@@ -2,8 +2,9 @@
   import { api } from '$lib/api';
   import { confirmDialog } from '$lib/confirm';
   import PageHero from '$lib/components/PageHero.svelte';
-  import { flash, refreshDataset } from '$lib/stores';
-  import { DAYS, HOURS, DAY_NAMES_IT, DAY_NAMES_EN, DAY_NAMES_EN_TO_IT, TEACHER_DEFAULTS } from '$lib/constants';
+  import { flash, refreshDataset, workingHoursConfig } from '$lib/stores';
+  import { DAY_NAMES_EN_TO_IT, TEACHER_DEFAULTS,
+           calendarDays, calendarHours, calendarDayName } from '$lib/constants';
   import { teachers } from '$lib/services';
   import {
     subjectsQuery, classroomsQuery, classesQuery, curriculaQuery
@@ -60,6 +61,9 @@
   // 3-priority free-day preferences; mirrored as a 3-slot array
   // (priority 1..3 -> index 0..2; day=0 means "nessuno").
   let editingFreeDayPriorities = [0, 0, 0];
+  $: calDays = calendarDays($workingHoursConfig);
+  $: calHours = calendarHours($workingHoursConfig);
+  $: calName = (d) => calendarDayName(d, $workingHoursConfig);
 
   async function loadPhaseAPrefs(teacher_id) {
     if (!teacher_id) {
@@ -108,7 +112,7 @@
       const prefs = [];
       for (let i = 0; i < 3; i++) {
         const d = Number(editingFreeDayPriorities[i] || 0);
-        if (d >= 1 && d <= 6) prefs.push({ day: d, priority: i + 1 });
+        if (calDays.includes(d)) prefs.push({ day: d, priority: i + 1 });
       }
       await api.patch(
         `/api/teachers/${teacher_id}/free-day-preferences`,
@@ -178,16 +182,28 @@
     if (!editing.nickname) editing.nickname = composed;
   }
 
-  // Map free_day name <-> day number (1..6)
-  const DAY_NAME_TO_INT = {
+  // Map free_day wire value <-> configured day ID. Default-seed IDs
+  // 1..6 stay English weekday names (historical Teacher.free_day);
+  // extra calendar days persist as the numeric ID.
+  const _EN_TO_ID = {
     Monday: 1, Tuesday: 2, Wednesday: 3,
-    Thursday: 4, Friday: 5, Saturday: 6
+    Thursday: 4, Friday: 5, Saturday: 6,
+    Lunedi: 1, Martedi: 2, Mercoledi: 3,
+    Giovedi: 4, Venerdi: 5, Sabato: 6,
   };
-  const INT_TO_DAY_NAME = ['', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-  const HOURS_FULL = [8, 9, 10, 11, 12, 13];
+  const _ID_TO_EN = ['', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  function freeDayWire(d) {
+    return _ID_TO_EN[d] || String(d);
+  }
+  function wireToDayId(name) {
+    if (name == null || name === '') return null;
+    if (_EN_TO_ID[name] != null) return _EN_TO_ID[name];
+    const n = Number(name);
+    return Number.isFinite(n) && n >= 1 ? n : null;
+  }
 
   function hardCellsForDay(d) {
-    return HOURS_FULL.map((h) => ({
+    return calHours.map((h) => ({
       day: d, hour: h, state: 'hard', soft_penalty: 0,
       reason: 'giorno libero'
     }));
@@ -197,8 +213,8 @@
   // matrix: drop the old day's HARD-auto cells, add the new day's HARD cells.
   function onFreeDaySelect(ev) {
     const newName = ev.target.value;
-    const newD = DAY_NAME_TO_INT[newName] || null;
-    const oldD = DAY_NAME_TO_INT[editing.free_day] || null;
+    const newD = wireToDayId(newName);
+    const oldD = wireToDayId(editing.free_day);
     if (newD === oldD) return;
     let cells = (editing.unavailability || []).filter(
       (c) => oldD === null || c.day !== oldD
@@ -220,14 +236,15 @@
       }
     }
     // Find a day that is fully hard
+    const need = calHours.length || 6;
     const fullyHard = Object.entries(isHardCount)
-      .filter(([_, n]) => n >= 6)
+      .filter(([_, n]) => n >= need)
       .map(([d, _]) => Number(d));
     if (fullyHard.length === 1) {
-      editing = { ...editing, free_day: INT_TO_DAY_NAME[fullyHard[0]] };
+      editing = { ...editing, free_day: freeDayWire(fullyHard[0]) };
     } else if (fullyHard.length === 0) {
-      const cur = DAY_NAME_TO_INT[editing.free_day];
-      if (cur && (isHardCount[cur] || 0) < 6) {
+      const cur = wireToDayId(editing.free_day);
+      if (cur && (isHardCount[cur] || 0) < need) {
         editing = { ...editing, free_day: '' };
       }
     }
@@ -523,7 +540,7 @@
         <label title="Imposta rapidamente un giorno di libertà: blocca (rosso/HARD) tutte le ore di quel giorno nella matrice qui sotto. Per più preferenze, o preferenze morbide, usa il pannello 'Giorni liberi (avanzato)'.">Giorno libero (rapido)</label>
         <select value={editing.free_day || ''} on:change={onFreeDaySelect}>
           <option value="">(nessuno)</option>
-          {#each DAY_NAMES_EN as d}<option value={d}>{DAY_NAMES_EN_TO_IT[d] || d}</option>{/each}
+          {#each calDays as d}<option value={freeDayWire(d)}>{calName(d)}</option>{/each}
         </select>
       </div>
       <div class="field"><label>Max ore consecutive</label><input type="number" bind:value={editing.max_consecutive}/></div>
@@ -540,19 +557,19 @@
               <thead>
                 <tr>
                   <th class="p-1"></th>
-                  {#each HOURS as h}<th class="p-1 font-normal text-ink-500">{h}:00</th>{/each}
+                  {#each calHours as h}<th class="p-1 font-normal text-ink-500">{h}:00</th>{/each}
                 </tr>
               </thead>
               <tbody>
-                {#each DAYS as d}
+                {#each calDays as d}
                   <tr>
-                    <th class="p-1 font-normal text-ink-500 text-right">{DAY_NAMES_IT[d]}</th>
-                    {#each HOURS as h}
+                    <th class="p-1 font-normal text-ink-500 text-right">{calName(d)}</th>
+                    {#each calHours as h}
                       <td class="p-0.5">
                         <button type="button"
                                 class="w-8 h-6 rounded border {hasCompresenzaHour(d, h) ? 'bg-emerald-500 border-emerald-600' : 'bg-surface-100 border-ink-200'}"
                                 aria-pressed={hasCompresenzaHour(d, h)}
-                                aria-label="{DAY_NAMES_IT[d]} {h}:00"
+                                aria-label="{calName(d)} {h}:00"
                                 on:click={() => toggleCompresenzaHour(d, h)}></button>
                       </td>
                     {/each}
@@ -611,12 +628,7 @@
               editing = { ...editing, preferred_free_days: list.filter((x) => x.day) };
             }}>
               <option value={0}>(nessuno)</option>
-              <option value={1}>Lunedi</option>
-              <option value={2}>Martedi</option>
-              <option value={3}>Mercoledi</option>
-              <option value={4}>Giovedi</option>
-              <option value={5}>Venerdi</option>
-              <option value={6}>Sabato</option>
+              {#each calDays as d}<option value={d}>{calName(d)}</option>{/each}
             </select>
           </div>
           {#if cur.day}
@@ -665,14 +677,14 @@
             &#x2139;
           </span>
         </label>
-        <input type="number" min="0" max="6"
+        <input type="number" min="0" max={calDays.length}
                data-test="min-free-days"
                value={editing.min_free_days ?? 1}
                on:input={(e) => editing = { ...editing,
-                 min_free_days: Math.max(0, Math.min(6, Number(e.target.value) || 0)) }}/>
+                 min_free_days: Math.max(0, Math.min(calDays.length, Number(e.target.value) || 0)) }}/>
         <div class="text-xs text-ink-500">
           Default 1 (CCNL italiano). 2-3 per part-time o accordi
-          individuali. 0 disabilita il vincolo. Massimo 6 (teorico).
+          individuali. 0 disabilita il vincolo. Massimo {calDays.length} (giorni configurati).
         </div>
       </div>
     </div>
@@ -702,12 +714,7 @@
                 editingFreeDayPriorities = next;
               }}>
               <option value={0}>(nessuno)</option>
-              <option value={1}>Lunedi</option>
-              <option value={2}>Martedi</option>
-              <option value={3}>Mercoledi</option>
-              <option value={4}>Giovedi</option>
-              <option value={5}>Venerdi</option>
-              <option value={6}>Sabato</option>
+              {#each calDays as d}<option value={d}>{calName(d)}</option>{/each}
             </select>
           </div>
         {/each}

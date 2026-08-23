@@ -136,9 +136,16 @@ def _apply(c: models.SchoolClass, p: schemas.ClassIn, db: Session) -> None:
     import json as _json
     pfd: list[dict] = []
     seen_days: set[int] = set()
+    try:
+        from ..engine_io import configured_days_hours
+        allowed_days = set(configured_days_hours(db)[0])
+    except Exception:
+        allowed_days = {1, 2, 3, 4, 5, 6}
+    if not allowed_days:
+        allowed_days = {1, 2, 3, 4, 5, 6}
     for it in (getattr(p, "preferred_free_days", None) or [])[:3]:
         d = int(it.day)
-        if d in seen_days or d < 1 or d > 6:
+        if d in seen_days or d not in allowed_days:
             continue
         seen_days.add(d)
         pfd.append({
@@ -149,7 +156,7 @@ def _apply(c: models.SchoolClass, p: schemas.ClassIn, db: Session) -> None:
         })
     c.preferred_free_days_json = _json.dumps(pfd) if pfd else None
     rc = int(getattr(p, "required_free_days_count", 0) or 0)
-    c.required_free_days_count = max(0, min(6, rc))
+    c.required_free_days_count = max(0, min(len(allowed_days), rc))
     mh = int(getattr(p, "max_hours_per_day", 5) or 5)
     c.max_hours_per_day = max(1, min(7, mh))
     # Lo schema e\` gia\` un Literal, quindi qui basta il fallback per i

@@ -3,9 +3,9 @@
   import { confirmDialog } from '$lib/confirm';
   import { onMount } from 'svelte';
   import { api } from '$lib/api';
-  import { flash } from '$lib/stores';
+  import { flash, workingHoursConfig } from '$lib/stores';
   import Modal from '$lib/components/Modal.svelte';
-  import { DAYS, HOURS, DAY_NAMES_IT } from '$lib/constants';
+  import { calendarDays, calendarHours, calendarDayName } from '$lib/constants';
   import ScheduleConflictModal from '$lib/components/schedule/ScheduleConflictModal.svelte';
   import AddEventModal from '$lib/components/schedule/AddEventModal.svelte';
   import AddLessonModal from '$lib/components/schedule/AddLessonModal.svelte';
@@ -39,6 +39,9 @@
     unscheduled: 'schedulato = 0',
     locked: 'is_locked = 1',
   }[activeTab];
+  $: calDays = calendarDays($workingHoursConfig);
+  $: calHours = calendarHours($workingHoursConfig);
+  $: calName = (d) => calendarDayName(d, $workingHoursConfig);
 
   // Place-event modal state
   let placeOpen = false;
@@ -378,13 +381,13 @@
 
   function slotTitle(info, d, h) {
     if (!info) return '';
-    if (info.status === 'current') return `${DAY_NAMES_IT[d]} ${h}:00 (slot attuale)`;
+    if (info.status === 'current') return `${calName(d)} ${h}:00 (slot attuale)`;
     const bits = [];
     if (info.teacherBusy) bits.push('docente impegnato');
     if (info.classBusy)   bits.push('classe impegnata');
     if (info.roomBusy)    bits.push('aula occupata');
-    if (bits.length === 0) return `${DAY_NAMES_IT[d]} ${h}:00 - libero`;
-    return `${DAY_NAMES_IT[d]} ${h}:00 - ${bits.join(', ')}`;
+    if (bits.length === 0) return `${calName(d)} ${h}:00 - libero`;
+    return `${calName(d)} ${h}:00 - ${bits.join(', ')}`;
   }
 
   async function pickSlot(d, h) {
@@ -615,16 +618,16 @@
           <thead>
             <tr>
               <th></th>
-              {#each DAYS as d}
-                <th class="text-center">{DAY_NAMES_IT[d]}</th>
+              {#each calDays as d}
+                <th class="text-center">{calName(d)}</th>
               {/each}
             </tr>
           </thead>
           <tbody>
-            {#each HOURS as h}
+            {#each calHours as h}
               <tr>
                 <td class="text-ink-500 pr-2 font-mono">{h}:00</td>
-                {#each DAYS as d}
+                {#each calDays as d}
                   {@const info = slotInfo(d, h)}
                   <td class="p-1 align-middle">
                     <button
@@ -672,7 +675,7 @@
 <ScheduleConflictModal open={!!conflictDialog}
                        title="Conflitto sull'orario di destinazione"
                        subject={conflictDialog
-                          ? `${DAY_NAMES_IT[conflictDialog.day]} ${conflictDialog.hour}:00`
+                          ? `${calName(conflictDialog.day)} ${conflictDialog.hour}:00`
                             + (conflictDialog.classroom_name ? ` - aula ${conflictDialog.classroom_name}` : '')
                           : ''}
                        details={conflictDialog?.details ?? {}}

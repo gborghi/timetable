@@ -5,7 +5,8 @@
   small and the wording centralised.
 -->
 <script>
-  import { DAY_NAMES_IT } from '$lib/constants';
+  import { workingHoursConfig } from '$lib/stores';
+  import { calendarDayName } from '$lib/constants';
 
   export let moveSrc;            // {subject, cls, teacher, day, hour}
   export let movePreviewBusy = false;
@@ -20,7 +21,7 @@
     <strong>Modalita sposta:</strong>
     <span class="text-sm">
       {moveSrc.subject} ({moveSrc.cls} con {moveSrc.teacher}) da
-      <code>{DAY_NAMES_IT[moveSrc.day]} {moveSrc.hour}:00</code>
+      <code>{calendarDayName(moveSrc.day, $workingHoursConfig)} {moveSrc.hour}:00</code>
     </span>
     {#if showLegend}
       <span class="text-xs text-ink-500">

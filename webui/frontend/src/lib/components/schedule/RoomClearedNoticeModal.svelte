@@ -6,7 +6,8 @@
 -->
 <script>
   import Modal from '$lib/components/Modal.svelte';
-  import { DAY_NAMES_IT } from '$lib/constants';
+  import { workingHoursConfig } from '$lib/stores';
+  import { calendarDayName } from '$lib/constants';
 
   export let notice;     // {room, day, hour, class_name, teacher, subject} | null
   export let onClose;
@@ -21,7 +22,7 @@
         La lezione <strong>{notice.subject}</strong>
         ({notice.class_name} con {notice.teacher})
         e' stata spostata in
-        <code>{DAY_NAMES_IT[notice.day]} {notice.hour}:00</code>,
+        <code>{calendarDayName(notice.day, $workingHoursConfig)} {notice.hour}:00</code>,
         ma l'aula <strong>{notice.room}</strong> non era
         disponibile in quel nuovo slot (occupata da un'altra lezione
         oppure HARD-non-disponibile in quell'orario).

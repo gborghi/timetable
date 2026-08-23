@@ -60,9 +60,17 @@ def _seed_patterns(profs: dict, dc_value: dict, max_per_teacher: int = 3,
     with the locks (i.e. day_count >= n_locked_in_day).
     """
     if days is None:
-        days = list(range(1, 7))  # 1..6 default
+        try:
+            import working_hours_config as _whc  # type: ignore
+            days = list(_whc.get_days()) or list(_whc.DEFAULT_DAYS)
+        except Exception:
+            days = [1, 2, 3, 4, 5, 6]
     if hours is None:
-        hours = list(range(8, 14))  # 8..13 default (08:00-13:00)
+        try:
+            import working_hours_config as _whc  # type: ignore
+            hours = list(_whc.get_hours()) or list(_whc.DEFAULT_HOURS)
+        except Exception:
+            hours = [8, 9, 10, 11, 12, 13]
     locks = locks or set()
     locks_by_teacher: dict[str, list[tuple]] = {}
     for (p, cl, s, d, h) in locks:

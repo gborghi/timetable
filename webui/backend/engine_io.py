@@ -50,6 +50,103 @@ DAY_MAP = {
     "Venerdi": 5, "Venerdi'": 5, "Sabato": 6,
 }
 DAY_NAME_IT = {1: "Lun", 2: "Mar", 3: "Mer", 4: "Gio", 5: "Ven", 6: "Sab"}
+_ID_TO_EN = {
+    1: "Monday", 2: "Tuesday", 3: "Wednesday",
+    4: "Thursday", 5: "Friday", 6: "Saturday",
+}
+
+
+def configured_days_hours(
+        db: Session | None = None,
+        ) -> tuple[list[int], list[int]]:
+    """Active day IDs and hour codes, session first then engine loader.
+
+    ``range(1, 7)`` / ``8..13`` remain only as the empty-config fallback
+    (the lun–sab preset). Callers must not hardcode those lists when a
+    WorkingDay calendar is present.
+    """
+    if db is not None:
+        try:
+            rows = (
+                db.query(models.WorkingDay)
+                .filter(models.WorkingDay.is_active.is_(True))
+                .order_by(models.WorkingDay.position)
+                .all()
+            )
+            days = [int(r.legacy_day_number) for r in rows
+                    if r.legacy_day_number is not None]
+            hours: list[int] = []
+            for r in rows:
+                hours = [
+                    int(s.legacy_hour_number) for s in (r.slots or [])
+                    if s.legacy_hour_number is not None
+                ]
+                if hours:
+                    break
+            if days:
+                return days, hours or [8, 9, 10, 11, 12, 13]
+        except Exception:
+            pass
+    try:
+        from working_hours_config import (
+            get_days, get_hours, DEFAULT_DAYS, DEFAULT_HOURS,
+        )
+        days = list(get_days()) or list(DEFAULT_DAYS)
+        hours = list(get_hours()) or list(DEFAULT_HOURS)
+        return days, hours
+    except Exception:
+        return [1, 2, 3, 4, 5, 6], [8, 9, 10, 11, 12, 13]
+
+
+def resolve_free_day(free_day, db: Session | None = None) -> int | None:
+    """Map teacher.free_day (English name, label, or numeric ID) to a day ID."""
+    if free_day is None or free_day == "":
+        return None
+    if isinstance(free_day, bool):
+        return None
+    if isinstance(free_day, int):
+        return free_day if free_day >= 1 else None
+    raw = str(free_day).strip()
+    if not raw:
+        return None
+    try:
+        n = int(raw)
+        if n >= 1:
+            return n
+    except ValueError:
+        pass
+    mapped = DAY_MAP.get(raw)
+    if mapped is not None:
+        return mapped
+    key = raw.lower()
+    if db is not None:
+        try:
+            for r in db.query(models.WorkingDay).all():
+                if not getattr(r, "is_active", True):
+                    continue
+                if key == str(r.code or "").lower():
+                    return int(r.legacy_day_number)
+                if key == str(r.label or "").lower():
+                    return int(r.legacy_day_number)
+        except Exception:
+            pass
+    try:
+        from working_hours_config import get_config_dict
+        for d in (get_config_dict().get("days") or []):
+            if not d.get("is_active", True):
+                continue
+            if key == str(d.get("code") or "").lower():
+                return int(d["legacy_day_number"])
+            if key == str(d.get("label") or "").lower():
+                return int(d["legacy_day_number"])
+    except Exception:
+        pass
+    return None
+
+
+def free_day_wire_value(day_id: int) -> str:
+    """Persist default-seed IDs as English weekday names; others as digits."""
+    return _ID_TO_EN.get(int(day_id), str(int(day_id)))
 
 # Phase-A day-count weight for a ranked free-day PREFERENCE (audit F5). Set
 # well above the competing day-count soft terms (sixth-hour 50, uneven
@@ -206,8 +303,8 @@ def day_capacity_by_teacher(db: Session) -> dict[int, dict[int, int]]:
         if hours:
             hours_by_day[int(d.legacy_day_number)] = hours
     if not hours_by_day:
-        # Pre-Tab-Ore datasets: the legacy 6x6 grid.
-        hours_by_day = {d: set(range(8, 14)) for d in range(1, 7)}
+        days, hours = configured_days_hours(db)
+        hours_by_day = {d: set(hours) for d in days}
 
     out: dict[int, dict[int, int]] = {}
     hard: dict[int, dict[int, set[int]]] = {}
@@ -272,7 +369,7 @@ def profs_dict_from_db(db: Session) -> dict[str, Any]:
       the solver using support_assignments_from_db.
     """
     rng = random.Random(123)
-    days = list(range(1, 7))
+    days, _hours = configured_days_hours(db)
     # Use teacher.free_day for the primary free day
     out: dict[str, Any] = {}
     teachers = {t.id: t for t in db.query(models.Teacher).all()}
@@ -336,9 +433,13 @@ def profs_dict_from_db(db: Session) -> dict[str, Any]:
         t = next((x for x in teachers.values() if x.name == tname), None)
         if t is None:
             continue
-        primary = DAY_MAP.get(t.free_day or "Saturday", 6)
+        primary = resolve_free_day(t.free_day, db)
+        if primary is None:
+            primary = days[-1] if days else 6
         rest = [d for d in days if d != primary]
         rng.shuffle(rest)
+        while len(rest) < 2:
+            rest.append(rest[0] if rest else primary)
         info["glibero"] = [primary, rest[0], rest[1]]
         # Per-teacher >=N free-days floor. Solvers that don't preload
         # the DSL stream from a DB session (e.g. the benchmark harness)
@@ -784,8 +885,6 @@ def import_profs_into_db(db: Session, profs: dict[str, Any]) -> int:
     db.query(models.Assignment).delete()
     db.commit()
     n = 0
-    inv_day = {v: k for k, v in DAY_MAP.items()
-               if not k.endswith("'") and "Lun" not in k}
     for tname, info in profs.items():
         t = teachers.get(tname)
         if t is None:
@@ -795,7 +894,7 @@ def import_profs_into_db(db: Session, profs: dict[str, Any]) -> int:
             teachers[tname] = t
         glib = info.get("glibero") or []
         if glib and not t.free_day:
-            t.free_day = inv_day.get(glib[0], "Saturday")
+            t.free_day = free_day_wire_value(int(glib[0]))
         for cname, sm in (info.get("classi") or {}).items():
             cid = classes.get(cname)
             if cid is None:
@@ -970,7 +1069,7 @@ def synthesize_solution_from_profs(profs: dict[str, Any]) -> dict[tuple, int]:
     overlap (ignores room and SOFT objectives), so /schedule renders a
     full grid the user can then optimise via Phase B.
     """
-    DAYS, HOURS = list(range(1, 7)), list(range(8, 14))
+    DAYS, HOURS = configured_days_hours()
     slots = [(d, h) for d in DAYS for h in HOURS]
     sol: dict[tuple, int] = {}
     teacher_busy: dict[str, set[tuple[int, int]]] = defaultdict(set)
@@ -1878,11 +1977,32 @@ def build_world(db) -> dict[str, list]:
         {"name": g.name, "kind": g.kind}
         for g in groups_by_id.values()
     ]
-    out["days"] = [{"index": d, "name": _day_name(d)}
-                   for d in range(1, 7)]
-    out["hours"] = [{"index": h} for h in range(8, 14)]
+    _wdays, _whours = configured_days_hours(db)
+    try:
+        from working_hours_config import get_day_labels
+        _wlabels = get_day_labels()
+    except Exception:
+        _wlabels = {}
+    if db is not None:
+        try:
+            for r in (
+                db.query(models.WorkingDay)
+                .filter(models.WorkingDay.is_active.is_(True))
+                .all()
+            ):
+                _wlabels.setdefault(
+                    int(r.legacy_day_number),
+                    r.label or r.code or str(r.legacy_day_number),
+                )
+        except Exception:
+            pass
+    for d in _wdays:
+        _wlabels.setdefault(d, DAY_NAME_IT.get(d, str(d)))
+    out["days"] = [{"index": d, "name": _wlabels.get(d, str(d))}
+                   for d in _wdays]
+    out["hours"] = [{"index": h} for h in _whours]
     out["slots"] = [{"day": d, "hour": h}
-                    for d in range(1, 7) for h in range(8, 14)]
+                    for d in _wdays for h in _whours]
 
     out["assignments"] = []
     for a in db.query(models.Assignment).all():
@@ -1896,7 +2016,7 @@ def build_world(db) -> dict[str, list]:
             "locked": bool(a.locked),
         })
     out["lessons"] = []
-    active = engine_io.get_active_solution(db)
+    active = get_active_solution(db)
     if active is not None:
         # class -> curriculum lookup for fast `lesson.class.curriculum`
         cls_to_curr: dict[str, str] = {}

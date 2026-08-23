@@ -26,7 +26,7 @@ export type LogicalKind = "hard" | "soft" | "preferred" | "enforced";
 // ============================================================
 
 export interface UnavailabilitySlot {
-  day: number;          // 1..6 (Mon..Sat)
+  day: number;          // configured calendar ID (default seed 1..6)
   hour: number;         // 8..13
   state: ConstraintLevel;
   soft_penalty: number;

@@ -67,7 +67,23 @@
     }
   }
 
-  onMount(refresh);
+  let newCode = '';
+  let newLabel = '';
+  let expert = false;
+
+  onMount(() => {
+    try {
+      expert = localStorage.getItem('pitantum.ore.expert') === '1';
+    } catch { /* ignore */ }
+    refresh();
+  });
+
+  function setExpert(on) {
+    expert = on;
+    try {
+      localStorage.setItem('pitantum.ore.expert', on ? '1' : '0');
+    } catch { /* ignore */ }
+  }
 
   function markDirty(dayId) { dirty = { ...dirty, [dayId]: true }; }
 
@@ -78,6 +94,70 @@
       });
       flash(day.is_active ? 'Giorno disattivato' : 'Giorno attivato',
             'success');
+      await refresh();
+    } catch (e) {
+      flash(`Errore: ${e?.message || e}`, 'error');
+    }
+  }
+
+  async function addNamedDay() {
+    const code = newCode.trim();
+    const label = (newLabel.trim() || code);
+    if (!code) {
+      flash('Serve un codice (es. Gatto)', 'error');
+      return;
+    }
+    const days = config?.days || [];
+    const pos = days.reduce((m, d) => Math.max(m, d.position), -1) + 1;
+    const legacy = days.reduce((m, d) => Math.max(m, d.legacy_day_number), 0) + 1;
+    const cloneFrom = days.find((d) => d.is_active)?.id ?? null;
+    try {
+      await api.post('/api/working-hours/days', {
+        code, label, position: pos, legacy_day_number: legacy,
+        clone_slots_from: cloneFrom,
+      });
+      flash(`Aggiunto ${code}`, 'success');
+      newCode = '';
+      newLabel = '';
+      await refresh();
+    } catch (e) {
+      flash(`Errore: ${e?.message || e}`, 'error');
+    }
+  }
+
+  async function renameDay(day, field, value) {
+    const v = String(value || '').trim();
+    if (!v || v === day[field]) return;
+    try {
+      await api.put(`/api/working-hours/days/${day.id}`, { [field]: v });
+      await refresh();
+    } catch (e) {
+      flash(`Errore: ${e?.message || e}`, 'error');
+    }
+  }
+
+  async function removeDay(day) {
+    if (!await confirmDialog(
+      `Eliminare il giorno «${day.label}» (${day.code}) e i suoi slot?`
+    )) return;
+    try {
+      await api.del(`/api/working-hours/days/${day.id}`);
+      flash('Giorno eliminato', 'success');
+      await refresh();
+    } catch (e) {
+      flash(`Errore: ${e?.message || e}`, 'error');
+    }
+  }
+
+  async function duplicateCycle() {
+    const n = (config?.days || []).filter((d) => d.is_active).length;
+    if (!await confirmDialog(
+      `Copiare i ${n} giorni attivi in coda (MON → MON2, Gatto → Gatto2)? ` +
+      `Ogni copia ha un ID numerico nuovo; i nomi restano etichette.`
+    )) return;
+    try {
+      await api.post('/api/working-hours/duplicate-cycle');
+      flash('Ciclo copiato in coda', 'success');
       await refresh();
     } catch (e) {
       flash(`Errore: ${e?.message || e}`, 'error');
@@ -213,7 +293,7 @@
 
 <div class="space-y-6">
   <PageHero title="Ore di lavoro"
-            description="Definisci i giorni della settimana lavorativa e, per ciascun giorno, le ore di lezione (con orario di inizio e fine). È il primo passo: l'orario verrà costruito su questa griglia.">
+            description="Preset: lunedì–sabato, 8:00–14:00. Puoi aggiungere, rinominare o togliere giorni (anche «Gatto», «Cane»…): l’orario lavora sugli ID, non sui nomi.">
     <svelte:fragment slot="actions">
       <div class="inline-flex border border-ink-200 rounded-md
                   overflow-hidden text-[12.5px]" role="tablist"
@@ -237,6 +317,18 @@
       </div>
       <button class="btn" on:click={refresh}
               disabled={loading}>Ricarica</button>
+      <label class="text-[12px] flex items-center gap-1.5 text-ink-500"
+             title="Aggiungere, rinominare, eliminare giorni; nomi liberi">
+        <input type="checkbox" checked={expert}
+               on:change={(e) => setExpert(e.currentTarget.checked)}/>
+        Modalità esperto
+      </label>
+      {#if expert}
+        <button class="btn" on:click={duplicateCycle}
+                disabled={loading || !(config?.days || []).some((d) => d.is_active)}>
+          Duplica ciclo
+        </button>
+      {/if}
       <button class="btn-danger" on:click={resetAll}>
         Reimposta default (lun-sab, 8-14)
       </button>
@@ -310,19 +402,49 @@
 
     <section class="space-y-4" class:hidden={view !== 'list'}>
       <h2 class="text-lg font-medium">Giorni e slot</h2>
+      {#if expert}
+      <form class="card px-4 py-3 flex flex-wrap items-end gap-2"
+            on:submit|preventDefault={addNamedDay}>
+        <label class="text-xs text-ink-500">
+          Codice
+          <input class="block bg-ink-50 px-2 py-1 rounded font-mono"
+                 placeholder="Gatto" bind:value={newCode}/>
+        </label>
+        <label class="text-xs text-ink-500">
+          Etichetta
+          <input class="block bg-ink-50 px-2 py-1 rounded"
+                 placeholder="Gatto" bind:value={newLabel}/>
+        </label>
+        <button class="btn btn-primary" type="submit">Aggiungi giorno</button>
+        <span class="text-[11.5px] text-ink-400 max-w-[40ch]">
+          Codice ed etichetta sono liberi. L’ID numerico (#) non cambia se rinomini.
+        </span>
+      </form>
+      {/if}
       {#each config.days as day (day.id)}
         <div class="bg-white border border-ink-200 rounded p-4
                     {day.is_active ? '' : 'opacity-60'}">
           <header class="flex items-center justify-between gap-3 mb-3">
-            <div class="flex items-center gap-3">
-              <span class="text-sm font-mono bg-ink-100 px-2 py-0.5
-                           rounded">{day.code}</span>
-              <strong>{day.label}</strong>
-              <span class="text-xs text-ink-500">
-                pos {day.position} -- legacy day #{day.legacy_day_number}
-              </span>
+            <div class="flex items-center gap-2 flex-wrap min-w-0">
+              {#if expert}
+                <input class="text-sm font-mono bg-ink-100 px-2 py-0.5 rounded w-24"
+                       value={day.code}
+                       title="Codice (Gatto, MON, lun1, …)"
+                       on:change={(e) => renameDay(day, 'code', e.target.value)}/>
+                <input class="font-semibold bg-transparent border-b border-transparent
+                              hover:border-ink-200 focus:border-ink-400 px-0.5 min-w-[8rem]"
+                       value={day.label}
+                       title="Etichetta visibile"
+                       on:change={(e) => renameDay(day, 'label', e.target.value)}/>
+                <span class="text-xs text-ink-500">
+                  pos {day.position} — #{day.legacy_day_number}
+                </span>
+              {:else}
+                <strong>{day.label}</strong>
+                <span class="text-xs text-ink-400 font-mono">{day.code}</span>
+              {/if}
             </div>
-            <div class="flex items-center gap-2">
+            <div class="flex items-center gap-2 shrink-0">
               <label class="text-sm flex items-center gap-1">
                 <input type="checkbox" checked={day.is_active}
                        on:change={() => toggleActive(day)}/>
@@ -332,6 +454,13 @@
                       on:click={() => saveDay(day.id)}>
                 Salva slot
               </button>
+              {#if expert}
+                <button class="text-rose-600 hover:underline text-xs"
+                        type="button"
+                        on:click={() => removeDay(day)}>
+                  Elimina giorno
+                </button>
+              {/if}
             </div>
           </header>
 

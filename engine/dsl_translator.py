@@ -35,7 +35,8 @@ Mapping invariants
   names ("Matematica"). The DSL parser supports literal identifiers
   AND quoted strings; we use quoted strings to handle names with
   spaces.
-- day codes are 1..6 ints (lun..sab); hour codes are 8..13 ints.
+- day codes are configured calendar IDs (default seed 1..6 = lun..sab);
+  hour codes are configured hour numbers (default 8..13).
 - ``state == "hard"`` rows produce HARD DSL rules; ``state == "soft"``
   rows produce SOFT rules with the row's ``soft_penalty`` weight.
   SOFT-cost integration HAS landed: ``DSLConstraintCompiler`` reifies
@@ -105,7 +106,11 @@ def _configured_hours_by_day(db, _models) -> dict[int, set[int]]:
     8..13) when the DB carries no WorkingDay rows, which is the shape
     every pre-Tab-Ore dataset uses."""
     by_day: dict[int, set[int]] = {}
-    for d in db.query(_models.WorkingDay).all():
+    try:
+        rows = db.query(_models.WorkingDay).all()
+    except Exception:
+        rows = []
+    for d in rows:
         if not getattr(d, "is_active", True):
             continue
         legacy = getattr(d, "legacy_day_number", None)
@@ -116,7 +121,13 @@ def _configured_hours_by_day(db, _models) -> dict[int, set[int]]:
         if hours:
             by_day[int(legacy)] = hours
     if not by_day:
-        by_day = {d: set(range(8, 14)) for d in range(1, 7)}
+        try:
+            import working_hours_config as _whc  # type: ignore
+            days = list(_whc.get_days()) or list(_whc.DEFAULT_DAYS)
+            hours = list(_whc.get_hours()) or list(_whc.DEFAULT_HOURS)
+        except Exception:
+            days, hours = [1, 2, 3, 4, 5, 6], [8, 9, 10, 11, 12, 13]
+        by_day = {d: set(hours) for d in days}
     return by_day
 
 
@@ -955,7 +966,7 @@ def load_all_dsl_constraints(db, *, _models=None,
             if weight is None or weight == 0:
                 continue
             day = int(r.day)
-            if day < 1 or day > 6:
+            if day < 1:
                 continue
             out.append({
                 "source": "teacher_free_day_preference",

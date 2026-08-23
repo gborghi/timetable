@@ -64,14 +64,39 @@ HOURS_BASE = 8     # ordinal 1 -> 08:00
 
 
 def normalize_day(token: str) -> int | None:
-    """Accepts both 'lun', 'Lunedi', 'Lunedì', 'monday' (case-insensitive)."""
+    """Accepts weekday aliases, a configured day code/label, or a numeric ID."""
     if not token:
         return None
-    t = token.lower()
+    raw = str(token).strip()
+    try:
+        n = int(raw)
+        if n >= 1:
+            return n
+    except ValueError:
+        pass
+    t = raw.lower()
     # strip diacritics for a few common cases
     t = (t.replace("ì", "i").replace("í", "i")
            .replace("î", "i").replace("ï", "i"))
-    return DAY_ALIASES.get(t)
+    aliased = DAY_ALIASES.get(t)
+    if aliased is not None:
+        return aliased
+    try:
+        from working_hours_config import get_config_dict
+        cfg = get_config_dict()
+        for d in cfg.get("days") or []:
+            if not d.get("is_active", True):
+                continue
+            if t == str(d.get("code") or "").lower():
+                return int(d["legacy_day_number"])
+            label = str(d.get("label") or "").lower()
+            label = (label.replace("ì", "i").replace("í", "i")
+                     .replace("î", "i").replace("ï", "i"))
+            if t == label:
+                return int(d["legacy_day_number"])
+    except Exception:
+        pass
+    return None
 
 
 def normalize_hour(num: int) -> int | None:
@@ -378,11 +403,11 @@ def _lit_to_str(lit: dict) -> str:
             .get(pk, pk)
         base = f"{kind_label}:{lit.get('predicate_name', '')}"
         if lit.get("day") is not None:
-            base += "@" + DAY_NAMES_IT.get(lit["day"], "?")
+            base += "@" + DAY_NAMES_IT.get(lit["day"], str(lit["day"]))
             if lit.get("hour") is not None:
                 base += str(lit["hour"])
         return ("NOT " + base) if lit.get("negate") else base
-    label = DAY_NAMES_IT.get(lit["day"], "?") + str(lit["hour"])
+    label = DAY_NAMES_IT.get(lit["day"], str(lit["day"])) + str(lit["hour"])
     return ("NOT " + label) if lit.get("negate") else label
 
 

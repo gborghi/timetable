@@ -157,3 +157,76 @@ def test_engine_config_loader_defaults():
         else:
             os.environ["PITANTUM_DB_URL"] = old
         whc.reload()
+
+
+def test_create_named_day_lun1(client):
+    days = client.get("/api/working-hours/days").json()
+    mon_id = next(d["id"] for d in days if d["code"] == "MON")
+    r = client.post("/api/working-hours/days", json={
+        "code": "lun1",
+        "label": "Lunedì 1",
+        "position": 99,
+        "legacy_day_number": 99,
+        "clone_slots_from": mon_id,
+    })
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["code"] == "lun1"
+    assert body["label"] == "Lunedì 1"
+    assert len(body["slots"]) == 6
+    assert body["slots"][0]["start_time"] == "08:00"
+
+
+def test_create_animal_named_day(client):
+    days = client.get("/api/working-hours/days").json()
+    mon_id = next(d["id"] for d in days if d["code"] == "MON")
+    r = client.post("/api/working-hours/days", json={
+        "code": "Gatto",
+        "label": "Gatto",
+        "position": 99,
+        "legacy_day_number": 99,
+        "clone_slots_from": mon_id,
+    })
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["code"] == "Gatto"
+    assert body["label"] == "Gatto"
+    assert body["legacy_day_number"] == 99
+    assert len(body["slots"]) == 6
+
+
+def test_create_day_rejects_bad_code(client):
+    r = client.post("/api/working-hours/days", json={
+        "code": "1lun",
+        "label": "no",
+        "position": 10,
+        "legacy_day_number": 10,
+    })
+    assert r.status_code == 422, r.text
+
+
+def test_duplicate_cycle_appends_mon2(client):
+    r = client.post("/api/working-hours/duplicate-cycle")
+    assert r.status_code == 200, r.text
+    codes = [d["code"] for d in r.json()["days"]]
+    assert codes[:6] == ["MON", "TUE", "WED", "THU", "FRI", "SAT"]
+    assert codes[6:] == ["MON2", "TUE2", "WED2", "THU2", "FRI2", "SAT2"]
+    assert r.json()["max_slots_per_day"] == 6
+    mon2 = next(d for d in r.json()["days"] if d["code"] == "MON2")
+    assert mon2["label"] == "Lunedi 2"
+    assert len(mon2["slots"]) == 6
+
+
+def test_delete_named_day(client):
+    r = client.post("/api/working-hours/days", json={
+        "code": "sunX",
+        "label": "Extra",
+        "position": 20,
+        "legacy_day_number": 20,
+    })
+    assert r.status_code == 200, r.text
+    day_id = r.json()["id"]
+    r = client.delete(f"/api/working-hours/days/{day_id}")
+    assert r.status_code == 200, r.text
+    codes = [d["code"] for d in client.get("/api/working-hours/days").json()]
+    assert "sunX" not in codes

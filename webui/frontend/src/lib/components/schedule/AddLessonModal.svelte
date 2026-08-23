@@ -29,7 +29,8 @@
    */
   import { api } from '$lib/api';
   import { flash } from '$lib/stores';
-  import { DAY_NAMES_IT } from '$lib/constants';
+  import { workingHoursConfig } from '$lib/stores';
+  import { calendarDayName } from '$lib/constants';
   import Modal from '$lib/components/Modal.svelte';
   import ScheduleConflictModal from './ScheduleConflictModal.svelte';
 
@@ -121,7 +122,7 @@
     subject = '';
   }
 
-  $: titleSlot = `${DAY_NAMES_IT[day] || ''} ${hour}:00`;
+  $: titleSlot = `${calendarDayName(day, $workingHoursConfig)} ${hour}:00`;
 
   function buildPayload(strategy) {
     return {

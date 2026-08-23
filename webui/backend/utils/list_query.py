@@ -49,6 +49,13 @@ def _day_to_int(day_arg) -> int | None:
         return int(day_arg)
     if not isinstance(day_arg, str):
         return None
+    raw = day_arg.strip()
+    try:
+        n = int(raw)
+        if n >= 1:
+            return n
+    except ValueError:
+        pass
     map_ = {
         "lun": 1, "lunedi": 1, "monday": 1,
         "mar": 2, "martedi": 2, "tuesday": 2,
@@ -57,7 +64,23 @@ def _day_to_int(day_arg) -> int | None:
         "ven": 5, "venerdi": 5, "friday": 5,
         "sab": 6, "sabato": 6, "saturday": 6,
     }
-    return map_.get(day_arg.strip().lower())
+    aliased = map_.get(raw.lower())
+    if aliased is not None:
+        return aliased
+    try:
+        from working_hours_config import get_config_dict
+        cfg = get_config_dict()
+        key = raw.lower()
+        for d in cfg.get("days") or []:
+            if not d.get("is_active", True):
+                continue
+            if key == str(d.get("code") or "").lower():
+                return int(d["legacy_day_number"])
+            if key == str(d.get("label") or "").lower():
+                return int(d["legacy_day_number"])
+    except Exception:
+        pass
+    return None
 
 
 def teacher_funcs() -> dict[str, Callable[..., bool]]:

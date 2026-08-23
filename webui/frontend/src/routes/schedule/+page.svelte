@@ -32,8 +32,8 @@
   import { page } from '$app/stores';
   import { api, downloadUrl } from '$lib/api';
   import { humanMetricsLine } from '$lib/metrics_labels';
-  import { flash, refreshDataset } from '$lib/stores';
-  import { DAYS, HOURS, DAY_NAMES_IT } from '$lib/constants';
+  import { flash, refreshDataset, workingHoursConfig as whStore } from '$lib/stores';
+  import { calendarDays, calendarHours, calendarDayName } from '$lib/constants';
   import WeeklyCalendarView from '$lib/components/WeeklyCalendarView.svelte';
   import Modal from '$lib/components/Modal.svelte';
   import RoomDropdown from '$lib/components/schedule/RoomDropdown.svelte';
@@ -58,6 +58,14 @@
   const dropConflictStore = writable(null);
   let entityFilter = '';     // autocomplete typed text
   let workingHoursConfig = null;
+  $: calDays = (classData?.days?.length ? classData.days
+                : calendarDays(workingHoursConfig || $whStore));
+  $: calHours = (classData?.hours?.length ? classData.hours
+                 : calendarHours(workingHoursConfig || $whStore));
+  $: calNames = (classData?.day_names && Object.keys(classData.day_names).length
+                 ? classData.day_names : null);
+  $: calName = (d) => (calNames && calNames[d])
+    || calendarDayName(d, workingHoursConfig || $whStore);
   let lessons = [];          // flat list of scheduled Lessons
   let unscheduled = [];      // pool entries
   let summary = null;        // { obj_value, metrics }
@@ -429,7 +437,7 @@
           kind: 'move',
           sourceId: lessonId,
           day, hour,
-          subject: `${head} -> ${DAY_NAMES_IT[day]} ${hour}:00`,
+          subject: `${head} -> ${calName(day)} ${hour}:00`,
           details: r.conflicts,
           swapWith: r.swap_with ?? null,
           originDay: _oldDay,
@@ -500,8 +508,8 @@
             day, hour,
             subject: src
               ? `${src.class_name} / ${src.teacher_name} -> `
-                + `${DAY_NAMES_IT[day]} ${hour}:00`
-              : `${DAY_NAMES_IT[day]} ${hour}:00`,
+                + `${calName(day)} ${hour}:00`
+              : `${calName(day)} ${hour}:00`,
             details: r.conflicts,
           });
           return;
@@ -840,13 +848,13 @@
             <table class="tbl text-xs">
               <thead><tr>
                 <th></th>
-                {#each DAYS as d}<th>{DAY_NAMES_IT[d]}</th>{/each}
+                {#each calDays as d}<th>{calName(d)}</th>{/each}
               </tr></thead>
               <tbody>
-                {#each HOURS as h}
+                {#each calHours as h}
                   <tr>
                     <td>{h}:00</td>
-                    {#each DAYS as d}
+                    {#each calDays as d}
                       {@const cell = classData.grid[selectedClass][d][h]}
                       <td class="p-1">
                         {#if cell}
@@ -980,7 +988,7 @@
           <div><strong>Docente:</strong> {actionLesson.teacher_name}</div>
           <div><strong>Materia:</strong> {actionLesson.subject || '-'}</div>
           <div><strong>Aula:</strong> {actionLesson.classroom_name || '-'}</div>
-          <div><strong>Slot:</strong> {DAY_NAMES_IT[actionLesson.day]}
+          <div><strong>Slot:</strong> {calName(actionLesson.day)}
             {actionLesson.hour}:00</div>
           {#if actionLesson.locked}
             <div class="text-amber-700" data-testid="schedule-action-pinned">
@@ -1022,7 +1030,7 @@
         <div class="text-sm">
           {actionLesson.class_name} -- {actionLesson.subject || ''}
           ({actionLesson.teacher_name}) @
-          {DAY_NAMES_IT[actionLesson.day]} {actionLesson.hour}:00
+          {calName(actionLesson.day)} {actionLesson.hour}:00
         </div>
         <div class="field">
           <label for="schedule-edit-room">Aula</label>

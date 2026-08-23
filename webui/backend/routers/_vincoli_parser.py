@@ -53,10 +53,35 @@ def _norm(v) -> str:
 
 
 def parse_day(tok) -> int:
-    t = _norm(tok).lower()
-    if t not in _DAY_MAP:
-        raise VincoloError(f"giorno '{tok}' non valido (usa lun..sab o 1..6)")
-    return _DAY_MAP[t]
+    t = _norm(tok)
+    if not t:
+        raise VincoloError(f"giorno '{tok}' non valido")
+    # Numeric day IDs (configured calendar) take precedence.
+    try:
+        n = int(float(t))
+        if n >= 1:
+            return n
+    except (TypeError, ValueError):
+        pass
+    key = t.lower()
+    if key in _DAY_MAP:
+        return _DAY_MAP[key]
+    try:
+        from working_hours_config import get_config_dict
+        cfg = get_config_dict()
+        for d in cfg.get("days") or []:
+            if not d.get("is_active", True):
+                continue
+            if key == str(d.get("code") or "").lower():
+                return int(d["legacy_day_number"])
+            if key == str(d.get("label") or "").lower():
+                return int(d["legacy_day_number"])
+    except Exception:
+        pass
+    raise VincoloError(
+        f"giorno '{tok}' non valido (usa un ID numerico, lun..sab, "
+        "o il nome configurato in Tab Ore)"
+    )
 
 
 def parse_hour(tok) -> int:
@@ -97,10 +122,21 @@ def _cell_range(row) -> list[tuple[int, int]]:
     """Expand (giorno, ora_da..ora_a) into [(day, hour), ...]. A blank
     giorno means 'all days'; a blank ora range means 'the whole day'."""
     giorno = _norm(row.get("giorno"))
-    days = [parse_day(giorno)] if giorno else list(range(1, 7))
+    if giorno:
+        days = [parse_day(giorno)]
+    else:
+        try:
+            from working_hours_config import get_days, DEFAULT_DAYS
+            days = list(get_days()) or list(DEFAULT_DAYS)
+        except Exception:
+            days = [1, 2, 3, 4, 5, 6]
     oda, oa = _norm(row.get("ora_da")), _norm(row.get("ora_a"))
     if not oda and not oa:
-        hours = list(range(8, 14))            # default school morning
+        try:
+            from working_hours_config import get_hours, DEFAULT_HOURS
+            hours = list(get_hours()) or list(DEFAULT_HOURS)
+        except Exception:
+            hours = [8, 9, 10, 11, 12, 13]
     else:
         h0 = parse_hour(oda or oa)
         h1 = parse_hour(oa or oda)

@@ -20,7 +20,8 @@
    */
   import { api } from '$lib/api';
   import { flash } from '$lib/stores';
-  import { DAYS, HOURS, DAY_NAMES_IT } from '$lib/constants';
+  import { workingHoursConfig } from '$lib/stores';
+  import { calendarDays, calendarHours, calendarDayName } from '$lib/constants';
   import Modal from '$lib/components/Modal.svelte';
   import ScheduleConflictModal from './ScheduleConflictModal.svelte';
   // Warning is rendered inline as a small Modal (no separate component
@@ -286,14 +287,14 @@
         <label>Giorno {(day !== '' || hour !== '') ? '*' : '(opzionale)'}</label>
         <select bind:value={day} class={dhClass()}>
           <option value="">-- non schedulato --</option>
-          {#each DAYS as d}<option value={d}>{DAY_NAMES_IT[d]}</option>{/each}
+          {#each calendarDays($workingHoursConfig) as d}<option value={d}>{calendarDayName(d, $workingHoursConfig)}</option>{/each}
         </select>
       </div>
       <div class="field">
         <label>Ora {(day !== '' || hour !== '') ? '*' : '(opzionale)'}</label>
         <select bind:value={hour} class={dhClass()}>
           <option value="">-- non schedulato --</option>
-          {#each HOURS as h}<option value={h}>{h}:00</option>{/each}
+          {#each calendarHours($workingHoursConfig) as h}<option value={h}>{h}:00</option>{/each}
         </select>
       </div>
     </div>

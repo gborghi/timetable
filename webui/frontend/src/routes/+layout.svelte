@@ -4,7 +4,7 @@
   import { page } from '$app/stores';
   import { QueryClientProvider } from '@tanstack/svelte-query';
   import { datasetState, refreshDataset, networkOnline,
-           startNetworkMonitor } from '$lib/stores';
+           startNetworkMonitor, loadWorkingHoursConfig } from '$lib/stores';
   import { navGroups, tappaFor, siblingsFor } from '$lib/nav';
   import { queryClient } from '$lib/queries/client';
   import Toast from '$lib/components/Toast.svelte';
@@ -38,6 +38,7 @@
 
   onMount(() => {
     refreshDataset();
+    loadWorkingHoursConfig();
     startNetworkMonitor(30000);
     let saved = null;
     try { saved = localStorage.getItem('pt_density'); } catch (_e) { /**/ }
@@ -100,7 +101,7 @@
   {/if}
 
   <header class="bg-white border-b border-ink-200">
-    <div class="max-w-[1500px] mx-auto px-6 min-h-[60px] py-2 flex items-center gap-4">
+    <div class="max-w-[1500px] mx-auto px-4 sm:px-6 min-h-[60px] py-2 flex flex-wrap items-center gap-x-3 gap-y-2">
       <a href="/" class="flex items-center gap-2.5 shrink-0"
          title={SENECA_LATIN}>
         <img src={LOGO_LIGHT} alt="piTantum"
@@ -116,9 +117,11 @@
                    tracking-wide text-ink-400 shrink-0 -ml-1"
             title="Sviluppato con l'aiuto dell'intelligenza artificiale (Claude)"
             data-testid="built-with-ai">built with AI</span>
-      <div class="w-px h-6 bg-ink-200 shrink-0" aria-hidden="true"></div>
+      <div class="hidden sm:block w-px h-6 bg-ink-200 shrink-0" aria-hidden="true"></div>
 
-      <nav class="flex flex-wrap gap-[3px] relative min-w-0"
+      <nav class="flex flex-row flex-wrap items-center content-center gap-[3px]
+                  relative min-w-0 w-full basis-full grow
+                  sm:w-auto sm:basis-[16rem] sm:flex-1"
            aria-label="Navigazione principale"
            data-testid="navbar">
         {#each navGroups as g}
@@ -184,7 +187,7 @@
                 on:click={closeMenu}></button>
       {/if}
 
-      <div class="ml-auto flex items-center gap-3 shrink-0">
+      <div class="ml-auto flex items-center gap-2 sm:gap-3 shrink-0">
         <span class="hidden lg:inline font-mono text-[11px] text-ink-300 tabular-nums">
           {$datasetState.classes} classi · {$datasetState.teachers} docenti ·
           {$datasetState.classrooms} aule

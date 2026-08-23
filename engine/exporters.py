@@ -57,6 +57,18 @@ from openpyxl.worksheet.page import PageMargins
 DAY_NAMES: dict[int, str] = {
     1: "Lun", 2: "Mar", 3: "Mer", 4: "Gio", 5: "Ven", 6: "Sab",
 }
+
+
+def _day_label(d: int) -> str:
+    """Configured calendar label, falling back to the lun–sab preset."""
+    try:
+        import working_hours_config as _whc  # type: ignore
+        label = _whc.get_day_label(int(d), default="")
+        if label:
+            return label
+    except Exception:
+        pass
+    return DAY_NAMES.get(d, str(d))
 EMPTY_PLACEHOLDER = "-"
 
 # Calibri is the Excel default and prints cleanly; sizes are shared
@@ -191,7 +203,7 @@ def _write_grid_header(ws, days, header_row: int):
     cell.border = _CELL_BORDER
     for i, d in enumerate(days):
         c = ws.cell(row=header_row, column=2 + i,
-                    value=DAY_NAMES.get(d, f"Day{d}"))
+                    value=_day_label(d))
         c.fill = _HEADER_FILL
         c.font = _HEADER_FONT
         c.alignment = _CENTER
@@ -535,7 +547,7 @@ def export_global_teacher_board_to_xlsx(
     corner.alignment = _CENTER
     corner.border = _CELL_BORDER
     for i, (d, h) in enumerate(slots):
-        label = f"{DAY_NAMES.get(d, d)}\n{h:02d}"
+        label = f"{_day_label(d)}\n{h:02d}"
         c = ws.cell(row=header_row, column=2 + i, value=label)
         c.fill = _HEADER_FILL
         c.font = _HEADER_FONT
@@ -736,7 +748,7 @@ def _tex_grid(days, hours, cell_fn, *,
     head = [rf"\cellcolor{{headerbg}}\hdrf{{{_tex_escape(hour_header)}}}"]
     for d in days:
         head.append(
-            rf"\cellcolor{{headerbg}}\hdrf{{{_tex_escape(DAY_NAMES.get(d, str(d)))}}}"
+            rf"\cellcolor{{headerbg}}\hdrf{{{_tex_escape(_day_label(d))}}}"
         )
     lines.append(" & ".join(head) + r" \\")
     lines.append(r"\hline\endfirsthead")
@@ -917,7 +929,7 @@ def export_global_teacher_board_to_latex(
     ]
     head = [r"\cellcolor{headerbg}\hdrf{Docente}"]
     for d, h in slots:
-        day_s = _tex_escape(DAY_NAMES.get(d, str(d)))
+        day_s = _tex_escape(_day_label(d))
         head.append(
             rf"\cellcolor{{headerbg}}\hdrf{{\shortstack{{{day_s}\\{h:02d}}}}}"
         )

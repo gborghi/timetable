@@ -23,6 +23,58 @@ export const DAY_NAMES_EN_TO_IT: Record<string, string> = {
   Saturday:  "Sabato",
 };
 
+/** One day from GET /api/working-hours/config. Codes/labels are
+ * display-only; the engine key is ``legacy_day_number``. */
+export interface CalendarDay {
+  id?: number;
+  code?: string;
+  label?: string;
+  position?: number;
+  legacy_day_number: number;
+  is_active?: boolean;
+  slots?: Array<{ legacy_hour_number?: number }>;
+}
+
+export interface CalendarConfig {
+  days?: CalendarDay[];
+  max_slots_per_day?: number;
+}
+
+function _activeDays(config: CalendarConfig | null | undefined): CalendarDay[] {
+  return (config?.days || []).filter((d) => d && d.is_active !== false);
+}
+
+/** Configured day IDs in display order. Falls back to lun–sab 1..6. */
+export function calendarDays(config: CalendarConfig | null | undefined): number[] {
+  const days = _activeDays(config);
+  if (days.length) return days.map((d) => d.legacy_day_number);
+  return [...DAYS];
+}
+
+/** Uniform hour codes from the first active day. Falls back to 8..13. */
+export function calendarHours(config: CalendarConfig | null | undefined): number[] {
+  const days = _activeDays(config);
+  const first = days.find((d) => (d.slots || []).length);
+  if (first?.slots?.length) {
+    return first.slots
+      .map((s) => s.legacy_hour_number)
+      .filter((h): h is number => typeof h === "number");
+  }
+  return [...HOURS];
+}
+
+/** Display label for a day ID. Rename-safe: looks up the configured
+ * entity, then the lun–sab preset, then the numeric ID. */
+export function calendarDayName(
+  dayId: number,
+  config: CalendarConfig | null | undefined,
+): string {
+  const d = _activeDays(config).find((x) => x.legacy_day_number === dayId)
+    ?? (config?.days || []).find((x) => x.legacy_day_number === dayId);
+  if (d) return d.label || d.code || String(dayId);
+  return DAY_NAMES_IT[dayId] || String(dayId);
+}
+
 export interface RoomKindOption {
   value: RoomKind;
   label: string;

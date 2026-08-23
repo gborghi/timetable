@@ -2,7 +2,8 @@
   import { api } from '$lib/api';
   import { confirmDialog } from '$lib/confirm';
   import PageHero from '$lib/components/PageHero.svelte';
-  import { flash, refreshDataset } from '$lib/stores';
+  import { flash, refreshDataset, workingHoursConfig } from '$lib/stores';
+  import { calendarDays, calendarDayName } from '$lib/constants';
   import Modal from '$lib/components/Modal.svelte';
   import WeeklyCalendarView from '$lib/components/WeeklyCalendarView.svelte';
   import SortableQueryableList from '$lib/components/SortableQueryableList.svelte';
@@ -27,6 +28,8 @@
   const curriculaQ = curriculaQuery.useList();
   $: allSubjects = ($subjectsQ.data ?? []).map((s) => s.name).sort();
   $: allCurricula = $curriculaQ.data ?? [];
+  $: calDays = calendarDays($workingHoursConfig);
+  $: calName = (d) => calendarDayName(d, $workingHoursConfig);
 
   function newClass() {
     editing = {
@@ -423,12 +426,7 @@
               editing = { ...editing, preferred_free_days: list.filter((x) => x.day) };
             }}>
               <option value={0}>(nessuno)</option>
-              <option value={1}>Lunedi</option>
-              <option value={2}>Martedi</option>
-              <option value={3}>Mercoledi</option>
-              <option value={4}>Giovedi</option>
-              <option value={5}>Venerdi</option>
-              <option value={6}>Sabato</option>
+              {#each calDays as d}<option value={d}>{calName(d)}</option>{/each}
             </select>
           </div>
           {#if cur.day}
@@ -476,10 +474,10 @@
           <label>Giorni liberi totali nella settimana (HARD)
             <span title="Numero esatto di giornate libere per la classe. Default 0 (lavora tutti i giorni). 1 = un giorno libero (es. lunedi'). Aumentare oltre 1 e' raro per le classi italiane.">ℹ️</span>
           </label>
-          <input type="number" min="0" max="6"
+          <input type="number" min="0" max={calDays.length}
                  value={editing.required_free_days_count ?? 0}
                  on:input={(e) => editing = { ...editing,
-                   required_free_days_count: Math.max(0, Math.min(6, Number(e.target.value) || 0)) }}/>
+                   required_free_days_count: Math.max(0, Math.min(calDays.length, Number(e.target.value) || 0)) }}/>
         </div>
         <div class="field">
           <label>Massimo ore al giorno (HARD)

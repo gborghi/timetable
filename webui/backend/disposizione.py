@@ -86,7 +86,10 @@ def parse_slot_priorities(raw: str | None) -> dict[tuple[int, int], int]:
             w = int(it.get("weight", 1))
         except (KeyError, TypeError, ValueError):
             continue
-        if d < 1 or d > 6 or h < 8 or h > 13:
+        # Day/hour are configured calendar IDs (default seed 1..6 /
+        # 8..13; custom calendars may use other IDs). Bounds match
+        # DisposizioneSlotPriority.
+        if d < 1 or d > 400 or h < 0 or h > 23:
             continue
         out[(d, h)] = max(0, w)
     return out or dict(_DEFAULT_SLOT_WEIGHTS)
@@ -184,14 +187,39 @@ def teacher_quotas(
     return {names[i]: floors[i] for i in range(len(names)) if floors[i] > 0}
 
 
-def _grid() -> tuple[list[int], list[int]]:
+def _grid(db: Session | None = None) -> tuple[list[int], list[int]]:
+    if db is not None:
+        try:
+            from . import models as _m
+            rows = (
+                db.query(_m.WorkingDay)
+                .filter(_m.WorkingDay.is_active.is_(True))
+                .order_by(_m.WorkingDay.position)
+                .all()
+            )
+            days = [int(r.legacy_day_number) for r in rows
+                    if r.legacy_day_number is not None]
+            hours: list[int] = []
+            for r in rows:
+                hours = [
+                    int(s.legacy_hour_number) for s in (r.slots or [])
+                    if s.legacy_hour_number is not None
+                ]
+                if hours:
+                    break
+            if days:
+                return days, hours or [8, 9, 10, 11, 12, 13]
+        except Exception:
+            pass
     try:
-        from working_hours_config import get_days, get_hours
-        days = list(get_days()) or list(range(1, 7))
-        hours = list(get_hours()) or list(range(8, 14))
+        from working_hours_config import (
+            get_days, get_hours, DEFAULT_DAYS, DEFAULT_HOURS,
+        )
+        days = list(get_days()) or list(DEFAULT_DAYS)
+        hours = list(get_hours()) or list(DEFAULT_HOURS)
         return days, hours
     except Exception:
-        return list(range(1, 7)), list(range(8, 14))
+        return [1, 2, 3, 4, 5, 6], [8, 9, 10, 11, 12, 13]
 
 
 def busy_slots_from_sol(sol: dict) -> dict[str, set[tuple[int, int]]]:
@@ -257,7 +285,10 @@ def persist_disposizione_for_solution(db: Session, solution_id: int
     ).all():
         sol[(l.teacher_name, l.class_name, l.subject, l.day, l.hour)] = 1
     weights = parse_slot_priorities(cfg.slot_priorities_json)
-    new_sol = place_disposizione_hours(sol, quotas, weights)
+    gd, gh = _grid(db)
+    new_sol = place_disposizione_hours(
+        sol, quotas, weights, days=gd, hours=gh,
+    )
     old_keys = {k for k in sol if is_disposizione_key(k)}
     new_keys = {k for k, v in new_sol.items()
                 if v == 1 and is_disposizione_key(k)}

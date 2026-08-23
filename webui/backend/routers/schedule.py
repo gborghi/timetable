@@ -18,13 +18,62 @@ from .. import engine_paths  # noqa: F401  (sys.path for engine modules)
 router = APIRouter(prefix="/api/schedule", tags=["schedule"])
 
 try:
-    from working_hours_config import DEFAULT_DAYS as _WC_DAYS, DEFAULT_HOURS as _WC_HOURS
+    from working_hours_config import get_days as _get_days
+    from working_hours_config import get_hours as _get_hours
+    from working_hours_config import get_day_labels as _get_day_labels
+    from working_hours_config import DEFAULT_DAYS, DEFAULT_HOURS
 except ImportError:
-    _WC_DAYS = list(range(1, 7))
-    _WC_HOURS = list(range(8, 14))
-DAYS: list[int] = list(_WC_DAYS)
-HOURS: list[int] = list(_WC_HOURS)
+    DEFAULT_DAYS = [1, 2, 3, 4, 5, 6]
+    DEFAULT_HOURS = [8, 9, 10, 11, 12, 13]
+    def _get_days():
+        return list(DEFAULT_DAYS)
+    def _get_hours():
+        return list(DEFAULT_HOURS)
+    def _get_day_labels():
+        return {1: "Lun", 2: "Mar", 3: "Mer", 4: "Gio", 5: "Ven", 6: "Sab"}
+
+DAYS: list[int] = list(_get_days())
+HOURS: list[int] = list(_get_hours())
 DAY_NAMES_IT = {1: "Lun", 2: "Mar", 3: "Mer", 4: "Gio", 5: "Ven", 6: "Sab"}
+
+
+def _refresh_grid(db: Session | None = None
+                  ) -> tuple[list[int], list[int], dict[int, str]]:
+    days: list[int] = []
+    hours: list[int] = []
+    labels: dict[int, str] = {}
+    if db is not None:
+        try:
+            rows = (
+                db.query(models.WorkingDay)
+                .filter(models.WorkingDay.is_active.is_(True))
+                .order_by(models.WorkingDay.position)
+                .all()
+            )
+            for r in rows:
+                did = int(r.legacy_day_number)
+                days.append(did)
+                labels[did] = r.label or r.code or str(did)
+                if not hours and r.slots:
+                    hours = [
+                        int(s.legacy_hour_number) for s in r.slots
+                        if s.legacy_hour_number is not None
+                    ]
+        except Exception:
+            days, hours, labels = [], [], {}
+    if not days:
+        days = list(_get_days()) or list(DEFAULT_DAYS)
+        hours = list(_get_hours()) or list(DEFAULT_HOURS)
+        labels = dict(_get_day_labels())
+    if not hours:
+        hours = list(_get_hours()) or list(DEFAULT_HOURS)
+    for d in days:
+        labels.setdefault(d, str(d))
+    DAYS[:] = days
+    HOURS[:] = hours
+    DAY_NAMES_IT.clear()
+    DAY_NAMES_IT.update(labels)
+    return days, hours, labels
 
 
 def _active(db: Session) -> models.Solution:
@@ -120,6 +169,7 @@ def delete_solution(sol_id: int, db: Session = Depends(get_db)):
 def view_by_class(class_name: str | None = None,
                   db: Session = Depends(get_db)):
     """Returns a dict class_name -> day -> hour -> {teacher, subject, room}."""
+    _refresh_grid(db)
     a = _active(db)
     q = db.query(models.Lesson).filter(models.Lesson.solution_id == a.id)
     if class_name:
@@ -157,6 +207,7 @@ def view_by_class(class_name: str | None = None,
 @router.get("/by-teacher")
 def view_by_teacher(teacher: str | None = None,
                     db: Session = Depends(get_db)):
+    _refresh_grid(db)
     a = _active(db)
     q = db.query(models.Lesson).filter(models.Lesson.solution_id == a.id)
     if teacher:
@@ -185,8 +236,8 @@ def view_by_teacher(teacher: str | None = None,
 
 
 @router.get("/by-slot")
-def view_by_slot(day: int = Query(..., ge=1, le=6),
-                 hour: int = Query(..., ge=8, le=13),
+def view_by_slot(day: int = Query(..., ge=1, le=400),
+                 hour: int = Query(..., ge=0, le=23),
                  db: Session = Depends(get_db)):
     a = _active(db)
     rows = db.query(models.Lesson).filter(
@@ -212,6 +263,7 @@ def view_by_slot(day: int = Query(..., ge=1, le=6),
 @router.get("/by-room")
 def view_by_room(db: Session = Depends(get_db)):
     """Returns room_name -> day -> hour -> [{class, subject, teacher}, ...]."""
+    _refresh_grid(db)
     a = _active(db)
     rooms = {r.name: r for r in db.query(models.Classroom).all()}
     rows = db.query(models.Lesson).filter(
@@ -245,8 +297,8 @@ def view_by_room(db: Session = Depends(get_db)):
 
 
 @router.get("/free-now", response_model=schemas.FreeNowOut)
-def free_now(day: int = Query(..., ge=1, le=6),
-             hour: int = Query(..., ge=8, le=13),
+def free_now(day: int = Query(..., ge=1, le=400),
+             hour: int = Query(..., ge=0, le=23),
              db: Session = Depends(get_db)):
     a = _active(db)
     busy_teachers: dict[str, dict] = {}
@@ -532,6 +584,7 @@ def add_lesson(payload: schemas.AddLessonIn,
     link the (class, teacher) pair and pick the only matching subject
     (422 with the candidate list when ambiguous).
     """
+    _refresh_grid(db)
     if payload.day not in DAYS or payload.hour not in HOURS:
         raise HTTPException(400, "day/hour fuori range")
     active = _active(db)
@@ -807,6 +860,7 @@ def export_xlsx_teachers(db: Session = Depends(get_db)):
 @router.get("/export/pdf-classes")
 def export_pdf_classes(db: Session = Depends(get_db)):
     """Render the per-class grid as a PDF using reportlab."""
+    _refresh_grid(db)
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4, landscape
     from reportlab.platypus import (SimpleDocTemplate, Table, TableStyle,
@@ -864,6 +918,7 @@ def export_pdf_classes(db: Session = Depends(get_db)):
 
 @router.get("/export/pdf-teachers")
 def export_pdf_teachers(db: Session = Depends(get_db)):
+    _refresh_grid(db)
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4, landscape
     from reportlab.platypus import (SimpleDocTemplate, Table, TableStyle,

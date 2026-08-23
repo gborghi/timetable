@@ -21,6 +21,8 @@
    * implementation.
    */
   import Modal from '$lib/components/Modal.svelte';
+  import { workingHoursConfig } from '$lib/stores';
+  import { calendarDayName } from '$lib/constants';
 
   export let open = false;
   export let title = 'Conflitto rilevato';
@@ -42,10 +44,9 @@
   $: hasClass   = (details.class_busy   || []).length > 0;
   $: hasRoom    = (details.room_busy    || []).length > 0;
 
-  const _DAYS_IT = ['', 'lun', 'mar', 'mer', 'gio', 'ven', 'sab'];
   function describe(r) {
     const when = (r.day != null && r.hour != null)
-      ? ` [${_DAYS_IT[r.day] || ('g' + r.day)} ${r.hour}:00]` : '';
+      ? ` [${calendarDayName(r.day, $workingHoursConfig)} ${r.hour}:00]` : '';
     // Both resolutions destroy the conflicting lesson, so a pinned one is
     // worth flagging before the user picks either button.
     const pin = r.locked ? ' [bloccata]' : '';

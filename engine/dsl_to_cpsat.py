@@ -65,15 +65,42 @@ _DAY_LABELS = {
 
 
 def _normalize_day_value(v: Any) -> int | None:
-    """Convert a day literal (int or str) to the 1..6 code, or
-    None if the value is not a recognised day."""
+    """Convert a day literal (int or str) to a configured day ID.
+
+    Integer IDs are accepted as-is (the calendar is not limited to
+    1..6). String tokens match the lun–sab aliases or a configured
+    day's code/label.
+    """
+    if isinstance(v, bool):
+        return None
     if isinstance(v, int):
-        return v if 1 <= v <= 6 else None
+        return v if v >= 1 else None
     if isinstance(v, str):
-        s = v.strip().lower()
+        s = v.strip()
+        if not s:
+            return None
+        try:
+            n = int(s)
+            if n >= 1:
+                return n
+        except ValueError:
+            pass
+        sl = s.lower()
         for code, labels in _DAY_LABELS.items():
-            if s in {lb.lower() for lb in labels}:
+            if sl in {lb.lower() for lb in labels}:
                 return code
+        try:
+            import working_hours_config as _whc  # type: ignore
+            cfg = _whc.get_config_dict()
+            for d in cfg.get("days") or []:
+                if not d.get("is_active", True):
+                    continue
+                if sl == str(d.get("code") or "").lower():
+                    return int(d["legacy_day_number"])
+                if sl == str(d.get("label") or "").lower():
+                    return int(d["legacy_day_number"])
+        except Exception:
+            pass
     return None
 
 

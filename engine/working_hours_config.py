@@ -307,3 +307,27 @@ def get_slots_per_day_map() -> dict[int, int]:
             continue
         out[int(d["legacy_day_number"])] = len(d["slots"])
     return out
+
+
+def get_day_labels() -> dict[int, str]:
+    """legacy_day_number -> display label for active days."""
+    cfg = _load()
+    labels: dict[int, str] = {}
+    for d in cfg["days"]:
+        if not d["is_active"]:
+            continue
+        labels[int(d["legacy_day_number"])] = str(d["label"] or d["code"])
+    return labels
+
+
+def get_day_label(day_id: int, default: str | None = None) -> str:
+    """Display label for one configured day ID.
+
+    Codes/labels are display-only; ``day_id`` is the stable numeric
+    key (legacy_day_number). Unknown IDs fall back to ``default`` or
+    the decimal string of the ID.
+    """
+    labels = get_day_labels()
+    if day_id in labels:
+        return labels[day_id]
+    return default if default is not None else str(day_id)

@@ -50,6 +50,65 @@ from ..tenant import current_tenant_id
 
 router = APIRouter(tags=["coverage"])
 
+try:
+    from working_hours_config import get_days as _get_days
+    from working_hours_config import get_hours as _get_hours
+    from working_hours_config import get_day_labels as _get_day_labels
+    from working_hours_config import DEFAULT_DAYS, DEFAULT_HOURS
+except ImportError:
+    DEFAULT_DAYS = [1, 2, 3, 4, 5, 6]
+    DEFAULT_HOURS = [8, 9, 10, 11, 12, 13]
+    def _get_days():
+        return list(DEFAULT_DAYS)
+    def _get_hours():
+        return list(DEFAULT_HOURS)
+    def _get_day_labels():
+        return {1: "Lun", 2: "Mar", 3: "Mer", 4: "Gio", 5: "Ven", 6: "Sab"}
+
+
+def _configured_days(db: Session | None = None) -> list[int]:
+    """Active day IDs in display order.
+
+    Prefer the request session (same DB the API just mutated). Fall
+    back to the engine loader, then to the lun–sab preset.
+    """
+    if db is not None:
+        try:
+            rows = (
+                db.query(models.WorkingDay)
+                .filter(models.WorkingDay.is_active.is_(True))
+                .order_by(models.WorkingDay.position)
+                .all()
+            )
+            ids = [int(r.legacy_day_number) for r in rows
+                   if r.legacy_day_number is not None]
+            if ids:
+                return ids
+        except Exception:
+            pass
+    return list(_get_days()) or list(DEFAULT_DAYS)
+
+
+def _configured_hours(db: Session | None = None) -> list[int]:
+    if db is not None:
+        try:
+            days = (
+                db.query(models.WorkingDay)
+                .filter(models.WorkingDay.is_active.is_(True))
+                .order_by(models.WorkingDay.position)
+                .all()
+            )
+            for d in days:
+                hours = [
+                    int(s.legacy_hour_number) for s in (d.slots or [])
+                    if s.legacy_hour_number is not None
+                ]
+                if hours:
+                    return hours
+        except Exception:
+            pass
+    return list(_get_hours()) or list(DEFAULT_HOURS)
+
 
 DAY_NAME_TO_INT = {
     "Monday": 1, "Tuesday": 2, "Wednesday": 3,
@@ -61,14 +120,36 @@ DAY_NAME_TO_INT = {
 
 
 def _date_to_day_of_week(d: dt.date) -> int:
-    """ISO weekday 1=Mon .. 7=Sun -> our 1..6 (Sat=6); Sundays clamped to 6."""
-    iso = d.isoweekday()
-    return min(iso, 6)
+    """Map a civil date onto a configured day ID.
+
+    Default lun–sab calendars keep the historical ISO weekday mapping
+    (Mon=1 … Sat=6, Sunday clamped to Saturday). Custom calendars
+    (animal names, 10-day cycles, …) are a flat list of IDs: the
+    date is projected onto that list by weekday index, wrapping if
+    the calendar is shorter than six days and clamping if longer.
+    """
+    days = _configured_days()
+    if not days:
+        return 1
+    iso = d.isoweekday()  # 1=Mon .. 7=Sun
+    idx = min(iso, 6) - 1
+    if idx < 0:
+        idx = 0
+    if idx >= len(days):
+        idx = len(days) - 1
+    return int(days[idx])
 
 
-def _free_day_int(t: models.Teacher) -> int | None:
+def _free_day_int(t: models.Teacher, db: Session | None = None) -> int | None:
     if not t.free_day:
         return None
+    try:
+        from ..engine_io import resolve_free_day
+        found = resolve_free_day(t.free_day, db)
+        if found is not None:
+            return found
+    except Exception:
+        pass
     return DAY_NAME_TO_INT.get(t.free_day)
 
 
@@ -340,7 +421,8 @@ def delete_substitution(sid: int, db: Session = Depends(get_db)):
 
 
 def _compute_coverage_for_date(db: Session, date: dt.date,
-                               *, build_cells: bool = True
+                               *, build_cells: bool = True,
+                               day: int | None = None
                                ) -> dict[str, Any]:
     """Returns a dict shape used by both week and cell endpoints."""
     active = engine_io.get_active_solution(db)
@@ -348,7 +430,8 @@ def _compute_coverage_for_date(db: Session, date: dt.date,
     teacher_by_id = {t.id: t for t in teachers}
     teacher_by_name = {t.name: t for t in teachers}
 
-    day = _date_to_day_of_week(date)
+    if day is None:
+        day = _date_to_day_of_week(date)
 
     # absences for the day
     abs_rows = db.query(models.Absence).filter(
@@ -411,7 +494,7 @@ def _compute_coverage_for_date(db: Session, date: dt.date,
 
     cells: list[CellSummary] = []
     if build_cells:
-        for hour in range(8, 14):  # 8..13 inclusive (6 ore)
+        for hour in _configured_hours(db):
             slot = (day, hour)
             uncov = uncovered_by_slot.get(slot, [])
             cov = covered_by_slot.get(slot, [])
@@ -425,7 +508,7 @@ def _compute_coverage_for_date(db: Session, date: dt.date,
                 teachers, day, hour, absent_teacher_ids,
                 busy_by_slot.get(slot, set()),
                 sub_acting_by_slot.get(slot, set()),
-                teacher_by_name,
+                teacher_by_name, db,
             )
             avail_names = {t.name for t in available}
             n_disp = len(disp_by_slot.get(slot, set()) & avail_names)
@@ -489,7 +572,8 @@ def _available_teachers(teachers: list[models.Teacher],
                         absent_teacher_ids: set[int],
                         busy_names: set[str],
                         sub_acting_ids: set[int],
-                        teacher_by_name: dict[str, models.Teacher]
+                        teacher_by_name: dict[str, models.Teacher],
+                        db: Session | None = None,
                         ) -> list[models.Teacher]:
     out = []
     for t in teachers:
@@ -499,7 +583,7 @@ def _available_teachers(teachers: list[models.Teacher],
             continue
         if t.name in busy_names:
             continue
-        free_d = _free_day_int(t)
+        free_d = _free_day_int(t, db)
         if free_d is not None and free_d == day:
             continue
         out.append(t)
@@ -510,24 +594,30 @@ def _available_teachers(teachers: list[models.Teacher],
 def coverage_week(week_start: dt.date = Query(...),
                   db: Session = Depends(get_db)):
     active = engine_io.get_active_solution(db)
+    day_ids = _configured_days(db)
+    n_days = max(len(day_ids), 1)
     out = WeekCoverageOut(
         week_start=week_start,
-        week_end=week_start + dt.timedelta(days=5),
+        week_end=week_start + dt.timedelta(days=n_days - 1),
         has_active_solution=active is not None,
     )
     teachers_by_id = {t.id: t for t in db.query(models.Teacher).all()}
-    for offset in range(6):  # Mon..Sat
+    for offset, day_id in enumerate(day_ids):
         d = week_start + dt.timedelta(days=offset)
-        info = _compute_coverage_for_date(db, d, build_cells=True)
+        info = _compute_coverage_for_date(
+            db, d, build_cells=True, day=int(day_id),
+        )
+        info_day = int(day_id)
         n_uncov = sum(c.n_uncovered for c in info["cells"])
         n_cov = sum(c.n_covered for c in info["cells"])
+        cells = list(info["cells"])
         out.days.append(DaySummary(
             date=d,
-            day=info["day"],
+            day=info_day,
             n_absences=len(info["absences"]),
             n_uncovered=n_uncov,
             n_covered=n_cov,
-            cells=info["cells"],
+            cells=cells,
             absences=[_abs_to_out(a, teachers_by_id)
                       for a in info["absences"]],
         ))
@@ -536,10 +626,12 @@ def coverage_week(week_start: dt.date = Query(...),
 
 @router.get("/api/coverage/cell", response_model=CoverageCellDetail)
 def coverage_cell(date: dt.date = Query(...),
-                  day: int = Query(..., ge=1, le=6),
-                  hour: int = Query(..., ge=8, le=13),
+                  day: int = Query(..., ge=1, le=400),
+                  hour: int = Query(..., ge=0, le=23),
                   db: Session = Depends(get_db)):
-    info = _compute_coverage_for_date(db, date, build_cells=False)
+    info = _compute_coverage_for_date(
+        db, date, build_cells=False, day=day,
+    )
     if info["day"] != day:
         # The user explicitly asked for a (date, day) pair where the day
         # does not match the date's day-of-week. We still answer using the
@@ -586,7 +678,7 @@ def coverage_cell(date: dt.date = Query(...),
         info["teachers"], day, hour, info["absent_teacher_ids"],
         info["busy_by_slot"].get(slot, set()),
         info["sub_acting_by_slot"].get(slot, set()),
-        teacher_by_name,
+        teacher_by_name, db,
     )
     # Potenziamento (Legge 107) priority: teachers with at least
     # one is_potenziamento Assignment are buffer profs available
