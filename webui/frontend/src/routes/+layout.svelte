@@ -194,6 +194,12 @@
         {:else}
           <span class="pill-amber">no soluzione attiva</span>
         {/if}
+        <a href="/sostieni"
+           class="hidden sm:inline-flex items-center gap-1 px-[11px] py-[5px]
+                  rounded-[7px] text-[12px] font-medium
+                  bg-[#ffc439] text-[#003087] hover:brightness-[0.97]
+                  focus-ring whitespace-nowrap"
+           data-testid="sostieni-header">❤ Sostieni il sito</a>
         <div class="flex border border-ink-200 rounded-[7px] overflow-hidden text-[11px]"
              role="group" aria-label="Densita' dell'interfaccia">
           {#each ['compatta', 'comfort'] as d}
@@ -245,6 +251,9 @@
         {SENECA_LATIN}
       </span>
       <span class="font-mono">v{APP_VERSION}</span>
+      <a href="/sostieni"
+         class="text-ink-500 hover:text-ink-900"
+         data-testid="sostieni-footer">❤ Sostieni il sito</a>
       <span class="ml-auto font-mono">Engine: ortools</span>
     </div>
   </footer>

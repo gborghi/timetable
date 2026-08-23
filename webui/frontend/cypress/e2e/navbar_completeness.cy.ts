@@ -121,6 +121,19 @@ describe('Navbar completeness', () => {
                 { timeout: 10000 }).should('exist');
   });
 
+  it('Sostieni il sito is in the footer and opens the donate page', () => {
+    cy.get('[data-testid="sostieni-footer"]')
+      .should('have.attr', 'href', '/sostieni')
+      .click();
+    cy.url().should('include', '/sostieni');
+    cy.get('[data-testid="sostieni-page"]').should('exist');
+    cy.get('[data-testid="sostieni-amount-5"]')
+      .should('have.attr', 'href')
+      .and('include', 'paypal.com/donate')
+      .and('include', '4ZM48BHWAGTDL')
+      .and('include', 'amount=5');
+  });
+
   // Top-level links navigate to the expected routes.
   NAV.filter((g) => g.kind === 'link').forEach((entry) => {
     it(`link "${entry.label}" navigates to ${entry.href}`, () => {
