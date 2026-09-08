@@ -1,33 +1,45 @@
 # piTantum
 
+Weekly timetable for an **Italian high school**: classes × teachers ×
+rooms, generated with Google OR-Tools **CP-SAT**, edited in the
+browser (drag-and-drop, absences, substitutions).
+
+Built for a *liceo* (compresenze, sostegno, plessi, sabato, Law
+107/2015 *potenziamento*) — not a generic university sectioning tool.
+
+```bash
+git clone https://github.com/gborghi/timetable.git
+cd timetable
+./webui/start.sh          # macOS / Linux → http://localhost:5173
+# Windows: webui\start.bat
+```
+
+Python ≥ 3.11 and Node ≥ 20. First run creates the venv and
+`node_modules`. Full OS notes: [installation guide](docs/installation.md).
+
+[Italiano](README.it.md) · [English](README.md) (this file)
+
 [![CI](https://github.com/gborghi/timetable/actions/workflows/ci.yml/badge.svg)](https://github.com/gborghi/timetable/actions/workflows/ci.yml)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
 [![Svelte 5](https://img.shields.io/badge/svelte-5-orange)](https://svelte.dev/)
 [![License](https://img.shields.io/badge/license-proprietary-red)](LICENSE)
-[![Built with AI](https://img.shields.io/badge/built%20with-AI-8b5cf6)](https://claude.ai/code)
 
-[Italiano](README.it.md) | English
-
-> 🤖 **Built with AI.** piTantum was designed and implemented with the
-> assistance of artificial intelligence (Anthropic's Claude) — from the
-> CP-SAT solver and constraint engine to the FastAPI backend and the
-> SvelteKit frontend.
-
-> *Omnia, Lucili, aliena sunt, tempus tantum nostrum est.*
-> &mdash; Seneca, *Epistulae morales ad Lucilium*, I, 1
-
-> "All, Lucilius, comes to us from others; only time is our own."
-
-**piTantum** (alias **Tempus Tantum**) is a system for generating
-and managing the weekly schedule of an Italian high school:
-teacher-class assignments, weekly timetable optimization,
+**piTantum** (alias **Tempus Tantum**) generates and manages the
+weekly schedule: teacher–class assignments, weekly optimisation,
 absence-and-substitution management, drag-and-drop with live
 preview.
 
 The name plays with the shape of the Greek letter **π**: the two
 vertical strokes of the lowercase pi mirror the two **T**s of
-**T**empus **T**antum. The Senecan verse summarises the program:
-of time we have only what we organise now.
+**T**empus **T**antum.
+
+> *Omnia, Lucili, aliena sunt, tempus tantum nostrum est.*
+> — Seneca, *Epistulae morales ad Lucilium*, I, 1
+>
+> "All, Lucilius, comes to us from others; only time is our own."
+
+> Built with AI assistance (Anthropic Claude) for the CP-SAT engine,
+> FastAPI backend, and SvelteKit frontend.
 
 Three layers, one repo:
 

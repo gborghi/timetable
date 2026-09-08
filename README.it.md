@@ -1,26 +1,37 @@
 # piTantum
 
-**Nota:** Questo README è un riassunto in italiano. Il README canonico è in inglese: [English](README.md).
+**Nota:** riassunto italiano. Canonico: [English](README.md).
 
-> 🤖 **Realizzato con l'intelligenza artificiale.** piTantum è stato
-> progettato e implementato con l'assistenza dell'intelligenza artificiale
-> (Claude di Anthropic) — dal solver CP-SAT e il motore dei vincoli al
-> backend FastAPI e al frontend SvelteKit.
+Orario settimanale di un **liceo italiano**: classi × docenti × aule,
+generato con Google OR-Tools **CP-SAT**, modificabile nel browser
+(drag-and-drop, assenze, supplenze).
+
+Fatto per il liceo (compresenze, sostegno, plessi, sabato,
+potenziamento L. 107/2015), non per il sectioning universitario.
+
+```bash
+git clone https://github.com/gborghi/timetable.git
+cd timetable
+./webui/start.sh          # macOS / Linux → http://localhost:5173
+# Windows: webui\start.bat
+```
+
+Python ≥ 3.11 e Node ≥ 20. Guida per OS: [installazione](docs/installation.md).
+
+**piTantum** (alias **Tempus Tantum**) genera e gestisce l'orario:
+cattedre, ottimizzazione settimanale, assenze e supplenze,
+drag-and-drop con preview live.
+
+Il nome gioca sulla **π**: i due tratti verticali sono le due **T**
+di **T**empus **T**antum.
 
 > *Omnia, Lucili, aliena sunt, tempus tantum nostrum est.*
-> &mdash; Seneca, *Epistulae morales ad Lucilium*, I, 1
+> — Seneca, *Epistulae morales ad Lucilium*, I, 1
+>
+> «Tutto, Lucilio, ci viene da altri; soltanto il tempo è nostro.»
 
-> "Tutto, Lucilio, ci viene da altri; soltanto il tempo e' nostro."
-
-**piTantum** (alias **Tempus Tantum**) e' un sistema di generazione
-e gestione dell'orario scolastico per un Liceo italiano:
-assegnazioni docenti-classi, ottimizzazione dell'orario settimanale,
-gestione di assenze e supplenze, drag-and-drop con preview live.
-
-Il nome gioca sulla forma della lettera greca **&pi;**: i due tratti
-verticali della pi minuscola ricordano le due **T** di **T**empus
-**T**antum. Il senso del verso senechiano sintetizza il programma:
-del tempo non se ne ha altro che quello che si organizza adesso.
+> Realizzato con assistenza AI (Claude, Anthropic) per solver,
+> backend FastAPI e frontend SvelteKit.
 
 Tre layer, in un unico repo:
 
