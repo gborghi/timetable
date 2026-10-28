@@ -994,6 +994,11 @@ def _eval_call(node: Call, env, world):
             raise DSLError(
                 "no_holes_class richiede 1 argomento (classe)")
         return _eval_no_holes_class(world, str(pos[0]))
+    if name == "class_entry_first_hour":
+        if len(pos) != 1:
+            raise DSLError(
+                "class_entry_first_hour richiede 1 argomento (classe)")
+        return _eval_class_entry_first_hour(world, str(pos[0]))
     if name == "no_holes_all_classes":
         return all(_eval_no_holes_class(world, cl)
                    for cl in _classes_in_lessons(world))
@@ -1242,10 +1247,10 @@ def _classes_in_lessons(world: dict) -> list[str]:
 
 
 def _eval_no_holes_class(world: dict, cl: str) -> bool:
-    """Per (cl, d), the busy hours form a contiguous prefix anchored
-    at the earliest hour in scope. Mirrors
-    ``_compile_no_holes_for_class`` (non-increasing presence chain
-    starting at h_min)."""
+    """Per (cl, d), the busy hours form ONE contiguous block of the
+    hours in scope, starting at any hour. Mirrors
+    ``_compile_no_holes_for_class`` (Kepler point 4: the entry at the
+    first hour is ``class_entry_first_hour``)."""
     hours = _hours_in_world(world)
     if not hours:
         return True
@@ -1253,9 +1258,20 @@ def _eval_no_holes_class(world: dict, cl: str) -> bool:
         busy = _class_busy_hours(world, cl, d)
         if not busy:
             continue
-        k = len(busy)
-        prefix = set(hours[:k])
-        if busy != prefix:
+        idx = sorted(hours.index(h) for h in busy if h in hours)
+        if idx and idx[-1] - idx[0] + 1 != len(idx):
+            return False
+    return True
+
+
+def _eval_class_entry_first_hour(world: dict, cl: str) -> bool:
+    """Per (cl, d) with lessons, the first hour in scope is busy."""
+    hours = _hours_in_world(world)
+    if not hours:
+        return True
+    for d in _days_in_world(world):
+        busy = _class_busy_hours(world, cl, d)
+        if busy and hours[0] not in busy:
             return False
     return True
 

@@ -507,7 +507,7 @@ if __name__=="__main__":
 
     solver = cp_model.CpSolver()
     solver.parameters.log_search_progress = True
-    solver.parameters.num_search_workers = 32
+    solver.parameters.num_workers = 32
     solver.parameters.max_time_in_seconds = maxtime
 
     # Phase 1: Minimize cattedracompleta

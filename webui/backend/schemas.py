@@ -630,6 +630,11 @@ class PhaseBRunIn(BaseModel):
     # school's total room count, so the schedule is room-feasible per slot and
     # the room step can seat everyone. Default False -> off (byte-identical).
     respect_room_capacity: bool = False
+    # «Se impossibile, dammi un orario parziale» (Kepler 7a, week scope):
+    # when the week solve is INFEASIBLE/UNKNOWN, re-solve allowing
+    # unplaced hours (heavily penalised) and save the result as a
+    # non-active ``kind="partial"`` solution with ``metrics["missing"]``.
+    partial: bool = False
     # Joint (day,hour,room) optimization. When ``joint_vars.enabled`` the
     # room vars join the schedule model (monolithic week scope is forced
     # server-side) and the rooms extraction step is turned on. None/absent

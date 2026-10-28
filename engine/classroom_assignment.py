@@ -622,7 +622,7 @@ def solve_classroom_assignment(
 
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = time_limit_s
-    solver.parameters.num_search_workers = workers
+    solver.parameters.num_workers = workers
     solver.parameters.log_search_progress = log
     t0 = time.time()
     _solvercfg.configure_solver(solver)

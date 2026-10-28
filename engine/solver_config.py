@@ -18,7 +18,7 @@ Two knobs (both env-driven, safe defaults):
 
 Applied *after* each call site's own ``parameters`` block (i.e.
 immediately before ``Solve``) so the deterministic single-worker
-override wins over the site's ``num_search_workers = workers``.
+override wins over the site's ``num_workers = workers``.
 """
 from __future__ import annotations
 
@@ -52,5 +52,5 @@ def configure_solver(solver):
     params = solver.parameters
     params.random_seed = solver_seed()
     if deterministic_mode():
-        params.num_search_workers = 1
+        params.num_workers = 1
     return solver

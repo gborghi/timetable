@@ -50,10 +50,10 @@ def _make_solver(profs, dc, *, no_holes=False, h11=False,
 
 
 def test_no_holes_class_pragma_compiles_and_enforces():
-    """The pragma forbids holes (busy, free, busy on the same day)
-    for the named class. With 4 hours/day demand and a 6-hour
-    window, the solver must place them contiguously starting at
-    h_min."""
+    """The pragma forbids holes (busy, free, busy on the same day) for
+    the named class: the 4 hours form one contiguous block. Since
+    Kepler point 4 the block may start at any hour; the entry at the
+    first hour is the separate ``class_entry_first_hour`` pragma."""
     profs = {"T1": {"classi": {"1A": {"Mat": {"ore": 4}}},
                      "max_hours": 18}}
     dc = {("T1", "1A", "Mat", 1): 4}
@@ -62,22 +62,38 @@ def test_no_holes_class_pragma_compiles_and_enforces():
     sol, status = ms.solve(time_limit_s=5.0, workers=1)
     assert sol is not None, status
     busy_hours = sorted(k[4] for k in sol if k[3] == 1)
-    # Contiguous starting at h=8.
-    assert busy_hours == [8, 9, 10, 11], busy_hours
+    assert busy_hours == list(range(busy_hours[0], busy_hours[0] + 4)), \
+        busy_hours
+    ms = _make_solver(profs, dc)
+    ms.add_dsl_constraint('no_holes_class("1A")')
+    ms.add_dsl_constraint('class_entry_first_hour("1A")')
+    sol, status = ms.solve(time_limit_s=5.0, workers=1)
+    assert sol is not None, status
+    assert sorted(k[4] for k in sol if k[3] == 1) == [8, 9, 10, 11]
 
 
 def test_no_holes_class_pragma_forbids_isolated_hour():
-    """With 1 hr in middle of the day, no-holes still must start at
-    h=8 (i.e. the first slot is busy)."""
-    profs = {"T1": {"classi": {"1A": {"Mat": {"ore": 1}}},
+    """A hole (busy at 9 and 11, free at 10) is forbidden; with
+    ``class_entry_first_hour`` a single hour lands at h_min."""
+    profs = {"T1": {"classi": {"1A": {"Mat": {"ore": 2}}},
                      "max_hours": 18}}
-    dc = {("T1", "1A", "Mat", 1): 1}
+    dc = {("T1", "1A", "Mat", 1): 2}
     ms = _make_solver(profs, dc)
     ms.add_dsl_constraint('no_holes_class("1A")')
+    ms.build()
+    ms.model.Add(ms.slot[("T1", "1A", "Mat", 1, 9)] == 1)
+    ms.model.Add(ms.slot[("T1", "1A", "Mat", 1, 11)] == 1)
+    from ortools.sat.python import cp_model
+    cs = cp_model.CpSolver()
+    assert cs.Solve(ms.model) == cp_model.INFEASIBLE
+    profs1 = {"T1": {"classi": {"1A": {"Mat": {"ore": 1}}},
+                      "max_hours": 18}}
+    ms = _make_solver(profs1, {("T1", "1A", "Mat", 1): 1})
+    ms.add_dsl_constraint('no_holes_class("1A")')
+    ms.add_dsl_constraint('class_entry_first_hour("1A")')
     sol, status = ms.solve(time_limit_s=5.0, workers=1)
     assert sol is not None, status
-    h_busy = next(k[4] for k in sol if k[3] == 1)
-    assert h_busy == 8, h_busy  # starts at h_min
+    assert next(k[4] for k in sol if k[3] == 1) == 8
 
 
 def test_no_holes_class_zero_drift_vs_legacy():
@@ -86,16 +102,17 @@ def test_no_holes_class_zero_drift_vs_legacy():
     profs = {"T1": {"classi": {"1A": {"Mat": {"ore": 4}}},
                      "max_hours": 18}}
     dc = {("T1", "1A", "Mat", 1): 4}
-    # Legacy: enforce_no_holes=True via config
+    # Legacy: enforce_no_holes=True via config (no_holes + entry_at_8
+    # default on)
     legacy = _make_solver(profs, dc, no_holes=True)
     sol_l, status_l = legacy.solve(time_limit_s=5.0, workers=1)
-    # Pragma: no_holes off in config, pragma DSL adds it back
+    # Pragma: no_holes off in config, pragma DSL adds both back
     pragma = _make_solver(profs, dc, no_holes=False)
     pragma.add_dsl_constraint('no_holes_class("1A")')
+    pragma.add_dsl_constraint('class_entry_first_hour("1A")')
     sol_p, status_p = pragma.solve(time_limit_s=5.0, workers=1)
     assert (sol_l is not None) == (sol_p is not None)
     if sol_l is not None:
-        # Both should find a feasible 4-contiguous-hour pattern
         hb_l = sorted(k[4] for k in sol_l if k[3] == 1)
         hb_p = sorted(k[4] for k in sol_p if k[3] == 1)
         # Same shape: contiguous, 4 hours, starts at h_min.

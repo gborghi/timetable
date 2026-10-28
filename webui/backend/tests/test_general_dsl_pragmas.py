@@ -82,13 +82,16 @@ def test_no_holes_class_false_when_hole_in_middle():
 
 
 def test_no_holes_class_false_when_not_anchored_at_h_min():
-    """Busy at 9, 10 (h=8 free): the encoding requires the prefix to
-    start at h_min (no_holes is non-increasing chain anchored at 8)."""
+    """Busy at 9, 10 (h=8 free): one block, so no hole (Kepler point 4:
+    the block may start at any hour); the entry at h_min is the separate
+    ``class_entry_first_hour`` rule, which fails here."""
     lessons = [
         _lesson("T", "1A", "Mat", 1, 9),
         _lesson("T", "1A", "Mat", 1, 10),
     ]
     tree = G.parse('no_holes_class("1A")')
+    assert G.evaluate(tree, _world(lessons)) is True
+    tree = G.parse('class_entry_first_hour("1A")')
     assert G.evaluate(tree, _world(lessons)) is False
 
 
@@ -140,7 +143,8 @@ def test_no_holes_all_classes_true_when_all_contiguous():
 def test_no_holes_all_classes_false_when_one_class_violates():
     lessons = [
         _lesson("T", "1A", "Mat", 1, 8),
-        _lesson("T", "1B", "Mat", 1, 9),    # 1B has gap at 8
+        _lesson("T", "1B", "Mat", 1, 9),
+        _lesson("T", "1B", "Mat", 1, 11),   # 1B has a hole at 10
     ]
     tree = G.parse('no_holes_all_classes()')
     assert G.evaluate(tree, _world(lessons)) is False

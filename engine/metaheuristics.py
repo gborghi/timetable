@@ -886,6 +886,18 @@ def neighborhood_cluster_day(sol, profs, classes_in_cluster, day):
     return {k for k in sol if k[1] in classes_in_cluster and k[3] == day}
 
 
+def dc_from_solution(sol: dict) -> dict:
+    """Day counts ``{(p, cl, s, d): n}`` of a full solution (same logic
+    as ``optimization._restore_dc_from_solution``)."""
+    out: dict = defaultdict(int)
+    for k, v in sol.items():
+        if v != 1 or len(k) != 5:
+            continue
+        p, cl, subj, d, _h = k
+        out[(p, cl, subj, d)] += 1
+    return dict(out)
+
+
 def run_lns(sol, profs, dc_value, time_budget_s,
             classes_clusters=None, log=True, workers=4,
             adaptive=True, locks=None,
@@ -919,6 +931,30 @@ def run_lns(sol, profs, dc_value, time_budget_s,
     best = deepcopy_sol(sol)
     best_val, _ = compute_soft(best, profs, soft_rules=soft_rules)
     init_val = best_val
+    # Kepler (verifica d): the per-day repair re-fills a freed day with
+    # ``dc_value[(p, cl, s, d)]``. A ``dc_value`` that does not match
+    # ``best`` (e.g. Phase A counts after a week-scope solve picked another
+    # distribution) gives candidates with wrong weekly hours, and the LNS
+    # spins for the whole budget. Derive it from ``best`` on entry: the
+    # day repair preserves the counts, so it stays aligned afterwards.
+    if sol:
+        dc_value = dc_from_solution(best)
+
+    def _hard_ok(s_):
+        return is_hard_feasible(
+            s_, profs, verbose=False,
+            coteach_groups=coteach_groups,
+            support_assignments=support_assignments,
+            parallel_groups=parallel_groups,
+            group_assignments=group_assignments,
+            class_flags=class_flags,
+            special_room_ctx=special_room_ctx,
+            dsl_hard_expressions=dsl_hard_expressions)
+
+    # Validity of the starting point is checked, not assumed: when it is
+    # invalid, a VALID candidate is accepted even if it costs more
+    # (lexicographic on (valid, -cost)), so the LNS can repair it.
+    best_ok = _hard_ok(best)
     # Universal DSL solver: arbitrary HARD DSL rules are enforced two
     # ways here, so LNS honours the FULL grammar like the SA-family.
     #   1. CP layer: they are merged into the repair's
@@ -1009,34 +1045,28 @@ def run_lns(sol, profs, dc_value, time_budget_s,
         new_val, _ = compute_soft(new_sol, profs, soft_rules=soft_rules)
         # Post-hoc HARD gate on every candidate we would ACCEPT: reject a
         # repaired solution the validator refuses. It catches DSL HARD
-        # rules the per-day CP could not model and also a repair driven
-        # by a ``dc_value`` that no longer matches ``best`` (e.g. Phase A
-        # day counts after a week-scope solve chose another
-        # distribution): the per-day repair then re-fills the freed day
-        # with the stale count and the cattedra ends up with the wrong
-        # weekly hours (seen: Matematica 6 h instead of 4). Checked only
-        # for improving candidates, so the cost stays one validation per
-        # accepted move.
-        if new_val < best_val and not is_hard_feasible(
-                new_sol, profs, verbose=False,
-                coteach_groups=coteach_groups,
-                support_assignments=support_assignments,
-                parallel_groups=parallel_groups,
-                group_assignments=group_assignments,
-                class_flags=class_flags,
-                special_room_ctx=special_room_ctx,
-                dsl_hard_expressions=dsl_hard_expressions):
-            log_entries.append(
-                (iter_count, op, "hard_violation", best_val, best_val)
-            )
-            continue
-        if new_val < best_val:
-            op_stats[op]["total_delta"] += (best_val - new_val)
+        # rules the per-day CP could not model. Checked only for
+        # candidates that could be accepted (improving, or any candidate
+        # while ``best`` itself is invalid), so the cost stays one
+        # validation per accepted move.
+        if new_val < best_val or not best_ok:
+            cand_ok = _hard_ok(new_sol)
+            if not cand_ok:
+                log_entries.append(
+                    (iter_count, op, "hard_violation", best_val, best_val)
+                )
+                continue
+        else:
+            cand_ok = False
+        if cand_ok and (new_val < best_val or not best_ok):
+            if new_val < best_val:
+                op_stats[op]["total_delta"] += (best_val - new_val)
             log_entries.append(
                 (iter_count, op, "accept", best_val, new_val)
             )
             best = new_sol
             best_val = new_val
+            best_ok = True
             if log:
                 print(f"  [LNS iter {iter_count}] {op}: "
                       f"{log_entries[-1][3]} -> {new_val} (improvement)")

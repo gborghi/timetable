@@ -655,6 +655,19 @@ def parallel_groups_for_solver(db: Session) -> list[dict]:
     return out
 
 
+def teacher_hard_unavailable_cells(db: Session) -> list[tuple]:
+    """``[(teacher_name, day, hour)]`` of the HARD teacher
+    unavailabilities (used to keep potenziamento hours off them)."""
+    names = {t.id: t.name for t in db.query(models.Teacher).all()}
+    out = []
+    for r in db.query(models.TeacherUnavailability).filter(
+            models.TeacherUnavailability.state == "hard").all():
+        n = names.get(r.teacher_id)
+        if n:
+            out.append((n, int(r.day), int(r.hour)))
+    return out
+
+
 def potenziamento_assignments_from_db(db: Session) -> list[dict]:
     """Return the list of potenziamento (class-less) assignments.
       [{'teacher_name': str, 'subject': str, 'n_hours': int}]

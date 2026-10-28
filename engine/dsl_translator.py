@@ -194,6 +194,19 @@ def teacher_preferred_free_day_penalty_to_dsl(teacher_name: str,
             f'{_quote(teacher_name)}, {int(day)}, {int(weight)})')
 
 
+def teacher_free_day_preferences_to_dsl(teacher_name: str,
+                                        prefs) -> str:
+    """SOFT ranked free-day preferences of one teacher, in priority
+    order: ``teacher_free_day_preferences("<name>", d1, w1, d2, w2, ...)``.
+
+    Compiled with the rank encoding (cost = w_1 - w_best): the solver
+    is not rewarded for freeing a 2nd/3rd choice once a better choice
+    is already free (Kepler, verifica (b))."""
+    args = ", ".join(f"{int(d)}, {int(w)}" for d, w in prefs)
+    return (f'teacher_free_day_preferences('
+            f'{_quote(teacher_name)}, {args})')
+
+
 def teacher_max_consecutive_to_dsl(teacher_name: str, n: int) -> str:
     """Teacher cannot exceed ``n`` consecutive hours per day.
 
@@ -210,11 +223,18 @@ def teacher_max_consecutive_to_dsl(teacher_name: str, n: int) -> str:
 def class_no_holes_to_dsl(class_name: str) -> str:
     """No-holes per class. Emitted as a canonical-pattern pragma the
     DSL compiler recognises directly (``no_holes_class("<name>")``)
-    and translates into the same compact non-increasing-chain
-    encoding that the legacy ``add_class_no_holes`` uses. The
+    and translates into the same one-block contiguity encoding that
+    the legacy ``add_class_no_holes`` uses (any start hour). The
     pragma lives in the DSL function vocabulary and parses cleanly
     via ``general_dsl``."""
     return f'no_holes_class({_quote(class_name)})'
+
+
+def class_entry_first_hour_to_dsl(class_name: str) -> str:
+    """Entry at the first hour (class flag ``entry_at_8``): if the class
+    has lessons on a day, the first hour is busy. Separate from
+    ``no_holes_class`` (one contiguous block, any start hour)."""
+    return f'class_entry_first_hour({_quote(class_name)})'
 
 
 def class_h11_presence_to_dsl(class_name: str) -> str:
@@ -639,11 +659,14 @@ def seed_implicit_hardcoded(
                 out.append(class_day_load_in_to_dsl(
                     cl, list(class_day_load_allowed)))
 
-    # --- enforce_no_holes per class ---
+    # --- enforce_no_holes per class: one block + (separately) entry at
+    # the first hour, two independent class flags (Kepler point 4) ---
     if enforce_no_holes:
         for cl in classes:
             if _ce(class_flags, cl, "no_holes", True):
                 out.append(class_no_holes_to_dsl(cl))
+            if _ce(class_flags, cl, "entry_at_8", True):
+                out.append(class_entry_first_hour_to_dsl(cl))
 
     # --- HARD-3: presence at h=11 per class ---
     if enforce_h3_presence:
@@ -950,10 +973,13 @@ def load_all_dsl_constraints(db, *, _models=None,
     # 4c. Per-teacher priority-ordered free-day preferences sourced
     # from the dedicated `TeacherFreeDayPreference` table. Each row
     # is (teacher_id, day, priority) where priority in {1, 2, 3}
-    # maps to weights {30, 20, 10} -- the 1st choice costs the most
-    # to ignore so the solver honors it first under minimisation.
+    # maps to weights {30, 20, 10}. One ranked rule per teacher
+    # (``teacher_free_day_preferences``): the cost depends on the best
+    # choice obtained, so extra free days are not bought at the
+    # expense of quality (rank encoding, Kepler (b)).
     if include_soft and hasattr(_models, "TeacherFreeDayPreference"):
         PRIORITY_WEIGHT = {1: 30, 2: 20, 3: 10}
+        by_teacher: dict = {}
         for r in (db.query(_models.TeacherFreeDayPreference)
                     .order_by(
                         _models.TeacherFreeDayPreference.teacher_id,
@@ -968,16 +994,23 @@ def load_all_dsl_constraints(db, *, _models=None,
             day = int(r.day)
             if day < 1:
                 continue
+            by_teacher.setdefault(r.teacher_id, []).append(
+                (int(r.priority), day, weight))
+        for tid, rows in by_teacher.items():
+            n = teachers.get(tid)
+            rows.sort()
+            prefs = [(day, weight) for _p, day, weight in rows]
+            desc = ", ".join(f"{day} (pri.{p}, w={w})"
+                             for p, day, w in rows)
             out.append({
                 "source": "teacher_free_day_preference",
-                "scope_kind": "teacher", "scope_id": r.teacher_id,
-                "expression": teacher_preferred_free_day_penalty_to_dsl(
-                    n, day, weight),
+                "scope_kind": "teacher", "scope_id": tid,
+                "expression": teacher_free_day_preferences_to_dsl(
+                    n, prefs),
                 "is_hard": False,
-                "weight": weight,
-                "label": (f"Docente {n} preferenza giorno libero "
-                          f"{day} (SOFT pri.{int(r.priority)}, "
-                          f"w={weight})"),
+                "weight": prefs[0][1],
+                "label": (f"Docente {n} preferenze giorno libero "
+                          f"{desc} (SOFT a rango)"),
             })
 
     # 5. CoteachGroup (HARD when required=True)

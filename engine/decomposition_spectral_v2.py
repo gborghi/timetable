@@ -321,7 +321,7 @@ def stage_a_bridges(day, profs, bridges, triples, dc_value,
 
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = time_limit
-    solver.parameters.num_search_workers = workers
+    solver.parameters.num_workers = workers
     solver.parameters.log_search_progress = log
     _solvercfg.configure_solver(solver)
     status = solver.Solve(model)
@@ -434,7 +434,7 @@ def stage_b_cluster_internals(cluster_classes, day, profs, bridges,
 
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = time_limit
-    solver.parameters.num_search_workers = workers
+    solver.parameters.num_workers = workers
     solver.parameters.log_search_progress = log
     _solvercfg.configure_solver(solver)
     status = solver.Solve(model)
@@ -555,7 +555,7 @@ def stage_c_ricucitura(day, profs, bridges, triples, dc_value,
 
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = time_limit
-    solver.parameters.num_search_workers = workers
+    solver.parameters.num_workers = workers
     solver.parameters.log_search_progress = log
     _solvercfg.configure_solver(solver)
     status = solver.Solve(model)

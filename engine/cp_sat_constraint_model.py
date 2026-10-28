@@ -78,6 +78,16 @@ SLOTS_PER_DAY = _cv2.SLOTS_PER_DAY
 # Integer scaling for fractional duals (kept identical to
 # column_generation.py so reduced-cost arithmetic is consistent).
 SCALE = 100
+# SOFT DSL weights are expressed in the units of meta.OBJECTIVE_WEIGHTS
+# (buco = 10); the weekly/monolithic objective uses those units * SCALE,
+# so DSL terms are scaled by the same factor (Kepler (b)). Requires the
+# rank encoding of free-day preferences (teacher_free_day_preferences),
+# otherwise the model buys extra free days at the expense of quality.
+DSL_SCALE = SCALE
+# Partial mode (Kepler 7a): one unplaced hour costs 100 000 points
+# (buco = 10), i.e. far above any quality term but small enough not to
+# wreck the LP relaxation (coefficient 10**7 after SCALE).
+W_MISS_HOUR = 100_000
 
 # SOFT penalty constants -- derived from meta.OBJECTIVE_WEIGHTS so
 # the CP-SAT objective tracks meta.compute_soft term by term.
@@ -132,6 +142,11 @@ class ConstraintConfig:
     parallel_groups: list = field(default_factory=list)
     group_assignments: list = field(default_factory=list)
     plessi_data: Any = None
+    # «Orario parziale» (Kepler point 7a, weekly mode only): the weekly
+    # hours equality becomes ``placed + miss == ore`` with a heavy
+    # penalty on ``miss``, so an over-constrained school still gets a
+    # timetable plus the exact list of hours that could not be placed.
+    partial: bool = False
 
 
 # ============================================================
@@ -331,6 +346,8 @@ class ConstraintModel:
         # nature (no 3 hours of the same subject in one day).
         cap_per_day = min(len(self.hours), PHASE_A_MAX_PER_DAY_TRIPLE)
         prof_cl_day: dict = {}
+        # partial mode: (t, cl, s) -> IntVar of hours NOT placed
+        self.miss: dict = {}
         for teacher, pdata in self.profs.items():
             if not self._scope_includes_teacher(teacher):
                 continue
@@ -375,7 +392,22 @@ class ConstraintModel:
                             self.triples.setdefault(
                                 triples_key, [])
                     if week_vars:
-                        self.model.Add(sum(week_vars) == ore)
+                        if getattr(self.config, "partial", False):
+                            miss = self.model.NewIntVar(
+                                0, ore,
+                                f"miss_{teacher}_{class_name}_{subject}")
+                            if _cv2.subject_key(subject) == \
+                                    "scienzemotorie":
+                                # motorie {0,2} per day: an odd number of
+                                # missing hours would make it infeasible
+                                k2 = self.model.NewIntVar(
+                                    0, ore // 2,
+                                    f"miss2_{teacher}_{class_name}")
+                                self.model.Add(miss == 2 * k2)
+                            self.miss[triples_key] = miss
+                            self.model.Add(sum(week_vars) + miss == ore)
+                        else:
+                            self.model.Add(sum(week_vars) == ore)
         for dcs in prof_cl_day.values():
             if len(dcs) > 1:
                 self.model.Add(sum(dcs) <= PHASE_A_MAX_PER_DAY_PROF_CL)
@@ -437,16 +469,27 @@ class ConstraintModel:
         default), which keeps the existing 619-test surface
         bit-identical.
         """
+        surplus = self._surplus_cells()
+        if not surplus:
+            return
+        # one pass over the slots (was O(|slot|) per surplus (d, h))
+        for (t, cl, s, dd, hh), v in self.slot.items():
+            if (dd, hh) in surplus:
+                self.model.Add(v == 0)
+        # potenziamento never lands on a non-existent hour (Kepler p. 6)
+        for (t, dd, hh), pv in getattr(self, "pot_slot", {}).items():
+            if (dd, hh) in surplus:
+                self.model.Add(pv == 0)
+
+    def _surplus_cells(self) -> set:
+        """(day, hour) cells beyond the day's active slot count (Tab Ore)."""
         max_slots = len(self.hours)
+        out = set()
         for d in self.days:
             n_slots = SLOTS_PER_DAY.get(int(d), max_slots)
-            if n_slots >= max_slots:
-                continue
-            for h_idx in range(n_slots, max_slots):
-                h = self.hours[h_idx]
-                for (t, cl, s, dd, hh), v in self.slot.items():
-                    if dd == d and hh == h:
-                        self.model.Add(v == 0)
+            for h_idx in range(min(n_slots, max_slots), max_slots):
+                out.add((d, self.hours[h_idx]))
+        return out
 
     def add_teacher_no_overlap(self):
         """At most one slot per (teacher, day, hour)."""
@@ -717,10 +760,14 @@ class ConstraintModel:
 
         The pot_slot vars are exposed on ``self.pot_slot`` so callers
         (and ``MonolithicSolver.solve``) can read them after solve.
-        They produce no Lesson rows -- a potenziamento prof has no
-        class to teach, the slot just blocks the teacher's calendar
-        for the school's other purposes (e.g. exam prep, project
-        hours, mandated free-time-with-students).
+        A potenziamento hour is a BUSY hour of the teacher (Kepler
+        point 6, aligned with Phase A which counts it in the 5 h/day
+        cap): the DSL teacher rules (max per day, free days, free-day
+        preferences, day capacity, max consecutive) read it through
+        ``DSLConstraintCompiler._teacher_busy_dh``; it is never created on an hour
+        that does not exist that day; ``forbid_potenziamento_cells``
+        removes HARD-unavailable cells. Callers save it as Lesson rows
+        with class ``__potenziamento__``.
         """
         if assignments is None:
             assignments = list(
@@ -738,26 +785,43 @@ class ConstraintModel:
                 continue
             pot_by_teacher[t] = (
                 pot_by_teacher.get(t, 0) + int(pa["n_hours"]))
+        surplus = self._surplus_cells()
         for t, n_hours in pot_by_teacher.items():
             if n_hours <= 0:
                 continue
             for d in self.days:
                 for h in self.hours:
+                    if (d, h) in surplus:
+                        # hour that does not exist that day (Tab Ore)
+                        continue
                     pv = self.model.NewBoolVar(f"pot_{t}_{d}_{h}")
                     self.pot_slot[(t, d, h)] = pv
             self.model.Add(
-                sum(self.pot_slot[(t, d, h)]
-                    for d in self.days for h in self.hours)
+                sum(pv for (tt, _d, _h), pv in self.pot_slot.items()
+                    if tt == t)
                 == n_hours
             )
             for d in self.days:
                 for h in self.hours:
+                    pot_var = self.pot_slot.get((t, d, h))
+                    if pot_var is None:
+                        continue
                     regular_vars = self.slots_for_teacher_day_hour(
                         t, d, h)
-                    pot_var = self.pot_slot[(t, d, h)]
                     if regular_vars:
                         self.model.Add(
                             pot_var + sum(regular_vars) <= 1)
+
+    def forbid_potenziamento_cells(self, cells) -> int:
+        """HARD unavailability for potenziamento hours: ``cells`` is an
+        iterable of ``(teacher, day, hour)``. Returns the count."""
+        n = 0
+        for key in cells:
+            pv = getattr(self, "pot_slot", {}).get(tuple(key))
+            if pv is not None:
+                self.model.Add(pv == 0)
+                n += 1
+        return n
 
     def add_parallel_groups_intra_class(
         self, groups: list | None = None,
@@ -907,10 +971,11 @@ class ConstraintModel:
                 self.model.Add(v == 1)
 
     def add_class_no_holes(self):
-        """For each (class, day) in scope, the busy slots must be
-        contiguous starting at the earliest hour. Implemented via the
-        non-increasing ``present[h+1] <= present[h]`` chain on the
-        per-hour OR of class-busy indicators.
+        """For each (class, day) in scope: ``no_holes`` -> the busy slots
+        form one contiguous block (any start hour);
+        ``entry_at_8`` -> the block starts at the earliest hour. Two
+        independent gates (Kepler point 4); before, the non-increasing
+        chain made ``no_holes`` imply the entry at 8 as well.
 
         The per-hour ``present[h]`` indicator is built via
         ``_build_class_busy_indicators`` so it shares the SAME
@@ -941,12 +1006,16 @@ class ConstraintModel:
                 continue
             for d in self.days:
                 present_per_h = []
+                zeros = []
                 for h in self.hours:
                     busy = self._build_class_busy_indicators(
                         cl, d, h, name_suffix="nh")
                     if not busy:
-                        present_per_h.append(self.model.NewConstant(0))
+                        z = self.model.NewConstant(0)
+                        present_per_h.append(z)
+                        zeros.append(z)
                         continue
+                    zeros.append(None)
                     if len(busy) == 1:
                         # Single indicator already represents the
                         # class-busy state at h; no extra OR needed.
@@ -955,17 +1024,19 @@ class ConstraintModel:
                     pr = self.model.NewBoolVar(f"pr_{cl}_{d}_{h}")
                     self.model.AddMaxEquality(pr, busy)
                     present_per_h.append(pr)
-                # Class starts at the earliest hour if any are busy:
-                # ap = OR(present); present[0] >= ap.
-                ap = self.model.NewBoolVar(f"ap_{cl}_{d}")
-                self.model.AddMaxEquality(ap, present_per_h)
                 if _e8:
+                    # Class starts at the earliest hour if any are busy:
+                    # ap = OR(present); present[0] >= ap.
+                    ap = self.model.NewBoolVar(f"ap_{cl}_{d}")
+                    self.model.AddMaxEquality(ap, present_per_h)
                     self.model.Add(present_per_h[0] >= ap)
                 if _nh:
-                    # Non-increasing: present[i+1] <= present[i].
-                    for i in range(len(present_per_h) - 1):
-                        self.model.Add(
-                            present_per_h[i + 1] <= present_per_h[i])
+                    # One contiguous block, starting at ANY hour (Kepler
+                    # point 4): entry at 8 is the separate gate above.
+                    _cv2.add_block_contiguity(
+                        self.model,
+                        [None if z is not None else c
+                         for c, z in zip(present_per_h, zeros)])
 
     def add_h3_presence_at_11(self):
         """If the class has any lessons that day, h=11 must be
@@ -1301,7 +1372,18 @@ class ConstraintModel:
                         and n_days_in_scope == len(self.days)):
                     sd = subjs.get(subj)
                     ore = int(sd.get("ore", 0)) if isinstance(sd, dict) else 0
-                    if ore >= 2:
+                    miss = getattr(self, "miss", {}).get(
+                        (teacher, class_name, subj))
+                    if ore >= 2 and miss is not None:
+                        # partial mode: the rule follows the hours
+                        # actually PLACED (ore - miss >= 2)
+                        ge2 = self.model.NewBoolVar(
+                            f"placedGE2_{teacher}_{class_name}_{subj}")
+                        self.model.Add(ore - miss >= 2).OnlyEnforceIf(ge2)
+                        self.model.Add(ore - miss <= 1).OnlyEnforceIf(
+                            ge2.Not())
+                        self.model.AddBoolOr(ge_two_days).OnlyEnforceIf(ge2)
+                    elif ore >= 2:
                         self.model.AddBoolOr(ge_two_days)
 
     def add_motorie_pair(self):
@@ -1643,10 +1725,45 @@ class MonolithicSolver(ConstraintModel):
         # ``add_dsl_constraint`` calls with ``is_hard=False``). Each
         # entry is ``(weight, BoolVar | IntVar)``; the weight is the
         # per-violation penalty the user picked in the UI.
-        for w, var in getattr(self, "dsl_soft_cost_terms", []):
-            obj_terms.append(int(w) * var)
+        obj_terms.extend(self.dsl_soft_objective_terms())
+        obj_terms.extend(self.miss_objective_terms())
         if obj_terms:
             self.model.Minimize(sum(obj_terms))
+
+    def miss_objective_terms(self) -> list:
+        """Partial mode: ``SCALE * W_MISS_HOUR * sum(miss)``."""
+        miss = list(getattr(self, "miss", {}).values())
+        if not miss:
+            return []
+        return [SCALE * W_MISS_HOUR * sum(miss)]
+
+    def missing_report(self, cp_solver) -> list:
+        """``[{teacher, class, subject, missing}]`` of the hours the
+        partial solve could not place, largest first."""
+        out = []
+        for (t, cl, s), v in getattr(self, "miss", {}).items():
+            n = int(cp_solver.Value(v))
+            if n:
+                out.append({"teacher": t, "class": cl, "subject": s,
+                            "missing": n})
+        out.sort(key=lambda r: (-r["missing"], r["teacher"], r["class"],
+                                r["subject"]))
+        return out
+
+    def dsl_soft_objective_terms(self) -> list:
+        """SOFT DSL terms (``dsl_soft_cost_terms``) as objective terms:
+        weight clamped to [0, SOFT_WEIGHT_MAX] and scaled by
+        ``DSL_SCALE`` into the same units as ``compute_soft_cost_expr``."""
+        try:
+            from .dsl_to_cpsat import clamp_soft_weight  # type: ignore
+        except ImportError:
+            from dsl_to_cpsat import clamp_soft_weight  # type: ignore
+        out = []
+        for w, var in getattr(self, "dsl_soft_cost_terms", []):
+            cw = clamp_soft_weight(w)
+            if cw:
+                out.append(DSL_SCALE * cw * var)
+        return out
 
     def solve(self, *, time_limit_s: float = 10.0,
               workers: int = 4, log: bool = False,
@@ -1666,7 +1783,7 @@ class MonolithicSolver(ConstraintModel):
                 _gate.add_nogood(self.model, self.slot, fsol)
         solver = cp_model.CpSolver()
         solver.parameters.max_time_in_seconds = float(time_limit_s)
-        solver.parameters.num_search_workers = int(workers)
+        solver.parameters.num_workers = int(workers)
         solver.parameters.log_search_progress = log
         _solvercfg.configure_solver(solver)
         status = solver.Solve(self.model)
@@ -1979,7 +2096,7 @@ class DayCountModel(ConstraintModel):
         self.build()
         solver = cp_model.CpSolver()
         solver.parameters.max_time_in_seconds = float(time_limit_s)
-        solver.parameters.num_search_workers = int(workers)
+        solver.parameters.num_workers = int(workers)
         solver.parameters.log_search_progress = log
         _solvercfg.configure_solver(solver)
         status = solver.Solve(self.model)
@@ -2299,7 +2416,7 @@ class PricerSolver(ConstraintModel):
         self.build(via_dsl=via_dsl)
         solver = cp_model.CpSolver()
         solver.parameters.max_time_in_seconds = float(time_limit_s)
-        solver.parameters.num_search_workers = int(workers)
+        solver.parameters.num_workers = int(workers)
         solver.parameters.log_search_progress = False
         _solvercfg.configure_solver(solver)
         status = solver.Solve(self.model)

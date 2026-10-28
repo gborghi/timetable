@@ -807,7 +807,7 @@ def _pricing_subproblem_teacher_legacy(
 
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = float(time_limit)
-    solver.parameters.num_search_workers = int(workers)
+    solver.parameters.num_workers = int(workers)
     solver.parameters.log_search_progress = False
     _solvercfg.configure_solver(solver)
     status = solver.Solve(model)
@@ -988,7 +988,7 @@ def _pricing_subproblem_teacher_class(
 
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = float(time_limit)
-    solver.parameters.num_search_workers = int(workers)
+    solver.parameters.num_workers = int(workers)
     solver.parameters.log_search_progress = False
     _solvercfg.configure_solver(solver)
     status = solver.Solve(model)
@@ -1146,7 +1146,7 @@ def _pricing_subproblem_teacher_class_subject(
 
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = float(time_limit)
-    solver.parameters.num_search_workers = int(workers)
+    solver.parameters.num_workers = int(workers)
     solver.parameters.log_search_progress = False
     _solvercfg.configure_solver(solver)
     status = solver.Solve(model)
@@ -1306,7 +1306,7 @@ def _pricing_subproblem_teacher_subject(
 
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = float(time_limit)
-    solver.parameters.num_search_workers = int(workers)
+    solver.parameters.num_workers = int(workers)
     solver.parameters.log_search_progress = False
     _solvercfg.configure_solver(solver)
     status = solver.Solve(model)
@@ -1483,7 +1483,7 @@ def _pricing_subproblem_teacher_day(
 
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = float(time_limit)
-    solver.parameters.num_search_workers = int(workers)
+    solver.parameters.num_workers = int(workers)
     solver.parameters.log_search_progress = False
     _solvercfg.configure_solver(solver)
     status = solver.Solve(model)
@@ -2049,7 +2049,7 @@ def _pricing_subproblem_class(
 
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = float(time_limit)
-    solver.parameters.num_search_workers = int(workers)
+    solver.parameters.num_workers = int(workers)
     solver.parameters.log_search_progress = False
     _solvercfg.configure_solver(solver)
     status = solver.Solve(model)
@@ -2248,7 +2248,7 @@ def _pricing_subproblem_class_day(
 
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = float(time_limit)
-    solver.parameters.num_search_workers = int(workers)
+    solver.parameters.num_workers = int(workers)
     solver.parameters.log_search_progress = False
     _solvercfg.configure_solver(solver)
     status = solver.Solve(model)
@@ -2462,7 +2462,7 @@ def _pricing_subproblem_day(
 
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = float(time_limit)
-    solver.parameters.num_search_workers = int(workers)
+    solver.parameters.num_workers = int(workers)
     solver.parameters.log_search_progress = False
     _solvercfg.configure_solver(solver)
     status = solver.Solve(model)
@@ -2696,7 +2696,7 @@ def _pricing_subproblem_curriculum(
 
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = float(time_limit)
-    solver.parameters.num_search_workers = int(workers)
+    solver.parameters.num_workers = int(workers)
     solver.parameters.log_search_progress = False
     _solvercfg.configure_solver(solver)
     status = solver.Solve(model)

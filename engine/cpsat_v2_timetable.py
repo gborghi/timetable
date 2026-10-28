@@ -186,6 +186,31 @@ def _ensure_dsl_imports_available() -> None:
         sys.path.insert(0, here)
 
 
+def add_block_contiguity(model, present, name=""):
+    r"""Le ore occupate della classe nel giorno formano UN SOLO blocco, che
+    puo' cominciare a qualsiasi ora (punto 4 di Kepler).
+
+    ``present`` e' la lista per ora (in ordine) di BoolVar «classe
+    occupata»; ``None`` indica un'ora sicuramente libera (costante 0).
+    Clausole «niente ritorno dopo un'uscita»:
+    ``p[i-1] and not p[i] => not p[j]`` per ogni ``j > i``. L'entrata alla
+    prima ora NON e' implicata: e' un vincolo separato (``entry_at_8``).
+    Con 6 ore sono 10 clausole, con propagazione unitaria forte."""
+    n = len(present)
+    for i in range(1, n - 1):
+        prev, cur = present[i - 1], present[i]
+        if prev is None:
+            continue  # p[i-1] = 0: clausola soddisfatta
+        for j in range(i + 1, n):
+            pj = present[j]
+            if pj is None:
+                continue
+            lits = [prev.Not(), pj.Not()]
+            if cur is not None:
+                lits.insert(1, cur)
+            model.AddBoolOr(lits)
+
+
 def subject_key(name) -> str:
     r"""Chiave canonica per confrontare i nomi delle materie.
 
@@ -1086,27 +1111,48 @@ def solve_phase_a(profs, classes, triples, class_profs,
     # distribution to free the top choice (weights come from
     # ``engine_io._FREE_DAY_PREF_WEIGHT`` on the profs dict; priority 1 is set
     # above the sixth-hour term so it wins unless coverage forbids it).
+    # Rank encoding (Kepler, verifica (b)): the cost depends on the BEST
+    # choice obtained -- ``sum_k inc_k * (1 - o_k)`` with ``o_k = OR(free
+    # of choices 1..k)`` and ``inc_k = w_k - w_{k+1}`` -- so once the 1st
+    # choice is free, freeing the 2nd/3rd as well earns nothing. The old
+    # additive encoding paid ``w`` for EVERY preferred day worked and made
+    # the model buy extra free days at the expense of quality.
     freeday_pref_terms = []
     freeday_pref_weight_sum = 0
     for p in triples_by_prof:
+        _clean = []
+        _seen = set()
         for pref in ((profs.get(p, {}) or {}).get("free_day_prefs") or []):
             try:
                 pref_day, weight = int(pref[0]), int(pref[1])
             except (TypeError, ValueError, IndexError):
                 continue
-            if weight <= 0 or (p, pref_day) not in prof_day_load:
+            weight = max(0, min(10_000, weight))
+            if weight <= 0 or pref_day in _seen:
                 continue
-            works = model.NewBoolVar(f"fdpref_{p}_{pref_day}")
-            model.Add(prof_day_load[(p, pref_day)] >= 1).OnlyEnforceIf(works)
-            model.Add(prof_day_load[(p, pref_day)] == 0).OnlyEnforceIf(
-                works.Not())
-            freeday_pref_terms.append(weight * works)
-            freeday_pref_weight_sum += weight
-    # Upper bound = exact sum of the weights actually posted. The old
-    # hand-written cap (9 * n_teachers, "weight 1-3") was far below the
-    # real weights (engine_io._FREE_DAY_PREF_WEIGHT = 150/45/15), so the
-    # IntVar domain silently acted as a HARD limit on the violated
-    # preferences and made Phase A spuriously INFEASIBLE (review Kepler #1).
+            _seen.add(pref_day)
+            _clean.append((pref_day, weight))
+        _ws = []
+        for _d, _w in _clean:
+            _ws.append(min(_w, _ws[-1]) if _ws else _w)
+        _acc = []
+        for k, (pref_day, _w) in enumerate(_clean):
+            if (p, pref_day) not in prof_day_load:
+                break  # day not schedulable for p: trivially free
+            free = model.NewBoolVar(f"fdfree_{p}_{pref_day}")
+            model.Add(prof_day_load[(p, pref_day)] == 0).OnlyEnforceIf(free)
+            model.Add(prof_day_load[(p, pref_day)] >= 1).OnlyEnforceIf(
+                free.Not())
+            _acc.append(free)
+            inc = _ws[k] - (_ws[k + 1] if k + 1 < len(_ws) else 0)
+            if inc <= 0:
+                continue
+            o = model.NewBoolVar(f"fdrank_{p}_{k}")
+            model.AddBoolOr(list(_acc)).OnlyEnforceIf(o)
+            for _a in _acc:
+                model.AddImplication(_a, o)
+            freeday_pref_terms.append(inc * o.Not())
+            freeday_pref_weight_sum += inc
     _fd_max = max(1, freeday_pref_weight_sum)
     freeday_pref_pen = model.NewIntVar(0, _fd_max, "fdpref_pen")
     if freeday_pref_terms:
@@ -1250,7 +1296,7 @@ def solve_phase_a(profs, classes, triples, class_profs,
 
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = time_limit
-    solver.parameters.num_search_workers = workers
+    solver.parameters.num_workers = workers
     solver.parameters.log_search_progress = log
     # Phase A: the gap limit is DELIBERATE, not just a speed hack.
     # Phase A's objective (uniform_class/uniform_prof) is a PROXY for
@@ -1871,8 +1917,8 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
         # not subject to the curriculum no-holes / 4-hours-min logic.
         if cl not in cls_with_direct_triples:
             continue
-        # Per-class gates (finding 08b): `no_holes` (non-increasing
-        # presence) and `entry_at_8` (first hour occupied when the class
+        # Per-class gates (finding 08b): `no_holes` (one contiguous
+        # block) and `entry_at_8` (first hour occupied when the class
         # has any lesson) default to the global `enforce_no_holes` so
         # untouched classes are unchanged.
         _enf_no_holes = _cf(cl, "no_holes", enforce_no_holes)
@@ -1884,9 +1930,8 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
                 # se la classe ha lezione, parte alle 8
                 model.Add(present[0] >= any_present)
             if _enf_no_holes:
-                # non crescente
-                for i in range(len(present) - 1):
-                    model.Add(present[i + 1] <= present[i])
+                # un solo blocco (l'entrata alle 8 e' il vincolo sopra)
+                add_block_contiguity(model, present)
 
         # HARD (2) "uscita non prima delle 12:00":
         # se la classe ha lezione (= cl in cls_in_day), allora la 4^a
@@ -2240,7 +2285,7 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
 
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = time_limit
-    solver.parameters.num_search_workers = workers
+    solver.parameters.num_workers = workers
     solver.parameters.log_search_progress = log
     solver.parameters.linearization_level = 1
     # CRITICAL: gap limit prevents the solver from spending the full

@@ -439,7 +439,7 @@ def solve_assignment_dsl(data: dict, dsl_expression: str,
     # === Solve =======================================================
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = time_limit_s
-    solver.parameters.num_search_workers = workers
+    solver.parameters.num_workers = workers
     solver.parameters.log_search_progress = log
     solver.parameters.linearization_level = 2
     solver.parameters.cp_model_probing_level = 2

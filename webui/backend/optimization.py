@@ -28,6 +28,7 @@ from .engine_paths import ensure_engine_on_path  # noqa: E402
 ensure_engine_on_path()
 
 from ortools.sat.python import cp_model
+import solver_config as _solvercfg  # noqa: E402
 from sqlalchemy.orm import Session
 
 from . import engine_io, models
@@ -846,7 +847,8 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                 phase_a_mode: str = "always",
                 respect_room_capacity: bool = False,
                 thoroughness: str = "balanced",
-                joint_vars: dict | None = None) -> int:
+                joint_vars: dict | None = None,
+                partial: bool = False) -> int:
     # Phase 3 -- enforce the same (cp_sat_scope, phase_a_mode)
     # cross-field rules as PhaseBRunIn so direct callers (full
     # pipeline, programmatic harness, tests) get the same guard. The
@@ -929,7 +931,7 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                   cp_sat_scope=cp_sat_scope,
                   phase_a_mode=phase_a_mode,
                   respect_room_capacity=respect_room_capacity,
-                  joint_vars=_jv)
+                  joint_vars=_jv, partial=bool(partial))
     _preflight_lock_check()
     run_id = create_run("phase_b", "Schedulazione orario", None, params)
 
@@ -1036,6 +1038,7 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                 parallel_groups=parallel_groups,
                 group_assignments=group_assignments,
                 joint_vars=_jv,
+                partial=bool(partial),
             )
             update_run(rid, progress=0.90, current_step="phase_b")
         else:
@@ -1351,6 +1354,9 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
             pickle.dump(full_solution, f)
 
         v, m = meta.compute_soft(full_solution, profs)
+        _pot = _pop_pot_solution(rid)
+        if _pot:
+            m["potenziamento"] = _pot
         feasible = meta.is_hard_feasible(full_solution, profs, verbose=False,
                                          **_hard_check_ctx_fresh())
         # Coverage + which cattedre are (partly) unplaced.
@@ -1367,12 +1373,23 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
         # both complete AND hard-feasible. A silently-activated partial or a
         # timetable the validator rejects is exactly what the audit flagged.
         make_active = bool(feasible and complete)
+        _missing = _MISSING_BY_RUN.pop(rid, None)
+        if _missing is not None:
+            # «Orario parziale» (Kepler 7a): the exact list of unplaced
+            # hours replaces the generic coverage report; never active.
+            m["missing"] = _missing[:200]
+            m["missing_count"] = sum(r["missing"] for r in _missing)
+            m.pop("uncovered", None)
+            m.pop("uncovered_count", None)
+            make_active = False
         with SessionLocal() as db:
             sid = engine_io.import_solution_into_db(
                 db, full_solution,
                 name=f"Phase B run {rid}"
-                     + ("" if make_active else " (parziale / non valido)"),
-                kind="phase_b",
+                     + (" (orario parziale)" if _missing is not None
+                        else "" if make_active
+                        else " (parziale / non valido)"),
+                kind="partial" if _missing is not None else "phase_b",
                 obj_value=float(v),
                 metrics={**m, "feasible": feasible},
                 make_active=make_active,
@@ -1551,20 +1568,19 @@ def _week_objective_terms(solver, *, exclude=None) -> list:
     (``compute_soft_cost_expr(mode="default")``) PLUS the SOFT DSL rules
     compiled by ``_apply_dsl_rules_to_week_solver`` (free-day
     preferences, soft unavailability, preferred compresenze, general
-    soft rules).
+    soft rules), scaled by ``DSL_SCALE`` like the internal terms.
 
     The week path never calls ``MonolithicSolver.build()``, so before
     this helper the SOFT DSL terms were compiled but never minimised
     (review Kepler #2). Same weighting as ``MonolithicSolver.build``
-    (``int(w) * var``) so both week-scope entry points share one
+    (``dsl_soft_objective_terms``: clamp + DSL_SCALE) so both week-scope entry points share one
     objective.
     """
     obj_terms, _ = solver.compute_soft_cost_expr(
         mode="default", exclude=exclude)
     obj_terms = list(obj_terms)
-    obj_terms.extend(
-        int(w) * v
-        for (w, v) in getattr(solver, "dsl_soft_cost_terms", []))
+    obj_terms.extend(solver.dsl_soft_objective_terms())
+    obj_terms.extend(solver.miss_objective_terms())
     return obj_terms
 
 
@@ -1583,7 +1599,8 @@ def _solve_phase_b_week(*, rid: int, ws: str, profs: dict,
                           group_assignments: list | None,
                           joint_vars: dict | None = None,
                           progress_base: float = 0.30,
-                          progress_span: float = 0.58) -> dict:
+                          progress_span: float = 0.58,
+                          partial: bool = False) -> dict:
     """Phase 3 -- single CP-SAT call covering the whole week via
     ``MonolithicSolver(scope=None)``.
 
@@ -1711,7 +1728,7 @@ def _solve_phase_b_week(*, rid: int, ws: str, profs: dict,
     # capture matches the returned schedule.
     _jrm_holder: dict = {"map": None}
 
-    def _build_week_solver(forbidden):
+    def _build_week_solver(forbidden, partial_mode=False):
         """Build the monolithic week-scope solver from scratch and
         return ``(solver, cp_solver, status_name)`` after solving.
 
@@ -1735,21 +1752,12 @@ def _solve_phase_b_week(*, rid: int, ws: str, profs: dict,
             potenziamento_assignments=list(potenziamento_assignments or []),
             parallel_groups=list(parallel_groups or []),
             group_assignments=list(group_assignments or []),
+            partial=bool(partial_mode),
         )
         solver = csm.MonolithicSolver(profs, dc_value=None, config=cfg,
                                         scope=None)
         print(f"[phaseB.week] slot vars: {len(solver.slot)}, "
               f"day_count hint vars: {len(solver.day_count_for_hint)}")
-
-        # Wire up DB-driven DSL pragmas at level=phase_b (skip phase_a-only
-        # pragmas: their day_count IntVars don't exist on the slot-only
-        # week model).
-        with SessionLocal() as db:
-            n_rules = _apply_dsl_rules_to_week_solver(
-                solver, db, level="phase_b")
-        if n_rules:
-            print(f"[phaseB.week] loaded {n_rules} DSL rules "
-                  "(HARD + SOFT, level=phase_b)")
 
         # Inter-class group slots first so subsequent helpers see them.
         solver.add_parallel_groups_inter_class()
@@ -1757,6 +1765,24 @@ def _solve_phase_b_week(*, rid: int, ws: str, profs: dict,
         solver.add_support_assignments()
         solver.add_potenziamento_assignments()
         solver.add_parallel_groups_intra_class()
+
+        # Wire up DB-driven DSL pragmas at level=phase_b (skip phase_a-only
+        # pragmas: their day_count IntVars don't exist on the slot-only
+        # week model). AFTER the potenziamento slots exist, so the teacher
+        # rules (free days, preferences, day capacity) see them as busy
+        # hours (Kepler point 6); HARD per-cell unavailability is applied
+        # to the potenziamento slots explicitly.
+        with SessionLocal() as db:
+            n_rules = _apply_dsl_rules_to_week_solver(
+                solver, db, level="phase_b")
+            _n_pot_un = solver.forbid_potenziamento_cells(
+                engine_io.teacher_hard_unavailable_cells(db))
+        if n_rules:
+            print(f"[phaseB.week] loaded {n_rules} DSL rules "
+                  "(HARD + SOFT, level=phase_b)")
+        if _n_pot_un:
+            print(f"[phaseB.week] potenziamento: {_n_pot_un} celle "
+                  "non disponibili escluse")
         solver.add_all_hard_constraints()
         solver.add_class_no_overlap()
 
@@ -1831,8 +1857,11 @@ def _solve_phase_b_week(*, rid: int, ws: str, profs: dict,
 
         cp_solver = cp_model.CpSolver()
         cp_solver.parameters.max_time_in_seconds = float(time_mono)
-        cp_solver.parameters.num_search_workers = int(workers)
+        cp_solver.parameters.num_workers = int(workers)
         cp_solver.parameters.log_search_progress = bool(log)
+        # Seed fisso (PITANTUM_SOLVER_SEED) e, con PITANTUM_DETERMINISTIC,
+        # un solo worker: run ripetibili (Kepler, punto 8.1).
+        _solvercfg.configure_solver(cp_solver)
         print(f"[phaseB.week] solving (time_limit={time_mono}s, "
               f"workers={workers})")
         # Advance the progress bar during this single long solve (finding
@@ -1860,6 +1889,7 @@ def _solve_phase_b_week(*, rid: int, ws: str, profs: dict,
             return None, status_name
         sol = {k: 1 for k, v in solver.slot.items() if cp_solver.Value(v)}
         _jrm_holder["map"] = _room_map_from_joint_x(solver, cp_solver)
+        _POT_BY_RUN[rid] = _pot_solution(solver, cp_solver)
         return sol, status_name
 
     if hard_exprs:
@@ -1927,6 +1957,19 @@ def _solve_phase_b_week(*, rid: int, ws: str, profs: dict,
     # Default path (no hard DSL): single-shot build + solve, byte-identical
     # to the legacy behaviour (no verify, no refinement, no extra solve).
     solver, cp_solver, status, status_name = _build_week_solver([])
+    if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE) and partial:
+        # «Orario parziale» (Kepler 7a): same model with unplaced hours
+        # allowed and heavily penalised; the caller saves the result as a
+        # non-active partial solution with the list of missing hours.
+        print(f"[phaseB.week] {status_name}: retry in modalita' "
+              "orario parziale")
+        solver, cp_solver, status, status_name = _build_week_solver(
+            [], partial_mode=True)
+        if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+            _MISSING_BY_RUN[rid] = solver.missing_report(cp_solver)
+            print(f"[phaseB.week] orario parziale: "
+                  f"{sum(r['missing'] for r in _MISSING_BY_RUN[rid])} "
+                  "ore non collocate")
     if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         if locks_5:
             raise RuntimeError(
@@ -1943,7 +1986,30 @@ def _solve_phase_b_week(*, rid: int, ws: str, profs: dict,
     full_solution = {
         k: 1 for k, v in solver.slot.items() if cp_solver.Value(v)}
     _jrm_holder["map"] = _room_map_from_joint_x(solver, cp_solver)
+    _POT_BY_RUN[rid] = _pot_solution(solver, cp_solver)
     return full_solution, _jrm_holder["map"]
+
+
+# Potenziamento hours placed by the week solve, by run id (Kepler point 6).
+# They occupy the teacher (5 h/day cap, free day, unavailability) but are
+# not class lessons, so they are not in ``full_solution``: the run saves
+# them in the solution metrics as ``metrics["potenziamento"]``.
+_POT_BY_RUN: dict[int, list[dict]] = {}
+# Partial-mode report by run id (Kepler 7a): [{teacher, class, subject,
+# missing}] of the hours the partial week solve could not place.
+_MISSING_BY_RUN: dict[int, list[dict]] = {}
+
+
+def _pot_solution(solver, cp_solver) -> list[dict]:
+    return sorted(
+        ({"teacher": t, "day": int(d), "hour": int(h)}
+         for (t, d, h), v in getattr(solver, "pot_slot", {}).items()
+         if cp_solver.Value(v)),
+        key=lambda r: (r["teacher"], r["day"], r["hour"]))
+
+
+def _pop_pot_solution(rid: int) -> list[dict]:
+    return _POT_BY_RUN.pop(rid, [])
 
 
 # ----------------------------------------------------------------------
@@ -2873,6 +2939,9 @@ def run_full_pipeline(profile: str,
                         if out is not None:
                             full_solution.update(out)
                 v, m = meta.compute_soft(full_solution, profs)
+                _pot = _pop_pot_solution(rid)
+                if _pot:
+                    m["potenziamento"] = _pot
                 feasible = meta.is_hard_feasible(
                     full_solution, profs, verbose=False,
                     **_hard_check_ctx_fresh(),
@@ -3064,6 +3133,9 @@ def run_full_pipeline(profile: str,
                 # metaheuristics that follow in the pipeline list.
                 full_solution = state["full_solution"] or {}
                 v, m = meta.compute_soft(full_solution, profs)
+                _pot = _pop_pot_solution(rid)
+                if _pot:
+                    m["potenziamento"] = _pot
                 feasible = meta.is_hard_feasible(
                     full_solution, profs, verbose=False,
                     **_hard_check_ctx_fresh())

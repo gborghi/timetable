@@ -64,6 +64,19 @@ _DAY_LABELS = {
 }
 
 
+# Clamp of user/import SOFT weights before any scaling (Kepler (b)/(c)):
+# a weight of 10**18 from an import would overflow int64 once multiplied.
+SOFT_WEIGHT_MAX = 10_000
+
+
+def clamp_soft_weight(w) -> int:
+    try:
+        w = int(w)
+    except (TypeError, ValueError):
+        return 0
+    return max(0, min(SOFT_WEIGHT_MAX, w))
+
+
 def _normalize_day_value(v: Any) -> int | None:
     """Convert a day literal (int or str) to a configured day ID.
 
@@ -480,6 +493,7 @@ def _eval_static_call(node, env: dict,
 PRAGMA_LEVEL: dict[str, str] = {
     # Phase B (slot Bool) pragmas
     "no_holes_class": "phase_b",
+    "class_entry_first_hour": "phase_b",
     "no_holes_all_classes": "phase_b",
     "no_same_class_consecutive_days": "phase_b",
     "class_present_at_hour": "phase_b",
@@ -512,6 +526,7 @@ PRAGMA_LEVEL: dict[str, str] = {
     # silently drop these rules).
     "teacher_at_least_n_free_days": "both",
     "teacher_preferred_free_day_penalty": "both",
+    "teacher_free_day_preferences": "both",
     # Teacher day-capacity pragmas. A per-cell (day, hour)
     # unavailability cannot be expressed at Phase A, which has no hour
     # dimension -- but its CONSEQUENCE can: a teacher blocked for k of
@@ -662,6 +677,14 @@ class DSLConstraintCompiler:
             self._by_s.setdefault(s, []).append(k)
             self._by_d.setdefault(d, []).append(k)
             self._by_h.setdefault(h, []).append(k)
+        # Potenziamento slots of the owning model, by teacher: a
+        # potenziamento hour occupies the teacher like a lesson (Kepler
+        # point 6), so the teacher rules below read ``_teacher_busy_dh``.
+        self._pot_by_t: dict = {}
+        for (pt, pd, ph), pv in (getattr(owner_model, "pot_slot", None)
+                                 or {}).items():
+            self._pot_by_t.setdefault(pt, []).append(((pd, ph), pv))
+        self._busy_dh_cache: dict = {}
         self.diagnostics: list[str] = []
 
     # ----- public entry -----
@@ -1089,6 +1112,14 @@ class DSLConstraintCompiler:
                 return True
             self._compile_no_holes_for_class(str(arg_values[0]))
             return True
+        if name == "class_entry_first_hour":
+            if len(arg_values) != 1:
+                self.diagnostics.append(
+                    f"class_entry_first_hour expects 1 arg, got "
+                    f"{len(arg_values)}")
+                return True
+            self._compile_class_entry_first_hour(str(arg_values[0]))
+            return True
         if name == "no_holes_all_classes":
             if arg_values:
                 self.diagnostics.append(
@@ -1378,6 +1409,24 @@ class DSLConstraintCompiler:
             d = _normalize_day_value(arg_values[1]) or int(arg_values[1])
             self._compile_teacher_day_capacity(t, d, int(arg_values[2]))
             return True
+        if name == "teacher_free_day_preferences":
+            # SOFT ranked free-day preferences of one teacher, in
+            # priority order: (teacher, d1, w1, d2, w2, ...). Rank
+            # encoding: the cost depends on the BEST choice obtained,
+            # so extra free days beyond it are not rewarded.
+            if len(arg_values) < 3 or len(arg_values) % 2 != 1:
+                self.diagnostics.append(
+                    "teacher_free_day_preferences expects "
+                    "(teacher, day1, weight1, day2, weight2, ...)")
+                return True
+            t = str(arg_values[0])
+            prefs = []
+            for i in range(1, len(arg_values), 2):
+                d = (_normalize_day_value(arg_values[i])
+                     or int(arg_values[i]))
+                prefs.append((int(d), int(arg_values[i + 1])))
+            self._compile_teacher_free_day_preferences(t, prefs)
+            return True
         if name == "teacher_preferred_free_day_penalty":
             # SOFT priority preference: pay weight if teacher works
             # on the given day. Args: (teacher_name, day, weight).
@@ -1492,10 +1541,10 @@ class DSLConstraintCompiler:
                     self.soft_cost_terms.append((self.soft_weight, b))
 
     def _compile_no_holes_for_class(self, cl: str):
-        """Class no-holes: per (class, day) the busy slots are
-        contiguous and start at the earliest hour. Encoded via the
-        non-increasing chain on per-hour OR indicators -- identical
-        to ConstraintModel.add_class_no_holes for a single class.
+        """Class no-holes: per (class, day) the busy slots form ONE
+        contiguous block, starting at any hour (Kepler point 4; the
+        entry at the first hour is ``class_entry_first_hour``) --
+        identical to ConstraintModel.add_class_no_holes for one class.
 
         Per-hour ``present[h]`` is built from
         ``_class_busy_indicators`` so the rule honors the same
@@ -1508,12 +1557,16 @@ class DSLConstraintCompiler:
             return
         for d in days:
             present_per_h = []
+            zeros = []
             for h in hours:
                 busy = self._class_busy_indicators(
                     cl, d, h, name_suffix="nh")
                 if not busy:
-                    present_per_h.append(self.model.NewConstant(0))
+                    z = self.model.NewConstant(0)
+                    present_per_h.append(z)
+                    zeros.append(z)
                     continue
+                zeros.append(None)
                 if len(busy) == 1:
                     present_per_h.append(busy[0])
                     continue
@@ -1521,12 +1574,49 @@ class DSLConstraintCompiler:
                     f"_dsl_pr_{cl}_{d}_{h}")
                 self.model.AddMaxEquality(pr, busy)
                 present_per_h.append(pr)
-            ap = self.model.NewBoolVar(f"_dsl_ap_{cl}_{d}")
+            try:
+                from . import cpsat_v2_timetable as _cv2  # type: ignore
+            except ImportError:
+                import cpsat_v2_timetable as _cv2  # type: ignore
+            _cv2.add_block_contiguity(
+                self.model,
+                [None if z is not None else c
+                 for c, z in zip(present_per_h, zeros)])
+
+    def _compile_class_entry_first_hour(self, cl: str):
+        """Class entry at the first hour: if the class has any lesson on
+        a day, the earliest hour in scope is busy (``entry_at_8``).
+        Separate from ``no_holes_class`` since Kepler point 4."""
+        days = self._days_in_scope()
+        hours = self._hours_in_scope()
+        if not hours:
+            return
+        for d in days:
+            present_per_h = []
+            first = None
+            for idx, h in enumerate(hours):
+                busy = self._class_busy_indicators(
+                    cl, d, h, name_suffix="e8")
+                if not busy:
+                    continue
+                if len(busy) == 1:
+                    pr = busy[0]
+                else:
+                    pr = self.model.NewBoolVar(f"_dsl_pre8_{cl}_{d}_{h}")
+                    self.model.AddMaxEquality(pr, busy)
+                if idx == 0:
+                    first = pr
+                present_per_h.append(pr)
+            if not present_per_h:
+                continue
+            if first is None:
+                # first hour can never be busy: no lesson at all today
+                for v in present_per_h:
+                    self.model.Add(v == 0)
+                continue
+            ap = self.model.NewBoolVar(f"_dsl_ape8_{cl}_{d}")
             self.model.AddMaxEquality(ap, present_per_h)
-            self.model.Add(present_per_h[0] >= ap)
-            for i in range(len(present_per_h) - 1):
-                self.model.Add(
-                    present_per_h[i + 1] <= present_per_h[i])
+            self.model.Add(first >= ap)
 
     def _compile_class_present_at_hour(self, cl: str, hr: int):
         """If the class has any lesson that day, the slot at ``hr``
@@ -1568,13 +1658,31 @@ class DSLConstraintCompiler:
             self.model.AddMaxEquality(pr_h, bvs_hr)
             self.model.Add(pr_h >= any_d)
 
+    def _teacher_busy_dh(self, t: str) -> dict:
+        """``{(day, hour): [vars]}`` of everything occupying teacher
+        ``t``: lesson slots (via the ``_by_t`` index, no full scan) plus
+        the owner's potenziamento slots."""
+        hit = self._busy_dh_cache.get(t)
+        if hit is not None:
+            return hit
+        out: dict = {}
+        for k in self._by_t.get(t, []):
+            out.setdefault((int(k[3]), k[4]), []).append(self.slot[k])
+        for (pd, ph), pv in self._pot_by_t.get(t, []):
+            out.setdefault((int(pd), ph), []).append(pv)
+        self._busy_dh_cache[t] = out
+        return out
+
+    def _teacher_day_vars(self, t: str, d: int) -> list:
+        return [v for (dd, _h), vs in self._teacher_busy_dh(t).items()
+                if dd == int(d) for v in vs]
+
     def _compile_teacher_max_per_day(self, t: str, n: int):
-        """sum_{cl, s, h} slot[(t, cl, s, d, h)] <= n for every day."""
+        """sum of the teacher's busy slots (lessons + potenziamento)
+        <= n for every day."""
         days = self._days_in_scope()
-        self._hours_in_scope()
         for d in days:
-            vs = [v for (tt, _cl, _s, dd, _h), v in self.slot.items()
-                  if tt == t and dd == d]
+            vs = self._teacher_day_vars(t, d)
             if vs:
                 self.model.Add(sum(vs) <= int(n))
 
@@ -1592,11 +1700,11 @@ class DSLConstraintCompiler:
         days = self._days_in_scope()
         hours = sorted(self._hours_in_scope())
         n = max(int(n), 0)
+        busy = self._teacher_busy_dh(t)
         for d in days:
             for i in range(len(hours) - n):
-                window = set(hours[i:i + n + 1])
-                vs = [v for (tt, _cl, _s, dd, hh), v in self.slot.items()
-                      if tt == t and dd == d and hh in window]
+                vs = [v for hh in hours[i:i + n + 1]
+                      for v in busy.get((int(d), hh), ())]
                 if vs:
                     self.model.Add(sum(vs) <= n)
 
@@ -2324,11 +2432,7 @@ class DSLConstraintCompiler:
         if cache_key in self._teacher_day_busy_cache:
             return self._teacher_day_busy_cache[cache_key]
         # Phase B path: OR over (c, s, h) of slot[t, c, s, d, h].
-        slot_vars = []
-        for k in self._by_t.get(t, []):
-            _t, _cl, _s, dd, _h = k
-            if int(dd) == int(d):
-                slot_vars.append(self.slot[k])
+        slot_vars = self._teacher_day_vars(t, d)
         if slot_vars:
             b = self.model.NewBoolVar(
                 f"_dsl_busy_{t}_{int(d)}")
@@ -2355,8 +2459,7 @@ class DSLConstraintCompiler:
         day_count contains any (t, _, _, d, _) entry, returns an
         empty list."""
         days: set[int] = set()
-        for k in self._by_t.get(t, []):
-            _t, _cl, _s, dd, _h = k
+        for (dd, _h) in self._teacher_busy_dh(t):
             days.add(int(dd))
         for (pp, _cl, _s, dd) in self.day_count.keys():
             if pp == t:
@@ -2432,8 +2535,7 @@ class DSLConstraintCompiler:
         misspelled name stays greppable."""
         d, n = int(d), max(0, int(n))
         touched = False
-        slot_vars = [self.slot[k] for k in self._by_t.get(t, [])
-                     if int(k[3]) == d]
+        slot_vars = self._teacher_day_vars(t, d)
         if slot_vars:
             self.model.Add(sum(slot_vars) <= n)
             touched = True
@@ -2453,6 +2555,53 @@ class DSLConstraintCompiler:
         with a capacity of zero -- a mandatory free day, or a day whose
         every configured slot is HARD-unavailable."""
         self._compile_teacher_day_capacity(t, d, 0)
+
+    def _compile_teacher_free_day_preferences(self, t: str, prefs):
+        """SOFT ranked preferences (Kepler, verifica (b)).
+
+        ``prefs`` = [(day, weight), ...] in priority order. With
+        ``free_k`` = "day k is free" and ``o_k = OR(free_1..free_k)``
+        the cost is ``sum_k inc_k * (1 - o_k)`` where ``inc_k = w_k -
+        w_{k+1}`` (weights made non-increasing, w_{n+1} = 0). The
+        solver pays ``w_1 - w_best``: no reward for freeing a 2nd or
+        3rd choice once a better one is free, which the additive
+        encoding (pay w_k for every preferred day worked) did."""
+        clean = []
+        seen = set()
+        for d, w in prefs:
+            w = clamp_soft_weight(w)
+            if w <= 0 or int(d) in seen:
+                continue
+            seen.add(int(d))
+            clean.append((int(d), w))
+        if not clean:
+            return
+        # non-increasing weights in priority order
+        ws = []
+        for _d, w in clean:
+            ws.append(min(w, ws[-1]) if ws else w)
+        free = []
+        for d, _w in clean:
+            b = self._teacher_day_busy_var(t, d)
+            if b is None:
+                # trivially free day: every rank from here on is met
+                free.append(None)
+            else:
+                free.append(b.Not())
+        acc = []
+        for k in range(len(clean)):
+            inc = ws[k] - (ws[k + 1] if k + 1 < len(ws) else 0)
+            if free[k] is None:
+                return  # rank k obtained for sure: remaining cost 0
+            acc.append(free[k])
+            if inc <= 0:
+                continue
+            o = self.model.NewBoolVar(f"_dsl_fdrank_{t}_{k}")
+            # o <-> OR(acc)
+            self.model.AddBoolOr(list(acc)).OnlyEnforceIf(o)
+            for a in acc:
+                self.model.AddImplication(a, o)
+            self.soft_cost_terms.append((inc, o.Not()))
 
     def _compile_teacher_preferred_free_day_penalty(
             self, t: str, d: int, w: int):
