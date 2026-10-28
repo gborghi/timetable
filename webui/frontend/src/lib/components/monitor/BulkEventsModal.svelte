@@ -140,7 +140,7 @@
         {/if}
         <p class="text-[11px] text-ink-500">
           I placeholder (eventi non schedulati) verranno saltati: senza
-          uno slot temporale non c'e' una lezione su cui impostare l'aula.
+          uno slot temporale non c'è una lezione su cui impostare l'aula.
         </p>
       </div>
     {:else if action === 'clear_classroom'}
@@ -163,7 +163,7 @@
         </div>
         <p class="text-[11px] text-ink-500">
           Opera sull'Assignment, quindi vale anche per i placeholder.
-          Cattedre selezionate piu' volte (lezioni multiple) vengono
+          Cattedre selezionate più volte (lezioni multiple) vengono
           deduplicate dal backend.
         </p>
       </div>

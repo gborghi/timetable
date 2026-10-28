@@ -5,7 +5,7 @@
 export const PX_PER_HOUR = 40;
 export const BG_START_DEFAULT = 7;
 export const BG_END_DEFAULT = 19;
-/** Ora piu' alta nella vista globale dell'orario, dove uno slot
+/** Ora più alta nella vista globale dell'orario, dove uno slot
  *  mostra fino a tre lezioni in righe leggibili. */
 export const GLOBAL_PX_PER_HOUR = 96;
 

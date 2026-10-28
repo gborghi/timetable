@@ -77,11 +77,11 @@
     respect_room_capacity: false,
     // Joint (giorno,ora,aula): quando enabled, le var aula entrano nel
     // modello di schedulazione (il backend forza scope=week + no
-    // decomposizione + estrazione aule). `obj` e' la lista di variabili
+    // decomposizione + estrazione aule). `obj` è la lista di variabili
     // da ottimizzare: sfilare una spunta la ESCLUDE dall'obiettivo.
     joint_vars: {
       enabled: false,
-      // Continuita' d'aula globale (classi non fissate). Override per
+      // Continuità d'aula globale (classi non fissate). Override per
       // classe via DSL/preset: class_same_room_per_day/_per_week/
       // class_room_changes_min.
       room_continuity: 'none',
@@ -167,7 +167,7 @@
   //   - phase_a, phase_b (ON)
   //   - lns + alns (ON; ALNS replaces or follows LNS)
   //   - sa, ts (ON)
-  //   - vns (OFF; rifinitura, attivabile per qualita' massima)
+  //   - vns (OFF; rifinitura, attivabile per qualità massima)
   //   - ils (ON)
   //   - cg, rooms (OFF; specialised stages)
   let pipelineList = DEFAULT_PIPELINE.map((d) => ({ ...d }));
@@ -400,7 +400,7 @@
           </select>
         </div>
         <div class="field">
-          <label for="routes-optimize-f2">Mode</label>
+          <label for="routes-optimize-f2">Modalità</label>
           <select id="routes-optimize-f2" bind:value={step1.mode} data-testid="optimize-mock-mode">
             <option value="aggregated">aggregated</option>
             <option value="tight">tight</option>
@@ -408,7 +408,7 @@
           </select>
         </div>
         <div class="field">
-          <label for="routes-optimize-f3">Margin</label>
+          <label for="routes-optimize-f3">Margine (frazione 0–1)</label>
           <input id="routes-optimize-f3" type="number" step="0.01" bind:value={step1.margin}/>
         </div>
         <div class="field">
@@ -506,7 +506,7 @@
         <div class="field"><label for="routes-optimize-f10">time monolitico</label><input id="routes-optimize-f10" type="number" bind:value={step3.time_mono} on:change={markTweaked}/></div>
         <div class="field"><label for="routes-optimize-f11">workers</label><input id="routes-optimize-f11" type="number" bind:value={step3.workers} on:change={markTweaked}/></div>
         <div class="field">
-          <label for="routes-optimize-f12" use:tooltip={"Controlla il tradeoff qualita/velocita del solver CP-SAT. Veloce: si ferma prima, ideale per bozze. Bilanciato: buon compromesso (default). Approfondito: qualita' migliore, piu' lento. Massimo: non si ferma prima del tempo limite."}>Qualità soluzione</label>
+          <label for="routes-optimize-f12" use:tooltip={"Controlla il tradeoff qualita/velocita del solver CP-SAT. Veloce: si ferma prima, ideale per bozze. Bilanciato: buon compromesso (default). Approfondito: qualità migliore, più lento. Massimo: non si ferma prima del tempo limite."}>Qualità soluzione</label>
           <select id="routes-optimize-f12" bind:value={step3.thoroughness} data-testid="optimize-thoroughness">
             <option value="fast">⚡ Veloce (bozze)</option>
             <option value="balanced">⚖️ Bilanciato (default)</option>
@@ -521,7 +521,7 @@
       <div class="mt-3 p-3 rounded border border-ink-200 bg-ink-50/40 space-y-3">
         <p class="text-xs font-medium">Solver CP-SAT (avanzato)</p>
         <div class="field">
-          <label for="routes-optimize-f13" use:tooltip={"Come il solver affronta la settimana. Per giorno: risolve un giorno alla volta (veloce, scalabile, default). Settimana intera: un unico modello CP-SAT su tutta la settimana, piu robusto con compresenze/sostegno/gruppi ma piu lento."}>Scope del solver CP-SAT</label>
+          <label for="routes-optimize-f13" use:tooltip={"Come il solver affronta la settimana. Per giorno: risolve un giorno alla volta (veloce, scalabile, default). Settimana intera: un unico modello CP-SAT su tutta la settimana, più robusto con compresenze/sostegno/gruppi ma più lento."}>Scope del solver CP-SAT</label>
           <select id="routes-optimize-f13" bind:value={step3.cp_sat_scope}
                   on:change={coercePhaseAModeForScope}
                   data-testid="optimize-cp-sat-scope">
@@ -592,7 +592,7 @@
         <p class="text-xs text-ink-500">
           Quando attivo, dopo Phase B la lezioni-aule (step 8) viene
           eseguita sulla soluzione appena prodotta -- utile per palestre
-          e laboratori la cui capienza puo' rendere infeasibile la
+          e laboratori la cui capienza può rendere infeasibile la
           schedulazione.
         </p>
         <div class="grid grid-cols-2 gap-3">
@@ -614,7 +614,7 @@
           Ottimizzazione congiunta aule (joint giorno/ora/aula)
         </label>
         <p class="text-xs text-ink-500">
-          Le aule entrano nel modello di schedulazione: il solutore puo'
+          Le aule entrano nel modello di schedulazione: il solutore può
           spostare una lezione a un'altra ora per tenerla in un'aula
           ammissibile (palestra piena, capienza, plesso), invece di
           assegnare le aule a orario congelato. Forza lo scope Settimana
@@ -678,7 +678,7 @@
           </div>
           <div class="pt-2">
             <label for="routes-optimize-f15" class="text-xs font-semibold text-ink-600">
-              Continuita' d'aula (classi non fissate)
+              Continuità d'aula (classi non fissate)
             </label>
             <select id="routes-optimize-f15" class="mt-1 block w-full text-sm rounded border-ink-200"
                     bind:value={step3.joint_vars.room_continuity}>
@@ -765,7 +765,7 @@
       <h2 class="mb-1">10) Strategie di decomposizione</h2>
       <p class="text-xs text-ink-500 mb-3">
         Quattro strategie ortogonali per spezzare il problema di
-        Phase B in sotto-problemi piu' piccoli. Ognuna restituisce
+        Phase B in sotto-problemi più piccoli. Ognuna restituisce
         cluster di classi e una lista di docenti-ponte. Si possono
         combinare nella pipeline: prima la primaria (spettrale,
         METIS o per curriculum), poi la temporale per parallelizzare
@@ -797,7 +797,7 @@
               + temporale
             {/if}
             <span class="text-ink-500 ml-2">
-              modularita {decompRecommendation.modularity}, densita {decompRecommendation.density}
+              modularita {decompRecommendation.modularity}, densità {decompRecommendation.density}
             </span>
           </p>
           <p class="text-xs text-ink-500 mt-1">
@@ -815,7 +815,7 @@
         <p class="text-xs text-ink-500 mb-2">
           Identifica cluster naturali nel grafo classe-docente
           attraverso il vettore di Fiedler. Brilla quando la
-          modularita' e' alta (sopra 0.30). I parametri sono
+          modularità è alta (sopra 0.30). I parametri sono
           quelli della card 3 (Phase B).
         </p>
         <p class="text-[11px] text-ink-500">
@@ -922,7 +922,7 @@
         <em>spettrale</em>, <em>METIS</em> e <em>per curriculum</em>,
         eventualmente affiancata dalla <em>temporale</em> per
         parallelizzare sui sei giorni.
-        <strong>Assegna aule (step 8)</strong> e' presente nella lista
+        <strong>Assegna aule (step 8)</strong> è presente nella lista
         come step opzionale: se ticked viene eseguito come elemento
         indipendente nel punto in cui appare nell'ordine. In
         alternativa, per piegare l'assegnazione aule INSIEME al CP-SAT
@@ -1000,7 +1000,7 @@
         <span class="eyebrow">Storico</span>
         <h2 class="!mb-0 mt-0.5">Cronologia run</h2>
       </div>
-      <button class="btn !text-xs !px-2 !py-1" on:click={reloadRuns}>Refresh</button>
+      <button class="btn !text-xs !px-2 !py-1" on:click={reloadRuns}>Aggiorna</button>
     </div>
     <div class="overflow-x-auto">
       <table class="tbl">

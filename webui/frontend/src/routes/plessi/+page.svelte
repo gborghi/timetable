@@ -9,7 +9,7 @@
    *   2. Regole di spostamento: PlessoCommutingRule between pairs
    *      of plessi keyed by entity_kind (teacher/class/group),
    *      with optional per-entity override.
-   *   3. Regole entita': PlessoEntityPolicy (single_per_day,
+   *   3. Regole entità: PlessoEntityPolicy (single_per_day,
    *      single_total, any) for individual teachers / classes.
    *
    * The bottom of the page shows a "config OK" banner driven by

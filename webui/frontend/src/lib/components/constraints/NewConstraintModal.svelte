@@ -2,7 +2,7 @@
   /**
    * 4-step "Crea nuovo vincolo" modal.
    *
-   *   Step 1: Categoria (scope) + entita' (owner)
+   *   Step 1: Categoria (scope) + entità (owner)
    *   Step 2: Livello (HARD / SOFT / PREFERRED / ENFORCED / ALLOWED)
    *           + peso (visibile solo per SOFT/PREFERRED)
    *   Step 3: Tipo del vincolo (kind) — campi specifici (slot, expression,
@@ -113,8 +113,8 @@
   $: availableKinds = (() => {
     if (scope === 'teacher' || scope === 'class' || scope === 'classroom') {
       return [
-        { value: 'matrix_slot', label: 'Disponibilita oraria (slot specifico)' },
-        { value: 'logical',     label: 'Disponibilita logica (espressione DNF)' },
+        { value: 'matrix_slot', label: 'Disponibilità oraria (slot specifico)' },
+        { value: 'logical',     label: 'Disponibilità logica (espressione DNF)' },
       ].concat(scope === 'class'
         ? [{ value: 'coteach', label: 'Compresenza su una materia' }] : []);
     }
@@ -135,7 +135,7 @@
     { value: 'hard',      label: '🟥 HARD',      desc: 'Non negoziabile' },
     { value: 'soft',      label: '🟨 SOFT',      desc: 'Penalita positiva' },
     { value: 'preferred', label: '🟦 PREFERRED', desc: 'Bonus negativo' },
-    { value: 'enforced',  label: '🟩 ENFORCED',  desc: 'Deve essere cosi' },
+    { value: 'enforced',  label: '🟩 ENFORCED',  desc: 'Deve essere così' },
     { value: 'allowed',   label: '🟢 ALLOWED',   desc: 'Esplicitamente permesso (override)' },
     { value: 'forbidden', label: '⛔ FORBIDDEN', desc: 'Esplicitamente vietato' },
   ];
@@ -163,7 +163,7 @@
   }
 
   // Stato derivato, non funzioni chiamate dal markup: un
-  // `disabled={!step1Valid()}` non si aggiornerebbe mai, perche'
+  // `disabled={!step1Valid()}` non si aggiornerebbe mai, perché
   // l'espressione dipende solo dall'identificatore `step1Valid` e non
   // dalle variabili lette nel corpo della funzione -- l'"Avanti" del
   // primo passo restava disabilitato anche dopo aver scelto il docente.
@@ -357,7 +357,7 @@
             <label for="lib-components-constraints-newconstraintmodal-f8">Peso (penalty SOFT)</label>
             <input id="lib-components-constraints-newconstraintmodal-f8" type="number" bind:value={weight}/>
             <div class="text-xs text-ink-500">
-              Penalita' positiva quando SOFT viene violato; per
+              Penalità positiva quando SOFT viene violato; per
               PREFERRED il valore viene negato automaticamente.
             </div>
           </div>

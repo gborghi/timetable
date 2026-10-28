@@ -2,7 +2,7 @@
   /**
    * Accordion del redesign: una riga-titolo cliccabile e il contenuto
    * che compare sotto. Serve a togliere dalla vista gli strumenti che
-   * si usano di rado (backup, travaso vincoli, modalita' avanzata del
+   * si usano di rado (backup, travaso vincoli, modalità avanzata del
    * solver) senza rimuoverli.
    *
    *   <Panel id="backup-db" title="Backup del database"
@@ -10,9 +10,9 @@
    *     …contenuto…
    *   </Panel>
    *
-   * Lo stato aperto/chiuso e' ricordato in localStorage per `id`, cosi'
+   * Lo stato aperto/chiuso è ricordato in localStorage per `id`, così
    * chi apre sempre lo stesso pannello non deve rifarlo a ogni visita.
-   * `open` e' bindabile se la pagina vuole controllarlo da fuori.
+   * `open` è bindabile se la pagina vuole controllarlo da fuori.
    *
    * Per i test E2E: data-testid="panel" + data-panel-id sull'elemento,
    * aria-expanded sul bottone. Vedi cypress/support/panels.ts.
@@ -22,9 +22,9 @@
   export let subtitle = '';
   /** Testo allineato a destra nell'intestazione (conteggi, timestamp). */
   export let meta = '';
-  /** Stato iniziale, usato solo se non c'e' nulla in localStorage. */
+  /** Stato iniziale, usato solo se non c'è nulla in localStorage. */
   export let open = false;
-  /** 'default' | 'danger' — 'danger' e' la "Zona pericolosa". */
+  /** 'default' | 'danger' — 'danger' è la "Zona pericolosa". */
   export let tone = 'default';
 
   const KEY = `pt_panel_${id}`;
@@ -32,7 +32,7 @@
 
   // Ripristina lo stato salvato al primo mount. Non usiamo onMount per
   // non far lampeggiare il pannello: il valore arriva prima del paint
-  // successivo e comunque il contenuto e' sotto la piega.
+  // successivo e comunque il contenuto è sotto la piega.
   import { onMount } from 'svelte';
   onMount(() => {
     try {

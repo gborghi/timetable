@@ -190,7 +190,7 @@ describe('Tab Docenti CRUD workflow (UI-only)', () => {
     cy.get('.weekly-calendar', { timeout: 10000 })
       .scrollIntoView()
       .should('be.visible');
-    cy.contains(/Disponibilita oraria/i).should('be.visible');
+    cy.contains(/Disponibilit[aà] oraria/i).should('be.visible');
     cy.get('.cal-event').should('have.length.gte', 1);
   });
 });

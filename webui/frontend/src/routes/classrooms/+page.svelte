@@ -317,7 +317,7 @@
 
 <div class="space-y-4" data-testid="classrooms-page">
   <PageHero title="Aule"
-            description="Le aule con capienza, plesso e tag. Le preferenze materia-aula e docente-aula decidono dove il solver puo' collocare una lezione.">
+            description="Le aule con capienza, plesso e tag. Le preferenze materia-aula e docente-aula decidono dove il solver può collocare una lezione.">
     <svelte:fragment slot="actions">
       <button class="btn" on:click={loadSuggested}>Genera aule...</button>
       <button class="btn" on:click={() => (showTagsModal = true)}
@@ -544,7 +544,7 @@
 
     <div class="mt-4">
       <WeeklyCalendarView
-        title="Disponibilita oraria dell'aula"
+        title="Disponibilità oraria dell'aula"
         value={editing.unavailability}
         onChange={onMatrixChange}/>
     </div>

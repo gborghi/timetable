@@ -23,11 +23,11 @@
   const APP_VERSION = '0.1';
   // Brand: piTantum / Tempus Tantum, after Seneca, Ep. I, 1.
   const SENECA_LATIN = 'Omnia, Lucili, aliena sunt, tempus tantum nostrum est.';
-  const SENECA_IT = 'Tutto, Lucilio, ci viene da altri; soltanto il tempo e\' nostro.';
+  const SENECA_IT = 'Tutto, Lucilio, ci viene da altri; soltanto il tempo è nostro.';
 
-  // Densita' della UI. 'compatta' e' il default (piu' righe a schermo,
-  // e' un applicativo da scrivania); 'comfort' allarga padding e righe
-  // via le variabili --pad-* in app.css. Sta su <html> perche' deve
+  // Densità della UI. 'compatta' è il default (più righe a schermo,
+  // è un applicativo da scrivania); 'comfort' allarga padding e righe
+  // via le variabili --pad-* in app.css. Sta su <html> perché deve
   // valere anche per i portali (tooltip, dialog) montati fuori da qui.
   let density = 'compatta';
   function applyDensity(d) {
@@ -78,7 +78,7 @@
   $: siblings = siblingsFor(cur);
 
   // Classi delle voci di navigazione. Stanno qui e non nel markup
-  // perche' attivo/inattivo cambiano colore, sfondo e peso insieme:
+  // perché attivo/inattivo cambiano colore, sfondo e peso insieme:
   // con le direttive class: servirebbero cinque righe per voce.
   const NAV_BASE = 'px-3 py-1.5 text-[13px] rounded-[7px] focus-ring whitespace-nowrap';
   const NAV_ON = 'bg-paper-sunk text-ink-900 font-medium';
@@ -247,7 +247,7 @@
   </header>
 
   {#if tappa && siblings}
-    <!-- Striscia della tappa: dove sono nel percorso, e cos'altro c'e'
+    <!-- Striscia della tappa: dove sono nel percorso, e cos'altro c'è
          in questo capitolo. -->
     <div class="bg-paper-band border-b border-ink-200">
       <div class="max-w-[1500px] mx-auto px-6 py-[9px]

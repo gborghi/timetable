@@ -94,7 +94,7 @@ describe('WeeklyCalendarView in Tab Docenti edit modal (view mode)', () => {
     cy.get('.weekly-calendar', { timeout: 10000 })
       .scrollIntoView()
       .should('be.visible');
-    cy.contains(/Disponibilita oraria/i).should('be.visible');
+    cy.contains(/Disponibilit[aà] oraria/i).should('be.visible');
 
     // Legend: 5 labels. Asserted on the calendar's text content and
     // not with cy.contains(/^libero$/i): every label is a bare text

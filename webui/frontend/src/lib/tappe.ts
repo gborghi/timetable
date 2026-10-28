@@ -1,7 +1,7 @@
 /**
  * Stato di avanzamento del percorso in quattro tappe.
  *
- * La logica viveva dentro OnboardingChecklist.svelte; sta qui perche'
+ * La logica viveva dentro OnboardingChecklist.svelte; sta qui perché
  * ora la leggono in due: il checklist (che continua a mostrare i nove
  * passi in dettaglio) e la dashboard (che ne mostra la sintesi in
  * quattro card). Una sola definizione di "fatto", due viste.
@@ -47,8 +47,8 @@ export function haSoluzione(s: DatasetLike | null | undefined): boolean {
 }
 
 /**
- * I nove passi guidati, nell'ordine in cui vanno fatti. E' la stessa
- * lista che il checklist mostrava prima, con in piu' il campo `tappa`.
+ * I nove passi guidati, nell'ordine in cui vanno fatti. È la stessa
+ * lista che il checklist mostrava prima, con in più il campo `tappa`.
  */
 export function steps(
   s: DatasetLike | null | undefined,
@@ -75,21 +75,21 @@ export interface TappaStato extends Tappa {
   totali: number;
   /** Tutti i passi obbligatori della tappa sono fatti. */
   completa: boolean;
-  /** E' la prima tappa non completa: quella su cui l'utente sta lavorando. */
+  /** È la prima tappa non completa: quella su cui l'utente sta lavorando. */
   corrente: boolean;
   /** Riga di dettaglio a destra nella card ("5/5 completate", "210 assegnate"). */
   meta: string;
 }
 
 /**
- * Le quattro tappe con il loro stato. La tappa corrente e' la prima
- * non completa; se sono tutte complete nessuna e' corrente e la
+ * Le quattro tappe con il loro stato. La tappa corrente è la prima
+ * non completa; se sono tutte complete nessuna è corrente e la
  * dashboard mostra quattro spunte.
  *
  * Nota sulla tappa 3 (Vincoli): DatasetState non conta i vincoli e
  * comunque il solver gira anche senza. La consideriamo quindi conclusa
- * quando l'utente e' andato oltre, cioe' quando esiste un orario:
- * cosi' resta la tappa corrente nel momento giusto (dopo le cattedre,
+ * quando l'utente è andato oltre, cioè quando esiste un orario:
+ * così resta la tappa corrente nel momento giusto (dopo le cattedre,
  * prima di generare) senza bloccare per sempre chi non la usa.
  */
 export function statoTappe(
@@ -115,7 +115,7 @@ export function statoTappe(
   }));
 }
 
-/** Il dato piu' parlante per ciascuna tappa, come nel design. */
+/** Il dato più parlante per ciascuna tappa, come nel design. */
 function metaPerTappa(n: Tappa['n'], d: DatasetLike, fatti: number, totali: number): string {
   switch (n) {
     case 1: return `${fatti}/${totali} completate`;

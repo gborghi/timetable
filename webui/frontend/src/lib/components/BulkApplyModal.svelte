@@ -180,7 +180,7 @@
           </label>
           {#if logicalKind === 'soft' || logicalKind === 'preferred'}
             <label class="flex gap-1 items-center">
-              {logicalKind === 'soft' ? 'Penalita' : 'Bonus'}:
+              {logicalKind === 'soft' ? 'Penalità' : 'Bonus'}:
               <input type="number" min="0"
                      class="w-16 px-1 py-0.5 border border-ink-200 rounded"
                      bind:value={softPenalty}/>
@@ -239,12 +239,12 @@
         <label for="lib-components-bulkapplymodal-f6" class="text-xs">Stato</label>
         <select id="lib-components-bulkapplymodal-f6" bind:value={unavailState} class="px-2 py-1 border border-ink-200 rounded">
           <option value="hard">HARD (rosso)</option>
-          <option value="soft">SOFT (giallo, penalita +)</option>
+          <option value="soft">SOFT (giallo, penalità +)</option>
           <option value="preferred">PREFERRED (blu, bonus -)</option>
           <option value="enforced">ENFORCED (verde scuro, deve esserci)</option>
         </select>
         {#if unavailState === 'soft' || unavailState === 'preferred'}
-          <label for="lib-components-bulkapplymodal-f7" class="text-xs">{unavailState === 'soft' ? 'Penalita' : 'Bonus'}</label>
+          <label for="lib-components-bulkapplymodal-f7" class="text-xs">{unavailState === 'soft' ? 'Penalità' : 'Bonus'}</label>
           <input id="lib-components-bulkapplymodal-f7" type="number" min="0" bind:value={softPenalty}
                  class="px-2 py-1 border border-ink-200 rounded"/>
         {/if}

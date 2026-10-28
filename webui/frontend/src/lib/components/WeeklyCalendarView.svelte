@@ -75,7 +75,7 @@
 
   export let value = [];
   export let onChange = (_v) => {};
-  export let title = 'Disponibilita oraria';
+  export let title = 'Disponibilità oraria';
   export let readonly = false;
   export let config = null;
   /** "view" (default): slots are clickable for setting a constraint
@@ -340,8 +340,8 @@
   $: displayActiveDays = mode === 'edit' ? editActiveDays : activeDays;
   $: displayBgRange = mode === 'edit' ? editBgRange : bgRange;
   $: displayBgHours = bgHourList(displayBgRange);
-  // Vista globale: piu' lezioni nello stesso slot vanno in righe
-  // leggibili (una per classe), quindi serve un'ora piu' alta.
+  // Vista globale: più lezioni nello stesso slot vanno in righe
+  // leggibili (una per classe), quindi serve un'ora più alta.
   $: isGlobalView = mode === 'schedule' && !filterType;
   $: pxh = isGlobalView ? GLOBAL_PX_PER_HOUR : PX_PER_HOUR;
   $: displayGridHeightPx = _gridHeight(displayBgRange, pxh);
@@ -914,7 +914,7 @@
       </span>
       <span class="flex items-center gap-1">
         <span class="w-3 h-3 rounded-sm border border-amber-400
-                     bg-amber-200"></span> SOFT (penalita +)
+                     bg-amber-200"></span> SOFT (penalità +)
       </span>
       <span class="flex items-center gap-1">
         <span class="w-3 h-3 rounded-sm border border-red-400
@@ -922,7 +922,7 @@
       </span>
       <span class="flex items-center gap-1">
         <span class="w-3 h-3 rounded-sm border border-sky-400
-                     bg-sky-200"></span> PREFERRED (penalita -)
+                     bg-sky-200"></span> PREFERRED (penalità -)
       </span>
       <span class="flex items-center gap-1">
         <span class="w-3 h-3 rounded-sm border border-emerald-700

@@ -98,9 +98,9 @@
       Carica file <code>.xlsx</code> / <code>.csv</code> per importare in
       blocco docenti, classi, aule, materie, studenti, indirizzi,
       gruppi. Se non hai un file di partenza scarica il template
-      dell'entita': il foglio <strong>Istruzioni</strong> spiega ogni
+      dell'entità: il foglio <strong>Istruzioni</strong> spiega ogni
       colonna, <strong>Esempi</strong> contiene una riga di esempio,
-      <strong>Dati</strong> e' il foglio che l'importer legge.
+      <strong>Dati</strong> è il foglio che l'importer legge.
     </p>
   </PageHero>
 
@@ -109,7 +109,7 @@
       <h2 class="!text-base">1) Configurazione</h2>
 
       <div class="field">
-        <label for="routes-import-f1">Entita'</label>
+        <label for="routes-import-f1">Entità</label>
         <select id="routes-import-f1" bind:value={entity}>
           {#each ENTITIES as e (e.value)}
             <option value={e.value}>{e.label} ({e.value})</option>
@@ -118,7 +118,7 @@
       </div>
 
       <div class="field">
-        <label for="routes-import-f2">Modalita'</label>
+        <label for="routes-import-f2">Modalità</label>
         <select id="routes-import-f2" bind:value={mode}>
           <option value="upsert">upsert (aggiunge / aggiorna)</option>
           <option value="append">append (solo nuove righe)</option>
@@ -194,7 +194,7 @@
       {#if lastWasDry}
         <div class="mt-2 text-xs rounded bg-amber-50 border border-amber-200
                     px-3 py-2 text-amber-800">
-          <strong>Anteprima (dry-run)</strong>: nessuna riga e' stata scritta.
+          <strong>Anteprima (dry-run)</strong>: nessuna riga è stata scritta.
           Premi <strong>Importa</strong> per applicare le modifiche.
         </div>
       {/if}

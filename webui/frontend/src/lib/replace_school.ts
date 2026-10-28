@@ -1,6 +1,6 @@
 // Messaggio di conferma per le azioni della Dashboard che SOSTITUISCONO la
 // scuola nel DB (Importa profilo, Genera scuola di test). Restituisce null
-// quando il DB e' vuoto: non c'e' niente da perdere, niente domanda.
+// quando il DB è vuoto: non c'è niente da perdere, niente domanda.
 
 export interface SchoolCounts {
   classes?: number | null;

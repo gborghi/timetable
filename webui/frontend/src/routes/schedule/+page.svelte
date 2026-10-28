@@ -297,8 +297,8 @@
   }
   async function svincolaLesson() {
     if (!actionLesson) return;
-    if (!await confirmDialog('Svincolare questa lezione? Verra messa nel pool '
-                 + 'unscheduled e non occupera piu lo slot.')) return;
+    if (!await confirmDialog('Svincolare questa lezione? Verrà messa nel pool '
+                 + 'unscheduled e non occupera più lo slot.')) return;
     try {
       await api.post('/api/lessons/' + actionLesson.id + '/unschedule');
       flash('Lezione svincolata', 'success');
@@ -532,8 +532,8 @@
   // frontend orchestrates the deletion+retry to keep both endpoints
   // free of resolution-strategy plumbing.
   async function retryAfterReplace(kind, sourceId, day, hour) {
-    // Dopo Sostituisci gli occupanti sono gia' cancellati. Un secondo
-    // rifiuto HARD (disponibilita', buco, vincolo logico) non e' piu'
+    // Dopo Sostituisci gli occupanti sono già cancellati. Un secondo
+    // rifiuto HARD (disponibilità, buco, vincolo logico) non è più
     // "slot occupato": mostriamo il motivo e NON riapriamo la stessa
     // modale, altrimenti Cypress (e l'utente) restano chiusi in un
     // loop Sostituisci -> retry -> conflitto.
@@ -763,7 +763,7 @@
 
 <div data-testid="schedule-page">
   <PageHero title="Orario"
-            description="L'orario della soluzione attiva. Trascina una lezione per spostarla: i conflitti vengono segnalati prima di salvare. Le lezioni svincolate restano nel pool a destra finche' non le ripiazzi.">
+            description="L'orario della soluzione attiva. Trascina una lezione per spostarla: i conflitti vengono segnalati prima di salvare. Le lezioni svincolate restano nel pool a destra finché non le ripiazzi.">
     <svelte:fragment slot="chips">
       {#if !legacyMode && summary}
         <span class="text-[11.5px] text-ink-500" data-testid="schedule-obj-value">
@@ -791,7 +791,7 @@
     <svelte:fragment slot="actions">
       <!-- I 9 export stanno in un unico menu: prima erano 10 bottoni
            allo stesso livello, la prima cosa che si vedeva della pagina.
-           <details> e' raggiungibile da tastiera senza JS. -->
+           <details> è raggiungibile da tastiera senza JS. -->
       <details class="relative" data-testid="schedule-export-menu">
         <summary class="btn-primary cursor-pointer list-none select-none">
           Esporta <span aria-hidden="true">▾</span>
@@ -928,7 +928,7 @@
       {#if pendingMoveLessonId}
         <span class="ml-auto px-2 py-1 rounded bg-amber-100 border border-amber-300 text-xs"
               data-testid="schedule-pending-move">
-          Modalita sposta -- click su uno slot vuoto per confermare
+          Modalità sposta -- click su uno slot vuoto per confermare
           <button class="ml-2 underline"
                   on:click={() => (pendingMoveLessonId = null)}>annulla</button>
         </span>

@@ -143,7 +143,7 @@
     </div>
     <p class="text-[11px] text-ink-500 mb-2">
       Verifica strutturale prima di Phase A: per ogni materia controlla
-      che la capacita' dei docenti qualificati copra la domanda; campiona
+      che la capacità dei docenti qualificati copra la domanda; campiona
       sottoinsiemi di docenti per verificare la condizione di Hall.
     </p>
     <div class="flex gap-2 items-end">
@@ -157,7 +157,7 @@
       <button class="btn-primary !text-xs" on:click={runHall}
               data-testid="adv-hall-run"
               disabled={busyHall}>
-        {busyHall ? '...' : 'Pre-check fattibilita strutturale'}
+        {busyHall ? '...' : 'Pre-check fattibilità strutturale'}
       </button>
     </div>
     {#if hallReport}
@@ -292,17 +292,17 @@
     </div>
     <p class="text-[11px] text-ink-500 mb-2">
       Decomposizione Dantzig-Wolfe: master LP + sottoproblemi CP-SAT
-      a granularita' configurabile (9 opzioni). <em>Mode</em> sceglie
+      a granularità configurabile (9 opzioni). <em>Mode</em> sceglie
       tra <em>iterative-diversified</em> (master LP + pattern
       enrichment + completion fallback, sempre HARD=100%) e
       <em>branch-and-price</em> (vero BP con sub-CP-SAT pricing dei
-      duali). <em>Auto</em> sceglie modalita' e granularita' in base
+      duali). <em>Auto</em> sceglie modalità e granularità in base
       alla taglia della scuola. Vedi
       <code>docs/optimization_strategies.md &sect;4</code>.
     </p>
     <div class="grid grid-cols-2 gap-2 mb-2">
       <div class="field !mb-0">
-        <label for="lib-components-optimize-advancedtechniquescard-f10" class="!text-[11px]">Modalita'</label>
+        <label for="lib-components-optimize-advancedtechniquescard-f10" class="!text-[11px]">Modalità</label>
         <select id="lib-components-optimize-advancedtechniquescard-f10" bind:value={cgMode} data-testid="adv-cg-mode" class="w-full">
           <option value="iterative-diversified">Iterative-diversified (default)</option>
           <option value="branch-and-price">Branch-and-Price (sub-CP-SAT pricing)</option>
@@ -310,10 +310,10 @@
         </select>
       </div>
       <div class="field !mb-0">
-        <label for="lib-components-optimize-advancedtechniquescard-f11" class="!text-[11px]">Granularita' sub-problema</label>
+        <label for="lib-components-optimize-advancedtechniquescard-f11" class="!text-[11px]">Granularità sub-problema</label>
         <select id="lib-components-optimize-advancedtechniquescard-f11" bind:value={cgGranularity}
                 data-testid="adv-cg-granularity" class="w-full"
-                title="Selettore granularita' di pricing per BP. Le granularita' teacher-based generano pattern per docente; class-based per classe; 'day' e 'curriculum' sono globali. 'auto' sceglie in base alla taglia.">
+                title="Selettore granularità di pricing per BP. Le granularità teacher-based generano pattern per docente; class-based per classe; 'day' e 'curriculum' sono globali. 'auto' sceglie in base alla taglia.">
           <optgroup label="Auto">
             <option value="auto">Auto (suggerita dalla taglia)</option>
           </optgroup>

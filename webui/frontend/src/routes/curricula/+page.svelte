@@ -206,7 +206,7 @@
 
 <div class="space-y-4" data-testid="curricula-page">
   <PageHero title="Indirizzi di studio"
-            description="Ogni indirizzo porta con se' il quadro orario per anno: e' da qui che le classi ereditano il monte ore di ciascuna materia.">
+            description="Ogni indirizzo porta con sé il quadro orario per anno: è da qui che le classi ereditano il monte ore di ciascuna materia.">
     <svelte:fragment slot="actions">
       <button class="btn-primary" on:click={newCurriculum}
               data-testid="add-curriculum-btn">+ Nuovo indirizzo</button>

@@ -6,7 +6,7 @@
    * sinistra e le azioni principali a destra.
    *
    *   <PageHero title="Docenti"
-   *             description="Ore, disponibilita', giorni liberi.">
+   *             description="Ore, disponibilità, giorni liberi.">
    *     <svelte:fragment slot="chips">
    *       <span class="pill-num">64 docenti</span>
    *     </svelte:fragment>
@@ -17,12 +17,12 @@
    *
    * L'occhiello si ricava da solo dalla route (vedi tappaFor in
    * $lib/nav); passare `eyebrow` lo forza, `eyebrow={null}` lo toglie.
-   * Quando il layout mostra gia' la striscia della tappa (cioe' quando
+   * Quando il layout mostra già la striscia della tappa (cioè quando
    * la pagina ha delle sorelle) l'occhiello automatico si toglie da
    * solo, altrimenti la stessa dicitura comparirebbe due volte di fila.
    *
    * La fascia esce dai margini del contenitore principale (i margini
-   * negativi) per attaccarsi ai bordi come nel design, ed e' pensata
+   * negativi) per attaccarsi ai bordi come nel design, ed è pensata
    * per stare come primo elemento dentro <main>.
    */
   import { page } from '$app/stores';
@@ -35,7 +35,7 @@
 
   $: tappa = tappaFor($page.url.pathname);
   // Stessa condizione con cui +layout.svelte decide di mostrare la
-  // striscia: se c'e' lei, l'occhiello qui sarebbe un doppione.
+  // striscia: se c'è lei, l'occhiello qui sarebbe un doppione.
   $: inStrip = !!(tappa && siblingsFor($page.url.pathname));
   $: label = eyebrow === undefined
     ? (tappa && !inStrip ? `Tappa ${tappa.n} · ${tappa.label}` : '')

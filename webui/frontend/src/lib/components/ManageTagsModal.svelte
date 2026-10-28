@@ -33,7 +33,7 @@
   export let descPlaceholder = 'Descrizione opzionale';
   export let helpText = (
     'Il nome viene salvato in minuscolo. Quando elimini un tag '
-    + 'viene rimosso anche dalle entita che lo usano.'
+    + 'viene rimosso anche dalle entità che lo usano.'
   );
 
   let rows = [];
@@ -86,7 +86,7 @@
     let q = 'Eliminare il tag #' + row.name + '?';
     if (n > 0) {
       const noun = n === 1 ? countLabelSingular : countLabelPlural;
-      q += ' Verra rimosso da ' + n + ' ' + noun + '.';
+      q += ' Verrà rimosso da ' + n + ' ' + noun + '.';
     }
     if (!await confirmDialog(q)) return;
     try {

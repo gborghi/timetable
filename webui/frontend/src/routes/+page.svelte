@@ -36,7 +36,8 @@
   let importClassrooms = true;
   let importStudents = true;
   let mockMode = 'aggregated';
-  let mockMargin = 0.05;
+  // Margine in percento nell'interfaccia (5 = 5%), frazione verso l'API.
+  let mockMarginPct = 5;
   let baseMaxHours = 18;
   let busyImport = false;
   let busyMock = false;
@@ -44,7 +45,7 @@
 
   onMount(async () => {
     // Le quattro card di tappa hanno bisogno delle Ore per sapere se la
-    // tappa 1 e' completa: il layout non le carica.
+    // tappa 1 è completa: il layout non le carica.
     if ($workingHoursConfig == null) loadWorkingHoursConfig();
     try {
       availableProfiles = await api.get('/api/dataset/available-profiles');
@@ -89,7 +90,7 @@
   }
 
   // Importa e Genera cancellano classi, docenti e orario attuali: chiedi
-  // conferma (con i numeri) se nel DB c'e' gia' una scuola.
+  // conferma (con i numeri) se nel DB c'è già una scuola.
   async function confirmReplace(action) {
     const msg = replaceSchoolMessage($datasetState, action);
     if (msg === null) return true;
@@ -106,7 +107,7 @@
     try {
       const res = await api.post('/api/dataset/mock', {
         profile: mockProfile, mode: mockMode,
-        margin: mockMargin, base_max_hours: baseMaxHours,
+        margin: Number(mockMarginPct) / 100, base_max_hours: baseMaxHours,
         custom_curricula: null
       });
       runId = res.run_id;
@@ -399,7 +400,7 @@
               </select>
             </div>
             <div class="field">
-              <label for="routes-f2">Modalita</label>
+              <label for="routes-f2">Modalità</label>
               <select id="routes-f2" bind:value={mockMode}>
                 <option value="aggregated">aggregated</option>
                 <option value="tight">tight</option>
@@ -407,8 +408,8 @@
               </select>
             </div>
             <div class="field">
-              <label for="routes-f3">Margin (%)</label>
-              <input id="routes-f3" type="number" min="0" max="1" step="0.01" bind:value={mockMargin}/>
+              <label for="routes-f3">Margine (%)</label>
+              <input id="routes-f3" type="number" min="0" max="100" step="1" bind:value={mockMarginPct}/>
             </div>
             <div class="field">
               <label for="routes-f4">Ore-cattedra base</label>
@@ -440,9 +441,9 @@
     <Panel id="grafo-scuola" title="Grafo della scuola"
            subtitle="chi condivide cosa">
       <p class="max-w-3xl text-[11.5px] leading-snug text-ink-400">
-        In modalita' "Classi" ogni classe e' un nodo e gli archi rappresentano
-        docenti condivisi (lo spessore e' proporzionale al numero di docenti in
-        comune); in modalita' "Docenti" ogni docente e' un nodo e gli archi
+        In modalità "Classi" ogni classe è un nodo e gli archi rappresentano
+        docenti condivisi (lo spessore è proporzionale al numero di docenti in
+        comune); in modalità "Docenti" ogni docente è un nodo e gli archi
         rappresentano classi condivise.
       </p>
 

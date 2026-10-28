@@ -443,7 +443,7 @@
 
 <div class="space-y-4" data-testid="teachers-page">
   <PageHero title="Docenti"
-            description="Anagrafica dei docenti con ore di cattedra, materie insegnabili, giorni liberi e disponibilita' settimanale. Da qui si aprono le matrici di disponibilita' che il solver usa come vincoli.">
+            description="Anagrafica dei docenti con ore di cattedra, materie insegnabili, giorni liberi e disponibilità settimanale. Da qui si aprono le matrici di disponibilità che il solver usa come vincoli.">
     <svelte:fragment slot="actions">
       <button class="btn-primary" on:click={newTeacher}
               data-testid="add-teacher-btn">+ Nuovo docente</button>
@@ -528,7 +528,7 @@
       <div class="field"><label for="routes-teachers-f7" title="Ore di esonero dall'insegnamento (es. per incarichi o funzioni strumentali). Facoltativo.">Ore di esonero</label><input id="routes-teachers-f7" type="number" bind:value={editing.exemption_hours}/></div>
       <div class="field"><label for="routes-teachers-f8" title="Ore settimanali di disposizione (standby per supplenze). L'ottimizzatore le piazza senza classe né aula; restano disponibili in Assenze e supplenze e si possono spostare a mano.">Ore di disposizione</label><input id="routes-teachers-f8" type="number" min="0" bind:value={editing.disposizione_hours} data-testid="teacher-disposizione-hours-input"/></div>
       <div class="field">
-        <label title="Punteggio in graduatoria provinciale (0-300). Usato dal preset 'Anzianita' di Phase A per assegnare i docenti piu' anziani agli indirizzi pesanti.">
+        <label title="Punteggio in graduatoria provinciale (0-300). Usato dal preset 'Anzianita' di Phase A per assegnare i docenti più anziani agli indirizzi pesanti.">
           Punteggio graduatoria
           <span class="text-xs text-ink-400">- opzionale, 0-300</span>
         </label>
@@ -594,7 +594,7 @@
 
     <div class="mt-4">
       <WeeklyCalendarView
-        title="Disponibilita oraria del docente"
+        title="Disponibilità oraria del docente"
         value={editing.unavailability}
         onChange={onMatrixChange}/>
       {#if editing.free_day}
@@ -611,8 +611,8 @@
       <p class="text-xs text-ink-500">
         Tre preferenze ordinate di giorno libero. Se HARD, le 6 ore
         del giorno vengono bloccate automaticamente nella matrice di
-        disponibilita' (rosso). Se SOFT, il modello paga la penalty
-        per ogni ora occupata in quel giorno. La 1a preferenza e'
+        disponibilità (rosso). Se SOFT, il modello paga la penalty
+        per ogni ora occupata in quel giorno. La 1a preferenza è
         quella prioritaria; 2a/3a sono fallback.
       </p>
       {#each [0, 1, 2] as i}
@@ -673,7 +673,7 @@
       {/if}
       <div class="field max-w-xs">
         <label>Min giorni liberi/sett. (HARD)
-          <span title="Numero MINIMO di giornate libere a settimana. Default 1 (CCNL). 2-3 per docenti part-time. 0 disabilita il vincolo. Il pragma e' 'teacher_at_least_n_free_days' applicato uniformemente in Phase A, Phase B e tutti i bypass.">
+          <span title="Numero MINIMO di giornate libere a settimana. Default 1 (CCNL). 2-3 per docenti part-time. 0 disabilita il vincolo. Il pragma è 'teacher_at_least_n_free_days' applicato uniformemente in Phase A, Phase B e tutti i bypass.">
             &#x2139;
           </span>
         </label>
@@ -689,16 +689,16 @@
       </div>
     </div>
 
-    <!-- Giorni liberi: 3 priorita' SOFT (peso 30/20/10) -->
+    <!-- Giorni liberi: 3 priorità SOFT (peso 30/20/10) -->
     <div class="mt-4 card !shadow-none p-3 bg-ink-50/40 space-y-3"
          data-test="free-day-priorities">
       <div class="text-sm font-semibold">
-        Giorni liberi (priorita' 1-3)
+        Giorni liberi (priorità 1-3)
       </div>
       <p class="text-xs text-ink-500">
         Tre preferenze ordinate. La 1a scelta paga 30 di penalty se
         violata, la 2a paga 20, la 3a paga 10. Il vincolo HARD
-        "almeno un giorno libero" e' applicato a tutti i docenti
+        "almeno un giorno libero" è applicato a tutti i docenti
         indipendentemente da queste preferenze.
       </p>
       <div class="grid grid-cols-3 gap-3">
@@ -722,7 +722,7 @@
       {#if hasDuplicateFreeDayPriorities(editingFreeDayPriorities)}
         <div class="text-xs text-red-600"
              data-test="free-day-priority-error">
-          ⚠️ I tre giorni delle priorita' devono essere distinti.
+          ⚠️ I tre giorni delle priorità devono essere distinti.
         </div>
       {/if}
     </div>

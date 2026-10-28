@@ -150,7 +150,7 @@
 
 <div class="space-y-4" data-testid="groups-page">
   <PageHero title="Gruppi articolati"
-            description="Un gruppo articolato raggruppa studenti (anche da classi diverse) che fanno una o piu' materie insieme: seconda lingua, IRC vs Alternativa, recupero/potenziamento, classe frazionata, ecc.">
+            description="Un gruppo articolato raggruppa studenti (anche da classi diverse) che fanno una o più materie insieme: seconda lingua, IRC vs Alternativa, recupero/potenziamento, classe frazionata, ecc.">
     <svelte:fragment slot="actions">
       <button class="btn-primary" on:click={newGroup}
               data-testid="add-group-btn">+ Nuovo gruppo</button>
@@ -247,8 +247,8 @@
           </div>
           <p class="text-[10px] text-ink-500 mt-1">
             Aggiunge gli studenti che hanno (almeno uno / tutti) i tag
-            indicati, mantenendo quelli gia' selezionati. I tag NON
-            sostituiscono il gruppo: il gruppo resta l'unita'
+            indicati, mantenendo quelli già selezionati. I tag NON
+            sostituiscono il gruppo: il gruppo resta l'unità
             operativa di scheduling.
           </p>
         </details>

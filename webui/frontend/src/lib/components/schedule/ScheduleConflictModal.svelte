@@ -107,8 +107,8 @@
   <div class="text-xs text-ink-500 mt-3 space-y-1">
     <p><b>Svincola</b>: rimuove SOLO l'attributo che confligge -- per
        i conflitti aula libera il classroom_name della lezione
-       confliggente; per docente / classe (non si puo' svincolare
-       parzialmente perche' la riga IS la tupla) elimina la lezione.</p>
+       confliggente; per docente / classe (non si può svincolare
+       parzialmente perché la riga IS la tupla) elimina la lezione.</p>
     <p><b>Elimina</b>: rimuove l'INTERA lezione confliggente da ogni
        categoria.</p>
     {#if showSwap}

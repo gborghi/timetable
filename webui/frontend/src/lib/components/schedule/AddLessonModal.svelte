@@ -195,7 +195,7 @@
 <Modal {open} title={`Nuovo evento - ${titleSlot}`} {onClose}>
   <div class="space-y-3" data-testid="add-lesson-modal">
     <div class="text-xs text-ink-500">
-      Modalita': <code>{mode}</code> -- compila i campi mancanti per
+      Modalità: <code>{mode}</code> -- compila i campi mancanti per
       creare una nuova lezione nello slot scelto. La materia dipende
       dal docente scelto (vengono mostrate solo le sue abilitazioni).
       Anello verde = campo valido; anello rosso = campo richiesto

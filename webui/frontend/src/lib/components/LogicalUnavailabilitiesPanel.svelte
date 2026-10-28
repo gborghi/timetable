@@ -225,7 +225,7 @@
       <div><strong>Operatori:</strong>
         <code>AND</code>, <code>OR</code>, <code>NOT</code>, parentesi.
         Anche <code>&amp;</code>, <code>|</code>, <code>!</code> sono accettati.
-        <code>mai</code> e' alias di <code>NOT</code>.
+        <code>mai</code> è alias di <code>NOT</code>.
       </div>
       <div><strong>Predicate atoms (sintassi estesa):</strong>
         <code>aula:NOME</code>, <code>materia:NOME</code>,
@@ -234,11 +234,11 @@
         o <code>@giornoOra</code> (es. <code>aula:LabFisica@mar</code> =
         "in aula LabFisica il martedi", <code>aula:LabFisica@mar4</code> =
         "in aula LabFisica martedi 4a ora"). Lo storage e l'editing funzionano
-        gia oggi; l'enforcement nel solver e' parziale (vedi docs).
+        gia oggi; l'enforcement nel solver è parziale (vedi docs).
       </div>
       <div><strong>Tipi:</strong>
         <span class="pill-red !text-[10px]">HARD</span> deve essere soddisfatto;
-        <span class="pill-amber !text-[10px]">SOFT</span> paga penalita se violato;
+        <span class="pill-amber !text-[10px]">SOFT</span> paga penalità se violato;
         <span class="pill-blue !text-[10px]">PREFERRED</span> da bonus se soddisfatto;
         <span class="pill-c-enforced !text-[10px]">ENFORCED</span>
         deve essere soddisfatto E almeno uno degli slot della DNF deve essere
@@ -310,7 +310,7 @@
       </tbody>
     </table>
   {:else if entityId}
-    <p class="text-xs text-ink-400 italic">Nessun vincolo logico per questa entita.</p>
+    <p class="text-xs text-ink-400 italic">Nessun vincolo logico per questa entità.</p>
   {:else}
     <p class="text-xs text-amber-700">
       Salva prima la scheda per poter aggiungere vincoli logici (servono un id).

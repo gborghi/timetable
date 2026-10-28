@@ -250,7 +250,7 @@
         <p class="text-[11px] text-ink-500 italic">
           Il grafico carica la telemetria via
           <code>/api/optimize/runs/{runId}/summary</code>
-          (puo' essere pesante). Premi "Mostra" quando vuoi
+          (può essere pesante). Premi "Mostra" quando vuoi
           analizzarlo.
         </p>
       {/if}
@@ -305,7 +305,7 @@
       <p class="text-sm text-ink-500 italic">
         Nessuna telemetria registrata per questo run (versione del
         solver precedente al collector, oppure run di tipo
-        diagnostico — il risultato e' nelle metriche del
+        diagnostico — il risultato è nelle metriche del
         riepilogo).
       </p>
     </section>

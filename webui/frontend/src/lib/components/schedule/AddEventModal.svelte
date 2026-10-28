@@ -191,7 +191,7 @@
               + '(visibile nel pannello rosso).', 'success');
       } else if (r.warning === 'cattedra_orphan_lesson') {
         flash('Evento orfano creato (la cattedra esistente '
-              + 'di un altro docente non e\' stata toccata).', 'success');
+              + 'di un altro docente non è stata toccata).', 'success');
       } else {
         flash('Evento creato.', 'success');
       }
@@ -213,7 +213,7 @@
     warningOpen = false;
     if (day === '' || hour === '') {
       flash('Per creare un evento orfano servono giorno e ora '
-            + '(altrimenti la cattedra esistente non e\' modificabile).',
+            + '(altrimenti la cattedra esistente non è modificabile).',
             'error');
       return;
     }
@@ -224,7 +224,7 @@
 <Modal {open} title="Nuovo evento (Monitor)" {onClose}>
   <div class="space-y-3">
     <p class="text-xs text-ink-500">
-      Un evento e' una singola occorrenza in uno slot giorno/ora. Se
+      Un evento è una singola occorrenza in uno slot giorno/ora. Se
       compili giorno + ora viene creato anche immediatamente, altrimenti
       l'evento resta non schedulato e appare nel pannello rosso. La
       materia mostra solo le abilitazioni del docente scelto. Anello
@@ -317,12 +317,12 @@
                        onResolve={onResolveConflict}/>
 
 <Modal open={warningOpen}
-       title="Cattedra gia' assegnata a un altro docente"
+       title="Cattedra già assegnata a un altro docente"
        onClose={() => (warningOpen = false)}>
   <div class="space-y-3 text-sm">
     <p>
       La cattedra <strong>{warningDetails?.class_name}</strong> /
-      <strong>{warningDetails?.subject}</strong> e' gia' assegnata a
+      <strong>{warningDetails?.subject}</strong> è già assegnata a
       <strong>{warningDetails?.owned_by_teacher_display
               || warningDetails?.owned_by_teacher_name}</strong>.
     </p>
@@ -332,7 +332,7 @@
       nuova lezione di {teacherName} per {className}/{subject} viene
       inserita nello slot scelto. Questo crea un'incoerenza fra la
       cattedra (di un altro docente) e la lezione (tua), ma a volte
-      e' quello che vuoi (compresenze improvvisate, sostituzioni
+      è quello che vuoi (compresenze improvvisate, sostituzioni
       manuali, eventi una-tantum).
     </p>
     {#if day === '' || hour === ''}

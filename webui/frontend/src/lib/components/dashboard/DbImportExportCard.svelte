@@ -146,7 +146,7 @@
       <p class="text-[11px] text-ink-500">
         Il file include database.db (SQLite raw), tables/*.csv per
         ogni tabella, e metadata.json con
-        <code>schema_version</code> + sha256 per integrita'.
+        <code>schema_version</code> + sha256 per integrità.
       </p>
     </div>
 

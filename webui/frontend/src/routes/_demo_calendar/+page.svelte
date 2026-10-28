@@ -65,5 +65,5 @@
     configurati nel Tab Ore.
   </p>
   <WeeklyCalendarView {config} value={cells} onChange={(v) => cells = v}
-                      title="Disponibilita oraria (demo)"/>
+                      title="Disponibilità oraria (demo)"/>
 </div>

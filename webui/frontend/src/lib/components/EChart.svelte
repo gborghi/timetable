@@ -107,13 +107,13 @@
       <button class="btn !text-[10px] !px-2 !py-0.5"
               on:click={exportPng}
               title="Scarica il grafico come PNG">
-        Export PNG
+        Esporta PNG
       </button>
       <button class="btn !text-[10px] !px-2 !py-0.5"
               on:click={clearChart}
               disabled={cleared}
               title="Svuota il grafico (puoi ripristinarlo o lanciare di nuovo)">
-        Clear
+        Svuota
       </button>
     </div>
   {/if}

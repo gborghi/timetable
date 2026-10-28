@@ -250,7 +250,7 @@
 
 <div class="space-y-4" data-testid="classes-page">
   <PageHero title="Classi"
-            description="Le classi della scuola con anno, sezione e indirizzo. Il monte ore per materia arriva dall'indirizzo e si puo' correggere classe per classe.">
+            description="Le classi della scuola con anno, sezione e indirizzo. Il monte ore per materia arriva dall'indirizzo e si può correggere classe per classe.">
     <svelte:fragment slot="actions">
       <button class="btn-primary" on:click={newClass}
               data-testid="add-class-btn">+ Nuova classe</button>
@@ -398,7 +398,7 @@
 
     <div class="mt-4">
       <WeeklyCalendarView
-        title="Disponibilita oraria della classe"
+        title="Disponibilità oraria della classe"
         value={editing.unavailability || []}
         onChange={onMatrixChange}/>
     </div>
@@ -407,9 +407,9 @@
     <div class="mt-4 card !shadow-none p-3 bg-ink-50/40 space-y-3">
       <div class="text-sm font-semibold">Giorni liberi della classe (avanzato)</div>
       <p class="text-xs text-ink-500">
-        Per le classi italiane il default e' lavorare lun-sab (zero
+        Per le classi italiane il default è lavorare lun-sab (zero
         giorni liberi). Se si imposta un giorno libero HARD, le 6 ore
-        del giorno vengono bloccate nella matrice di disponibilita'.
+        del giorno vengono bloccate nella matrice di disponibilità.
         Tre preferenze ordinate (la 1a viene rispettata per prima),
         e un numero esatto di giorni liberi a settimana.
       </p>
@@ -472,7 +472,7 @@
       <div class="grid grid-cols-2 gap-3">
         <div class="field">
           <label>Giorni liberi totali nella settimana (HARD)
-            <span title="Numero esatto di giornate libere per la classe. Default 0 (lavora tutti i giorni). 1 = un giorno libero (es. lunedi'). Aumentare oltre 1 e' raro per le classi italiane.">ℹ️</span>
+            <span title="Numero esatto di giornate libere per la classe. Default 0 (lavora tutti i giorni). 1 = un giorno libero (es. lunedì). Aumentare oltre 1 è raro per le classi italiane.">ℹ️</span>
           </label>
           <input type="number" min="0" max={calDays.length}
                  value={editing.required_free_days_count ?? 0}
@@ -481,7 +481,7 @@
         </div>
         <div class="field">
           <label>Massimo ore al giorno (HARD)
-            <span title="Cap superiore al numero di ore in un singolo giorno. Default 5. Aumentare a 6/7 se la classe ha giorni liberi e deve compensare con piu' ore al giorno.">ℹ️</span>
+            <span title="Cap superiore al numero di ore in un singolo giorno. Default 5. Aumentare a 6/7 se la classe ha giorni liberi e deve compensare con più ore al giorno.">ℹ️</span>
           </label>
           <input type="number" min="1" max="7"
                  value={editing.max_hours_per_day ?? 5}
@@ -513,7 +513,7 @@
         </div>
       {:else if (editing.room_policy ?? 'ibrida') === 'libera'}
         <div class="text-xs text-slate-600 bg-slate-50 border border-slate-300 p-2 rounded">
-          L'ottimizzatore e' libero di spostare la classe: le ore
+          L'ottimizzatore è libero di spostare la classe: le ore
           possono finire in aule diverse anche nella stessa giornata.
           Usa questa opzione solo se la scuola pratica davvero le
           aule-materia.
@@ -538,7 +538,7 @@
             ⚠️ Configurazione infeasible: con
             {editing.required_free_days_count ?? 0} giorni liberi e
             {totalHours} ore settimanali servono almeno {minPerDay}
-            ore al giorno, ma il massimo e' {maxPerDay}. Aumenta
+            ore al giorno, ma il massimo è {maxPerDay}. Aumenta
             "Massimo ore al giorno" a {minPerDay} oppure riduci i
             giorni liberi.
           </div>

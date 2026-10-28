@@ -21,14 +21,14 @@
       <p>
         La lezione <strong>{notice.subject}</strong>
         ({notice.class_name} con {notice.teacher})
-        e' stata spostata in
+        è stata spostata in
         <code>{calendarDayName(notice.day, $workingHoursConfig)} {notice.hour}:00</code>,
         ma l'aula <strong>{notice.room}</strong> non era
         disponibile in quel nuovo slot (occupata da un'altra lezione
         oppure HARD-non-disponibile in quell'orario).
       </p>
       <p>
-        L'aula e' stata <strong>rimossa</strong> dalla lezione spostata.
+        L'aula è stata <strong>rimossa</strong> dalla lezione spostata.
         Apri la cella nella matrice e seleziona una nuova aula dal
         dropdown (le aule libere appaiono in verde, quelle occupate in
         rosso e non sono selezionabili).

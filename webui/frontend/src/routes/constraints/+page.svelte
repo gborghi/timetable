@@ -118,7 +118,7 @@
     searchEntityId = null;
     searchText = '';
     searchLevels = [];
-    // [] e non null: null chiuderebbe l'intero pannello (e' quello che
+    // [] e non null: null chiuderebbe l'intero pannello (è quello che
     // fa il toggle 🔍 Ricerca), mentre Reset deve solo svuotare i
     // filtri lasciando il pannello aperto.
     searchResults = [];
@@ -276,7 +276,7 @@
 
 <div data-testid="constraints-page">
   <PageHero title="Vincoli"
-            description="Tutte le regole editabili: matrici di disponibilita', vincoli logici per docenti/classi/aule/indirizzi, preferenze materia-aula e docente-aula, regole di compresenza. Il livello decide se il solver deve o preferisce rispettarle.">
+            description="Tutte le regole editabili: matrici di disponibilità, vincoli logici per docenti/classi/aule/indirizzi, preferenze materia-aula e docente-aula, regole di compresenza. Il livello decide se il solver deve o preferisce rispettarle.">
     <svelte:fragment slot="chips">
       <!-- Legenda dei livelli sempre visibile: senza, le sigle HARD /
            SOFT / PREFERRED non dicono nulla a chi apre la pagina. -->
@@ -310,7 +310,7 @@
       <button class="btn"
               on:click={() => searchResults === null ? (searchResults = []) : (searchResults = null)}
               data-testid="constraints-search-toggle"
-              title="Ricerca avanzata: trova tutti i vincoli che coinvolgono un'entita' specifica">
+              title="Ricerca avanzata: trova tutti i vincoli che coinvolgono un'entità specifica">
         🔍 Ricerca
       </button>
       <button class="btn" on:click={loadConflicts} disabled={conflictsBusy}>
@@ -340,19 +340,19 @@
   {#if searchResults !== null}
     <div class="card p-4 border-accent-200 bg-paper-band">
       <span class="eyebrow">Ricerca trasversale</span>
-      <h2 class="mt-1 mb-2">Vincoli che coinvolgono un'entita'</h2>
+      <h2 class="mt-1 mb-2">Vincoli che coinvolgono un'entità</h2>
       <p class="text-[11.5px] text-ink-400 mb-3 max-w-[76ch]">
         Cerca trasversalmente fra TUTTE le sorgenti di vincoli (matrici,
         logici, preferenze aule, coteach, DSL generici), trovando ogni
-        vincolo che <strong>menziona</strong> l'entita' scelta -- a
-        prescindere da dove e' stato creato. La menzione e' rilevata
+        vincolo che <strong>menziona</strong> l'entità scelta -- a
+        prescindere da dove è stato creato. La menzione è rilevata
         sia da `owner_id`/FK strutturati sia dal testo dell'espressione
         DSL salvata.
       </p>
 
       <div class="grid grid-cols-12 gap-2 items-end mb-3">
         <div class="field col-span-3">
-          <label for="routes-constraints-f1">Tipo entita'</label>
+          <label for="routes-constraints-f1">Tipo entità</label>
           <select id="routes-constraints-f1" bind:value={searchEntityType}
                   data-testid="search-entity-type"
                   on:change={() => (searchEntityId = null)}>
@@ -366,7 +366,7 @@
           </select>
         </div>
         <div class="field col-span-4">
-          <label for="routes-constraints-f2">Entita'</label>
+          <label for="routes-constraints-f2">Entità</label>
           <select id="routes-constraints-f2" bind:value={searchEntityId}
                   data-testid="search-entity-id"
                   disabled={!searchEntityType}>
@@ -460,7 +460,7 @@
         <p class="text-xs text-ink-400 italic">cerco...</p>
       {:else}
         <p class="text-xs text-ink-400 italic">
-          Nessun risultato. Imposta un'entita' e clicca Cerca.
+          Nessun risultato. Imposta un'entità e clicca Cerca.
         </p>
       {/if}
     </div>
@@ -561,7 +561,7 @@
         <span class="pill !text-[10px]">{row.scope}</span>
       </td>
       <td class="text-xs">
-        <!-- "Applicato a": l'entita' a cui il vincolo si riferisce.
+        <!-- "Applicato a": l'entità a cui il vincolo si riferisce.
              Ricercabile via owner / applicato_a / chi / nome /
              docente / classe / aula nel DSL. -->
         {#if row.scope === 'docente'}
@@ -607,7 +607,7 @@
         <strong class="text-accent-700">{editing.owner_name}</strong>
         - <code>{editing.detail}</code>.
         I dropdown qui sotto permettono di ri-applicare il vincolo
-        a un'altra entita' senza ricrearlo.
+        a un'altra entità senza ricrearlo.
       </div>
 
       <!-- Owner dropdowns: docente / classe / aula / indirizzo /

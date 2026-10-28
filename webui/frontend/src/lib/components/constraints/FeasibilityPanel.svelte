@@ -212,7 +212,7 @@
   function removeMember(m) {
     return applyAction(m, 'remove', null, {
       confirmText: `Rimuovere il vincolo ${memberShort(m)}?\n`
-        + `Reversibile dallo Storico (verra' ricreato con un nuovo id).`,
+        + `Reversibile dallo Storico (verrà ricreato con un nuovo id).`,
       successMsg: 'Vincolo rimosso. Reversibile da Storico.',
     });
   }
@@ -232,7 +232,7 @@
   function disableMember(m) {
     return applyAction(m, 'disable', null, {
       confirmText: `Disabilitare temporaneamente "${memberShort(m)}"?\n`
-        + 'Il vincolo restera\' nel DB ma non sara\' applicato.',
+        + 'Il vincolo resterà nel DB ma non sarà applicato.',
       successMsg: 'Vincolo disabilitato. Riabilitabile da Storico.',
     });
   }
@@ -265,7 +265,7 @@
 
   async function revertIntervention(iv) {
     if (iv.reverted) {
-      flash('Intervento gia\' revertito.', 'info');
+      flash('Intervento già revertito.', 'info');
       return;
     }
     if (!await confirmDialog(`Revertire l'intervento #${iv.id} `
@@ -385,7 +385,7 @@
       <div class="card p-3 border-2 border-emerald-300 bg-emerald-50/60
                   text-emerald-900">
         ✅ <strong>Modello feasible</strong> — i vincoli HARD/ENFORCED
-        sono mutuamente compatibili. Phase B avra' (almeno) un'assegnazione
+        sono mutuamente compatibili. Phase B avrà (almeno) un'assegnazione
         che li soddisfa tutti.
       </div>
     {:else if result.feasible === false}
@@ -394,7 +394,7 @@
           ❌ Infeasible — {result.cores.length} core di vincoli incompatibili
         </h3>
         <p class="text-xs text-red-700">
-          Ogni core e' un sottoinsieme MINIMALE di vincoli che insieme
+          Ogni core è un sottoinsieme MINIMALE di vincoli che insieme
           rendono il modello UNSAT: rimuovendone uno qualsiasi del core,
           il sistema torna soddisfacibile (almeno fino al prossimo core).
           Il "suggerimento automatico" propone una rimozione che risolve
@@ -552,7 +552,7 @@
         <p class="text-xs text-ink-500 italic">
           Nessun intervento registrato. Quando rimuovi, soften o disabiliti
           un vincolo dal pannello qui sopra, l'azione viene salvata qui e
-          puo' essere revertita in qualsiasi momento.
+          può essere revertita in qualsiasi momento.
         </p>
       {:else}
         <div class="overflow-x-auto">

@@ -172,7 +172,7 @@
                on:click={(e) => onClick(e, room)}
                on:keydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(e, room); } }}
                title={(state === 'allowed' ? 'Aula consentita (default)' :
-                      state === 'soft' ? 'SOFT - penalita ' + (pref?.weight ?? '') :
+                      state === 'soft' ? 'SOFT - penalità ' + (pref?.weight ?? '') :
                       state === 'preferred' ? 'PREFERITA - bonus ' + (pref?.weight ?? '') :
                       state === 'forbidden' ? 'VIETATA (HARD, no penalty)' :
                       'OBBLIGATORIA (enforced)')

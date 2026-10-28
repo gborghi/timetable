@@ -176,7 +176,7 @@
           step: step.key, run_id: sub_id, status: last_status,
         }];
         if (last_status === 'failed') {
-          chainError = `Step ${step.key} (run #${sub_id}) e' fallito; `
+          chainError = `Step ${step.key} (run #${sub_id}) è fallito; `
                       + 'apri il tab Runs per il dettaglio.';
           break;
         }

@@ -74,7 +74,7 @@
     } else {
       if (!await confirmDialog(`Eliminare l'intera cattedra di ${row.subject} `
           + `(${row.class_name}, ${row.teacher_name})? `
-          + `Saranno eliminate ANCHE tutte le sue lezioni gia' schedulate.`)) return;
+          + `Saranno eliminate ANCHE tutte le sue lezioni già schedulate.`)) return;
       try {
         await api.del('/api/monitor/event/' + row.assignment_id);
         flash('Cattedra e lezioni eliminate.', 'success');
@@ -115,10 +115,10 @@
 
   // Per-row Dissocia: rimuove SOLO questa singola lezione dal suo
   // slot temporale. La cattedra resta; missing_hours +1. Per le righe
-  // placeholder (gia' non schedulate) e' un no-op informativo.
+  // placeholder (già non schedulate) è un no-op informativo.
   async function dissociateRow(row) {
     if (!row.is_scheduled || row.lesson_id == null) {
-      flash('Evento gia\' non schedulato (nessuno slot da rimuovere).',
+      flash('Evento già non schedulato (nessuno slot da rimuovere).',
             'info');
       return;
     }
@@ -246,7 +246,7 @@
     if (nLessons) parts.push(`${nLessons} lezioni`);
     if (nPlaceholders) parts.push(`${nPlaceholders} cattedre`
                                    + ` (con TUTTE le loro lezioni)`);
-    const msg = `Eliminare ${parts.join(' + ')}? L'azione non e' reversibile.`;
+    const msg = `Eliminare ${parts.join(' + ')}? L'azione non è reversibile.`;
     if (!await confirmDialog(msg)) return;
     let okCount = 0;
     for (const r of rows) {
@@ -343,7 +343,7 @@
                        : {},
       };
     } catch (e) {
-      flash('Errore caricando disponibilita: ' + e.message, 'error');
+      flash('Errore caricando disponibilità: ' + e.message, 'error');
     } finally {
       slotPickerLoading = false;
     }
@@ -420,7 +420,7 @@
   function moveFlash(r, base) {
     // The unpin is a consequence the user agreed to, not a side effect to
     // discover later in the Lockati tab -- say it happened.
-    flash(r.unlocked ? base + ' Il blocco e\' stato rimosso.' : base,
+    flash(r.unlocked ? base + ' Il blocco è stato rimosso.' : base,
           'success');
   }
 
@@ -488,7 +488,7 @@
 
 <div class="space-y-4" data-testid="monitor-page">
   <PageHero title="Eventi"
-            description="Ogni lezione collocata e' un evento. Doppio click sul nome di una colonna per aggiungere un livello di sort (max 3); click sulla ▲/▼ accanto per invertire la direzione. Il sort si applica all'interno di ogni nest del raggruppamento e funziona anche senza nesting.">
+            description="Ogni lezione collocata è un evento. Doppio click sul nome di una colonna per aggiungere un livello di sort (max 3); click sulla ▲/▼ accanto per invertire la direzione. Il sort si applica all'interno di ogni nest del raggruppamento e funziona anche senza nesting.">
     <svelte:fragment slot="chips">
       {#if summary}
         <span class="pill"><span class="num">{summary.n_events}</span> eventi</span>
@@ -609,8 +609,8 @@
       <p class="text-xs text-ink-500">
         Click su uno slot per spostare la lezione la'.
         Verde = libero per docente e classe;
-        rosso = HARD (docente o classe gia' impegnati);
-        ambra = aula occupata da un'altra lezione (verra' liberata);
+        rosso = HARD (docente o classe già impegnati);
+        ambra = aula occupata da un'altra lezione (verrà liberata);
         azzurro = slot attuale.
       </p>
       <div class="overflow-x-auto">
@@ -656,7 +656,7 @@
       </div>
       <div class="text-[10px] text-ink-400 flex flex-wrap gap-3">
         <span><span class="pill !text-[10px]" style="background:#a7f3d0;color:#065f46;">ok</span> libero</span>
-        <span><span class="pill !text-[10px]" style="background:#fecaca;color:#991b1b;">D / C</span> docente / classe gia' impegnati (HARD)</span>
+        <span><span class="pill !text-[10px]" style="background:#fecaca;color:#991b1b;">D / C</span> docente / classe già impegnati (HARD)</span>
         <span><span class="pill !text-[10px]" style="background:#fde68a;color:#92400e;">aula</span> aula occupata da altra lezione</span>
         <span><span class="pill !text-[10px]" style="background:#bae6fd;color:#075985;">qui</span> slot attuale</span>
       </div>

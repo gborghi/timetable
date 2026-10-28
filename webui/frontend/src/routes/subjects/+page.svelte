@@ -92,7 +92,7 @@
 
 <div class="space-y-4" data-testid="subjects-page">
   <PageHero title="Materie"
-            description="Le materie insegnate e i pesi che orientano il solver: distribuzione sui giorni, ore appaiate, penalita' sulla sesta ora.">
+            description="Le materie insegnate e i pesi che orientano il solver: distribuzione sui giorni, ore appaiate, penalità sulla sesta ora.">
     <svelte:fragment slot="actions">
       <button class="btn" on:click={() => (editWeights = !editWeights)}
               data-testid="subjects-toggle-weights">

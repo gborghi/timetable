@@ -319,7 +319,7 @@
 
 <div class="space-y-4" data-testid="assignments-page">
   <PageHero title="Cattedre"
-            description="L'esito della Fase A: chi insegna cosa e dove. Ogni riga e' un abbinamento docente-classe-materia, con le forme speciali (sostegno, potenziamento, compresenza, gruppi articolati).">
+            description="L'esito della Fase A: chi insegna cosa e dove. Ogni riga è un abbinamento docente-classe-materia, con le forme speciali (sostegno, potenziamento, compresenza, gruppi articolati).">
     <svelte:fragment slot="chips">
       <span class="pill" data-testid="assignments-class-count">
         <span class="num">{Object.keys(byClass).length}</span> classi
@@ -710,7 +710,7 @@
   <div class="space-y-3" data-testid="bulk-change-teacher-modal">
     <p class="text-xs text-ink-500">
       Tutte le cattedre selezionate verranno riassegnate al docente
-      scelto. Le cattedre la cui materia non e' coperta dal docente
+      scelto. Le cattedre la cui materia non è coperta dal docente
       vengono saltate (lista mostrata nel toast finale).
     </p>
     <div class="field">

@@ -222,7 +222,7 @@
       // user said "no" -> just this one
     }
     if (r.status === 'running' || r.status === 'pending') {
-      flash('Run ancora attivo: non si puo\' eliminare.', 'error');
+      flash('Run ancora attivo: non si può eliminare.', 'error');
       return;
     }
     if (!await confirmDialog(`Eliminare run #${r.id} (${r.kind})?`)) return;
@@ -286,7 +286,7 @@
 
 <div class="space-y-4" data-testid="runs-page">
   <PageHero title="Runs"
-            description="Storia di ogni esecuzione (mock-import, Phase A, Phase B, metaeuristiche, classroom-assignment, place-event). Doppio click su un'intestazione di colonna per aggiungerla al sort (max 3 livelli); click sulla freccia per invertire la direzione. Query DSL come nelle altre tab. Selezionando piu' righe ed eliminando, il delete si applica a tutto il batch.">
+            description="Storia di ogni esecuzione (mock-import, Phase A, Phase B, metaeuristiche, classroom-assignment, place-event). Doppio click su un'intestazione di colonna per aggiungerla al sort (max 3 livelli); click sulla freccia per invertire la direzione. Query DSL come nelle altre tab. Selezionando più righe ed eliminando, il delete si applica a tutto il batch.">
     <svelte:fragment slot="chips">
       <span class="pill"><span class="num">{runs.length}</span> run nel dataset</span>
     </svelte:fragment>

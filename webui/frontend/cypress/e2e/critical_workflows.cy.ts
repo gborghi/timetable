@@ -127,7 +127,7 @@ describe('B. Create + edit teacher CRUD round-trip', () => {
     cy.get('.weekly-calendar', { timeout: 10000 })
       .scrollIntoView()
       .should('be.visible');
-    cy.contains(/Disponibilita oraria/i).should('be.visible');
+    cy.contains(/Disponibilit[aà] oraria/i).should('be.visible');
 
     // Close modal: try to find a close button or press Escape.
     cy.get('body').type('{esc}');

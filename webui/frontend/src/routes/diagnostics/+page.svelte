@@ -427,7 +427,7 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
   <!-- 1) Hall (async run, like the others) -->
   <section class="card p-4 space-y-2">
     <div class="flex items-baseline gap-2 flex-wrap">
-      <h2 class="!text-base">1) Pre-check fattibilita' (Hall)</h2>
+      <h2 class="!text-base">1) Pre-check fattibilità (Hall)</h2>
       <span class="pill !text-[10px]">async run</span>
       {#if statusPill(hl)}
         <span class="{statusPill(hl).cls} !text-[10px]">
@@ -589,7 +589,7 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
           <div class="text-3xl font-semibold">
             {bp.result.density.toFixed(3)}
           </div>
-          <div class="text-xs text-ink-500">Densita'</div>
+          <div class="text-xs text-ink-500">Densità</div>
           <p class="text-[10px] text-ink-500 italic mt-1">
             {bp.result.density_interpretation}
           </p>
@@ -599,7 +599,7 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
             {bp.result.modularity.toFixed(3)}
           </div>
           <div class="text-xs text-ink-500">
-            Modularita' ({bp.result.n_communities} comunita')
+            Modularità ({bp.result.n_communities} comunità)
           </div>
           <p class="text-[10px] text-ink-500 italic mt-1">
             {bp.result.modularity_interpretation}
@@ -686,7 +686,7 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
         Personalizza modelli ({coModels.length} custom configurat{coModels.length === 1 ? 'o' : 'i'})
       </summary>
       <p class="text-[11px] text-ink-500 mt-1 mb-2">
-        Se la lista qui sotto e' vuota, vengono calcolati i 3 modelli
+        Se la lista qui sotto è vuota, vengono calcolati i 3 modelli
         canonici (carico vs buchi, materie vs SOFT, saturazione vs 6a
         ora). Aggiungi righe per scegliere altre x/y, OLS o Logit, scope
         teachers o classes.
@@ -838,7 +838,7 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
       <p class="text-[11px] text-ink-500 mt-1 mb-2">
         Tickera le distribuzioni da calcolare (vuoto = tutte). I
         parametri sotto ciascuna sono usati solo se la
-        distribuzione e' inclusa.
+        distribuzione è inclusa.
       </p>
       {#if !dsCatalog}
         <p class="text-[11px] text-ink-500 italic">

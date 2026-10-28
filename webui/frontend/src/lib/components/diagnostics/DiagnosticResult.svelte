@@ -165,7 +165,7 @@
         <div class="text-3xl font-semibold">
           {result.density.toFixed(3)}
         </div>
-        <div class="text-xs text-ink-500">Densita'</div>
+        <div class="text-xs text-ink-500">Densità</div>
         <p class="text-[10px] text-ink-500 italic mt-1">
           {result.density_interpretation}
         </p>
@@ -175,7 +175,7 @@
           {result.modularity.toFixed(3)}
         </div>
         <div class="text-xs text-ink-500">
-          Modularita' ({result.n_communities} comunita')
+          Modularità ({result.n_communities} comunità)
         </div>
         <p class="text-[10px] text-ink-500 italic mt-1">
           {result.modularity_interpretation}

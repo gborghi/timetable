@@ -91,9 +91,9 @@ export interface TeacherBase {
   free_day?: string | null;
   max_consecutive: number;
   /**
-   * Se il docente puo' affiancare un collega nella STESSA aula invece di
+   * Se il docente può affiancare un collega nella STESSA aula invece di
    * prenotarne una propria. Vale per compresenze di qualunque natura
-   * (sostegno, potenziamento, codocenza, madrelingua, ITP): non e' una
+   * (sostegno, potenziamento, codocenza, madrelingua, ITP): non è una
    * proprieta' del sostegno. Con 'oraria' le celle ammesse stanno in
    * `compresenza_hours`.
    */
@@ -106,7 +106,7 @@ export interface TeacherBase {
 }
 
 export interface CompresenzaHour {
-  day: number;   // 1 = lunedi'
+  day: number;   // 1 = lunedì
   hour: number;  // numerazione legacy 8..13
 }
 
@@ -158,7 +158,7 @@ export interface ClassBase {
  * Quanto vincola l'aula base della classe:
  * - `fissa`  HARD, tutte le ore nell'aula base; derogano solo le
  *            materie con un'aula speciale obbligatoria
- * - `ibrida` SOFT, l'aula base e' una preferenza (default storico)
+ * - `ibrida` SOFT, l'aula base è una preferenza (default storico)
  * - `libera` nessun vincolo di aula base
  */
 export type RoomPolicy = "fissa" | "ibrida" | "libera";

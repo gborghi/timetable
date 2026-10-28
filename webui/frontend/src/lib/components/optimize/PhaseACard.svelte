@@ -283,7 +283,7 @@
             <code>n_under_10</code>.
           </p>
           <p><strong>Aggregati</strong>: <code>sum(x)</code>, <code>count(x)</code> dove
-            <code>x</code> e' una variabile per-docente o un predicato.</p>
+            <code>x</code> è una variabile per-docente o un predicato.</p>
           <p><strong>Variabili per-docente</strong> (solo dentro sum/count):
             <code>teacher_hours</code>, <code>teacher_unused</code>,
             <code>teacher_n_classes</code>, <code>teacher_n_curricula</code>,
@@ -322,19 +322,19 @@
 
   <div class="border-t border-ink-200 pt-3 mt-1">
     <div class="flex items-baseline gap-2 mb-1">
-      <h3 class="!text-sm">Pre-check fattibilita' strutturale</h3>
+      <h3 class="!text-sm">Pre-check fattibilità strutturale</h3>
       <span class="pill pill-amber !text-[10px]">Hall (diagnostico)</span>
     </div>
     <p class="text-[11px] text-ink-500 mb-2">
-      Verifica via teorema di Hall che la capacita' dei docenti
+      Verifica via teorema di Hall che la capacità dei docenti
       qualificati copra la domanda di ore per materia. Esegui prima
       di Phase A per evitare assegnazioni inutilmente lunghe su
-      istanze gia' infeasible al livello strutturale.
+      istanze già infeasible al livello strutturale.
     </p>
     <button class="btn !text-xs" type="button"
             on:click={runHallPrecheck}
             disabled={busyHall}>
-      {busyHall ? "Pre-check in corso..." : "Pre-check fattibilita' strutturale"}
+      {busyHall ? "Pre-check in corso..." : "Pre-check fattibilità strutturale"}
     </button>
     {#if hallReport}
       <div class="mt-2 text-xs">

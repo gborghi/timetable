@@ -18,7 +18,7 @@
 
 {#if moveSrc}
   <div class="card p-3 bg-accent-500/5 border-accent-500/40 flex items-center gap-3 flex-wrap">
-    <strong>Modalita sposta:</strong>
+    <strong>Modalità sposta:</strong>
     <span class="text-sm">
       {moveSrc.subject} ({moveSrc.cls} con {moveSrc.teacher}) da
       <code>{calendarDayName(moveSrc.day, $workingHoursConfig)} {moveSrc.hour}:00</code>

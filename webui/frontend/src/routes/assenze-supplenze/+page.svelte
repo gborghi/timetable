@@ -349,7 +349,7 @@
 
     <p class="text-xs text-ink-500">
       Click sull'<strong>intestazione di un giorno</strong> per registrare le assenze;
-      click su una <strong>cella</strong> per vedere chi e disponibile e
+      click su una <strong>cella</strong> per vedere chi è disponibile e
       assegnare supplenze (drag-drop). Le celle rosse hanno classi scoperte;
       verdi sono coperte. In lista: <strong>DISP</strong> = disposizione ufficiale,
       <strong>BUCO</strong> = ora vuota tra prima e ultima lezione (priorità
@@ -381,7 +381,7 @@
                   <button class="text-[10px] text-red-600 hover:underline px-2"
                           on:click|stopPropagation={() => clearDayAbsences(d.date)}
                           title="Cancella tutte le assenze e supplenze del giorno">
-                    Clear
+                    Cancella giorno
                   </button>
                 {/if}
               </th>
@@ -432,7 +432,7 @@
                       {#if cell?.n_hole_teachers}
                         <span class="ml-1 text-amber-800 font-semibold"
                               title="Buco tra prima e ultima ora">
-                          {cell.n_hole_teachers} buco
+                          {cell.n_hole_teachers} {cell.n_hole_teachers === 1 ? 'buco' : 'buchi'}
                         </span>
                       {/if}
                     </div>
@@ -502,7 +502,7 @@
           <button class="btn-danger !text-xs"
                   on:click={() => clearDayAbsences(absencesModal.date)}
                   title="Cancella tutte le assenze e supplenze del giorno">
-            Clear (azzera giornata)
+            Cancella giorno
           </button>
           <div class="flex gap-2">
             <button class="btn" on:click={() => (absencesModal = null)}>Chiudi</button>
@@ -536,7 +536,7 @@
         {#if cellModal.detail.uncovered.length === 0}
           <p class="text-xs text-ink-400 italic">
             Nessuna classe scoperta in questa ora. Trascinare un docente
-            disponibile non e' necessario qui.
+            disponibile non è necessario qui.
           </p>
         {:else}
           <ul class="space-y-2">
@@ -584,8 +584,8 @@
           {/if}
         </h3>
         <p class="text-[11px] text-ink-500 mb-2">
-          Esclusi: docenti assenti oggi, in giorno libero, gia' impegnati
-          o gia' usati come supplenti. La disposizione non dipende dalla
+          Esclusi: docenti assenti oggi, in giorno libero, già impegnati
+          o già usati come supplenti. La disposizione non dipende dalla
           materia: i filtri qui sotto selezionano solo chi mostrare.
         </p>
         <div class="mb-2 space-y-1" data-testid="avail-filters">
@@ -694,7 +694,7 @@
                     {:else if t.is_hole}
                       <span class="pill !text-[9px] font-bold"
                         style="background:#fde68a;color:#78350f;"
-                        title="Buco tra prima e ultima lezione: coprire e' meno scomodo"
+                        title="Buco tra prima e ultima lezione: coprire è meno scomodo"
                       >BUCO</span>
                     {:else}
                       <span class="pill !text-[9px]"

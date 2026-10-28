@@ -137,7 +137,7 @@
                on:click={(e) => onClick(e, it)}
                on:keydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(e, it); } }}
                title={(state === "allowed" ? "Default (consentito)" :
-                       state === "soft" ? "SOFT - penalita " + (pref?.soft_penalty ?? "") :
+                       state === "soft" ? "SOFT - penalità " + (pref?.soft_penalty ?? "") :
                        state === "preferred" ? "PREFERITA - bonus " + (pref?.soft_penalty ?? "") :
                        state === "forbidden" ? "VIETATO (HARD)" :
                        "OBBLIGATORIO (HARD)")

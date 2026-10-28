@@ -1,13 +1,13 @@
 /**
- * Navigazione: unica fonte di verita' per la barra in alto, per la
+ * Navigazione: unica fonte di verità per la barra in alto, per la
  * striscia della tappa e per le fasce introduttive delle pagine.
  *
- * `navGroups` viveva dentro +layout.svelte; sta qui perche' ora lo
+ * `navGroups` viveva dentro +layout.svelte; sta qui perché ora lo
  * leggono in tre: il layout (barra + sub-nav) e le pagine che chiedono
  * a `tappaFor()` quale occhiello mostrare.
  *
  * ATTENZIONE: la struttura (8 voci di primo livello, ordine dei figli,
- * href e label) e' bloccata da cypress/e2e/navbar_completeness.cy.ts.
+ * href e label) è bloccata da cypress/e2e/navbar_completeness.cy.ts.
  * Modificarla richiede di aggiornare quello spec.
  */
 
@@ -28,10 +28,10 @@ export interface NavGroup {
 
 // Top-level nav: 8 entries. Anagrafica, Pianificazione, Gestione e
 // Esecuzione sono dropdown che raggruppano sotto-pagine; le altre
-// sono link diretti. Vincoli sta sotto Pianificazione (e' un'azione
+// sono link diretti. Vincoli sta sotto Pianificazione (è un'azione
 // della fase di pianificazione, non un capitolo a parte). Orario
-// sale a tab standalone perche' e' la pagina che si visita di gran
-// lunga piu' spesso. Eventi (ex Monitor) e' standalone perche' e'
+// sale a tab standalone perché è la pagina che si visita di gran
+// lunga più spesso. Eventi (ex Monitor) è standalone perché è
 // il pannello di run real-time, indipendente dalla pipeline di
 // ottimizzazione. Gestione raggruppa tutto cio' che riguarda la
 // gestione operativa post-orario (assenze, supplenze, ...).
@@ -41,7 +41,7 @@ export const navGroups: NavGroup[] = [
   { kind: 'menu', label: 'Anagrafica',
     hint: 'I dati di base della scuola: chi insegna, quali classi, materie, aule.', children: [
     { href: '/teachers',   label: 'Docenti',
-      hint: 'Docenti: ore, disponibilita oraria, giorni liberi, preferenze e materie insegnabili.' },
+      hint: 'Docenti: ore, disponibilità oraria, giorni liberi, preferenze e materie insegnabili.' },
     { href: '/classes',    label: 'Classi',
       hint: 'Classi: monte ore per materia, indirizzo, n. studenti e vincoli di classe.' },
     { href: '/curricula',  label: 'Indirizzi',
@@ -53,7 +53,7 @@ export const navGroups: NavGroup[] = [
     { href: '/subjects',   label: 'Materie',
       hint: 'Materie: nomi, pesi di distribuzione e preferenze d\'aula.' },
     { href: '/classrooms', label: 'Aule',
-      hint: 'Aule e laboratori: capienza, tipo, disponibilita e preferenze per materia.' },
+      hint: 'Aule e laboratori: capienza, tipo, disponibilità e preferenze per materia.' },
     { href: '/plessi',     label: 'Plessi',
       hint: 'Plessi (sedi): regole di spostamento fra edifici e politiche per giorno.' },
     { href: '/ore',        label: 'Ore',
@@ -62,7 +62,7 @@ export const navGroups: NavGroup[] = [
   { kind: 'menu', label: 'Pianificazione',
     hint: 'Le decisioni a monte del solver: compresenze, cattedre e vincoli.', children: [
     { href: '/coteaching',  label: 'Compresenze',
-      hint: 'Compresenze: due o piu docenti nella stessa ora/classe (es. laboratorio).' },
+      hint: 'Compresenze: due o più docenti nella stessa ora/classe (es. laboratorio).' },
     { href: '/assignments', label: 'Cattedre',
       hint: 'Cattedre (Fase A): assegna ogni (classe, materia) a un docente.' },
     { href: '/constraints', label: 'Vincoli',

@@ -1,5 +1,5 @@
 // Etichette testuali degli stati delle griglie di preferenza (aule,
-// materie, docenti). Servono perche' lo stato non sia leggibile solo
+// materie, docenti). Servono perché lo stato non sia leggibile solo
 // dal colore: badge visibile nella cella e nome accessibile.
 
 /** @type {Record<string, string>} */

@@ -74,7 +74,7 @@
 
 <div class="space-y-4" data-testid="coteaching-page">
   <PageHero title="Compresenze"
-            description="Due o piu' docenti nella stessa ora sulla stessa classe. Una regola HARD obbliga il solver a farli coincidere; una SOFT la penalizza soltanto.">
+            description="Due o più docenti nella stessa ora sulla stessa classe. Una regola HARD obbliga il solver a farli coincidere; una SOFT la penalizza soltanto.">
     <svelte:fragment slot="chips">
       <span class="pill" data-testid="coteaching-count">
         <span class="num">{rows.length}</span> regole
