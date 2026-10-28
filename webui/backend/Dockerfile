@@ -64,7 +64,7 @@ FROM python:${PYTHON_VERSION} AS runtime
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
-    PYTHONPATH=/app/webui:/app/engine:/app/schedule
+    PYTHONPATH=/app/webui:/app/engine
 
 # Non-root user. UID/GID 1000 is the conventional first-user default
 # and works cleanly with bind-mounts owned by the host user.
@@ -80,7 +80,6 @@ COPY --from=builder /install /usr/local
 # create data/ + logs/ paths if needed.
 COPY --chown=app:app webui/backend /app/webui/backend
 COPY --chown=app:app engine /app/engine
-COPY --chown=app:app schedule /app/schedule
 
 # webui/data is the SQLite + runs/snapshots dir. Mount a volume here
 # in production; the placeholder ensures the path exists and is owned
