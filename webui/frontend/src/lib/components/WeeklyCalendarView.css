@@ -340,6 +340,27 @@
   }
   .cal-layout__calendar { min-width: 0; }
 
+  /* Mobile (< md, review Liceo #2): the fixed 236px pool column left the
+     calendar ~100px wide on a 390px phone (lessons 10px wide, untappable).
+     Below 768px the pool goes UNDER the calendar, disappears when empty,
+     and the grid keeps a readable minimum column width, scrolling
+     horizontally inside .overflow-x-auto instead of being squashed. */
+  @media (max-width: 767px) {
+    .cal-layout--with-pool {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .cal-layout--pool-empty :global(.cal-pool) {
+      display: none;
+    }
+    .cal-grid--schedule {
+      min-width: calc(60px + var(--n-days, 6) * 84px);
+    }
+    .cal-grid--schedule .cal-header,
+    .cal-grid--schedule .cal-body {
+      grid-template-columns: 60px repeat(var(--n-days, 6), minmax(84px, 1fr));
+    }
+  }
+
   /* Configured slot wrapper in schedule mode: receives drops + click. */
   .cal-slot--schedule {
     position: absolute;

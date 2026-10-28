@@ -957,7 +957,8 @@
       </div>
     {/if}
     <div class="cal-layout"
-         class:cal-layout--with-pool={mode === 'schedule'}>
+         class:cal-layout--with-pool={mode === 'schedule'}
+         class:cal-layout--pool-empty={mode === 'schedule' && !(unscheduled_lessons?.length)}>
     <div class="overflow-x-auto cal-layout__calendar" tabindex="0" role="grid" aria-label="Orario settimanale"
          on:keydown={onEditKeyDown}>
       <div class="cal-grid"

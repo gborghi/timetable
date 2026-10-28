@@ -237,6 +237,27 @@ describe('/schedule calendar -- with active solution (Phase A+B)', () => {
     cy.get('[data-testid="schedule-edit-close"]').click();
   });
 
+  // ----- Regressione (review Liceo #1) -----
+  // Dopo un cambio di vista il click su una lezione non apriva piu' il
+  // modale: con svelte 5.56 ogni aggiornamento di store sulla pagina
+  // bloccava l'invalidazione delle `let` (actionLesson, helpDismissed...).
+  // Corretto alzando svelte a ^5.57.3; qui si clicca DOPO i cambi di vista.
+  for (const view of ['classes', 'teachers', 'global']) {
+    it(`after switching view (${view}) a lesson click still opens the actions modal`, () => {
+      cy.get('[data-testid="schedule-view-classes"]').click();
+      if (view !== 'classes') {
+        cy.get(`[data-testid="schedule-view-${view}"]`).click();
+      }
+      cy.get('[data-testid^="sched-lesson-"].cal-event--schedule', { timeout: 10000 })
+        .first()
+        .click({ force: true });
+      cy.get('[data-testid="schedule-actions-modal"]', { timeout: 5000 })
+        .should('be.visible');
+      cy.get('body').type('{esc}');
+      cy.get('[data-testid="schedule-actions-modal"]').should('not.exist');
+    });
+  }
+
   // ----- (Drag flow #1) Drag between two configured slots -----
   it('DRAG: lesson between configured slots fires POST /move', () => {
     paintedLessonIds().then((ids) => {

@@ -3,6 +3,7 @@
   import { api } from '$lib/api';
   import { humanMetricsLine } from '$lib/metrics_labels';
   import { confirmDialog } from '$lib/confirm';
+  import { replaceSchoolMessage } from '$lib/replace_school';
   import { datasetState, datasetEverLoaded, flash, refreshDataset, bumpMutation,
            workingHoursConfig, loadWorkingHoursConfig } from '$lib/stores';
   import { statoTappe } from '$lib/tappe';
@@ -68,6 +69,7 @@
       flash('Nessun profilo disponibile da importare', 'error');
       return;
     }
+    if (!(await confirmReplace(`Importare il profilo «${importProfile}»`))) return;
     busyImport = true;
     try {
       const res = await api.post('/api/dataset/import-profile', {
@@ -86,7 +88,20 @@
     }
   }
 
+  // Importa e Genera cancellano classi, docenti e orario attuali: chiedi
+  // conferma (con i numeri) se nel DB c'e' gia' una scuola.
+  async function confirmReplace(action) {
+    const msg = replaceSchoolMessage($datasetState, action);
+    if (msg === null) return true;
+    return confirmDialog(msg, {
+      title: 'Sostituire la scuola?',
+      confirmLabel: 'Sostituisci',
+      danger: true,
+    });
+  }
+
   async function generateMock() {
+    if (!(await confirmReplace(`Generare la scuola di test «${mockProfile}»`))) return;
     busyMock = true;
     try {
       const res = await api.post('/api/dataset/mock', {

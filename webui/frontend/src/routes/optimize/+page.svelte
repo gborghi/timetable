@@ -487,6 +487,15 @@
             <span class="ml-2 text-amber-600 text-[10px]">(modificati manualmente)</span>
           {/if}
         </div>
+      {:else if paramRec?.error}
+        <div class="mb-3 p-2.5 rounded border border-amber-300 bg-amber-50 text-[11.5px] leading-snug text-amber-800"
+             role="alert" data-testid="param-rec-error">
+          <span class="font-medium">Parametri consigliati non disponibili:</span>
+          {paramRec.error}. Restano i valori del modulo.
+          <button type="button" class="ml-2 text-[10px] underline hover:text-amber-900"
+                  on:click={() => loadRecommendedParams()}
+                  disabled={paramRecLoading}>riprova</button>
+        </div>
       {/if}
       <div class="grid grid-cols-3 gap-3">
         <div class="field"><label>K cluster</label><input type="number" bind:value={step3.k} on:change={markTweaked}/></div>

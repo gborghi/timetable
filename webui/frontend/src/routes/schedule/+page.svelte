@@ -888,25 +888,24 @@
          data-active-view={$viewStore}>
       <div class="flex items-center gap-3 flex-wrap">
       <span class="eyebrow">Vista</span>
-      <div class="flex gap-1" aria-label="Vista orario"
-           data-testid="schedule-view-buttons"
-           on:click={onViewBarClick}>
-        <button type="button" class="btn !text-xs"
+      <div class="flex gap-1" role="group" aria-label="Vista orario"
+           data-testid="schedule-view-buttons">
+        <button type="button" class="btn !text-xs" on:click={onViewBarClick}
                 class:bg-ink-100={$viewStore === 'global'}
                 aria-pressed={$viewStore === 'global'}
                 data-view="global"
                 data-testid="schedule-view-global">Globale</button>
-        <button type="button" class="btn !text-xs"
+        <button type="button" class="btn !text-xs" on:click={onViewBarClick}
                 class:bg-ink-100={$viewStore === 'class'}
                 aria-pressed={$viewStore === 'class'}
                 data-view="class"
                 data-testid="schedule-view-classes">Per classe</button>
-        <button type="button" class="btn !text-xs"
+        <button type="button" class="btn !text-xs" on:click={onViewBarClick}
                 class:bg-ink-100={$viewStore === 'teacher'}
                 aria-pressed={$viewStore === 'teacher'}
                 data-view="teacher"
                 data-testid="schedule-view-teachers">Per docente</button>
-        <button type="button" class="btn !text-xs"
+        <button type="button" class="btn !text-xs" on:click={onViewBarClick}
                 class:bg-ink-100={$viewStore === 'room'}
                 aria-pressed={$viewStore === 'room'}
                 data-view="room"
