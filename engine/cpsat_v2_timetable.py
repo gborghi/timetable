@@ -1087,6 +1087,7 @@ def solve_phase_a(profs, classes, triples, class_profs,
     # ``engine_io._FREE_DAY_PREF_WEIGHT`` on the profs dict; priority 1 is set
     # above the sixth-hour term so it wins unless coverage forbids it).
     freeday_pref_terms = []
+    freeday_pref_weight_sum = 0
     for p in triples_by_prof:
         for pref in ((profs.get(p, {}) or {}).get("free_day_prefs") or []):
             try:
@@ -1100,8 +1101,13 @@ def solve_phase_a(profs, classes, triples, class_profs,
             model.Add(prof_day_load[(p, pref_day)] == 0).OnlyEnforceIf(
                 works.Not())
             freeday_pref_terms.append(weight * works)
-    # Max = sum of all free-day preference weights (each teacher: ≤3 prefs, weight 1-3)
-    _fd_max = max(1, (len(triples_by_prof) * 3 * 3))
+            freeday_pref_weight_sum += weight
+    # Upper bound = exact sum of the weights actually posted. The old
+    # hand-written cap (9 * n_teachers, "weight 1-3") was far below the
+    # real weights (engine_io._FREE_DAY_PREF_WEIGHT = 150/45/15), so the
+    # IntVar domain silently acted as a HARD limit on the violated
+    # preferences and made Phase A spuriously INFEASIBLE (review Kepler #1).
+    _fd_max = max(1, freeday_pref_weight_sum)
     freeday_pref_pen = model.NewIntVar(0, _fd_max, "fdpref_pen")
     if freeday_pref_terms:
         model.Add(freeday_pref_pen == sum(freeday_pref_terms))

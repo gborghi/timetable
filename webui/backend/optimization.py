@@ -1449,8 +1449,9 @@ def _apply_dsl_rules_to_week_solver(solver, db, *,
     and compile it onto a week-scope ``MonolithicSolver``.
 
     SOFT rows are forwarded with ``is_hard=False`` and their weight so
-    they land on ``solver.dsl_soft_cost_terms`` and -- via
-    ``MonolithicSolver.build`` -- the objective. This is
+    they land on ``solver.dsl_soft_cost_terms``; ``_solve_phase_b_week``
+    adds them to the objective explicitly (the week path does not call
+    ``MonolithicSolver.build``). This is
     double-count-safe on the week path: ``compute_soft_cost_expr``
     carries only sixth/buchi/five/one penalties (no free-day or
     unavailability soft), so these SOFT rows are not otherwise present
@@ -1543,6 +1544,28 @@ class _ProgressCallback(cp_model.CpSolverSolutionCallback):
                        current_step=self._step)
         except Exception:  # noqa: BLE001 - progress is best-effort, never fatal
             pass
+
+
+def _week_objective_terms(solver, *, exclude=None) -> list:
+    """Objective terms of the week-scope solve: the canonical soft cost
+    (``compute_soft_cost_expr(mode="default")``) PLUS the SOFT DSL rules
+    compiled by ``_apply_dsl_rules_to_week_solver`` (free-day
+    preferences, soft unavailability, preferred compresenze, general
+    soft rules).
+
+    The week path never calls ``MonolithicSolver.build()``, so before
+    this helper the SOFT DSL terms were compiled but never minimised
+    (review Kepler #2). Same weighting as ``MonolithicSolver.build``
+    (``int(w) * var``) so both week-scope entry points share one
+    objective.
+    """
+    obj_terms, _ = solver.compute_soft_cost_expr(
+        mode="default", exclude=exclude)
+    obj_terms = list(obj_terms)
+    obj_terms.extend(
+        int(w) * v
+        for (w, v) in getattr(solver, "dsl_soft_cost_terms", []))
+    return obj_terms
 
 
 def _solve_phase_b_week(*, rid: int, ws: str, profs: dict,
@@ -1781,9 +1804,7 @@ def _solve_phase_b_week(*, rid: int, ws: str, profs: dict,
         # Soft cost as objective. Joint mode may drop schedule-side terms
         # (sixth / buchi / day_load) the user excluded from optimization.
         _excl = joint_vars["exclude"] if joint_vars else None
-        obj_terms, _ = solver.compute_soft_cost_expr(
-            mode="default", exclude=_excl)
-        obj_terms = list(obj_terms)
+        obj_terms = _week_objective_terms(solver, exclude=_excl)
 
         # Joint room vars: fold room assignment into THIS schedule model so
         # the solver may move a lesson to another hour to keep it room-

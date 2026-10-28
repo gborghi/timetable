@@ -109,6 +109,7 @@ PHASE_A_W_SIXTH = 50
 PHASE_A_W_FIVE = 30
 PHASE_A_W_ONE = 80
 PHASE_A_MAX_PER_DAY_TRIPLE = 2
+PHASE_A_MAX_PER_DAY_PROF_CL = 3
 PHASE_A_MAX_PROF_HOURS_PER_DAY = 5
 
 
@@ -323,7 +324,13 @@ class ConstraintModel:
         tied via ``sum_h slot == day_count`` so the OO solver caller
         can ``AddHint`` a Phase A solution without locking it in HARD.
         """
-        cap_per_day = len(self.hours)
+        # Same per-day caps as Phase A (review Kepler #3): at most
+        # MAX_PER_DAY_TRIPLE hours per cattedra per day and at most
+        # MAX_PER_DAY_PROF_CL hours per (teacher, class) per day, so the
+        # weekly path and the per-day path produce schedules of the same
+        # nature (no 3 hours of the same subject in one day).
+        cap_per_day = min(len(self.hours), PHASE_A_MAX_PER_DAY_TRIPLE)
+        prof_cl_day: dict = {}
         for teacher, pdata in self.profs.items():
             if not self._scope_includes_teacher(teacher):
                 continue
@@ -359,6 +366,8 @@ class ConstraintModel:
                             self.day_count_for_hint[
                                 (teacher, class_name, subject, d)] = dc
                             self.model.Add(sum(day_vars) == dc)
+                            prof_cl_day.setdefault(
+                                (teacher, class_name, d), []).append(dc)
                             # Keep ``self.triples`` populated for
                             # downstream methods that iterate over it
                             # (e.g. add_subject_pair_constraint reads
@@ -367,6 +376,9 @@ class ConstraintModel:
                                 triples_key, [])
                     if week_vars:
                         self.model.Add(sum(week_vars) == ore)
+        for dcs in prof_cl_day.values():
+            if len(dcs) > 1:
+                self.model.Add(sum(dcs) <= PHASE_A_MAX_PER_DAY_PROF_CL)
 
         # ---- inverted indices (perf, same as per-day path) ----
         _tdh: dict = {}
@@ -1181,6 +1193,11 @@ class ConstraintModel:
                              if _cv2.subject_key(s) == want), None)
                 if subj is None:
                     continue
+                # Weekly mode: per-day "has >= 2 hours" literals, used
+                # below for the Mat/Ita "at least one day with a double"
+                # rule (validator H_A; Phase A ``subject_day_count_pair``).
+                ge_two_days = []
+                n_days_in_scope = 0
                 for d in self.days:
                     keys_for_day = [
                         (teacher, class_name, subj, d, h)
@@ -1198,6 +1215,7 @@ class ConstraintModel:
                         # ``sum(vs)`` and gate the pair constraint
                         # on it.
                         day_sum = sum(vs)
+                        n_days_in_scope += 1
                         pairs = []
                         for i in range(len(self.hours) - 1):
                             pair = self.model.NewBoolVar(
@@ -1226,6 +1244,11 @@ class ConstraintModel:
                                 day_sum != 2).OnlyEnforceIf(
                                     is_two.Not())
                             self.model.AddImplication(is_two, any_pair)
+                            # Validator H_B / Phase A
+                            # ``subject_day_count_in(cl, s, 0, 2)``: the
+                            # day count is 0 or 2, never 1 (or 3+).
+                            self.model.Add(day_sum != 1)
+                            self.model.Add(day_sum <= 2)
                         elif mode == "pair_exists":
                             is_ge_two = self.model.NewBoolVar(
                                 f"isGE2_{subject_name[:3]}_"
@@ -1238,6 +1261,7 @@ class ConstraintModel:
                                     is_ge_two.Not())
                             self.model.AddImplication(
                                 is_ge_two, any_pair)
+                            ge_two_days.append(is_ge_two)
                         else:
                             raise ValueError(
                                 f"add_subject_pair_constraint: "
@@ -1267,6 +1291,18 @@ class ConstraintModel:
                         pairs.append(pair)
                     if pairs:
                         self.model.AddBoolOr(pairs)
+                # Mat/Ita (pair_exists), weekly mode: at least one day of
+                # the week must carry >= 2 hours of this cattedra (and so,
+                # by the implication above, a consecutive double). Only
+                # when every day is in scope and the cattedra has >= 2
+                # hours, mirroring Phase A's ``subject_day_count_pair``.
+                if (self.weekly_mode and mode == "pair_exists"
+                        and ge_two_days
+                        and n_days_in_scope == len(self.days)):
+                    sd = subjs.get(subj)
+                    ore = int(sd.get("ore", 0)) if isinstance(sd, dict) else 0
+                    if ore >= 2:
+                        self.model.AddBoolOr(ge_two_days)
 
     def add_motorie_pair(self):
         """Scienzemotorie: 2 hours/day MUST be consecutive."""
