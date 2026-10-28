@@ -999,9 +999,18 @@ def run_lns(sol, profs, dc_value, time_budget_s,
                 (iter_count, op, "infeasible", best_val, best_val)
             )
             continue
-        # Post-hoc DSL-hard gate: reject any repaired candidate that
-        # violates an arbitrary DSL HARD the per-day CP could not model.
-        if dsl_hard_expressions and not is_hard_feasible(
+        new_val, _ = compute_soft(new_sol, profs, soft_rules=soft_rules)
+        # Post-hoc HARD gate on every candidate we would ACCEPT: reject a
+        # repaired solution the validator refuses. It catches DSL HARD
+        # rules the per-day CP could not model and also a repair driven
+        # by a ``dc_value`` that no longer matches ``best`` (e.g. Phase A
+        # day counts after a week-scope solve chose another
+        # distribution): the per-day repair then re-fills the freed day
+        # with the stale count and the cattedra ends up with the wrong
+        # weekly hours (seen: Matematica 6 h instead of 4). Checked only
+        # for improving candidates, so the cost stays one validation per
+        # accepted move.
+        if new_val < best_val and not is_hard_feasible(
                 new_sol, profs, verbose=False,
                 coteach_groups=coteach_groups,
                 support_assignments=support_assignments,
@@ -1014,7 +1023,6 @@ def run_lns(sol, profs, dc_value, time_budget_s,
                 (iter_count, op, "hard_violation", best_val, best_val)
             )
             continue
-        new_val, _ = compute_soft(new_sol, profs, soft_rules=soft_rules)
         if new_val < best_val:
             op_stats[op]["total_delta"] += (best_val - new_val)
             log_entries.append(

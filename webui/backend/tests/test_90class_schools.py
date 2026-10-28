@@ -77,6 +77,18 @@ def _setup_and_launch(tmp_path, src_name: str, params: dict):
 
     # 2. Create engine + ensure plesso
     engine = create_engine(db_url, connect_args={"check_same_thread": False})
+    # The seed .sqlite files predate recent models.py columns (e.g.
+    # teachers.disposizione_hours): bring the COPY up to date with the
+    # same safety-net migrations init_db() runs on the live DB, instead
+    # of failing every launch with "no such column".
+    import backend.db as _dbm
+    _orig_engine = _dbm.engine
+    _dbm.engine = engine
+    try:
+        Base.metadata.create_all(bind=engine)
+        _dbm._apply_lightweight_migrations()
+    finally:
+        _dbm.engine = _orig_engine
     Session = sessionmaker(bind=engine, autoflush=False, autocommit=False)
     session = Session()
     plessi_count = session.query(models.Plesso).count()

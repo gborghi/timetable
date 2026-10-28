@@ -84,7 +84,10 @@ def _config():
     return ConstraintConfig(
         enforce_no_holes=True,
         enforce_h3_presence_at_11=True,
-        enforce_motorie_pair=False,
+        # True come in produzione (_build_week_solver): il validatore
+        # is_hard_feasible controlla sempre motorie {0, 2}, quindi con
+        # False il baseline poteva gia' essere non valido (test instabile).
+        enforce_motorie_pair=True,
         enforce_math_italian_pair=True,
     )
 
