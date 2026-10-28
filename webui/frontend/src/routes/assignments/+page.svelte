@@ -373,7 +373,8 @@
           Nessun problema di copertura. Tutti i docenti hanno ore = max.
         </p>
       {:else}
-        <table class="tbl text-sm">
+        <div class="overflow-x-auto max-w-full">
+          <table class="tbl text-sm">
           <thead>
             <tr>
               <th>Docente</th>
@@ -416,7 +417,8 @@
               </tr>
             {/each}
           </tbody>
-        </table>
+          </table>
+        </div>
       {/if}
     </div>
   {/if}
@@ -481,7 +483,7 @@
 
   <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-4" data-testid="assignments-grid">
     {#each classNames as cn}
-      <div class="card p-4" data-testid="assignments-class-card" data-class={cn}>
+      <div class="card p-4 min-w-0" data-testid="assignments-class-card" data-class={cn}>
         <h3 class="mb-2 flex items-center gap-2">
           <input type="checkbox"
                  checked={classAllSelected(cn)}
@@ -491,7 +493,8 @@
                  data-class={cn}/>
           <span>{cn}</span>
         </h3>
-        <table class="tbl">
+        <div class="overflow-x-auto max-w-full">
+          <table class="tbl">
           <thead><tr><th></th><th>Materia</th><th>Docente</th><th>Ore</th><th></th></tr></thead>
           <tbody>
             {#each byClass[cn] as row}
@@ -540,7 +543,8 @@
               </tr>
             {/each}
           </tbody>
-        </table>
+          </table>
+        </div>
       </div>
     {/each}
   </div>
@@ -553,7 +557,8 @@
           {potenziamentoRows.length} cattedre senza classe
         </span>
       </h3>
-      <table class="tbl">
+      <div class="overflow-x-auto max-w-full">
+        <table class="tbl">
         <thead><tr><th>Docente</th><th>Materia</th><th>Ore</th></tr></thead>
         <tbody>
           {#each potenziamentoRows as row}
@@ -569,7 +574,8 @@
             </tr>
           {/each}
         </tbody>
-      </table>
+        </table>
+      </div>
     </div>
   {/if}
 
@@ -583,7 +589,8 @@
           {rows.length} {rows.length === 1 ? 'cattedra' : 'cattedre'} di gruppo (Task C3)
         </span>
       </h3>
-      <table class="tbl">
+      <div class="overflow-x-auto max-w-full">
+        <table class="tbl">
         <thead><tr><th>Docente</th><th>Materia</th><th>Ore</th></tr></thead>
         <tbody>
           {#each rows as row}
@@ -600,7 +607,8 @@
             </tr>
           {/each}
         </tbody>
-      </table>
+        </table>
+      </div>
     </div>
   {/each}
 </div>

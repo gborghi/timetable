@@ -405,7 +405,8 @@
       </div>
 
       {#if searchResults && searchResults.length}
-        <table class="tbl text-xs w-full"
+        <div class="overflow-x-auto max-w-full">
+          <table class="tbl text-xs w-full"
                data-testid="search-results-table">
           <thead>
             <tr>
@@ -452,7 +453,8 @@
               </tr>
             {/each}
           </tbody>
-        </table>
+          </table>
+        </div>
       {:else if searchBusy}
         <p class="text-xs text-ink-400 italic">cerco...</p>
       {:else}
@@ -473,7 +475,8 @@
           <span class="num text-ink-300 font-normal">({dslConstraints.length})</span>
         </span>
       </summary>
-      <table class="tbl text-xs w-full mt-3">
+      <div class="overflow-x-auto max-w-full">
+        <table class="tbl text-xs w-full mt-3">
         <thead>
           <tr>
             <th>#</th><th>Etichetta</th><th>Livello</th>
@@ -506,7 +509,8 @@
             </tr>
           {/each}
         </tbody>
-      </table>
+        </table>
+      </div>
     </details>
   {/if}
 

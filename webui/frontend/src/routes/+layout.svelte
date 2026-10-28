@@ -53,8 +53,12 @@
     openMenu = openMenu === name ? null : name;
   }
   function closeMenu() { openMenu = null; }
-  // Close any open dropdown when the route changes.
-  $: if (cur !== undefined) openMenu = null;
+  // Su schermi stretti (< sm) la navigazione sta in un pannello a
+  // scomparsa aperto dal bottone «Menu»: senza, l'header occupava
+  // tre-quattro righe (circa 200 px su 844).
+  let mobileNavOpen = false;
+  // Close any open dropdown (and the mobile panel) when the route changes.
+  $: if (cur !== undefined) { openMenu = null; mobileNavOpen = false; }
   function isLinkActive(href, exact) {
     if (exact) return cur === href;
     return cur === href || cur.startsWith(href + '/');
@@ -120,8 +124,30 @@
             data-testid="built-with-ai">built with AI</span>
       <div class="hidden sm:block w-px h-6 bg-ink-200 shrink-0" aria-hidden="true"></div>
 
-      <nav class="flex flex-row flex-wrap items-center content-center gap-[3px]
-                  relative min-w-0 w-full basis-full order-last"
+      <button type="button"
+              class="sm:hidden order-2 inline-flex items-center gap-1.5
+                     px-3 py-1.5 text-[13px] rounded-[7px] border border-ink-200
+                     text-ink-700 focus-ring"
+              aria-expanded={mobileNavOpen}
+              aria-controls="main-nav"
+              data-testid="mobile-nav-toggle"
+              on:click={() => (mobileNavOpen = !mobileNavOpen)}>
+        <svg class="w-4 h-4" viewBox="0 0 16 16" fill="none" stroke="currentColor"
+             stroke-width="1.6" aria-hidden="true">
+          {#if mobileNavOpen}
+            <path d="M4 4 L12 12 M12 4 L4 12"/>
+          {:else}
+            <path d="M2.5 4.5 H13.5 M2.5 8 H13.5 M2.5 11.5 H13.5"/>
+          {/if}
+        </svg>
+        {mobileNavOpen ? 'Chiudi' : 'Menu'}
+      </button>
+
+      <nav id="main-nav"
+           class="{mobileNavOpen ? 'flex' : 'hidden'} sm:flex flex-col sm:flex-row
+                  sm:flex-wrap items-stretch sm:items-center content-center gap-[3px]
+                  relative min-w-0 w-full basis-full order-last
+                  pb-1 sm:pb-0"
            aria-label="Navigazione principale"
            data-testid="navbar">
         {#each navGroups as g}
@@ -154,9 +180,9 @@
                 </svg>
               </button>
               {#if open}
-                <div class="absolute left-0 top-full mt-1 z-30
+                <div class="sm:absolute left-0 top-full mt-1 z-30
                             min-w-[11rem] bg-white border border-ink-200
-                            rounded-[9px] shadow-lg py-1"
+                            rounded-[9px] sm:shadow-lg py-1 ml-3 sm:ml-0"
                      role="menu"
                      tabindex="-1"
                      data-testid="nav-dropdown"
@@ -187,7 +213,7 @@
                 on:click={closeMenu}></button>
       {/if}
 
-      <div class="ml-auto flex items-center gap-2 sm:gap-3 shrink-0">
+      <div class="order-1 sm:order-none ml-auto flex items-center gap-2 sm:gap-3 shrink-0">
         <span class="hidden lg:inline font-mono text-[11px] text-ink-300 tabular-nums">
           {$datasetState.classes} classi · {$datasetState.teachers} docenti ·
           {$datasetState.classrooms} aule
@@ -203,8 +229,8 @@
                   bg-[#ffc439] text-[#003087] hover:brightness-[0.97]
                   focus-ring whitespace-nowrap"
            data-testid="sostieni-header">❤ Sostieni il sito</a>
-        <div class="flex border border-ink-200 rounded-[7px] overflow-hidden text-[11px]"
-             role="group" aria-label="Densita' dell'interfaccia">
+        <div class="hidden sm:flex border border-ink-200 rounded-[7px] overflow-hidden text-[11px]"
+             role="group" aria-label="Densità dell'interfaccia">
           {#each ['compatta', 'comfort'] as d}
             <button type="button"
                     class="px-[9px] py-1 focus-ring {density === d
