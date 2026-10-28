@@ -1480,6 +1480,15 @@ class ConstraintModel:
         produce the same CP-SAT encoding as the methods (proven
         zero-drift in test_dsl_seed_legacy.py), so this is purely a
         pipeline switch with no behavioural change."""
+        # R2 (Kepler): il compilatore DSL (_compile_subject_pair) non ha
+        # le regole settimanali (giorno con doppia Mat/Ita, motorie
+        # {0,2}, tetti 2/3): nel settimanale darebbe orari che il
+        # validatore rifiuta. Finche' non c'e' una funzione condivisa,
+        # la combinazione e' vietata in modo esplicito.
+        if via_dsl and self.weekly_mode:
+            raise NotImplementedError(
+                "via_dsl=True non e' supportato nel modello settimanale "
+                "(dc_value=None): usare via_dsl=False")
         self.add_teacher_no_overlap()
         # Tab Ore: zero out slot vars on hour indices exceeding the
         # day's active slot count. Cheap no-op when every day has the
