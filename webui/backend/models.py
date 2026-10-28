@@ -1563,6 +1563,16 @@ class StudentTag(Base):
     replace StudyGroup. They can be queried with
       `forall s in students where "BES" in s.tags: ...`
     in the general DSL, or `has_tag(BES)` in the students list.
+
+    Minimizzazione dei dati (GDPR art. 5.1.c e art. 9): all'orario
+    serve sapere *che* un alunno ha il sostegno e per quante ore, non
+    *perché*. Diagnosi, riferimenti a L.104/92, codici di certificazione
+    e note cliniche sono dati sanitari e non vanno messi né nei tag né
+    in ``Student.notes``: per il sostegno bastano la cattedra
+    ``is_support`` e le sue ore. Un tag come «BES» o «DSA» va usato solo
+    se cambia davvero l'orario, ed è comunque un dato particolare: chi
+    importa dati reali deve avere una base giuridica e limitare
+    l'accesso. I dati demo usano alunni neutri («Studente S01 / Demo»).
     """
     __tablename__ = "student_tags"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)

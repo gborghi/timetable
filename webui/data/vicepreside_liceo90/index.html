@@ -53,7 +53,7 @@
    <tr><td>4</td><td><a href="files/04_aule.xlsx">04_aule.xlsx</a></td><td>classrooms (87)</td>
      <td><code>kind</code> standard/palestra, <code>capacity</code>; palestra con <code>multi_class=1, multi_class_max=2</code> (due classi insieme)</td></tr>
    <tr><td>5</td><td><a href="files/05_studenti_sostegno.xlsx">05_studenti_sostegno.xlsx</a></td><td>students (9)</td>
-     <td>alunni con <code>sostegno=1</code> e <code>ore_sostegno</code>; il docente si assegna poi all'alunno in UI</td></tr>
+     <td>alunni demo neutri («Studente S01 / Demo», codice <code>S001</code>, niente note né diagnosi): <code>class_name</code>, <code>sostegno</code> = docente di sostegno, <code>ore_sostegno</code></td></tr>
    <tr><td>6</td><td><a href="files/06_cattedre.xlsx">06_cattedre.xlsx</a></td><td>assignments (1014)</td>
      <td>cattedre <code>docente → classe + materia</code>. Il sostegno NON va qui (vedi file 5)</td></tr>
   </table>
@@ -72,7 +72,7 @@
   <h3>Settaggi che NON stanno nell'Excel</h3>
   <ul>
    <li><b>Settimana</b> (tab <b>Ore</b>): 6 giorni lun–sab × 6 ore 8:00–14:00. È l'unica configurazione strutturale da fare a mano.</li>
-   <li><b>Sostegno</b>: per ogni alunno flaggato (file 5) assegna in UI il docente di sostegno all'alunno; imposta il docente su
+   <li><b>Sostegno</b>: ogni alunno del file 5 indica già classe, docente di sostegno e ore (si possono cambiare in UI); imposta il docente su
      <code>compresenza=sempre</code> così il sostegno <b>resta nell'aula della classe</b> (non prenota un'aula in più).</li>
   </ul>
   <p class="mut">Tutto il resto (giorni liberi con priorità, biennio a turnazione, palestra obbligatoria, policy aula ibrida,
