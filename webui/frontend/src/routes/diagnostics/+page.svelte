@@ -440,8 +440,8 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
       {/if}
       <div class="ml-auto flex gap-2 items-end">
         <div class="field !mb-0">
-          <label class="!text-[11px]">N campioni</label>
-          <input type="number" min="32" max="1024"
+          <label for="routes-diagnostics-f1" class="!text-[11px]">N campioni</label>
+          <input id="routes-diagnostics-f1" type="number" min="32" max="1024"
                  bind:value={hallSamples} class="w-24"/>
         </div>
         <button class="btn-primary !text-xs" on:click={runHall}
@@ -474,13 +474,13 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
       {/if}
       <div class="ml-auto flex gap-2 items-end">
         <div class="field !mb-0">
-          <label class="!text-[11px]">N campioni</label>
-          <input type="number" min="10" max="500"
+          <label for="routes-diagnostics-f2" class="!text-[11px]">N campioni</label>
+          <input id="routes-diagnostics-f2" type="number" min="10" max="500"
                  bind:value={mcN} class="w-20"/>
         </div>
         <div class="field !mb-0">
-          <label class="!text-[11px]">Seed</label>
-          <input type="number" bind:value={mcSeed} class="w-16"/>
+          <label for="routes-diagnostics-f3" class="!text-[11px]">Seed</label>
+          <input id="routes-diagnostics-f3" type="number" bind:value={mcSeed} class="w-16"/>
         </div>
         <button class="btn-primary !text-xs" on:click={runMc}
                 disabled={mc.busy}>
@@ -568,8 +568,8 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
       {/if}
       <div class="ml-auto flex gap-2 items-end">
         <div class="field !mb-0">
-          <label class="!text-[11px]">Mode</label>
-          <select bind:value={bpMode}>
+          <label for="routes-diagnostics-f4" class="!text-[11px]">Mode</label>
+          <select id="routes-diagnostics-f4" bind:value={bpMode}>
             <option value="classes">classes (nodi=classi)</option>
             <option value="teachers">teachers (nodi=docenti)</option>
           </select>
@@ -750,6 +750,7 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
                 </td>
                 <td>
                   <button class="btn-red !text-[10px] !px-1 !py-0.5"
+                          aria-label="Rimuovi modello di compresenza" title="Rimuovi"
                           on:click={() => removeCoModel(i)}>x</button>
                 </td>
               </tr>

@@ -277,8 +277,8 @@
     {#if step === 1}
       <div class="space-y-3" data-testid="wizard-step-1">
         <div class="field">
-          <label>Categoria del vincolo</label>
-          <select bind:value={scope} data-testid="wizard-scope">
+          <label for="lib-components-constraints-newconstraintmodal-f1">Categoria del vincolo</label>
+          <select id="lib-components-constraints-newconstraintmodal-f1" bind:value={scope} data-testid="wizard-scope">
             {#each SCOPE_OPTIONS as o}
               <option value={o.value}>{o.label}</option>
             {/each}
@@ -287,8 +287,8 @@
 
         {#if scope === 'teacher' || scope === 'teacher_room'}
           <div class="field">
-            <label>Docente *</label>
-            <select bind:value={ownerId} data-testid="wizard-owner">
+            <label for="lib-components-constraints-newconstraintmodal-f2">Docente *</label>
+            <select id="lib-components-constraints-newconstraintmodal-f2" bind:value={ownerId} data-testid="wizard-owner">
               <option value={null}>-- scegli --</option>
               {#each teachers as t}<option value={t.id}>{t.name}</option>{/each}
             </select>
@@ -296,8 +296,8 @@
         {/if}
         {#if scope === 'class'}
           <div class="field">
-            <label>Classe *</label>
-            <select bind:value={ownerId} data-testid="wizard-owner">
+            <label for="lib-components-constraints-newconstraintmodal-f3">Classe *</label>
+            <select id="lib-components-constraints-newconstraintmodal-f3" bind:value={ownerId} data-testid="wizard-owner">
               <option value={null}>-- scegli --</option>
               {#each classes as c}<option value={c.id}>{c.name}</option>{/each}
             </select>
@@ -305,8 +305,8 @@
         {/if}
         {#if scope === 'classroom' || scope === 'subject_room'}
           <div class="field">
-            <label>Aula *</label>
-            <select bind:value={ownerId} data-testid="wizard-owner">
+            <label for="lib-components-constraints-newconstraintmodal-f4">Aula *</label>
+            <select id="lib-components-constraints-newconstraintmodal-f4" bind:value={ownerId} data-testid="wizard-owner">
               <option value={null}>-- scegli --</option>
               {#each classrooms as r}<option value={r.id}>{r.name}</option>{/each}
             </select>
@@ -314,8 +314,8 @@
         {/if}
         {#if scope === 'curriculum'}
           <div class="field">
-            <label>Indirizzo *</label>
-            <select bind:value={ownerId}>
+            <label for="lib-components-constraints-newconstraintmodal-f5">Indirizzo *</label>
+            <select id="lib-components-constraints-newconstraintmodal-f5" bind:value={ownerId}>
               <option value={null}>-- scegli --</option>
               {#each curricula as cu}<option value={cu.id}>{cu.name}</option>{/each}
             </select>
@@ -323,8 +323,8 @@
         {/if}
         {#if scope === 'subject_room'}
           <div class="field">
-            <label>Materia *</label>
-            <select bind:value={subject}>
+            <label for="lib-components-constraints-newconstraintmodal-f6">Materia *</label>
+            <select id="lib-components-constraints-newconstraintmodal-f6" bind:value={subject}>
               <option value="">-- scegli --</option>
               {#each subjects as s}<option value={s}>{s}</option>{/each}
             </select>
@@ -332,8 +332,8 @@
         {/if}
         {#if scope === 'teacher_room'}
           <div class="field">
-            <label>Aula *</label>
-            <select bind:value={ownerId2}>
+            <label for="lib-components-constraints-newconstraintmodal-f7">Aula *</label>
+            <select id="lib-components-constraints-newconstraintmodal-f7" bind:value={ownerId2}>
               <option value={null}>-- scegli --</option>
               {#each classrooms as r}<option value={r.id}>{r.name}</option>{/each}
             </select>
@@ -354,8 +354,8 @@
         {/each}
         {#if showWeight}
           <div class="field mt-3">
-            <label>Peso (penalty SOFT)</label>
-            <input type="number" bind:value={weight}/>
+            <label for="lib-components-constraints-newconstraintmodal-f8">Peso (penalty SOFT)</label>
+            <input id="lib-components-constraints-newconstraintmodal-f8" type="number" bind:value={weight}/>
             <div class="text-xs text-ink-500">
               Penalita' positiva quando SOFT viene violato; per
               PREFERRED il valore viene negato automaticamente.
@@ -366,8 +366,8 @@
     {:else if step === 3}
       <div class="space-y-3" data-testid="wizard-step-3">
         <div class="field">
-          <label>Tipo di vincolo</label>
-          <select bind:value={kind} data-testid="wizard-kind">
+          <label for="lib-components-constraints-newconstraintmodal-f9">Tipo di vincolo</label>
+          <select id="lib-components-constraints-newconstraintmodal-f9" bind:value={kind} data-testid="wizard-kind">
             {#each availableKinds as k}
               <option value={k.value}>{k.label}</option>
             {/each}
@@ -377,27 +377,27 @@
         {#if kind === 'matrix_slot'}
           <div class="grid grid-cols-2 gap-3">
             <div class="field">
-              <label>Giorno *</label>
-              <select bind:value={day} data-testid="wizard-day">
+              <label for="lib-components-constraints-newconstraintmodal-f10">Giorno *</label>
+              <select id="lib-components-constraints-newconstraintmodal-f10" bind:value={day} data-testid="wizard-day">
                 {#each calendarDays($workingHoursConfig) as d}<option value={d}>{calendarDayName(d, $workingHoursConfig)}</option>{/each}
               </select>
             </div>
             <div class="field">
-              <label>Ora *</label>
-              <select bind:value={hour} data-testid="wizard-hour">
+              <label for="lib-components-constraints-newconstraintmodal-f11">Ora *</label>
+              <select id="lib-components-constraints-newconstraintmodal-f11" bind:value={hour} data-testid="wizard-hour">
                 {#each calendarHours($workingHoursConfig) as h}<option value={h}>{h}:00</option>{/each}
               </select>
             </div>
           </div>
           <div class="field">
-            <label>Motivazione (opzionale)</label>
-            <input bind:value={reason} placeholder="es. lezione di laboratorio"/>
+            <label for="lib-components-constraints-newconstraintmodal-f12">Motivazione (opzionale)</label>
+            <input id="lib-components-constraints-newconstraintmodal-f12" bind:value={reason} placeholder="es. lezione di laboratorio"/>
           </div>
         {/if}
         {#if kind === 'logical'}
           <div class="field">
-            <label>Espressione DNF *</label>
-            <input bind:value={expression}
+            <label for="lib-components-constraints-newconstraintmodal-f13">Espressione DNF *</label>
+            <input id="lib-components-constraints-newconstraintmodal-f13" bind:value={expression}
                    class="font-mono"
                    data-testid="wizard-expression"
                    placeholder="(lun8 AND lun9) OR (mar8 AND mar9)"/>
@@ -408,32 +408,32 @@
             </div>
           </div>
           <div class="field">
-            <label>Etichetta (opzionale)</label>
-            <input bind:value={labelText} placeholder="es. consecutiva matematica"/>
+            <label for="lib-components-constraints-newconstraintmodal-f14">Etichetta (opzionale)</label>
+            <input id="lib-components-constraints-newconstraintmodal-f14" bind:value={labelText} placeholder="es. consecutiva matematica"/>
           </div>
           {#if scope === 'curriculum'}
             <div class="field">
-              <label>Anno (opzionale, applica solo a quell'anno)</label>
-              <input type="number" bind:value={yearFilter}/>
+              <label for="lib-components-constraints-newconstraintmodal-f15">Anno (opzionale, applica solo a quell'anno)</label>
+              <input id="lib-components-constraints-newconstraintmodal-f15" type="number" bind:value={yearFilter}/>
             </div>
           {/if}
         {/if}
         {#if kind === 'coteach'}
           <div class="field">
-            <label>Materia *</label>
-            <select bind:value={subject}>
+            <label for="lib-components-constraints-newconstraintmodal-f16">Materia *</label>
+            <select id="lib-components-constraints-newconstraintmodal-f16" bind:value={subject}>
               <option value="">-- scegli --</option>
               {#each subjects as s}<option value={s}>{s}</option>{/each}
             </select>
           </div>
           <div class="grid grid-cols-2 gap-3">
             <div class="field">
-              <label>Numero docenti *</label>
-              <input type="number" bind:value={nTeachers} min="2"/>
+              <label for="lib-components-constraints-newconstraintmodal-f17">Numero docenti *</label>
+              <input id="lib-components-constraints-newconstraintmodal-f17" type="number" bind:value={nTeachers} min="2"/>
             </div>
             <div class="field">
-              <label>Docenti CSV (opzionale)</label>
-              <input bind:value={teacherCsv}
+              <label for="lib-components-constraints-newconstraintmodal-f18">Docenti CSV (opzionale)</label>
+              <input id="lib-components-constraints-newconstraintmodal-f18" bind:value={teacherCsv}
                      placeholder="Rossi,Bianchi"/>
             </div>
           </div>

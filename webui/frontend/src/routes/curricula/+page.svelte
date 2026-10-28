@@ -247,20 +247,20 @@
   {#if editing}
     <div class="grid grid-cols-2 gap-3" data-testid="curriculum-form">
       <div class="field">
-        <label>Code (machine name, unique)</label>
-        <input bind:value={editing.code} data-testid="curriculum-code-input"/>
+        <label for="routes-curricula-f1">Code (machine name, unique)</label>
+        <input id="routes-curricula-f1" bind:value={editing.code} data-testid="curriculum-code-input"/>
       </div>
       <div class="field">
-        <label>Nome (display)</label>
-        <input bind:value={editing.name} data-testid="curriculum-name-input"/>
+        <label for="routes-curricula-f2">Nome (display)</label>
+        <input id="routes-curricula-f2" bind:value={editing.name} data-testid="curriculum-name-input"/>
       </div>
       <div class="field">
-        <label>Score (engine)</label>
-        <input type="number" bind:value={editing.score}/>
+        <label for="routes-curricula-f3">Score (engine)</label>
+        <input id="routes-curricula-f3" type="number" bind:value={editing.score}/>
       </div>
       <div class="field col-span-2">
-        <label>Descrizione</label>
-        <input bind:value={editing.description}/>
+        <label for="routes-curricula-f4">Descrizione</label>
+        <input id="routes-curricula-f4" bind:value={editing.description}/>
       </div>
     </div>
 
@@ -309,6 +309,7 @@
                 </td>
                 <td>
                   <button class="btn-danger !text-xs !px-2 !py-1"
+                          aria-label="Elimina riga ore" title="Elimina riga"
                           on:click={() => delHour(gIdx)}>x</button>
                 </td>
               </tr>
@@ -373,21 +374,21 @@
             </div>
             <div class="grid grid-cols-2 gap-2">
               <div class="field">
-                <label>Anno (vuoto = tutti gli anni)</label>
-                <select bind:value={logicalDraftYear} class="px-2 py-1 border border-ink-200 rounded">
+                <label for="routes-curricula-f5">Anno (vuoto = tutti gli anni)</label>
+                <select id="routes-curricula-f5" bind:value={logicalDraftYear} class="px-2 py-1 border border-ink-200 rounded">
                   <option value={null}>tutti</option>
                   <option value={1}>1</option><option value={2}>2</option>
                   <option value={3}>3</option><option value={4}>4</option><option value={5}>5</option>
                 </select>
               </div>
               <div class="field">
-                <label>Etichetta (opzionale)</label>
-                <input bind:value={logicalDraftLabel}/>
+                <label for="routes-curricula-f6">Etichetta (opzionale)</label>
+                <input id="routes-curricula-f6" bind:value={logicalDraftLabel}/>
               </div>
             </div>
             <div class="field">
-              <label>Espressione</label>
-              <input class="font-mono text-sm"
+              <label for="routes-curricula-f7">Espressione</label>
+              <input id="routes-curricula-f7" class="font-mono text-sm"
                      placeholder="es. (lun8 AND lun9) OR (mar8 AND mar9)"
                      bind:value={logicalDraftExpr}
                      on:input={() => (logicalValidate = null)}/>

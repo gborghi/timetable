@@ -124,23 +124,23 @@
   {#if editing}
     <div class="grid grid-cols-2 gap-3" data-testid="coteaching-form">
       <div class="field">
-        <label>Classe</label>
-        <input list="ll-cls" bind:value={editing.class_name} data-testid="coteaching-class-input"/>
+        <label for="routes-coteaching-f1">Classe</label>
+        <input id="routes-coteaching-f1" list="ll-cls" bind:value={editing.class_name} data-testid="coteaching-class-input"/>
         <datalist id="ll-cls">{#each allClasses as c}<option value={c}></option>{/each}</datalist>
       </div>
       <div class="field">
-        <label>Materia</label>
-        <input list="ll-subj" bind:value={editing.subject} data-testid="coteaching-subject-input"/>
+        <label for="routes-coteaching-f2">Materia</label>
+        <input id="routes-coteaching-f2" list="ll-subj" bind:value={editing.subject} data-testid="coteaching-subject-input"/>
         <datalist id="ll-subj">{#each allSubjects as s}<option value={s}></option>{/each}</datalist>
       </div>
       <label class="flex items-center gap-2 text-sm"><input type="checkbox" bind:checked={editing.required} data-testid="coteaching-required-checkbox"/> HARD (obbligatoria)</label>
       <div class="field">
-        <label>Peso (se SOFT)</label>
-        <input type="number" bind:value={editing.weight} data-testid="coteaching-weight-input"/>
+        <label for="routes-coteaching-f3">Peso (se SOFT)</label>
+        <input id="routes-coteaching-f3" type="number" bind:value={editing.weight} data-testid="coteaching-weight-input"/>
       </div>
       <div class="field">
-        <label>N. docenti</label>
-        <input type="number" min="2" max="4"
+        <label for="routes-coteaching-f4">N. docenti</label>
+        <input id="routes-coteaching-f4" type="number" min="2" max="4"
           value={editing.n_teachers}
           on:input={(e) => setNTeachers(Number(e.target.value))}
           data-testid="coteaching-nteachers-input"/>

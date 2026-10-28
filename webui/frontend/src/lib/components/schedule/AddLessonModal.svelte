@@ -204,9 +204,9 @@
 
     <div class="grid grid-cols-2 gap-3">
       <div class="field">
-        <label>Classe {mode === 'class' ? '(fissa)' : ''} *</label>
+        <label for="lib-components-schedule-addlessonmodal-f1">Classe {mode === 'class' ? '(fissa)' : ''} *</label>
         {#if mode === 'class'}
-          <input value={className} disabled
+          <input id="lib-components-schedule-addlessonmodal-f1" value={className} disabled
                  class="bg-ink-50 {fieldClass(className, true)}"
                  data-testid="add-lesson-class-input"/>
         {:else}
@@ -219,9 +219,9 @@
       </div>
 
       <div class="field">
-        <label>Docente {mode === 'teacher' ? '(fisso)' : ''} *</label>
+        <label for="lib-components-schedule-addlessonmodal-f2">Docente {mode === 'teacher' ? '(fisso)' : ''} *</label>
         {#if mode === 'teacher'}
-          <input value={teacherName} disabled
+          <input id="lib-components-schedule-addlessonmodal-f2" value={teacherName} disabled
                  class="bg-ink-50 {fieldClass(teacherName, true)}"
                  data-testid="add-lesson-teacher-input"/>
         {:else}
@@ -235,9 +235,9 @@
       </div>
 
       <div class="field">
-        <label>Materia (opzionale)</label>
+        <label for="lib-components-schedule-addlessonmodal-f3">Materia (opzionale)</label>
         {#if teacherSubjects.length === 0 && teacherName}
-          <input bind:value={subject}
+          <input id="lib-components-schedule-addlessonmodal-f3" bind:value={subject}
                  class={fieldClass(subject, false)}
                  placeholder="docente senza abilitazioni elencate"
                  data-testid="add-lesson-subject-input"/>
@@ -257,9 +257,9 @@
       </div>
 
       <div class="field">
-        <label>Aula {mode === 'room' ? '(fissa)' : ''}</label>
+        <label for="lib-components-schedule-addlessonmodal-f4">Aula {mode === 'room' ? '(fissa)' : ''}</label>
         {#if mode === 'room'}
-          <input value={classroomName} disabled
+          <input id="lib-components-schedule-addlessonmodal-f4" value={classroomName} disabled
                  class="bg-ink-50 {fieldClass(classroomName, false)}"
                  data-testid="add-lesson-room-input"/>
         {:else}

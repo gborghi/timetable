@@ -351,13 +351,13 @@
         <button class="btn !text-xs !px-2 !py-1 ml-auto" on:click={() => showGenPanel = false}>chiudi</button>
       </div>
       <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div class="field"><label>Lab fisica</label><input type="number" min="0" bind:value={genCounts.lab_fisica}/><span class="text-[10px] text-ink-500">{suggested.rules.lab_fisica}</span></div>
-        <div class="field"><label>Lab chimica</label><input type="number" min="0" bind:value={genCounts.lab_chimica}/><span class="text-[10px] text-ink-500">{suggested.rules.lab_chimica}</span></div>
-        <div class="field"><label>Lab informatica</label><input type="number" min="0" bind:value={genCounts.lab_informatica}/><span class="text-[10px] text-ink-500">{suggested.rules.lab_informatica}</span></div>
-        <div class="field"><label>Lab linguistico</label><input type="number" min="0" bind:value={genCounts.lab_linguistico}/><span class="text-[10px] text-ink-500">{suggested.rules.lab_linguistico}</span></div>
-        <div class="field"><label>Palestre</label><input type="number" min="0" bind:value={genCounts.palestra}/><span class="text-[10px] text-ink-500">{suggested.rules.palestra}</span></div>
-        <div class="field"><label>Biblioteche</label><input type="number" min="0" bind:value={genCounts.biblioteca}/><span class="text-[10px] text-ink-500">{suggested.rules.biblioteca}</span></div>
-        <div class="field"><label>Aule speciali</label><input type="number" min="0" bind:value={genCounts.aula_speciale}/><span class="text-[10px] text-ink-500">{suggested.rules.aula_speciale}</span></div>
+        <div class="field"><label for="routes-classrooms-f1">Lab fisica</label><input id="routes-classrooms-f1" type="number" min="0" bind:value={genCounts.lab_fisica}/><span class="text-[10px] text-ink-500">{suggested.rules.lab_fisica}</span></div>
+        <div class="field"><label for="routes-classrooms-f2">Lab chimica</label><input id="routes-classrooms-f2" type="number" min="0" bind:value={genCounts.lab_chimica}/><span class="text-[10px] text-ink-500">{suggested.rules.lab_chimica}</span></div>
+        <div class="field"><label for="routes-classrooms-f3">Lab informatica</label><input id="routes-classrooms-f3" type="number" min="0" bind:value={genCounts.lab_informatica}/><span class="text-[10px] text-ink-500">{suggested.rules.lab_informatica}</span></div>
+        <div class="field"><label for="routes-classrooms-f4">Lab linguistico</label><input id="routes-classrooms-f4" type="number" min="0" bind:value={genCounts.lab_linguistico}/><span class="text-[10px] text-ink-500">{suggested.rules.lab_linguistico}</span></div>
+        <div class="field"><label for="routes-classrooms-f5">Palestre</label><input id="routes-classrooms-f5" type="number" min="0" bind:value={genCounts.palestra}/><span class="text-[10px] text-ink-500">{suggested.rules.palestra}</span></div>
+        <div class="field"><label for="routes-classrooms-f6">Biblioteche</label><input id="routes-classrooms-f6" type="number" min="0" bind:value={genCounts.biblioteca}/><span class="text-[10px] text-ink-500">{suggested.rules.biblioteca}</span></div>
+        <div class="field"><label for="routes-classrooms-f7">Aule speciali</label><input id="routes-classrooms-f7" type="number" min="0" bind:value={genCounts.aula_speciale}/><span class="text-[10px] text-ink-500">{suggested.rules.aula_speciale}</span></div>
         <div class="field">
           <label>Aule totali se generate</label>
           <div class="px-2 py-1.5 rounded-md bg-white border border-ink-200 font-semibold">{totalIfApplied}</div>
@@ -446,15 +446,15 @@
 <Modal open={!!editing} title={editing?._new ? 'Nuova aula' : 'Modifica aula'} onClose={() => (editing = null)}>
   {#if editing}
     <div class="grid grid-cols-2 gap-3" data-testid="classroom-form">
-      <div class="field"><label>Nome / codice</label><input bind:value={editing.name} data-testid="classroom-name-input"/></div>
-      <div class="field"><label>Tipo</label>
-        <select bind:value={editing.kind} data-testid="classroom-kind-select">{#each ROOM_KINDS as k}<option value={k.value}>{k.label}</option>{/each}</select>
+      <div class="field"><label for="routes-classrooms-f8">Nome / codice</label><input id="routes-classrooms-f8" bind:value={editing.name} data-testid="classroom-name-input"/></div>
+      <div class="field"><label for="routes-classrooms-f9">Tipo</label>
+        <select id="routes-classrooms-f9" bind:value={editing.kind} data-testid="classroom-kind-select">{#each ROOM_KINDS as k}<option value={k.value}>{k.label}</option>{/each}</select>
       </div>
-      <div class="field"><label>Capienza</label><input type="number" min="5" max="100"
+      <div class="field"><label for="routes-classrooms-f10">Capienza</label><input id="routes-classrooms-f10" type="number" min="5" max="100"
              bind:value={editing.capacity} data-testid="classroom-capacity-input"/></div>
-      <div class="field"><label>Note</label><input bind:value={editing.notes}/></div>
-      <div class="field"><label>Plesso</label>
-        <select bind:value={editing.plesso_id} data-testid="classroom-plesso-select">
+      <div class="field"><label for="routes-classrooms-f11">Note</label><input id="routes-classrooms-f11" bind:value={editing.notes}/></div>
+      <div class="field"><label for="routes-classrooms-f12">Plesso</label>
+        <select id="routes-classrooms-f12" bind:value={editing.plesso_id} data-testid="classroom-plesso-select">
           <option value={null}>(nessuno)</option>
           {#each (plessi || []) as p}
             <option value={p.id}>{p.code} - {p.name}</option>
@@ -465,9 +465,9 @@
 
     <div class="mt-4 grid grid-cols-3 gap-3 items-end">
       <label class="flex gap-2 text-sm"><input type="checkbox" bind:checked={editing.multi_class}/> Multi-classe</label>
-      <div class="field"><label>Max classi simultanee (HARD)</label><input type="number" bind:value={editing.multi_class_max}/></div>
-      <div class="field"><label>PREFERRED (SOFT)</label><input type="number" bind:value={editing.multi_class_pref}/></div>
-      <div class="field"><label>Peso preferenza concorrenza</label><input type="number" bind:value={editing.multi_class_pref_weight}/></div>
+      <div class="field"><label for="routes-classrooms-f13">Max classi simultanee (HARD)</label><input id="routes-classrooms-f13" type="number" bind:value={editing.multi_class_max}/></div>
+      <div class="field"><label for="routes-classrooms-f14">PREFERRED (SOFT)</label><input id="routes-classrooms-f14" type="number" bind:value={editing.multi_class_pref}/></div>
+      <div class="field"><label for="routes-classrooms-f15">Peso preferenza concorrenza</label><input id="routes-classrooms-f15" type="number" bind:value={editing.multi_class_pref_weight}/></div>
     </div>
 
     <div class="mt-4 field">
@@ -499,7 +499,7 @@
               </td>
               <td class="w-24"><input type="number" bind:value={s.weight} class="w-full px-2 py-1 border border-ink-200 rounded"/></td>
               <td class="w-20 text-center"><input type="checkbox" bind:checked={s.required}/></td>
-              <td><button class="btn-danger !text-xs !px-2 !py-1" on:click={() => delSubjectPref(i)}>x</button></td>
+              <td><button class="btn-danger !text-xs !px-2 !py-1" aria-label="Elimina preferenza materia-aula" title="Elimina riga" on:click={() => delSubjectPref(i)}>x</button></td>
             </tr>
           {/each}
         </tbody>
@@ -534,7 +534,7 @@
               </td>
               <td class="w-24"><input type="number" bind:value={c.weight} class="w-full px-2 py-1 border border-ink-200 rounded"/></td>
               <td class="w-20 text-center"><input type="checkbox" bind:checked={c.is_home}/></td>
-              <td><button class="btn-danger !text-xs !px-2 !py-1" on:click={() => delClassPref(i)}>x</button></td>
+              <td><button class="btn-danger !text-xs !px-2 !py-1" aria-label="Elimina preferenza classe-aula" title="Elimina riga" on:click={() => delClassPref(i)}>x</button></td>
             </tr>
           {/each}
         </tbody>

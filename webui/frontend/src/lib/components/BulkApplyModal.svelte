@@ -146,8 +146,8 @@
        onClose={() => (open = false)}>
   <div class="space-y-4">
     <div class="flex flex-wrap gap-2 items-center">
-      <label class="text-sm">Azione:</label>
-      <select bind:value={action} on:change={reset}
+      <label for="lib-components-bulkapplymodal-f1" class="text-sm">Azione:</label>
+      <select id="lib-components-bulkapplymodal-f1" bind:value={action} on:change={reset}
               class="px-2 py-1 border border-ink-200 rounded">
         <option value="add_logical">Aggiungi vincolo logico</option>
         <option value="set_field">Imposta un campo</option>
@@ -157,8 +157,8 @@
 
     {#if action === 'add_logical'}
       <div class="space-y-2">
-        <label class="text-xs">Espressione (vedi guida sintassi)</label>
-        <input class="w-full font-mono text-sm px-2 py-1 border border-ink-200 rounded"
+        <label for="lib-components-bulkapplymodal-f2" class="text-xs">Espressione (vedi guida sintassi)</label>
+        <input id="lib-components-bulkapplymodal-f2" class="w-full font-mono text-sm px-2 py-1 border border-ink-200 rounded"
                placeholder="es. lun8 AND lun9"
                bind:value={exprText} on:input={reset}/>
         <div class="flex gap-3 text-xs items-center flex-wrap">
@@ -191,8 +191,8 @@
 
     {:else if action === 'set_field'}
       <div class="space-y-2">
-        <label class="text-xs">Campo</label>
-        <select bind:value={fieldName} on:change={() => {
+        <label for="lib-components-bulkapplymodal-f3" class="text-xs">Campo</label>
+        <select id="lib-components-bulkapplymodal-f3" bind:value={fieldName} on:change={() => {
             const p = presets.find((p) => p.field === fieldName);
             if (p) { fieldType = p.type; fieldValue = (p.type === 'bool' ? false : ''); }
             reset();
@@ -230,26 +230,26 @@
 
     {:else if action === 'add_unavailability'}
       <div class="grid grid-cols-2 gap-3">
-        <label class="text-xs">Giorno (1=Lun .. 6=Sab)</label>
-        <input type="number" min="1" max="6" bind:value={unavailDay}
+        <label for="lib-components-bulkapplymodal-f4" class="text-xs">Giorno (1=Lun .. 6=Sab)</label>
+        <input id="lib-components-bulkapplymodal-f4" type="number" min="1" max="6" bind:value={unavailDay}
                class="px-2 py-1 border border-ink-200 rounded" on:input={reset}/>
-        <label class="text-xs">Ora (1..6 ordinale, oppure 8..13)</label>
-        <input type="number" min="1" max="13" bind:value={unavailHour}
+        <label for="lib-components-bulkapplymodal-f5" class="text-xs">Ora (1..6 ordinale, oppure 8..13)</label>
+        <input id="lib-components-bulkapplymodal-f5" type="number" min="1" max="13" bind:value={unavailHour}
                class="px-2 py-1 border border-ink-200 rounded" on:input={reset}/>
-        <label class="text-xs">Stato</label>
-        <select bind:value={unavailState} class="px-2 py-1 border border-ink-200 rounded">
+        <label for="lib-components-bulkapplymodal-f6" class="text-xs">Stato</label>
+        <select id="lib-components-bulkapplymodal-f6" bind:value={unavailState} class="px-2 py-1 border border-ink-200 rounded">
           <option value="hard">HARD (rosso)</option>
           <option value="soft">SOFT (giallo, penalita +)</option>
           <option value="preferred">PREFERRED (blu, bonus -)</option>
           <option value="enforced">ENFORCED (verde scuro, deve esserci)</option>
         </select>
         {#if unavailState === 'soft' || unavailState === 'preferred'}
-          <label class="text-xs">{unavailState === 'soft' ? 'Penalita' : 'Bonus'}</label>
-          <input type="number" min="0" bind:value={softPenalty}
+          <label for="lib-components-bulkapplymodal-f7" class="text-xs">{unavailState === 'soft' ? 'Penalita' : 'Bonus'}</label>
+          <input id="lib-components-bulkapplymodal-f7" type="number" min="0" bind:value={softPenalty}
                  class="px-2 py-1 border border-ink-200 rounded"/>
         {/if}
-        <label class="text-xs">Motivo (opzionale)</label>
-        <input bind:value={unavailReason}
+        <label for="lib-components-bulkapplymodal-f8" class="text-xs">Motivo (opzionale)</label>
+        <input id="lib-components-bulkapplymodal-f8" bind:value={unavailReason}
                class="px-2 py-1 border border-ink-200 rounded"/>
       </div>
     {/if}

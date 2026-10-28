@@ -352,8 +352,8 @@
 
       <div class="grid grid-cols-12 gap-2 items-end mb-3">
         <div class="field col-span-3">
-          <label>Tipo entita'</label>
-          <select bind:value={searchEntityType}
+          <label for="routes-constraints-f1">Tipo entita'</label>
+          <select id="routes-constraints-f1" bind:value={searchEntityType}
                   data-testid="search-entity-type"
                   on:change={() => (searchEntityId = null)}>
             <option value="">(qualunque)</option>
@@ -366,8 +366,8 @@
           </select>
         </div>
         <div class="field col-span-4">
-          <label>Entita'</label>
-          <select bind:value={searchEntityId}
+          <label for="routes-constraints-f2">Entita'</label>
+          <select id="routes-constraints-f2" bind:value={searchEntityId}
                   data-testid="search-entity-id"
                   disabled={!searchEntityType}>
             <option value={null}>(scegli)</option>
@@ -377,8 +377,8 @@
           </select>
         </div>
         <div class="field col-span-3">
-          <label>Filtro testo (opzionale)</label>
-          <input bind:value={searchText}
+          <label for="routes-constraints-f3">Filtro testo (opzionale)</label>
+          <input id="routes-constraints-f3" bind:value={searchText}
                  data-testid="search-text"
                  placeholder="es. LabFisica, Mate, Borghi"/>
         </div>
@@ -436,6 +436,7 @@
                 </td>
                 <td>
                   <button class="btn-red !text-[10px] !px-1.5 !py-0.5"
+                          aria-label="Elimina vincolo" title="Elimina vincolo"
                           on:click={async () => {
                             if (r.kind === 'general_dsl') {
                               await deleteDSL(r.id);
@@ -503,6 +504,7 @@
               <td><code class="text-[10px]">{c.expression}</code></td>
               <td class="text-right">
                 <button class="btn-red !text-[10px] !px-1.5 !py-0.5"
+                        aria-label="Elimina vincolo DSL #{c.id}" title="Elimina vincolo"
                         data-testid="dsl-delete-{c.id}"
                         on:click={() => deleteDSL(c.id)}>✕</button>
               </td>
@@ -622,8 +624,8 @@
       {/each}
 
       <div class="field">
-        <label>Livello</label>
-        <select bind:value={editing.level}>
+        <label for="routes-constraints-f4">Livello</label>
+        <select id="routes-constraints-f4" bind:value={editing.level}>
           {#if editing.kind.endsWith('_pref')}
             <option value="allowed">allowed</option>
             <option value="soft">soft</option>
@@ -640,14 +642,14 @@
       </div>
 
       <div class="field">
-        <label>Peso / Penalita</label>
-        <input type="number" bind:value={editing.weight}/>
+        <label for="routes-constraints-f5">Peso / Penalita</label>
+        <input id="routes-constraints-f5" type="number" bind:value={editing.weight}/>
       </div>
 
       {#if editing.kind.startsWith('logical_')}
         <div class="field">
-          <label>Espressione</label>
-          <input class="font-mono text-sm" bind:value={editing.expression}/>
+          <label for="routes-constraints-f6">Espressione</label>
+          <input id="routes-constraints-f6" class="font-mono text-sm" bind:value={editing.expression}/>
         </div>
       {/if}
 

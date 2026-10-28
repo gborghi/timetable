@@ -325,7 +325,7 @@
           </div>
           <div class="space-y-3">
             <div class="field">
-              <label>Profilo</label>
+              <label for="dashboard-import-profile">Profilo</label>
               {#if availableProfiles.length === 0}
                 <div class="flex items-center gap-3" data-testid="dashboard-no-profiles">
                   <DecorIcon name="building" size={44} class="shrink-0 opacity-80" />
@@ -336,7 +336,7 @@
                   </p>
                 </div>
               {:else}
-                <select bind:value={importProfile}
+                <select id="dashboard-import-profile" bind:value={importProfile}
                         data-testid="dashboard-import-profile-select">
                   {#each availableProfiles as p}
                     <option value={p.name}
@@ -388,8 +388,8 @@
           </div>
           <div class="grid grid-cols-2 gap-3">
             <div class="field">
-              <label>Profilo</label>
-              <select bind:value={mockProfile}
+              <label for="routes-f1">Profilo</label>
+              <select id="routes-f1" bind:value={mockProfile}
                       data-testid="dashboard-mock-profile-select">
                 <option value="small">small</option>
                 <option value="medium">medium</option>
@@ -399,20 +399,20 @@
               </select>
             </div>
             <div class="field">
-              <label>Modalita</label>
-              <select bind:value={mockMode}>
+              <label for="routes-f2">Modalita</label>
+              <select id="routes-f2" bind:value={mockMode}>
                 <option value="aggregated">aggregated</option>
                 <option value="tight">tight</option>
                 <option value="legacy">legacy</option>
               </select>
             </div>
             <div class="field">
-              <label>Margin (%)</label>
-              <input type="number" min="0" max="1" step="0.01" bind:value={mockMargin}/>
+              <label for="routes-f3">Margin (%)</label>
+              <input id="routes-f3" type="number" min="0" max="1" step="0.01" bind:value={mockMargin}/>
             </div>
             <div class="field">
-              <label>Ore-cattedra base</label>
-              <input type="number" bind:value={baseMaxHours}/>
+              <label for="routes-f4">Ore-cattedra base</label>
+              <input id="routes-f4" type="number" bind:value={baseMaxHours}/>
             </div>
           </div>
           <div class="mt-4 flex items-center gap-2.5">

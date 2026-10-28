@@ -109,8 +109,8 @@
       <h2 class="!text-base">1) Configurazione</h2>
 
       <div class="field">
-        <label>Entita'</label>
-        <select bind:value={entity}>
+        <label for="routes-import-f1">Entita'</label>
+        <select id="routes-import-f1" bind:value={entity}>
           {#each ENTITIES as e (e.value)}
             <option value={e.value}>{e.label} ({e.value})</option>
           {/each}
@@ -118,8 +118,8 @@
       </div>
 
       <div class="field">
-        <label>Modalita'</label>
-        <select bind:value={mode}>
+        <label for="routes-import-f2">Modalita'</label>
+        <select id="routes-import-f2" bind:value={mode}>
           <option value="upsert">upsert (aggiunge / aggiorna)</option>
           <option value="append">append (solo nuove righe)</option>
           <option value="replace">replace (svuota la tabella prima!)</option>

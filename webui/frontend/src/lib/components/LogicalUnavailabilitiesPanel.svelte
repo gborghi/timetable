@@ -248,8 +248,10 @@
         <strong>Esempi {entityType}:</strong>
         <ul class="list-disc ml-5">
           {#each (examples[entityType] || []) as ex}
-            <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_noninteractive_element_interactions -->
-            <li><code class="cursor-pointer underline" on:click={() => { draftExpr = ex; }}>{ex}</code></li>
+            <li><button type="button"
+                        class="font-mono text-left underline focus-ring rounded-sm"
+                        title="Usa questo esempio nel campo espressione"
+                        on:click={() => { draftExpr = ex; }}><code>{ex}</code></button></li>
           {/each}
         </ul>
       </div>
@@ -322,8 +324,8 @@
     </div>
     <div class="flex gap-2 flex-wrap items-end">
       <div class="field flex-1 min-w-64">
-        <label>Espressione</label>
-        <input class="font-mono text-sm"
+        <label for="lib-components-logicalunavailabilitiespanel-f1">Espressione</label>
+        <input id="lib-components-logicalunavailabilitiespanel-f1" class="font-mono text-sm"
           placeholder="es. (lun8 AND lun9) OR (mar8 AND mar9)"
           bind:value={draftExpr}
           on:input={() => (validateInfo = null)}
@@ -348,12 +350,12 @@
       </label>
       <div class="field"
            class:opacity-50={draftKind === 'hard' || draftKind === 'enforced'}>
-        <label>
+        <label for="lib-components-logicalunavailabilitiespanel-f2">
           {#if draftKind === 'soft'}Penalita (soft, &gt; 0)
           {:else if draftKind === 'preferred'}Bonus (PREFERRED, &lt; 0)
           {:else}-{/if}
         </label>
-        <input type="number" class="w-24"
+        <input id="lib-components-logicalunavailabilitiespanel-f2" type="number" class="w-24"
                disabled={draftKind === 'hard' || draftKind === 'enforced'}
                value={signedPenalty}
                on:input={onPenaltyInput}/>

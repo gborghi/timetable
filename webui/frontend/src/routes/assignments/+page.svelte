@@ -632,28 +632,28 @@
         </div>
         {#if editing.target_kind === 'group'}
           <div class="mt-2">
-            <label class="text-xs text-ink-500">Gruppo</label>
-            <select bind:value={editing.group_name} data-testid="assignment-group-select">
+            <label for="routes-assignments-f1" class="text-xs text-ink-500">Gruppo</label>
+            <select id="routes-assignments-f1" bind:value={editing.group_name} data-testid="assignment-group-select">
               <option value="">-- seleziona --</option>
               {#each allGroups as g}
                 <option value={g.name}>{g.name}</option>
               {/each}
             </select>
-            <label class="text-xs text-ink-500 mt-1">Ore (settimanali)</label>
-            <input type="number" min="1" max="30"
+            <label for="routes-assignments-f2" class="text-xs text-ink-500 mt-1">Ore (settimanali)</label>
+            <input id="routes-assignments-f2" type="number" min="1" max="30"
                    bind:value={editing.hours}
                    class="w-20" data-testid="assignment-hours-input"/>
           </div>
         {:else}
           <div class="mt-2">
-            <label class="text-xs text-ink-500">Classe</label>
-            <input value={editing.class_name} disabled data-testid="assignment-class-input"/>
+            <label for="routes-assignments-f3" class="text-xs text-ink-500">Classe</label>
+            <input id="routes-assignments-f3" value={editing.class_name} disabled data-testid="assignment-class-input"/>
           </div>
         {/if}
       </div>
       <div class="field col-span-2">
-        <label>Materia</label>
-        <input value={editing.subject} disabled data-testid="assignment-subject-input"/>
+        <label for="routes-assignments-f4">Materia</label>
+        <input id="routes-assignments-f4" value={editing.subject} disabled data-testid="assignment-subject-input"/>
       </div>
       <div class="field col-span-2">
         <label>
@@ -714,8 +714,8 @@
       vengono saltate (lista mostrata nel toast finale).
     </p>
     <div class="field">
-      <label>Docente destinatario *</label>
-      <select bind:value={bulkTeacherName}
+      <label for="routes-assignments-f5">Docente destinatario *</label>
+      <select id="routes-assignments-f5" bind:value={bulkTeacherName}
               data-testid="bulk-teacher-select">
         <option value="">-- scegli --</option>
         {#each allTeachers as t}

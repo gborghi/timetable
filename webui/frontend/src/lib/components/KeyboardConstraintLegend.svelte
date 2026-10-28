@@ -56,6 +56,9 @@
         <span>{variant === "room" ? ROOM_LABELS[it.key] : it.label}</span>
       </span>
     {/each}
+    <span class="basis-full text-[10.5px] text-ink-500">
+      Senza tastiera (tablet, telefono): tocca la cella per passare allo stato successivo.
+    </span>
     {#if $heldKey}
       <span class="ml-auto text-[10px] text-ink-500 italic">
         Tasto attivo: <strong class="text-ink-800">{$heldKey.toUpperCase()}</strong>

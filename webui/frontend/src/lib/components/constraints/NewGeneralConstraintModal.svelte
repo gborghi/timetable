@@ -184,8 +184,8 @@
 
     <div class="grid grid-cols-3 gap-3">
       <div class="field">
-        <label>Livello</label>
-        <select bind:value={level} data-testid="dsl-level">
+        <label for="lib-components-constraints-newgeneralconstraintmodal-f1">Livello</label>
+        <select id="lib-components-constraints-newgeneralconstraintmodal-f1" bind:value={level} data-testid="dsl-level">
           <option value="hard">🟥 HARD</option>
           <option value="soft">🟨 SOFT (penalty)</option>
           <option value="preferred">🟦 PREFERRED (bonus)</option>
@@ -194,13 +194,13 @@
       </div>
       {#if level === 'soft' || level === 'preferred'}
         <div class="field">
-          <label>Peso</label>
-          <input type="number" bind:value={weight} data-testid="dsl-weight"/>
+          <label for="lib-components-constraints-newgeneralconstraintmodal-f2">Peso</label>
+          <input id="lib-components-constraints-newgeneralconstraintmodal-f2" type="number" bind:value={weight} data-testid="dsl-weight"/>
         </div>
       {/if}
       <div class="field {level === 'soft' || level === 'preferred' ? '' : 'col-span-2'}">
-        <label>Etichetta (opzionale)</label>
-        <input bind:value={label} data-testid="dsl-label" placeholder="es. lab fisica capienza"/>
+        <label for="lib-components-constraints-newgeneralconstraintmodal-f3">Etichetta (opzionale)</label>
+        <input id="lib-components-constraints-newgeneralconstraintmodal-f3" bind:value={label} data-testid="dsl-label" placeholder="es. lab fisica capienza"/>
       </div>
     </div>
 

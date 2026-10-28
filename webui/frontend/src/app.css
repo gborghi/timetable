@@ -66,8 +66,9 @@
   /* Occhiello: mono, minuscolo, spaziato. Apre ogni fascia e ogni
      sezione ("TAPPA 1 - ANAGRAFICA", "STRUMENTI"). */
   .eyebrow {
-    @apply font-mono text-[10px] font-medium uppercase leading-none
-           tracking-[0.11em] text-ink-300;
+    /* ink-500 su paper = 5,3:1 e su bianco 5,9:1 (AA chiede 4,5:1); ink-300 era 2,7:1. */
+    @apply font-mono text-[11px] font-medium uppercase leading-none
+           tracking-[0.11em] text-ink-500;
   }
   /* Numeri e identificatori: sempre in mono, cosi' le colonne di cifre
      si allineano e i codici si distinguono dal testo. */

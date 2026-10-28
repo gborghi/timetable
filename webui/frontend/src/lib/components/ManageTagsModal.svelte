@@ -102,10 +102,10 @@
   <div class="space-y-4">
     <div class="card p-3 bg-ink-50/50 border-ink-100">
       <div class="grid grid-cols-[1fr_2fr_auto] gap-2 items-end">
-        <div class="field"><label>Nome nuovo tag</label>
-          <input bind:value={newName} placeholder={namePlaceholder}/></div>
-        <div class="field"><label>Descrizione (opzionale)</label>
-          <input bind:value={newDesc} placeholder={descPlaceholder}/></div>
+        <div class="field"><label for="lib-components-managetagsmodal-f1">Nome nuovo tag</label>
+          <input id="lib-components-managetagsmodal-f1" bind:value={newName} placeholder={namePlaceholder}/></div>
+        <div class="field"><label for="lib-components-managetagsmodal-f2">Descrizione (opzionale)</label>
+          <input id="lib-components-managetagsmodal-f2" bind:value={newDesc} placeholder={descPlaceholder}/></div>
         <button class="btn-primary" on:click={add} disabled={busy || !newName.trim()}>
           + Aggiungi
         </button>

@@ -318,19 +318,19 @@
 <Modal open={!!editing} title={editing?._new ? 'Nuova classe' : 'Modifica classe'} onClose={() => (editing = null)}>
   {#if editing}
     <div class="grid grid-cols-2 gap-3" data-testid="class-form">
-      <div class="field"><label>Nome</label><input bind:value={editing.name} data-testid="class-name-input"/></div>
+      <div class="field"><label for="routes-classes-f1">Nome</label><input id="routes-classes-f1" bind:value={editing.name} data-testid="class-name-input"/></div>
       <div class="field">
         <label>Nickname (mostrato nell'orario)
           <span class="text-xs text-ink-400">- default: nome</span>
         </label>
         <input bind:value={editing.nickname} placeholder={editing.name ?? ''}/>
       </div>
-      <div class="field"><label>Anno</label><input type="number" min="1" max="5" bind:value={editing.year} data-testid="class-year-input"/></div>
-      <div class="field"><label>Sezione</label><input bind:value={editing.section} data-testid="class-section-input"/></div>
+      <div class="field"><label for="routes-classes-f2">Anno</label><input id="routes-classes-f2" type="number" min="1" max="5" bind:value={editing.year} data-testid="class-year-input"/></div>
+      <div class="field"><label for="routes-classes-f3">Sezione</label><input id="routes-classes-f3" bind:value={editing.section} data-testid="class-section-input"/></div>
       <div class="field">
-        <label>Indirizzo</label>
+        <label for="routes-classes-f4">Indirizzo</label>
         <div class="flex gap-2">
-          <select bind:value={editing.curriculum_id}
+          <select id="routes-classes-f4" bind:value={editing.curriculum_id}
                   on:change={() => {
                     const c = allCurricula.find((x) => x.id === editing.curriculum_id);
                     if (c) editing.curriculum = c.code;
@@ -351,11 +351,11 @@
         <input class="mt-1 text-xs" placeholder="(stringa libera, opzionale)"
                bind:value={editing.curriculum}/>
       </div>
-      <div class="field"><label>N. studenti</label>
-        <input type="number" min="5" max="50"
+      <div class="field"><label for="routes-classes-f5">N. studenti</label>
+        <input id="routes-classes-f5" type="number" min="5" max="50"
                bind:value={editing.n_students}
                data-testid="class-n-students-modal-input"/></div>
-      <div class="field"><label>Note</label><input bind:value={editing.notes}/></div>
+      <div class="field"><label for="routes-classes-f6">Note</label><input id="routes-classes-f6" bind:value={editing.notes}/></div>
     </div>
 
     <div class="mt-4">
@@ -372,8 +372,8 @@
     </div>
 
     <div class="mt-4 field">
-      <label>Peso minimizzazione 6^a ora (SOFT)</label>
-      <input type="number" bind:value={editing.soft_minimize_sixth_weight}/>
+      <label for="routes-classes-f7">Peso minimizzazione 6^a ora (SOFT)</label>
+      <input id="routes-classes-f7" type="number" bind:value={editing.soft_minimize_sixth_weight}/>
     </div>
 
     <div class="mt-4">
@@ -388,7 +388,7 @@
                 <datalist id="subj-{i}">{#each allSubjects as sn}<option value={sn}></option>{/each}</datalist>
               </td>
               <td class="w-24"><input type="number" min="0" max="10" bind:value={s.hours_per_week} class="w-full px-2 py-1 border border-ink-200 rounded"/></td>
-              <td><button class="btn-danger !text-xs !px-2 !py-1" on:click={() => delSubject(i)}>x</button></td>
+              <td><button class="btn-danger !text-xs !px-2 !py-1" aria-label="Elimina riga materia" title="Elimina riga" on:click={() => delSubject(i)}>x</button></td>
             </tr>
           {/each}
         </tbody>

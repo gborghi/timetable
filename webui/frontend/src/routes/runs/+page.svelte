@@ -309,8 +309,8 @@
   <!-- Query bar -->
   <div class="card p-3 flex flex-wrap gap-2 items-end">
     <div class="flex-1 min-w-64">
-      <label class="text-xs text-ink-500">Query</label>
-      <input class="w-full px-2 py-1.5 rounded-md border border-ink-200 font-mono text-sm"
+      <label for="routes-runs-f1" class="text-xs text-ink-500">Query</label>
+      <input id="routes-runs-f1" class="w-full px-2 py-1.5 rounded-md border border-ink-200 font-mono text-sm"
              placeholder="es. tipo = phase_b AND stato = done, errore contains Timeout"
              bind:value={rowQuery}
              on:keydown={(e) => { if (e.key === 'Enter') applyQuery(); }}/>

@@ -218,8 +218,8 @@
        onClose={() => (editing = null)}>
   {#if editing}
     <div class="grid grid-cols-2 gap-3" data-testid="student-form">
-      <div class="field"><label>Cognome</label><input bind:value={editing.last_name} data-testid="student-last-name-input"/></div>
-      <div class="field"><label>Nome</label><input bind:value={editing.first_name} data-testid="student-first-name-input"/></div>
+      <div class="field"><label for="routes-students-f1">Cognome</label><input id="routes-students-f1" bind:value={editing.last_name} data-testid="student-last-name-input"/></div>
+      <div class="field"><label for="routes-students-f2">Nome</label><input id="routes-students-f2" bind:value={editing.first_name} data-testid="student-first-name-input"/></div>
       <div class="field col-span-2">
         <label>Nickname (mostrato nell'orario)
           <span class="text-xs text-ink-400">- default: "Cognome Nome"</span>
@@ -227,27 +227,27 @@
         <input bind:value={editing.nickname}
                placeholder={(editing.last_name ?? '') + ' ' + (editing.first_name ?? '')}/>
       </div>
-      <div class="field"><label>Data nascita</label>
-        <input type="date" bind:value={editing.birth_date}/></div>
-      <div class="field"><label>Sesso</label>
-        <select bind:value={editing.gender}>
+      <div class="field"><label for="routes-students-f3">Data nascita</label>
+        <input id="routes-students-f3" type="date" bind:value={editing.birth_date}/></div>
+      <div class="field"><label for="routes-students-f4">Sesso</label>
+        <select id="routes-students-f4" bind:value={editing.gender}>
           <option value={null}></option>
           <option value="M">M</option>
           <option value="F">F</option>
           <option value="other">other</option>
         </select>
       </div>
-      <div class="field"><label>Email</label><input bind:value={editing.email}/></div>
-      <div class="field"><label>Matricola</label><input bind:value={editing.student_code}/></div>
-      <div class="field col-span-2"><label>Classe</label>
-        <select bind:value={editing.class_id}>
+      <div class="field"><label for="routes-students-f5">Email</label><input id="routes-students-f5" bind:value={editing.email}/></div>
+      <div class="field"><label for="routes-students-f6">Matricola</label><input id="routes-students-f6" bind:value={editing.student_code}/></div>
+      <div class="field col-span-2"><label for="routes-students-f7">Classe</label>
+        <select id="routes-students-f7" bind:value={editing.class_id}>
           <option value={null}>(nessuna)</option>
           {#each allClasses as c}
             <option value={c.id}>{c.name}</option>
           {/each}
         </select>
       </div>
-      <div class="field col-span-2"><label>Note</label><input bind:value={editing.notes}/></div>
+      <div class="field col-span-2"><label for="routes-students-f8">Note</label><input id="routes-students-f8" bind:value={editing.notes}/></div>
     </div>
 
     <div class="mt-4 field">

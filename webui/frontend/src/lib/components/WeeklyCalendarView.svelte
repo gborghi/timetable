@@ -126,6 +126,7 @@
 
   let kbCleanup;
   let hovering = false;
+  let focused = false;   // legenda visibile anche col focus da tastiera
   // Reactively pick up the shared working-hours config when the
   // caller didn't pass an explicit `config` prop. Whenever /ore
   // saves changes it calls reloadWorkingHoursConfig() on the same
@@ -900,6 +901,8 @@
      role="application" aria-label="Calendario settimanale"
      on:mouseenter={() => (hovering = true)}
      on:mouseleave={() => (hovering = false)}
+     on:focusin={() => (focused = true)}
+     on:focusout={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) focused = false; }}
      on:keydown={(e) => { if (e.key === 'Escape') { dragSource = null; dragHoverKey = null; } }}>
   <div class="flex items-baseline justify-between mb-2 flex-wrap gap-2">
     <h3 class="!text-base">{title}</h3>
@@ -1258,14 +1261,18 @@
                        data-state={cell ? cell.state : 'free'}
                        role="gridcell"
                        tabindex="-1"
-                       aria-label="{slot.start_time}-{slot.end_time}"
+                       aria-label={`${slot.start_time}-${slot.end_time}: ` +
+                         (isSoft ? `SOFT, penalità ${cell.soft_penalty}`
+                          : isPref ? `preferita, bonus ${Math.abs(cell.soft_penalty)}`
+                          : isEnf ? 'obbligatoria (HARD)'
+                          : isHard ? 'non disponibile (HARD)' : 'libera')}
                        on:click={(e) => onCellClick(e, dnum, hnum)}
                        on:keydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onCellClick(e, dnum, hnum); } }}
                        on:mousedown={(e) => onMouseDown(e, dnum, hnum)}
                        on:mouseenter={() => onMouseEnter(dnum, hnum)}
                        title={`${slot.start_time}-${slot.end_time}` +
                          (isSoft
-                           ? ` -- SOFT, penalita ${cell.soft_penalty}`
+                           ? ` -- SOFT, penalità ${cell.soft_penalty}`
                            : isPref
                            ? ` -- PREFERRED, bonus ${cell.soft_penalty}`
                            : isEnf
@@ -1283,6 +1290,7 @@
                     {:else if isSoft}
                       <input type="number" min="0" max="9999" step="10"
                         class="cal-event-input cal-event-input--soft"
+                        aria-label={`Penalità SOFT ${slot.start_time}-${slot.end_time}`}
                         value={drafts[_key(dnum, hnum)] ?? cell.soft_penalty}
                         on:click|stopPropagation
                         on:mousedown|stopPropagation
@@ -1293,6 +1301,7 @@
                     {:else if isPref}
                       <input type="number" max="0" min="-9999" step="10"
                         class="cal-event-input cal-event-input--pref"
+                        aria-label={`Bonus preferenza ${slot.start_time}-${slot.end_time}`}
                         value={drafts[_key(dnum, hnum)] ?? cell.soft_penalty}
                         on:click|stopPropagation
                         on:mousedown|stopPropagation
@@ -1321,7 +1330,7 @@
   {/if}
 
   {#if mode !== 'schedule' && mode !== 'edit'}
-  <KeyboardConstraintLegend visible={hovering} variant="matrix"/>
+  <KeyboardConstraintLegend visible={hovering || focused} variant="matrix"/>
   {/if}
 </div>
 

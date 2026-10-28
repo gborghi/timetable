@@ -29,6 +29,7 @@
     shortcutToRoomState
   } from '../keyboardConstraintMode';
   import KeyboardConstraintLegend from './KeyboardConstraintLegend.svelte';
+  import { PREF_STATE_BADGE, prefCellAriaLabel } from '$lib/pref_states.mjs';
 
   export let classrooms = [];
   export let value = [];
@@ -41,6 +42,8 @@
   let kindFilter = '';
   let nameFilter = '';
   let hovering = false;
+  // Legenda visibile anche con il focus da tastiera.
+  let focused = false;
 
   // Keyboard listener (ref-counted globally).
   let kbCleanup;
@@ -123,7 +126,9 @@
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="select-none space-y-2"
      on:mouseenter={() => (hovering = true)}
-     on:mouseleave={() => (hovering = false)}>
+     on:mouseleave={() => (hovering = false)}
+     on:focusin={() => (focused = true)}
+     on:focusout={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) focused = false; }}>
   <div class="flex items-baseline gap-2 flex-wrap">
     <button class="btn !text-xs !px-2 !py-1"
             on:click={() => (collapsed = !collapsed)}>
@@ -140,15 +145,15 @@
              bind:value={nameFilter}/>
       <span class="text-[11px] text-ink-500 ml-auto">
         click cicla:
-        <span class="pill-c-allowed">verdino</span>
-        ->
-        <span class="pill-c-soft">giallo (+)</span>
-        ->
-        <span class="pill-c-preferred">blu (-)</span>
-        ->
-        <span class="pill-c-hard">rosso (HARD)</span>
-        ->
-        <span class="pill-c-enforced">verdone (must)</span>
+        <span class="pill-c-allowed">consentita</span>
+        →
+        <span class="pill-c-soft">SOFT (penalità)</span>
+        →
+        <span class="pill-c-preferred">preferita (bonus)</span>
+        →
+        <span class="pill-c-hard">vietata (HARD)</span>
+        →
+        <span class="pill-c-enforced">obbligatoria</span>
       </span>
     {/if}
   </div>
@@ -163,6 +168,7 @@
           {@const state = pref ? pref.state : 'allowed'}
           <div class="rounded border-2 p-2 cursor-pointer transition-colors {colorClasses(state)}"
                role="button" tabindex="0"
+               aria-label={prefCellAriaLabel(room.name, state, pref?.weight)}
                on:click={(e) => onClick(e, room)}
                on:keydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(e, room); } }}
                title={(state === 'allowed' ? 'Aula consentita (default)' :
@@ -175,12 +181,19 @@
               <strong class="text-sm truncate">{room.name}</strong>
               <span class="text-[10px] opacity-75">{room.kind}</span>
             </div>
-            <div class="text-[10px] opacity-75">cap. {room.capacity}</div>
+            <div class="flex items-baseline justify-between gap-1 text-[10px]">
+              <span class="opacity-75">cap. {room.capacity}</span>
+              {#if PREF_STATE_BADGE[state]}
+                <span class="text-[9px] font-bold tracking-wide"
+                      aria-hidden="true">{PREF_STATE_BADGE[state]}</span>
+              {/if}
+            </div>
             {#if state === 'soft' || state === 'preferred'}
               <div class="mt-1">
                 <input type="number" step="10"
                        class="w-full text-xs px-1 py-0.5 rounded border bg-white text-ink-900"
                        value={pref?.weight ?? defaultWeightFor(state)}
+                       aria-label={(state === 'soft' ? 'Penalità per ' : 'Bonus per ') + room.name}
                        on:click|stopPropagation
                        on:input={(e) => onWeightInput(e, room)}/>
               </div>
@@ -189,6 +202,6 @@
         {/each}
       </div>
     {/if}
-    <KeyboardConstraintLegend visible={hovering} variant="room"/>
+    <KeyboardConstraintLegend visible={hovering || focused} variant="room"/>
   {/if}
 </div>

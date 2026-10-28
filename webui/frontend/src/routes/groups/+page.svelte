@@ -190,15 +190,15 @@
        onClose={() => (editing = null)}>
   {#if editing}
     <div class="grid grid-cols-2 gap-3" data-testid="group-form">
-      <div class="field"><label>Nome</label><input bind:value={editing.name} data-testid="group-name-input"/></div>
+      <div class="field"><label for="routes-groups-f1">Nome</label><input id="routes-groups-f1" bind:value={editing.name} data-testid="group-name-input"/></div>
       <div class="field">
         <label>Nickname
           <span class="text-xs text-ink-400">- default: nome</span>
         </label>
         <input bind:value={editing.nickname} placeholder={editing.name ?? ''}/>
       </div>
-      <div class="field"><label>Tipo</label>
-        <select bind:value={editing.kind} data-testid="group-kind-select">
+      <div class="field"><label for="routes-groups-f2">Tipo</label>
+        <select id="routes-groups-f2" bind:value={editing.kind} data-testid="group-kind-select">
           <option value="splitting">splitting (frazionamento classe)</option>
           <option value="language">language (seconda lingua)</option>
           <option value="religion">religion (IRC / alternativa)</option>
@@ -206,8 +206,8 @@
           <option value="other">other</option>
         </select>
       </div>
-      <div class="field col-span-2"><label>Descrizione</label>
-        <input bind:value={editing.description}/></div>
+      <div class="field col-span-2"><label for="routes-groups-f3">Descrizione</label>
+        <input id="routes-groups-f3" bind:value={editing.description}/></div>
     </div>
 
     <div class="mt-4 grid grid-cols-2 gap-4">
@@ -220,10 +220,10 @@
           <summary class="cursor-pointer font-medium">Precompila da tag studenti</summary>
           <div class="mt-2 grid grid-cols-[1fr_auto_auto] gap-1.5 items-end">
             <div>
-              <label class="block mb-0.5 text-[11px] text-ink-500">
+              <label for="routes-groups-f4" class="block mb-0.5 text-[11px] text-ink-500">
                 Tag (separa con virgola)
               </label>
-              <input class="w-full px-2 py-1 border border-ink-200 rounded"
+              <input id="routes-groups-f4" class="w-full px-2 py-1 border border-ink-200 rounded"
                      list="all-student-tags"
                      placeholder="es. debito_matematica_4, BES"
                      bind:value={tagFilter}/>
@@ -232,8 +232,8 @@
               </datalist>
             </div>
             <div>
-              <label class="block mb-0.5 text-[11px] text-ink-500">Logica</label>
-              <select class="px-2 py-1 border border-ink-200 rounded"
+              <label for="routes-groups-f5" class="block mb-0.5 text-[11px] text-ink-500">Logica</label>
+              <select id="routes-groups-f5" class="px-2 py-1 border border-ink-200 rounded"
                       bind:value={tagFilterMode}>
                 <option value="any_of">qualunque (OR)</option>
                 <option value="all_of">tutti (AND)</option>
@@ -299,6 +299,7 @@
                 </td>
                 <td>
                   <button class="btn-danger !text-xs !px-2 !py-1"
+                          aria-label="Elimina riga ore materia" title="Elimina riga"
                           on:click={() => delSubjectHours(i)}>x</button>
                 </td>
               </tr>

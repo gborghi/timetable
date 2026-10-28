@@ -233,24 +233,24 @@
 
     <div class="grid grid-cols-2 gap-3">
       <div class="field">
-        <label>Classe *</label>
-        <select bind:value={className} class={fieldClass(className, true)}>
+        <label for="lib-components-schedule-addeventmodal-f1">Classe *</label>
+        <select id="lib-components-schedule-addeventmodal-f1" bind:value={className} class={fieldClass(className, true)}>
           <option value="">-- scegli --</option>
           {#each classes as c}<option value={c}>{c}</option>{/each}
         </select>
       </div>
       <div class="field">
-        <label>Docente *</label>
-        <select bind:value={teacherName}
+        <label for="lib-components-schedule-addeventmodal-f2">Docente *</label>
+        <select id="lib-components-schedule-addeventmodal-f2" bind:value={teacherName}
                 class={fieldClass(teacherName, true)}>
           <option value="">-- scegli --</option>
           {#each teacherNames as t}<option value={t}>{t}</option>{/each}
         </select>
       </div>
       <div class="field">
-        <label>Materia *</label>
+        <label for="lib-components-schedule-addeventmodal-f3">Materia *</label>
         {#if teacherSubjects.length === 0 && teacherName}
-          <input bind:value={subject}
+          <input id="lib-components-schedule-addeventmodal-f3" bind:value={subject}
                  class={fieldClass(subject, true)}
                  placeholder="docente senza abilitazioni elencate"/>
         {:else}
@@ -267,8 +267,8 @@
         {/if}
       </div>
       <div class="field">
-        <label>Aula (opzionale)</label>
-        <select bind:value={classroomName}
+        <label for="lib-components-schedule-addeventmodal-f4">Aula (opzionale)</label>
+        <select id="lib-components-schedule-addeventmodal-f4" bind:value={classroomName}
                 class={fieldClass(classroomName, false)}
                 data-testid="event-classroom-select">
           <option value="">(nessuna)</option>
@@ -284,15 +284,15 @@
         {/if}
       </div>
       <div class="field">
-        <label>Giorno {(day !== '' || hour !== '') ? '*' : '(opzionale)'}</label>
-        <select bind:value={day} class={dhClass()}>
+        <label for="lib-components-schedule-addeventmodal-f5">Giorno {(day !== '' || hour !== '') ? '*' : '(opzionale)'}</label>
+        <select id="lib-components-schedule-addeventmodal-f5" bind:value={day} class={dhClass()}>
           <option value="">-- non schedulato --</option>
           {#each calendarDays($workingHoursConfig) as d}<option value={d}>{calendarDayName(d, $workingHoursConfig)}</option>{/each}
         </select>
       </div>
       <div class="field">
-        <label>Ora {(day !== '' || hour !== '') ? '*' : '(opzionale)'}</label>
-        <select bind:value={hour} class={dhClass()}>
+        <label for="lib-components-schedule-addeventmodal-f6">Ora {(day !== '' || hour !== '') ? '*' : '(opzionale)'}</label>
+        <select id="lib-components-schedule-addeventmodal-f6" bind:value={hour} class={dhClass()}>
           <option value="">-- non schedulato --</option>
           {#each calendarHours($workingHoursConfig) as h}<option value={h}>{h}:00</option>{/each}
         </select>

@@ -27,6 +27,7 @@
     startKeyboardConstraintMode,
     shortcutToRoomState,
   } from "$lib/keyboardConstraintMode";
+  import { PREF_STATE_BADGE, prefCellAriaLabel } from "$lib/pref_states.mjs";
   import KeyboardConstraintLegend from "./KeyboardConstraintLegend.svelte";
 
   type Item = { key: string; label: string; hint?: string };
@@ -41,6 +42,9 @@
 
   let collapsed = collapsedByDefault;
   let hovering = false;
+  // La legenda compare anche con il focus da tastiera, non solo al
+  // passaggio del mouse.
+  let focused = false;
   let kbCleanup: (() => void) | undefined;
   onMount(() => {
     kbCleanup = startKeyboardConstraintMode();
@@ -107,7 +111,9 @@
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="select-none space-y-2"
      on:mouseenter={() => (hovering = true)}
-     on:mouseleave={() => (hovering = false)}>
+     on:mouseleave={() => (hovering = false)}
+     on:focusin={() => (focused = true)}
+     on:focusout={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) focused = false; }}>
   <div class="flex items-baseline gap-2 flex-wrap">
     <button class="btn !text-xs !px-2 !py-1"
             on:click={() => (collapsed = !collapsed)}>
@@ -127,6 +133,7 @@
           {@const state = pref ? pref.state : "allowed"}
           <div class="rounded border-2 p-2 cursor-pointer transition-colors {colorClasses(state)}"
                role="button" tabindex="0"
+               aria-label={prefCellAriaLabel(it.label, state, pref?.soft_penalty)}
                on:click={(e) => onClick(e, it)}
                on:keydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(e, it); } }}
                title={(state === "allowed" ? "Default (consentito)" :
@@ -136,7 +143,13 @@
                        "OBBLIGATORIO (HARD)")
                        + (it.hint ? " - " + it.hint : "")
                        + " \nTieni H/P/E/D/A/N + click per impostare direttamente."}>
-            <div class="font-semibold text-sm truncate">{it.label}</div>
+            <div class="flex items-baseline justify-between gap-1">
+              <span class="font-semibold text-sm truncate">{it.label}</span>
+              {#if PREF_STATE_BADGE[state]}
+                <span class="text-[9px] font-bold tracking-wide shrink-0"
+                      aria-hidden="true">{PREF_STATE_BADGE[state]}</span>
+              {/if}
+            </div>
             {#if it.hint}
               <div class="text-[10px] opacity-75 truncate">{it.hint}</div>
             {/if}
@@ -145,6 +158,7 @@
                 <input type="number" step="10"
                        class="w-full text-xs px-1 py-0.5 rounded border bg-white text-ink-900"
                        value={pref?.soft_penalty ?? defaultPenalty(state)}
+                       aria-label={(state === "soft" ? "Penalità per " : "Bonus per ") + it.label}
                        on:click|stopPropagation
                        on:input={(e) => onPenaltyInput(e, it)}/>
               </div>
@@ -153,6 +167,6 @@
         {/each}
       </div>
     {/if}
-    <KeyboardConstraintLegend visible={hovering} variant="room"/>
+    <KeyboardConstraintLegend visible={hovering || focused} variant="room"/>
   {/if}
 </div>

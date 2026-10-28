@@ -456,8 +456,8 @@
 
   <div class="card p-3 flex flex-wrap gap-2 items-end">
     <div class="flex-1 min-w-64">
-      <label class="text-xs text-ink-500">Query</label>
-      <input class="w-full px-2 py-1.5 rounded-md border border-ink-200 font-mono text-sm"
+      <label for="lib-components-monitor-groupedeventstable-f1" class="text-xs text-ink-500">Query</label>
+      <input id="lib-components-monitor-groupedeventstable-f1" class="w-full px-2 py-1.5 rounded-md border border-ink-200 font-mono text-sm"
              placeholder="es. docente contains Rossi, completo = 0, classe = 3B_scientifico"
              bind:value={rowQuery}
              on:keydown={(e) => { if (e.key === 'Enter') applyQuery(); }}/>

@@ -113,8 +113,8 @@
     </div>
 
     <div class="flex flex-wrap gap-2 items-center">
-      <label class="text-sm">Azione:</label>
-      <select bind:value={action} on:change={reset}
+      <label for="lib-components-monitor-bulkeventsmodal-f1" class="text-sm">Azione:</label>
+      <select id="lib-components-monitor-bulkeventsmodal-f1" bind:value={action} on:change={reset}
               class="px-2 py-1 border border-ink-200 rounded">
         <option value="set_classroom">Assegna aula</option>
         <option value="clear_classroom">Togli aula (lascia che il solver riassegni)</option>
@@ -124,9 +124,9 @@
 
     {#if action === 'set_classroom'}
       <div class="space-y-2">
-        <label class="text-xs block">Aula di destinazione</label>
+        <label for="lib-components-monitor-bulkeventsmodal-f2" class="text-xs block">Aula di destinazione</label>
         {#if rooms.length}
-          <select bind:value={classroomName} on:change={reset}
+          <select id="lib-components-monitor-bulkeventsmodal-f2" bind:value={classroomName} on:change={reset}
                   class="px-2 py-1 border border-ink-200 rounded">
             <option value="">-- scegli --</option>
             {#each rooms as r}

@@ -169,12 +169,12 @@
   <!-- Time / workers params -->
   <div class="grid grid-cols-2 gap-3">
     <div class="field">
-      <label>Time-limit (s)</label>
-      <input type="number" bind:value={time_limit_s} min="1" />
+      <label for="lib-components-optimize-phaseacard-f1">Time-limit (s)</label>
+      <input id="lib-components-optimize-phaseacard-f1" type="number" bind:value={time_limit_s} min="1" />
     </div>
     <div class="field">
-      <label>Workers</label>
-      <input type="number" bind:value={workers} min="1" />
+      <label for="lib-components-optimize-phaseacard-f2">Workers</label>
+      <input id="lib-components-optimize-phaseacard-f2" type="number" bind:value={workers} min="1" />
     </div>
   </div>
 
@@ -242,10 +242,10 @@
   <!-- Custom editor -->
   {#if isCustom}
     <div>
-      <label class="text-xs font-medium text-ink-700">
+      <label for="lib-components-optimize-phaseacard-f3" class="text-xs font-medium text-ink-700">
         Espressione DSL
       </label>
-      <textarea bind:value={customExpression}
+      <textarea id="lib-components-optimize-phaseacard-f3" bind:value={customExpression}
                 rows="6"
                 class="w-full mt-1 font-mono text-xs border border-ink-300 rounded p-2"
                 placeholder="minimize ... + ... + ..."

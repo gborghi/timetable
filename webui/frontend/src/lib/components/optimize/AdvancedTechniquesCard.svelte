@@ -148,8 +148,8 @@
     </p>
     <div class="flex gap-2 items-end">
       <div class="field !mb-0">
-        <label class="!text-[11px]">N campioni</label>
-        <input type="number" min="16" max="1024"
+        <label for="lib-components-optimize-advancedtechniquescard-f1" class="!text-[11px]">N campioni</label>
+        <input id="lib-components-optimize-advancedtechniquescard-f1" type="number" min="16" max="1024"
                bind:value={hallSamples}
                data-testid="adv-hall-samples"
                class="w-24"/>
@@ -193,18 +193,18 @@
     </p>
     <div class="flex gap-2 items-end flex-wrap">
       <div class="field !mb-0">
-        <label class="!text-[11px]">Budget (s)</label>
-        <input type="number" bind:value={alnsBudget}
+        <label for="lib-components-optimize-advancedtechniquescard-f2" class="!text-[11px]">Budget (s)</label>
+        <input id="lib-components-optimize-advancedtechniquescard-f2" type="number" bind:value={alnsBudget}
                data-testid="adv-alns-budget" class="w-24"/>
       </div>
       <div class="field !mb-0">
-        <label class="!text-[11px]">T0</label>
-        <input type="number" step="0.1" bind:value={alnsT0}
+        <label for="lib-components-optimize-advancedtechniquescard-f3" class="!text-[11px]">T0</label>
+        <input id="lib-components-optimize-advancedtechniquescard-f3" type="number" step="0.1" bind:value={alnsT0}
                data-testid="adv-alns-t0" class="w-20"/>
       </div>
       <div class="field !mb-0">
-        <label class="!text-[11px]">alpha</label>
-        <input type="number" step="0.001" bind:value={alnsAlpha}
+        <label for="lib-components-optimize-advancedtechniquescard-f4" class="!text-[11px]">alpha</label>
+        <input id="lib-components-optimize-advancedtechniquescard-f4" type="number" step="0.001" bind:value={alnsAlpha}
                data-testid="adv-alns-alpha" class="w-24"/>
       </div>
       <button class="btn-primary !text-xs" on:click={runAlns}
@@ -228,8 +228,8 @@
     </p>
     <div class="flex gap-2 items-end flex-wrap">
       <div class="field !mb-0">
-        <label class="!text-[11px]">Budget (s)</label>
-        <input type="number" bind:value={vnsBudget}
+        <label for="lib-components-optimize-advancedtechniquescard-f5" class="!text-[11px]">Budget (s)</label>
+        <input id="lib-components-optimize-advancedtechniquescard-f5" type="number" bind:value={vnsBudget}
                data-testid="adv-vns-budget" class="w-24"/>
       </div>
       <button class="btn-primary !text-xs" on:click={runVns}
@@ -255,24 +255,24 @@
     </p>
     <div class="flex gap-2 items-end flex-wrap">
       <div class="field !mb-0">
-        <label class="!text-[11px]">Budget (s)</label>
-        <input type="number" bind:value={lagBudget}
+        <label for="lib-components-optimize-advancedtechniquescard-f6" class="!text-[11px]">Budget (s)</label>
+        <input id="lib-components-optimize-advancedtechniquescard-f6" type="number" bind:value={lagBudget}
                data-testid="adv-lag-budget" class="w-24"/>
       </div>
       <div class="field !mb-0">
-        <label class="!text-[11px]">Max iter</label>
-        <input type="number" bind:value={lagMaxIter}
+        <label for="lib-components-optimize-advancedtechniquescard-f7" class="!text-[11px]">Max iter</label>
+        <input id="lib-components-optimize-advancedtechniquescard-f7" type="number" bind:value={lagMaxIter}
                data-testid="adv-lag-max-iter" class="w-16"/>
       </div>
       <div class="field !mb-0">
-        <label class="!text-[11px]">Tolleranza</label>
-        <input type="number" step="0.001"
+        <label for="lib-components-optimize-advancedtechniquescard-f8" class="!text-[11px]">Tolleranza</label>
+        <input id="lib-components-optimize-advancedtechniquescard-f8" type="number" step="0.001"
                bind:value={lagTolerance}
                data-testid="adv-lag-tolerance" class="w-24"/>
       </div>
       <div class="field !mb-0">
-        <label class="!text-[11px]">alpha0</label>
-        <input type="number" step="0.1"
+        <label for="lib-components-optimize-advancedtechniquescard-f9" class="!text-[11px]">alpha0</label>
+        <input id="lib-components-optimize-advancedtechniquescard-f9" type="number" step="0.1"
                bind:value={lagAlpha0}
                data-testid="adv-lag-alpha0" class="w-20"/>
       </div>
@@ -302,16 +302,16 @@
     </p>
     <div class="grid grid-cols-2 gap-2 mb-2">
       <div class="field !mb-0">
-        <label class="!text-[11px]">Modalita'</label>
-        <select bind:value={cgMode} data-testid="adv-cg-mode" class="w-full">
+        <label for="lib-components-optimize-advancedtechniquescard-f10" class="!text-[11px]">Modalita'</label>
+        <select id="lib-components-optimize-advancedtechniquescard-f10" bind:value={cgMode} data-testid="adv-cg-mode" class="w-full">
           <option value="iterative-diversified">Iterative-diversified (default)</option>
           <option value="branch-and-price">Branch-and-Price (sub-CP-SAT pricing)</option>
           <option value="auto">Auto (per taglia scuola)</option>
         </select>
       </div>
       <div class="field !mb-0">
-        <label class="!text-[11px]">Granularita' sub-problema</label>
-        <select bind:value={cgGranularity}
+        <label for="lib-components-optimize-advancedtechniquescard-f11" class="!text-[11px]">Granularita' sub-problema</label>
+        <select id="lib-components-optimize-advancedtechniquescard-f11" bind:value={cgGranularity}
                 data-testid="adv-cg-granularity" class="w-full"
                 title="Selettore granularita' di pricing per BP. Le granularita' teacher-based generano pattern per docente; class-based per classe; 'day' e 'curriculum' sono globali. 'auto' sceglie in base alla taglia.">
           <optgroup label="Auto">
@@ -335,32 +335,32 @@
         </select>
       </div>
       <div class="field !mb-0">
-        <label class="!text-[11px]">Branching strategy</label>
-        <select bind:value={cgBranching}
+        <label for="lib-components-optimize-advancedtechniquescard-f12" class="!text-[11px]">Branching strategy</label>
+        <select id="lib-components-optimize-advancedtechniquescard-f12" bind:value={cgBranching}
                 data-testid="adv-cg-branching" class="w-full">
           <option value="ryan_foster">Ryan-Foster</option>
           <option value="variable">Variable branching</option>
         </select>
       </div>
       <div class="field !mb-0">
-        <label class="!text-[11px]">Max iterazioni (ID)</label>
-        <input type="number" bind:value={cgMaxIterations} class="w-full"
+        <label for="lib-components-optimize-advancedtechniquescard-f13" class="!text-[11px]">Max iterazioni (ID)</label>
+        <input id="lib-components-optimize-advancedtechniquescard-f13" type="number" bind:value={cgMaxIterations} class="w-full"
                title="Max iterazioni della pipeline iterative-diversified."/>
       </div>
       <div class="field !mb-0">
-        <label class="!text-[11px]">BP max iter</label>
-        <input type="number" bind:value={cgBpMaxIterations} class="w-full"
+        <label for="lib-components-optimize-advancedtechniquescard-f14" class="!text-[11px]">BP max iter</label>
+        <input id="lib-components-optimize-advancedtechniquescard-f14" type="number" bind:value={cgBpMaxIterations} class="w-full"
                title="Max iterazioni del loop branch-and-price (master + pricing)."/>
       </div>
       <div class="field !mb-0">
-        <label class="!text-[11px]">Pricer time limit (s)</label>
-        <input type="number" step="0.5" bind:value={cgPricerTimeLimit}
+        <label for="lib-components-optimize-advancedtechniquescard-f15" class="!text-[11px]">Pricer time limit (s)</label>
+        <input id="lib-components-optimize-advancedtechniquescard-f15" type="number" step="0.5" bind:value={cgPricerTimeLimit}
                class="w-full"
                title="Tempo CPU max per ogni sub-problema CP-SAT di pricing."/>
       </div>
       <div class="field !mb-0">
-        <label class="!text-[11px]">Pricer workers</label>
-        <input type="number" bind:value={cgPricerWorkers} class="w-full"
+        <label for="lib-components-optimize-advancedtechniquescard-f16" class="!text-[11px]">Pricer workers</label>
+        <input id="lib-components-optimize-advancedtechniquescard-f16" type="number" bind:value={cgPricerWorkers} class="w-full"
                title="Worker CP-SAT per ogni sub-problema di pricing."/>
       </div>
       <label class="flex items-center gap-2 text-xs self-end pb-1">
@@ -370,13 +370,13 @@
     </div>
     <div class="flex gap-2 items-end flex-wrap">
       <div class="field !mb-0">
-        <label class="!text-[11px]">Budget (s)</label>
-        <input type="number" bind:value={cgBudget}
+        <label for="lib-components-optimize-advancedtechniquescard-f17" class="!text-[11px]">Budget (s)</label>
+        <input id="lib-components-optimize-advancedtechniquescard-f17" type="number" bind:value={cgBudget}
                data-testid="adv-cg-budget" class="w-24"/>
       </div>
       <div class="field !mb-0">
-        <label class="!text-[11px]">Pattern/docente (seed)</label>
-        <input type="number" bind:value={cgPatternsPerTeacher}
+        <label for="lib-components-optimize-advancedtechniquescard-f18" class="!text-[11px]">Pattern/docente (seed)</label>
+        <input id="lib-components-optimize-advancedtechniquescard-f18" type="number" bind:value={cgPatternsPerTeacher}
                data-testid="adv-cg-patterns" class="w-20"/>
       </div>
       <button class="btn-primary !text-xs" on:click={runCg}

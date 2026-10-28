@@ -45,6 +45,7 @@
                         on:click={() => onActivate(s.id)}>attiva</button>
               {/if}
               <button class="btn-danger !text-xs !px-2 !py-1"
+                      aria-label="Elimina soluzione {s.name || '#' + s.id}" title="Elimina soluzione"
                       on:click={() => onDelete(s.id)}>x</button>
             </td>
           </tr>

@@ -390,8 +390,8 @@
       <h2 class="mb-3">1) Genera / carica scuola</h2>
       <div class="grid grid-cols-2 gap-3">
         <div class="field">
-          <label>Profilo (mock)</label>
-          <select bind:value={step1.profile} data-testid="optimize-mock-profile">
+          <label for="routes-optimize-f1">Profilo (mock)</label>
+          <select id="routes-optimize-f1" bind:value={step1.profile} data-testid="optimize-mock-profile">
             <option value="small">small</option>
             <option value="medium">medium</option>
             <option value="big">big</option>
@@ -400,20 +400,20 @@
           </select>
         </div>
         <div class="field">
-          <label>Mode</label>
-          <select bind:value={step1.mode} data-testid="optimize-mock-mode">
+          <label for="routes-optimize-f2">Mode</label>
+          <select id="routes-optimize-f2" bind:value={step1.mode} data-testid="optimize-mock-mode">
             <option value="aggregated">aggregated</option>
             <option value="tight">tight</option>
             <option value="legacy">legacy</option>
           </select>
         </div>
         <div class="field">
-          <label>Margin</label>
-          <input type="number" step="0.01" bind:value={step1.margin}/>
+          <label for="routes-optimize-f3">Margin</label>
+          <input id="routes-optimize-f3" type="number" step="0.01" bind:value={step1.margin}/>
         </div>
         <div class="field">
-          <label>Ore-cattedra base</label>
-          <input type="number" bind:value={step1.base_max_hours}/>
+          <label for="routes-optimize-f4">Ore-cattedra base</label>
+          <input id="routes-optimize-f4" type="number" bind:value={step1.base_max_hours}/>
         </div>
       </div>
       <div class="flex gap-2 mt-3">
@@ -498,16 +498,16 @@
         </div>
       {/if}
       <div class="grid grid-cols-3 gap-3">
-        <div class="field"><label>K cluster</label><input type="number" bind:value={step3.k} on:change={markTweaked}/></div>
-        <div class="field"><label>time A (day_count)</label><input type="number" bind:value={step3.time_a} on:change={markTweaked}/></div>
-        <div class="field"><label>time bridges</label><input type="number" bind:value={step3.time_bridges} on:change={markTweaked}/></div>
-        <div class="field"><label>time cluster</label><input type="number" bind:value={step3.time_cluster} on:change={markTweaked}/></div>
-        <div class="field"><label>time ricucitura</label><input type="number" bind:value={step3.time_ricucitura} on:change={markTweaked}/></div>
-        <div class="field"><label>time monolitico</label><input type="number" bind:value={step3.time_mono} on:change={markTweaked}/></div>
-        <div class="field"><label>workers</label><input type="number" bind:value={step3.workers} on:change={markTweaked}/></div>
+        <div class="field"><label for="routes-optimize-f5">K cluster</label><input id="routes-optimize-f5" type="number" bind:value={step3.k} on:change={markTweaked}/></div>
+        <div class="field"><label for="routes-optimize-f6">time A (day_count)</label><input id="routes-optimize-f6" type="number" bind:value={step3.time_a} on:change={markTweaked}/></div>
+        <div class="field"><label for="routes-optimize-f7">time bridges</label><input id="routes-optimize-f7" type="number" bind:value={step3.time_bridges} on:change={markTweaked}/></div>
+        <div class="field"><label for="routes-optimize-f8">time cluster</label><input id="routes-optimize-f8" type="number" bind:value={step3.time_cluster} on:change={markTweaked}/></div>
+        <div class="field"><label for="routes-optimize-f9">time ricucitura</label><input id="routes-optimize-f9" type="number" bind:value={step3.time_ricucitura} on:change={markTweaked}/></div>
+        <div class="field"><label for="routes-optimize-f10">time monolitico</label><input id="routes-optimize-f10" type="number" bind:value={step3.time_mono} on:change={markTweaked}/></div>
+        <div class="field"><label for="routes-optimize-f11">workers</label><input id="routes-optimize-f11" type="number" bind:value={step3.workers} on:change={markTweaked}/></div>
         <div class="field">
-          <label use:tooltip={"Controlla il tradeoff qualita/velocita del solver CP-SAT. Veloce: si ferma prima, ideale per bozze. Bilanciato: buon compromesso (default). Approfondito: qualita' migliore, piu' lento. Massimo: non si ferma prima del tempo limite."}>Qualità soluzione</label>
-          <select bind:value={step3.thoroughness} data-testid="optimize-thoroughness">
+          <label for="routes-optimize-f12" use:tooltip={"Controlla il tradeoff qualita/velocita del solver CP-SAT. Veloce: si ferma prima, ideale per bozze. Bilanciato: buon compromesso (default). Approfondito: qualita' migliore, piu' lento. Massimo: non si ferma prima del tempo limite."}>Qualità soluzione</label>
+          <select id="routes-optimize-f12" bind:value={step3.thoroughness} data-testid="optimize-thoroughness">
             <option value="fast">⚡ Veloce (bozze)</option>
             <option value="balanced">⚖️ Bilanciato (default)</option>
             <option value="thorough">🔍 Approfondito</option>
@@ -521,8 +521,8 @@
       <div class="mt-3 p-3 rounded border border-ink-200 bg-ink-50/40 space-y-3">
         <p class="text-xs font-medium">Solver CP-SAT (avanzato)</p>
         <div class="field">
-          <label use:tooltip={"Come il solver affronta la settimana. Per giorno: risolve un giorno alla volta (veloce, scalabile, default). Settimana intera: un unico modello CP-SAT su tutta la settimana, piu robusto con compresenze/sostegno/gruppi ma piu lento."}>Scope del solver CP-SAT</label>
-          <select bind:value={step3.cp_sat_scope}
+          <label for="routes-optimize-f13" use:tooltip={"Come il solver affronta la settimana. Per giorno: risolve un giorno alla volta (veloce, scalabile, default). Settimana intera: un unico modello CP-SAT su tutta la settimana, piu robusto con compresenze/sostegno/gruppi ma piu lento."}>Scope del solver CP-SAT</label>
+          <select id="routes-optimize-f13" bind:value={step3.cp_sat_scope}
                   on:change={coercePhaseAModeForScope}
                   data-testid="optimize-cp-sat-scope">
             <option value="day">Per giorno (default, veloce)</option>
@@ -597,8 +597,8 @@
         </p>
         <div class="grid grid-cols-2 gap-3">
           <div class="field">
-            <label>Time-limit aule (s)</label>
-            <input type="number" bind:value={step3.rooms_time_limit_s}
+            <label for="routes-optimize-f14">Time-limit aule (s)</label>
+            <input id="routes-optimize-f14" type="number" bind:value={step3.rooms_time_limit_s}
                    disabled={!step3.optimize_rooms}/>
           </div>
           <label class="flex items-center gap-2 text-sm self-end pb-2">
@@ -677,10 +677,10 @@
             </div>
           </div>
           <div class="pt-2">
-            <label class="text-xs font-semibold text-ink-600">
+            <label for="routes-optimize-f15" class="text-xs font-semibold text-ink-600">
               Continuita' d'aula (classi non fissate)
             </label>
-            <select class="mt-1 block w-full text-sm rounded border-ink-200"
+            <select id="routes-optimize-f15" class="mt-1 block w-full text-sm rounded border-ink-200"
                     bind:value={step3.joint_vars.room_continuity}>
               <option value="none">Nessuna (aula libera per ora)</option>
               <option value="day">Stessa aula nello stesso giorno (HARD)</option>
@@ -703,12 +703,12 @@
     <div class="card p-5">
       <h2 class="mb-3">4-7) Metaeuristiche</h2>
       <div class="grid grid-cols-3 gap-3">
-        <div class="field"><label>Budget (s)</label><input type="number" bind:value={step4.budget_s}/></div>
-        <div class="field"><label>Workers</label><input type="number" bind:value={step4.workers}/></div>
-        <div class="field"><label>SA T0</label><input type="number" step="0.1" bind:value={step4.sa_T0}/></div>
-        <div class="field"><label>SA alpha</label><input type="number" step="0.001" bind:value={step4.sa_alpha}/></div>
-        <div class="field"><label>TS tabu size</label><input type="number" bind:value={step4.tabu_size}/></div>
-        <div class="field"><label>ILS cycles</label><input type="number" bind:value={step4.n_cycles}/></div>
+        <div class="field"><label for="routes-optimize-f16">Budget (s)</label><input id="routes-optimize-f16" type="number" bind:value={step4.budget_s}/></div>
+        <div class="field"><label for="routes-optimize-f17">Workers</label><input id="routes-optimize-f17" type="number" bind:value={step4.workers}/></div>
+        <div class="field"><label for="routes-optimize-f18">SA T0</label><input id="routes-optimize-f18" type="number" step="0.1" bind:value={step4.sa_T0}/></div>
+        <div class="field"><label for="routes-optimize-f19">SA alpha</label><input id="routes-optimize-f19" type="number" step="0.001" bind:value={step4.sa_alpha}/></div>
+        <div class="field"><label for="routes-optimize-f20">TS tabu size</label><input id="routes-optimize-f20" type="number" bind:value={step4.tabu_size}/></div>
+        <div class="field"><label for="routes-optimize-f21">ILS cycles</label><input id="routes-optimize-f21" type="number" bind:value={step4.n_cycles}/></div>
       </div>
       <div class="mt-3 p-3 rounded border border-ink-200 bg-ink-50/40 space-y-2">
         <label class="flex items-center gap-2 text-sm font-medium">
@@ -722,8 +722,8 @@
         </p>
         <div class="grid grid-cols-2 gap-3">
           <div class="field">
-            <label>Time-limit aule (s)</label>
-            <input type="number" bind:value={step4.rooms_time_limit_s}
+            <label for="routes-optimize-f22">Time-limit aule (s)</label>
+            <input id="routes-optimize-f22" type="number" bind:value={step4.rooms_time_limit_s}
                    disabled={!step4.optimize_rooms}/>
           </div>
           <label class="flex items-center gap-2 text-sm self-end pb-2">
@@ -753,8 +753,8 @@
     <div class="card p-5">
       <h2 class="mb-3">8) Assegna aule</h2>
       <div class="grid grid-cols-2 gap-3">
-        <div class="field"><label>Time-limit (s)</label><input type="number" bind:value={stepRooms.time_limit_s}/></div>
-        <div class="field"><label>Workers</label><input type="number" bind:value={stepRooms.workers}/></div>
+        <div class="field"><label for="routes-optimize-f23">Time-limit (s)</label><input id="routes-optimize-f23" type="number" bind:value={stepRooms.time_limit_s}/></div>
+        <div class="field"><label for="routes-optimize-f24">Workers</label><input id="routes-optimize-f24" type="number" bind:value={stepRooms.workers}/></div>
         <label class="flex gap-2 text-sm col-span-2"><input type="checkbox" bind:checked={stepRooms.prefer_home}/> Preferisci aula della classe</label>
       </div>
       <button class="btn-primary mt-3" on:click={launchRooms}>Avvia</button>
@@ -837,14 +837,14 @@
           alle altre strategie.
         </p>
         <div class="grid grid-cols-2 gap-3">
-          <div class="field"><label>time pre-distribuzione (s)</label>
-            <input type="number" bind:value={decompTemporal.pre_distribution_time}/></div>
-          <div class="field"><label>time per giorno (s)</label>
-            <input type="number" bind:value={decompTemporal.day_time}/></div>
-          <div class="field"><label>workers paralleli</label>
-            <input type="number" bind:value={decompTemporal.parallel_workers}/></div>
-          <div class="field"><label>max iterazioni</label>
-            <input type="number" bind:value={decompTemporal.max_iterations}/></div>
+          <div class="field"><label for="routes-optimize-f25">time pre-distribuzione (s)</label>
+            <input id="routes-optimize-f25" type="number" bind:value={decompTemporal.pre_distribution_time}/></div>
+          <div class="field"><label for="routes-optimize-f26">time per giorno (s)</label>
+            <input id="routes-optimize-f26" type="number" bind:value={decompTemporal.day_time}/></div>
+          <div class="field"><label for="routes-optimize-f27">workers paralleli</label>
+            <input id="routes-optimize-f27" type="number" bind:value={decompTemporal.parallel_workers}/></div>
+          <div class="field"><label for="routes-optimize-f28">max iterazioni</label>
+            <input id="routes-optimize-f28" type="number" bind:value={decompTemporal.max_iterations}/></div>
         </div>
         <button class="btn-primary !text-xs mt-2"
                 on:click={() => launchDecomposition('temporal', decompTemporal)}>
@@ -864,14 +864,14 @@
           dove la spettrale fatica.
         </p>
         <div class="grid grid-cols-2 gap-3">
-          <div class="field"><label>k (0 = auto sqrt(n))</label>
-            <input type="number" bind:value={decompMetis.k}/></div>
-          <div class="field"><label>tolleranza sbilanciamento</label>
-            <input type="number" step="0.01" bind:value={decompMetis.imbalance}/></div>
-          <div class="field"><label>time per cluster (s)</label>
-            <input type="number" bind:value={decompMetis.time_per_cluster}/></div>
-          <div class="field"><label>time bridges (s)</label>
-            <input type="number" bind:value={decompMetis.time_bridges}/></div>
+          <div class="field"><label for="routes-optimize-f29">k (0 = auto sqrt(n))</label>
+            <input id="routes-optimize-f29" type="number" bind:value={decompMetis.k}/></div>
+          <div class="field"><label for="routes-optimize-f30">tolleranza sbilanciamento</label>
+            <input id="routes-optimize-f30" type="number" step="0.01" bind:value={decompMetis.imbalance}/></div>
+          <div class="field"><label for="routes-optimize-f31">time per cluster (s)</label>
+            <input id="routes-optimize-f31" type="number" bind:value={decompMetis.time_per_cluster}/></div>
+          <div class="field"><label for="routes-optimize-f32">time bridges (s)</label>
+            <input id="routes-optimize-f32" type="number" bind:value={decompMetis.time_bridges}/></div>
         </div>
         <button class="btn-primary !text-xs mt-2"
                 on:click={() => launchDecomposition('metis', decompMetis)}>
@@ -892,14 +892,14 @@
           <code>_misto</code>.
         </p>
         <div class="grid grid-cols-2 gap-3">
-          <div class="field"><label>min classi per cluster</label>
-            <input type="number" bind:value={decompCurriculum.min_cluster_size}/></div>
-          <div class="field"><label>time per cluster (s)</label>
-            <input type="number" bind:value={decompCurriculum.time_per_cluster}/></div>
-          <div class="field"><label>time bridges (s)</label>
-            <input type="number" bind:value={decompCurriculum.time_bridges}/></div>
-          <div class="field"><label>raggruppamenti manuali (JSON)</label>
-            <input type="text"
+          <div class="field"><label for="routes-optimize-f33">min classi per cluster</label>
+            <input id="routes-optimize-f33" type="number" bind:value={decompCurriculum.min_cluster_size}/></div>
+          <div class="field"><label for="routes-optimize-f34">time per cluster (s)</label>
+            <input id="routes-optimize-f34" type="number" bind:value={decompCurriculum.time_per_cluster}/></div>
+          <div class="field"><label for="routes-optimize-f35">time bridges (s)</label>
+            <input id="routes-optimize-f35" type="number" bind:value={decompCurriculum.time_bridges}/></div>
+          <div class="field"><label for="routes-optimize-f36">raggruppamenti manuali (JSON)</label>
+            <input id="routes-optimize-f36" type="text"
                    placeholder={'{"linguistico":"_misto"}'}
                    bind:value={decompCurriculum.manual_groupings}/></div>
         </div>
@@ -941,12 +941,12 @@
           <input bind:value={stepFull.profile}
                  placeholder={activeProfile || '(scuola attiva)'}/>
         </div>
-        <div class="field"><label>Workers</label><input type="number" bind:value={stepFull.workers}/></div>
-        <div class="field"><label>Time assignment</label><input type="number" bind:value={stepFull.time_assign}/></div>
-        <div class="field"><label>Budget LNS</label><input type="number" bind:value={stepFull.budget_lns}/></div>
-        <div class="field"><label>Budget SA</label><input type="number" bind:value={stepFull.budget_sa}/></div>
-        <div class="field"><label>Budget TS</label><input type="number" bind:value={stepFull.budget_ts}/></div>
-        <div class="field"><label>Budget ILS</label><input type="number" bind:value={stepFull.budget_ils}/></div>
+        <div class="field"><label for="routes-optimize-f37">Workers</label><input id="routes-optimize-f37" type="number" bind:value={stepFull.workers}/></div>
+        <div class="field"><label for="routes-optimize-f38">Time assignment</label><input id="routes-optimize-f38" type="number" bind:value={stepFull.time_assign}/></div>
+        <div class="field"><label for="routes-optimize-f39">Budget LNS</label><input id="routes-optimize-f39" type="number" bind:value={stepFull.budget_lns}/></div>
+        <div class="field"><label for="routes-optimize-f40">Budget SA</label><input id="routes-optimize-f40" type="number" bind:value={stepFull.budget_sa}/></div>
+        <div class="field"><label for="routes-optimize-f41">Budget TS</label><input id="routes-optimize-f41" type="number" bind:value={stepFull.budget_ts}/></div>
+        <div class="field"><label for="routes-optimize-f42">Budget ILS</label><input id="routes-optimize-f42" type="number" bind:value={stepFull.budget_ils}/></div>
       </div>
 
       <ul class="mt-4 divide-y divide-ink-200 border border-ink-200 rounded select-none">

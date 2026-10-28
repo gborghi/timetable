@@ -505,13 +505,13 @@
   {#if editing}
     <div class="grid grid-cols-2 gap-3" data-testid="teacher-form">
       <div class="field">
-        <label>Cognome</label>
-        <input bind:value={editing.last_name} on:input={syncName}
+        <label for="routes-teachers-f1">Cognome</label>
+        <input id="routes-teachers-f1" bind:value={editing.last_name} on:input={syncName}
                data-testid="teacher-last-name-input"/>
       </div>
       <div class="field">
-        <label>Nome</label>
-        <input bind:value={editing.first_name} on:input={syncName}
+        <label for="routes-teachers-f2">Nome</label>
+        <input id="routes-teachers-f2" bind:value={editing.first_name} on:input={syncName}
                data-testid="teacher-first-name-input"/>
       </div>
       <div class="field col-span-2">
@@ -521,12 +521,12 @@
         <input bind:value={editing.nickname}
                placeholder={(editing.last_name ?? '') + ' ' + (editing.first_name ?? '')}/>
       </div>
-      <div class="field"><label>Matricola</label><input bind:value={editing.matricola}/></div>
-      <div class="field"><label title="Codice della classe di concorso ministeriale (es. A027 Matematica e fisica). Facoltativo.">Classe di concorso</label><input bind:value={editing.group}/></div>
-      <div class="field"><label title="Numero massimo di ore settimanali che il docente può insegnare.">Max ore-cattedra</label><input type="number" bind:value={editing.max_hours} data-testid="teacher-max-hours-input"/></div>
-      <div class="field"><label title="Ore che il docente completa in questa scuola (spezzone / part-time). Facoltativo.">Ore di completamento</label><input type="number" bind:value={editing.completion_hours}/></div>
-      <div class="field"><label title="Ore di esonero dall'insegnamento (es. per incarichi o funzioni strumentali). Facoltativo.">Ore di esonero</label><input type="number" bind:value={editing.exemption_hours}/></div>
-      <div class="field"><label title="Ore settimanali di disposizione (standby per supplenze). L'ottimizzatore le piazza senza classe né aula; restano disponibili in Assenze e supplenze e si possono spostare a mano.">Ore di disposizione</label><input type="number" min="0" bind:value={editing.disposizione_hours} data-testid="teacher-disposizione-hours-input"/></div>
+      <div class="field"><label for="routes-teachers-f3">Matricola</label><input id="routes-teachers-f3" bind:value={editing.matricola}/></div>
+      <div class="field"><label for="routes-teachers-f4" title="Codice della classe di concorso ministeriale (es. A027 Matematica e fisica). Facoltativo.">Classe di concorso</label><input id="routes-teachers-f4" bind:value={editing.group}/></div>
+      <div class="field"><label for="routes-teachers-f5" title="Numero massimo di ore settimanali che il docente può insegnare.">Max ore-cattedra</label><input id="routes-teachers-f5" type="number" bind:value={editing.max_hours} data-testid="teacher-max-hours-input"/></div>
+      <div class="field"><label for="routes-teachers-f6" title="Ore che il docente completa in questa scuola (spezzone / part-time). Facoltativo.">Ore di completamento</label><input id="routes-teachers-f6" type="number" bind:value={editing.completion_hours}/></div>
+      <div class="field"><label for="routes-teachers-f7" title="Ore di esonero dall'insegnamento (es. per incarichi o funzioni strumentali). Facoltativo.">Ore di esonero</label><input id="routes-teachers-f7" type="number" bind:value={editing.exemption_hours}/></div>
+      <div class="field"><label for="routes-teachers-f8" title="Ore settimanali di disposizione (standby per supplenze). L'ottimizzatore le piazza senza classe né aula; restano disponibili in Assenze e supplenze e si possono spostare a mano.">Ore di disposizione</label><input id="routes-teachers-f8" type="number" min="0" bind:value={editing.disposizione_hours} data-testid="teacher-disposizione-hours-input"/></div>
       <div class="field">
         <label title="Punteggio in graduatoria provinciale (0-300). Usato dal preset 'Anzianita' di Phase A per assegnare i docenti piu' anziani agli indirizzi pesanti.">
           Punteggio graduatoria
@@ -537,16 +537,16 @@
                placeholder="(non impostato)"/>
       </div>
       <div class="field">
-        <label title="Imposta rapidamente un giorno di libertà: blocca (rosso/HARD) tutte le ore di quel giorno nella matrice qui sotto. Per più preferenze, o preferenze morbide, usa il pannello 'Giorni liberi (avanzato)'.">Giorno libero (rapido)</label>
-        <select value={editing.free_day || ''} on:change={onFreeDaySelect}>
+        <label for="routes-teachers-f9" title="Imposta rapidamente un giorno di libertà: blocca (rosso/HARD) tutte le ore di quel giorno nella matrice qui sotto. Per più preferenze, o preferenze morbide, usa il pannello 'Giorni liberi (avanzato)'.">Giorno libero (rapido)</label>
+        <select id="routes-teachers-f9" value={editing.free_day || ''} on:change={onFreeDaySelect}>
           <option value="">(nessuno)</option>
           {#each calDays as d}<option value={freeDayWire(d)}>{calName(d)}</option>{/each}
         </select>
       </div>
-      <div class="field"><label>Max ore consecutive</label><input type="number" bind:value={editing.max_consecutive}/></div>
+      <div class="field"><label for="routes-teachers-f10">Max ore consecutive</label><input id="routes-teachers-f10" type="number" bind:value={editing.max_consecutive}/></div>
       <div class="field col-span-2">
-        <label title="Se il docente può affiancare un collega nella STESSA aula invece di prenotarne una propria. Vale per compresenze di qualunque natura: sostegno, potenziamento, codocenza, madrelingua, ITP.">Compresenza (condivide l'aula)</label>
-        <select bind:value={editing.compresenza}>
+        <label for="routes-teachers-f11" title="Se il docente può affiancare un collega nella STESSA aula invece di prenotarne una propria. Vale per compresenze di qualunque natura: sostegno, potenziamento, codocenza, madrelingua, ITP.">Compresenza (condivide l'aula)</label>
+        <select id="routes-teachers-f11" bind:value={editing.compresenza}>
           <option value="mai">Mai — prenota sempre un'aula propria</option>
           <option value="sempre">Sempre — segue il collega (tipico: sostegno)</option>
           <option value="oraria">Solo in certe ore — scegli sotto</option>
@@ -585,8 +585,8 @@
         {/if}
       </div>
       <div class="field col-span-2">
-        <label>Materie insegnate</label>
-        <select multiple class="h-32" bind:value={editing.subjects}>
+        <label for="routes-teachers-f12">Materie insegnate</label>
+        <select id="routes-teachers-f12" multiple class="h-32" bind:value={editing.subjects}>
           {#each allSubjects as s}<option value={s}>{s}</option>{/each}
         </select>
       </div>
@@ -733,9 +733,9 @@
       isolate. Numero più alto = penalità più forte (0 = indifferente).
     </p>
     <div class="mt-1 grid grid-cols-3 gap-3">
-      <div class="field"><label title="Quanto penalizzare le ore buche (buchi) nell'orario del docente.">Peso "no buchi"</label><input type="number" bind:value={editing.pref_no_buchi_weight}/></div>
-      <div class="field"><label title="Quanto penalizzare le giornate in cui il docente ha 5 ore di lezione.">Peso "no 5 ore"</label><input type="number" bind:value={editing.pref_no_five_weight}/></div>
-      <div class="field"><label title="Quanto penalizzare una singola ora isolata nella giornata del docente.">Peso "no 1 ora isolata"</label><input type="number" bind:value={editing.pref_no_one_weight}/></div>
+      <div class="field"><label for="routes-teachers-f13" title="Quanto penalizzare le ore buche (buchi) nell'orario del docente.">Peso "no buchi"</label><input id="routes-teachers-f13" type="number" bind:value={editing.pref_no_buchi_weight}/></div>
+      <div class="field"><label for="routes-teachers-f14" title="Quanto penalizzare le giornate in cui il docente ha 5 ore di lezione.">Peso "no 5 ore"</label><input id="routes-teachers-f14" type="number" bind:value={editing.pref_no_five_weight}/></div>
+      <div class="field"><label for="routes-teachers-f15" title="Quanto penalizzare una singola ora isolata nella giornata del docente.">Peso "no 1 ora isolata"</label><input id="routes-teachers-f15" type="number" bind:value={editing.pref_no_one_weight}/></div>
     </div>
 
     <div class="mt-4">

@@ -149,7 +149,7 @@
               <td><input class="w-full px-2 py-1 border border-ink-200 rounded" bind:value={w.subject}/></td>
               <td><input class="w-full px-2 py-1 border border-ink-200 rounded" bind:value={w.group_name}/></td>
               <td class="w-32"><input type="number" class="w-full px-2 py-1 border border-ink-200 rounded" bind:value={w.weight}/></td>
-              <td><button class="btn-danger !text-xs !px-2 !py-1" on:click={() => delWeightRow(i)}>x</button></td>
+              <td><button class="btn-danger !text-xs !px-2 !py-1" aria-label="Elimina riga peso" title="Elimina riga" on:click={() => delWeightRow(i)}>x</button></td>
             </tr>
           {/each}
         </tbody>
@@ -162,16 +162,16 @@
 <Modal open={!!editing} title={editing?._new ? 'Nuova materia' : 'Modifica materia'} onClose={() => (editing = null)}>
   {#if editing}
     <div class="grid grid-cols-2 gap-3" data-testid="subject-form">
-      <div class="field"><label>Nome (chiave)</label><input bind:value={editing.name} data-testid="subject-name-input"/></div>
-      <div class="field"><label>Pretty name</label><input bind:value={editing.pretty_name} data-testid="subject-pretty-name-input"/></div>
-      <div class="field col-span-2"><label>Note</label><input bind:value={editing.notes}/></div>
-      <div class="field"><label>Peso "spalmare su pi giorni"</label><input type="number" bind:value={editing.distribute_days_weight}/></div>
-      <div class="field"><label>Peso "doppie ore consecutive"</label><input type="number" bind:value={editing.dual_hours_weight}/></div>
-      <div class="field"><label>Peso "no 6^a ora"</label><input type="number" bind:value={editing.no_sixth_hour_weight}/></div>
+      <div class="field"><label for="routes-subjects-f1">Nome (chiave)</label><input id="routes-subjects-f1" bind:value={editing.name} data-testid="subject-name-input"/></div>
+      <div class="field"><label for="routes-subjects-f2">Pretty name</label><input id="routes-subjects-f2" bind:value={editing.pretty_name} data-testid="subject-pretty-name-input"/></div>
+      <div class="field col-span-2"><label for="routes-subjects-f3">Note</label><input id="routes-subjects-f3" bind:value={editing.notes}/></div>
+      <div class="field"><label for="routes-subjects-f4">Peso "spalmare su pi giorni"</label><input id="routes-subjects-f4" type="number" bind:value={editing.distribute_days_weight}/></div>
+      <div class="field"><label for="routes-subjects-f5">Peso "doppie ore consecutive"</label><input id="routes-subjects-f5" type="number" bind:value={editing.dual_hours_weight}/></div>
+      <div class="field"><label for="routes-subjects-f6">Peso "no 6^a ora"</label><input id="routes-subjects-f6" type="number" bind:value={editing.no_sixth_hour_weight}/></div>
       <div class="grid grid-cols-3 gap-2 col-span-2 items-end">
-        <div class="field"><label>Fascia: ora inizio</label><input type="number" min="8" max="13" bind:value={editing.preferred_band_start}/></div>
-        <div class="field"><label>Ora fine</label><input type="number" min="8" max="13" bind:value={editing.preferred_band_end}/></div>
-        <div class="field"><label>Peso fascia</label><input type="number" bind:value={editing.preferred_band_weight}/></div>
+        <div class="field"><label for="routes-subjects-f7">Fascia: ora inizio</label><input id="routes-subjects-f7" type="number" min="8" max="13" bind:value={editing.preferred_band_start}/></div>
+        <div class="field"><label for="routes-subjects-f8">Ora fine</label><input id="routes-subjects-f8" type="number" min="8" max="13" bind:value={editing.preferred_band_end}/></div>
+        <div class="field"><label for="routes-subjects-f9">Peso fascia</label><input id="routes-subjects-f9" type="number" bind:value={editing.preferred_band_weight}/></div>
       </div>
     </div>
 
