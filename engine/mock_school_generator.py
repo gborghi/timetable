@@ -7,8 +7,18 @@ import numpy as np
 from ortools.sat.python import cp_model
 model = cp_model.CpModel()
 
-fake = Faker()
+# Nomi italiani: e' una scuola italiana (revisione didattica 28/10/2026).
+fake = Faker("it_IT")
 Faker.seed(4321)
+
+
+def _teacher_name():
+    """Nome e cognome senza titoli («Dott.») ne' apostrofi («D'Amico»),
+    che darebbero noia a DSL ed export LaTeX."""
+    while True:
+        n = f"{fake.first_name()} {fake.last_name()}"
+        if "'" not in n and "." not in n:
+            return n
 random.seed(10)
 maxtime=60
 # Probability weights for each day (Monday to Saturday)
@@ -262,7 +272,7 @@ def generate_required_teachers(hours_needed_per_subject, day_weights, cconcorsop
             mychoicecconcorso=random.choices([k for k,j in weights.items()],[j for k,j in weights.items()])[0] #choice of classe di concorso
             free_day = choose_random_free_day(day_weights)  # Choose a free day for each teacher
             while True:
-                teacher_name = fake.name()
+                teacher_name = _teacher_name()
                 if teacher_name not in allnames:
                     allnames.append(teacher_name)
                     break
