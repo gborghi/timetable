@@ -9,6 +9,7 @@ from .. import models, schemas
 from ..db import get_db
 from ..utils.list_query import filter_and_sort, QueryError
 from ..utils.pagination import paginated_or_list
+from ..display_names import subject_display_name
 
 router = APIRouter(prefix="/api/subjects", tags=["subjects"])
 
@@ -34,6 +35,9 @@ def _classroom_prefs_for_subject(db, name: str
 
 def _to_out(s: models.Subject, db=None) -> schemas.SubjectOut:
     base = schemas.SubjectOut.model_validate(s)
+    base = base.model_copy(update={
+        "display_name": subject_display_name(s.name, s.pretty_name),
+    })
     if db is not None:
         base = base.model_copy(update={
             "classroom_prefs": _classroom_prefs_for_subject(db, s.name),

@@ -35,6 +35,7 @@
   import { flash, refreshDataset, workingHoursConfig as whStore } from '$lib/stores';
   import { calendarDays, calendarHours, calendarDayName } from '$lib/constants';
   import WeeklyCalendarView from '$lib/components/WeeklyCalendarView.svelte';
+  import { classShortLabels, splitClassName, withDisplayLabels } from '$lib/calendar_helpers.mjs';
   import Modal from '$lib/components/Modal.svelte';
   import RoomDropdown from '$lib/components/schedule/RoomDropdown.svelte';
   import RoomClearedNoticeModal from '$lib/components/schedule/RoomClearedNoticeModal.svelte';
@@ -71,6 +72,9 @@
   let summary = null;        // { obj_value, metrics }
   let solutions = [];
   let allRooms = [];
+  // Nomi da mostrare: materia per esteso (display_name dal backend) e
+  // classe breve ('1A'). I codici restano le chiavi di filtri e API.
+  let subjectNames = new Map();
   // Full room objects (with capacity) for the AddLessonModal capacity
   // pre-flight. Indexed by name; populated from /api/classrooms.
   let allRoomsFull = [];
@@ -149,9 +153,18 @@
     });
   })();
 
+  $: classLabels = classShortLabels(classNames);
+  function classOptionLabel(n) {
+    const { indirizzo } = splitClassName(n);
+    const short = classLabels.get(n) || n;
+    return short !== n && indirizzo ? `${short} · ${indirizzo}` : n;
+  }
+  $: labeledLessons = withDisplayLabels(visibleLessons, subjectNames, classLabels);
+  $: labeledUnscheduled = withDisplayLabels(unscheduled, subjectNames, classLabels);
+
   $: calendarTitle = $viewStore === 'global'
     ? 'Orario globale'
-    : $viewStore === 'class' ? `Orario classe ${$entityIdStore || '...'}`
+    : $viewStore === 'class' ? `Orario classe ${$entityIdStore ? classOptionLabel($entityIdStore) : '...'}`
     : $viewStore === 'teacher' ? `Orario docente ${$entityIdStore || '...'}`
     : `Orario aula ${$entityIdStore || '...'}`;
 
@@ -180,6 +193,12 @@
     try {
       solutions = await api.get('/api/schedule/solutions');
     } catch { solutions = []; }
+    try {
+      const subs = await api.get('/api/subjects');
+      subjectNames = new Map((subs || [])
+        .filter((x) => x.display_name)
+        .map((x) => [x.name, x.display_name]));
+    } catch { subjectNames = new Map(); }
     try {
       const rs = await api.get('/api/classrooms');
       allRoomsFull = (rs || []).slice().sort(
@@ -951,7 +970,7 @@
                   on:change={(e) => onEntityIdChange(e.currentTarget.value)}
                   class="px-2 py-1 rounded border border-ink-200 text-sm"
                   data-testid="schedule-entity-select">
-            {#each filteredEntities as n}<option value={n}>{n}</option>{/each}
+            {#each filteredEntities as n}<option value={n}>{$viewStore === 'class' ? classOptionLabel(n) : n}</option>{/each}
           </select>
         </div>
       {/if}
@@ -977,8 +996,8 @@
         <WeeklyCalendarView mode="schedule"
                             title={calendarTitle}
                             config={workingHoursConfig}
-                            lessons={visibleLessons}
-                            unscheduled_lessons={unscheduled}
+                            lessons={labeledLessons}
+                            unscheduled_lessons={labeledUnscheduled}
                             filter_by={calendarFilter}
                             on_lesson_click={onLessonClick}
                             on_slot_click={onSlotClick}
@@ -997,9 +1016,9 @@
     {#if actionLesson}
       <div class="space-y-3" data-testid="schedule-actions-modal">
         <div class="text-sm">
-          <div><strong>Classe:</strong> {actionLesson.class_name}</div>
+          <div><strong>Classe:</strong> {actionLesson.class_name ? classOptionLabel(actionLesson.class_name) : ""}</div>
           <div><strong>Docente:</strong> {actionLesson.teacher_name}</div>
-          <div><strong>Materia:</strong> {actionLesson.subject || '-'}</div>
+          <div><strong>Materia:</strong> {actionLesson.subject_label || actionLesson.subject || '-'}</div>
           <div><strong>Aula:</strong> {actionLesson.classroom_name || '-'}</div>
           <div><strong>Slot:</strong> {calName(actionLesson.day)}
             {actionLesson.hour}:00</div>

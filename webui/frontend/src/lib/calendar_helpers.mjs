@@ -55,10 +55,69 @@ export function colourFor(lesson, filter_by) {
  */
 export function lessonLabel(l, filter_by) {
   const t = filter_by?.type;
-  if (t === 'class')   return (l.subject || '') + ' - ' + (l.teacher_name || '');
-  if (t === 'teacher') return (l.class_name || '') + ' - ' + (l.subject || '');
-  if (t === 'room')    return (l.class_name || '') + ' / ' + (l.subject || '');
-  return (l.class_name || '') + ' - ' + (l.subject || '');
+  const subj = subjectOf(l);
+  const cls = l.class_name || '';
+  if (t === 'class')   return subj + ' - ' + (l.teacher_name || '');
+  if (t === 'teacher') return cls + ' - ' + subj;
+  if (t === 'room')    return cls + ' / ' + subj;
+  return cls + ' - ' + subj;
+}
+
+// ---------- Nomi da mostrare (solo visualizzazione) ----------
+// I codici (class_name, subject) restano le chiavi di filtri, drag e
+// API; `class_label` / `subject_label` sono aggiunti dalla pagina.
+
+/** @param {object} l */
+function subjectOf(l) { return l.subject_label || l.subject || ''; }
+/** @param {object} l */
+function classOf(l) { return l.class_label || l.class_name || l.group_name || ''; }
+
+/**
+ * '1A_Scientifico' -> { short: '1A', indirizzo: 'Scientifico' };
+ * '4B_ScienzeApplicate' -> { short: '4B', indirizzo: 'Scienze Applicate' };
+ * '1I_Linguistico_FRA_SPA' -> { short: '1I', indirizzo: 'Linguistico FRA SPA' }.
+ * @param {string|null|undefined} name
+ */
+export function splitClassName(name) {
+  const n = (name || '').trim();
+  const m = /^(\d+[A-Za-z]+)[_\s-]+(.+)$/.exec(n);
+  if (!m) return { short: n, indirizzo: '' };
+  const ind = m[2].replace(/_/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2');
+  return { short: m[1], indirizzo: ind };
+}
+
+/**
+ * Nome breve per classe ('1A'), ma solo se non collide con un'altra
+ * classe (1A_Classico e 1A_Scientifico restano per esteso).
+ * @param {string[]} names
+ * @returns {Map<string, string>}
+ */
+export function classShortLabels(names) {
+  const byShort = new Map();
+  for (const n of names || []) {
+    const { short } = splitClassName(n);
+    byShort.set(short, (byShort.get(short) || 0) + 1);
+  }
+  const out = new Map();
+  for (const n of names || []) {
+    const { short } = splitClassName(n);
+    out.set(n, byShort.get(short) === 1 ? short : n);
+  }
+  return out;
+}
+
+/**
+ * Copia delle lezioni con le etichette leggibili.
+ * @param {object[]} lessons
+ * @param {Map<string,string>} subjectNames codice -> display_name
+ * @param {Map<string,string>} classLabels class_name -> breve
+ */
+export function withDisplayLabels(lessons, subjectNames, classLabels) {
+  return (lessons || []).map((l) => ({
+    ...l,
+    subject_label: (l.subject && subjectNames?.get(l.subject)) || l.subject,
+    class_label: (l.class_name && classLabels?.get(l.class_name)) || l.class_name,
+  }));
 }
 
 /**
@@ -70,8 +129,8 @@ export function lessonLabel(l, filter_by) {
  */
 export function lessonParts(l, filter_by) {
   const t = filter_by?.type;
-  const subj = l.subject || '';
-  const cls = l.class_name || l.group_name || '';
+  const subj = subjectOf(l);
+  const cls = classOf(l);
   const tea = l.teacher_name || '';
   if (t === 'teacher') return { primary: subj, secondary: cls };
   if (t === 'room')    return { primary: cls, secondary: subj };
@@ -150,8 +209,8 @@ export function mountedCardCount(nLessons, filter_by, cap = SLOT_STACK_CAP) {
  */
 export function compresenzaRow(l) {
   const bits = [];
-  if (l.subject) bits.push(l.subject);
-  const who = [l.teacher_name, (l.class_name || l.group_name)]
+  if (l.subject) bits.push(subjectOf(l));
+  const who = [l.teacher_name, classOf(l)]
     .filter(Boolean).join(' · ');
   return { head: bits.join(''), who, room: l.classroom_name || '' };
 }

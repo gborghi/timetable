@@ -27,7 +27,7 @@
               (u.original_day != null
                 ? ` -- prima era giorno ${u.original_day} ora ${u.original_hour}` : '')}>
           <div class="cal-pool__item-title">
-            {u.class_name || ''} - {u.subject || ''}
+            {u.class_label || u.class_name || ''} - {u.subject_label || u.subject || ''}
           </div>
           <div class="cal-pool__item-sub">
             {u.teacher_name || ''}

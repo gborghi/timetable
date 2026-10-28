@@ -34,6 +34,7 @@ from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..db import get_db
+from ..display_names import pretty_subject
 
 router = APIRouter(prefix="/api/import", tags=["import"])
 
@@ -322,7 +323,8 @@ def _import_subjects(db: Session, rows: Iterable[dict],
         existing = by_name.get(str(name))
         is_update = existing is not None
         s = existing or models.Subject(name=str(name))
-        s.pretty_name = _pick(r, "pretty_name", "nome_esteso") or name
+        s.pretty_name = (_pick(r, "pretty_name", "nome_esteso")
+                         or pretty_subject(str(name)))
         s.notes = _pick(r, "notes", "note")
         s.distribute_days_weight = _norm_float(_pick(r, "distribute_days_weight",
                                                      "peso_distribuzione"), 0.0)

@@ -119,6 +119,9 @@ class SubjectIn(SubjectBase):
 
 class SubjectOut(SubjectBase):
     id: int
+    # Nome da mostrare (pretty_name dell'utente o denominazione
+    # ministeriale dal codice); il codice `name` resta la chiave.
+    display_name: str | None = None
     classroom_prefs: list[SubjectClassroomPrefIn] = Field(default_factory=list)
     model_config = ConfigDict(from_attributes=True)
 

@@ -40,6 +40,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from . import models
+from .display_names import pretty_subject
 
 DAY_MAP = {
     "Monday": 1, "Tuesday": 2, "Wednesday": 3,
@@ -790,7 +791,7 @@ def import_school_into_db(db: Session, school: dict[str, Any],
         for s in t.get("weights", {}):
             subj_names.add(s)
     for s in subj_names:
-        db.add(models.Subject(name=s, pretty_name=s))
+        db.add(models.Subject(name=s, pretty_name=pretty_subject(s)))
     db.flush()
 
     # Class rows
