@@ -11,6 +11,7 @@ import {
   BG_END_DEFAULT,
   timeToHours,
   bgRangeFor,
+  bgRangeTight,
   bgHourList,
   pxFromTime,
   pxDuration,
@@ -235,4 +236,24 @@ test("variable slots per day: SAT short morning vs MON full day", () => {
   const satTops = days[1].slots.map(
     (s) => pxFromTime(s.start_time, range));
   assert.deepEqual(satTops, [40, 80, 120, 160]);  // 8:00..11:00
+});
+
+test("bgRangeTight: vista limitata alle ore configurate (8-14)", () => {
+  const days = [
+    { slots: [
+      { start_time: "08:00", end_time: "09:00" },
+      { start_time: "13:00", end_time: "14:00" },
+    ] },
+  ];
+  assert.deepEqual(bgRangeTight(days), { lo: 8, hi: 14 });
+});
+
+test("bgRangeTight: senza slot torna alla finestra 7-19", () => {
+  assert.deepEqual(bgRangeTight([]), { lo: 7, hi: 19 });
+  assert.deepEqual(bgRangeTight(null), { lo: 7, hi: 19 });
+});
+
+test("bgRangeTight: arrotonda all'ora intera", () => {
+  const days = [{ slots: [{ start_time: "07:50", end_time: "13:40" }] }];
+  assert.deepEqual(bgRangeTight(days), { lo: 7, hi: 14 });
 });

@@ -789,36 +789,50 @@
     </svelte:fragment>
 
     <svelte:fragment slot="actions">
-      <a class="btn-primary"
-         href={downloadUrl('/api/schedule/export/xlsx-classes')}
-         data-testid="schedule-export-xlsx-classes">xlsx classi</a>
-      <a class="btn"
-         href={downloadUrl('/api/schedule/export/xlsx-teachers')}
-         data-testid="schedule-export-xlsx-teachers">xlsx docenti</a>
-      <a class="btn"
-         href={downloadUrl('/api/schedule/export/pdf-classes')}
-         data-testid="schedule-export-pdf-classes">pdf classi</a>
-      <a class="btn"
-         href={downloadUrl('/api/schedule/export/pdf-teachers')}
-         data-testid="schedule-export-pdf-teachers">pdf docenti</a>
-      <a class="btn"
-         href={downloadUrl('/api/schedule/export/xlsx-global')}
-         data-testid="schedule-export-xlsx-global">xlsx tabellone A3</a>
-      <a class="btn"
-         href={downloadUrl('/api/schedule/export/latex')}
-         data-testid="schedule-export-latex">latex</a>
-      <a class="btn"
-         href={downloadUrl('/api/schedule/export/latex?compile=true')}
-         data-testid="schedule-export-latex-pdf">latex pdf</a>
-      <a class="btn"
-         href={downloadUrl('/api/schedule/export/latex-global')}
-         data-testid="schedule-export-latex-global">latex A3</a>
-      <a class="btn"
-         href={downloadUrl('/api/schedule/export/latex-global?compile=true')}
-         data-testid="schedule-export-latex-global-pdf">latex A3 pdf</a>
+      <!-- I 9 export stanno in un unico menu: prima erano 10 bottoni
+           allo stesso livello, la prima cosa che si vedeva della pagina.
+           <details> e' raggiungibile da tastiera senza JS. -->
+      <details class="relative" data-testid="schedule-export-menu">
+        <summary class="btn-primary cursor-pointer list-none select-none">
+          Esporta <span aria-hidden="true">▾</span>
+        </summary>
+        <div class="absolute right-0 z-30 mt-1 w-64 rounded-[9px] border border-ink-200
+                    bg-white py-1 shadow-lg text-[13px]">
+          <div class="px-3 pt-2 pb-1 eyebrow">Excel</div>
+          <a class="block px-3 py-1.5 text-ink-700 hover:bg-ink-50 focus-ring"
+             href={downloadUrl('/api/schedule/export/xlsx-classes')}
+             data-testid="schedule-export-xlsx-classes">Excel · per classe</a>
+          <a class="block px-3 py-1.5 text-ink-700 hover:bg-ink-50 focus-ring"
+             href={downloadUrl('/api/schedule/export/xlsx-teachers')}
+             data-testid="schedule-export-xlsx-teachers">Excel · per docente</a>
+          <a class="block px-3 py-1.5 text-ink-700 hover:bg-ink-50 focus-ring"
+             href={downloadUrl('/api/schedule/export/xlsx-global')}
+             data-testid="schedule-export-xlsx-global">Excel · tabellone A3</a>
+          <div class="px-3 pt-2 pb-1 eyebrow">PDF</div>
+          <a class="block px-3 py-1.5 text-ink-700 hover:bg-ink-50 focus-ring"
+             href={downloadUrl('/api/schedule/export/pdf-classes')}
+             data-testid="schedule-export-pdf-classes">PDF · per classe</a>
+          <a class="block px-3 py-1.5 text-ink-700 hover:bg-ink-50 focus-ring"
+             href={downloadUrl('/api/schedule/export/pdf-teachers')}
+             data-testid="schedule-export-pdf-teachers">PDF · per docente</a>
+          <a class="block px-3 py-1.5 text-ink-700 hover:bg-ink-50 focus-ring"
+             href={downloadUrl('/api/schedule/export/latex?compile=true')}
+             data-testid="schedule-export-latex-pdf">PDF da LaTeX · classi e docenti</a>
+          <a class="block px-3 py-1.5 text-ink-700 hover:bg-ink-50 focus-ring"
+             href={downloadUrl('/api/schedule/export/latex-global?compile=true')}
+             data-testid="schedule-export-latex-global-pdf">PDF da LaTeX · tabellone A3</a>
+          <div class="px-3 pt-2 pb-1 eyebrow">LaTeX (sorgente)</div>
+          <a class="block px-3 py-1.5 text-ink-700 hover:bg-ink-50 focus-ring"
+             href={downloadUrl('/api/schedule/export/latex')}
+             data-testid="schedule-export-latex">LaTeX · classi e docenti (.tex)</a>
+          <a class="block px-3 py-1.5 text-ink-700 hover:bg-ink-50 focus-ring"
+             href={downloadUrl('/api/schedule/export/latex-global')}
+             data-testid="schedule-export-latex-global">LaTeX · tabellone A3 (.tex)</a>
+        </div>
+      </details>
       {#if !legacyMode}
         <a class="btn" href="?legacy=true"
-           data-testid="schedule-legacy-link">vista legacy</a>
+           data-testid="schedule-legacy-link">vista a tabella</a>
       {:else}
         <a class="btn" href="/schedule"
            data-testid="schedule-calendar-link">vista calendario</a>

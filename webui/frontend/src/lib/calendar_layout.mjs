@@ -5,6 +5,9 @@
 export const PX_PER_HOUR = 40;
 export const BG_START_DEFAULT = 7;
 export const BG_END_DEFAULT = 19;
+/** Ora piu' alta nella vista globale dell'orario, dove uno slot
+ *  mostra fino a tre lezioni in righe leggibili. */
+export const GLOBAL_PX_PER_HOUR = 96;
 
 /** Parse "HH:MM" into a fractional hour number (e.g. "08:30" -> 8.5).
  * Returns 0 on a malformed input so callers never see NaN. */
@@ -29,6 +32,24 @@ export function bgRangeFor(activeDays) {
       lo = Math.min(lo, Math.floor(timeToHours(s.start_time)));
       hi = Math.max(hi, Math.ceil(timeToHours(s.end_time)));
     }
+  }
+  return { lo, hi };
+}
+
+/** Range stretto per le viste di sola lettura: dalla prima ora che
+ * inizia all'ultima che finisce (arrotondate all'ora intera). Senza
+ * slot configurati ricade sulla finestra di default 7-19. */
+export function bgRangeTight(activeDays) {
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const d of activeDays || []) {
+    for (const s of d.slots || []) {
+      lo = Math.min(lo, Math.floor(timeToHours(s.start_time)));
+      hi = Math.max(hi, Math.ceil(timeToHours(s.end_time)));
+    }
+  }
+  if (!Number.isFinite(lo) || !Number.isFinite(hi) || hi <= lo) {
+    return { lo: BG_START_DEFAULT, hi: BG_END_DEFAULT };
   }
   return { lo, hi };
 }

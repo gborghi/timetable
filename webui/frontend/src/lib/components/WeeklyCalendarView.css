@@ -483,3 +483,42 @@
     justify-content: center;
     line-height: 1;
   }
+  /* Vista globale: una riga per lezione (classe in grassetto, materia
+     accanto), impilate dall'alto; niente colonne affiancate al 33%. */
+  .cal-slot--rows {
+    justify-content: flex-start;
+    gap: 1px;
+    padding: 1px;
+  }
+  .cal-slot-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4px;
+    font-size: 9.5px;
+    line-height: 1.2;
+    padding: 0 2px;
+    color: var(--ink2, #5c5547);
+    flex: 0 0 auto;
+  }
+  .cal-event--schedule.cal-event--row {
+    flex: 0 0 auto;
+    flex-direction: row;
+    align-items: baseline;
+    gap: 4px;
+    margin: 0;
+    padding: 1px 4px;
+    font-size: 11px;
+    line-height: 1.35;
+    white-space: nowrap;
+  }
+  .cal-event--row .cal-event-label {
+    display: flex;
+    gap: 4px;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .cal-event--row .cal-event-room { display: none; }
+  .cal-event--row .cal-event-label { font-size: 11px; opacity: 1; line-height: 1.35; }
+  .cal-event--row .cal-event-secondary { display: inline; font-size: 10.5px; line-height: 1.35; }

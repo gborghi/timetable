@@ -24,7 +24,7 @@
        on:click|stopPropagation
        on:keydown|stopPropagation>
     <div class="cal-compresenza-pop__title">
-      Compresenza · {popup.title}
+      {popup.heading || 'Compresenza'} · {popup.title}
     </div>
     {#each popup.lst as cl2}
       {@const row = compresenzaRow(cl2)}

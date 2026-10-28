@@ -58,7 +58,9 @@
   } from '$lib/calendar_helpers.mjs';
   import {
     PX_PER_HOUR,
+    GLOBAL_PX_PER_HOUR,
     bgRangeFor,
+    bgRangeTight,
     bgHourList,
     pxFromTime as _pxFromTime,
     pxDuration as _pxDuration,
@@ -203,7 +205,10 @@
   // slot that starts earlier or ends later (e.g. evening adult-
   // school slots). Pure layout helpers live in $lib/calendar_layout
   // so they can be unit-tested.
-  $: bgRange = bgRangeFor(activeDays);
+  // In vista (non edit) l'asse si limita alle ore davvero configurate
+  // (es. 08-14): la finestra 07-19 serve solo all'editor di Tab Ore,
+  // dove bisogna poter trascinare slot nuovi fuori dall'orario attuale.
+  $: bgRange = bgRangeTight(activeDays);
   $: gridHeightPx = _gridHeight(bgRange);
 
   function _key(d, h) { return d + '-' + h; }
@@ -334,7 +339,11 @@
   $: displayActiveDays = mode === 'edit' ? editActiveDays : activeDays;
   $: displayBgRange = mode === 'edit' ? editBgRange : bgRange;
   $: displayBgHours = bgHourList(displayBgRange);
-  $: displayGridHeightPx = _gridHeight(displayBgRange);
+  // Vista globale: piu' lezioni nello stesso slot vanno in righe
+  // leggibili (una per classe), quindi serve un'ora piu' alta.
+  $: isGlobalView = mode === 'schedule' && !filterType;
+  $: pxh = isGlobalView ? GLOBAL_PX_PER_HOUR : PX_PER_HOUR;
+  $: displayGridHeightPx = _gridHeight(displayBgRange, pxh);
 
   function _commitEditingDays(nextDays) {
     editingDays = nextDays;
@@ -830,7 +839,7 @@
     return slotRenderPlan(lst, { type: filterType, id: filterId });
   }
 
-  function _openCompresenza(ev, key, lst, timeLabel) {
+  function _openCompresenza(ev, key, lst, timeLabel, heading = 'Compresenza') {
     ev.stopPropagation();
     if (compresenzaPopup && compresenzaPopup.key === key) {
       compresenzaPopup = null;
@@ -841,6 +850,7 @@
       key,
       lst,
       title: timeLabel,
+      heading,
       x: Math.min(r.left, window.innerWidth - 240),
       y: r.bottom + 4,
     };
@@ -965,7 +975,7 @@
            class:cal-grid--edit={mode === 'edit'}
            class:cal-grid--schedule={mode === 'schedule'}
            style="--n-days: {displayActiveDays.length};
-                  --hour-px: {PX_PER_HOUR}px;
+                  --hour-px: {pxh}px;
                   --grid-h: {displayGridHeightPx}px;">
         <!-- header row: time-col placeholder + day labels -->
         <div class="cal-header">
@@ -984,7 +994,7 @@
           <div class="cal-time-col">
             {#each displayBgHours as h}
               <div class="cal-hour-label"
-                   style="top: {(h - displayBgRange.lo) * PX_PER_HOUR}px">
+                   style="top: {(h - displayBgRange.lo) * pxh}px">
                 {String(h).padStart(2, '0')}:00
               </div>
             {/each}
@@ -1115,10 +1125,11 @@
                   {@const isHover = dragHoverKey === slotKey}
                   {@const isConflict = conflictKeys.has(slotKey)}
                   <div class="cal-slot cal-slot--schedule"
+                       class:cal-slot--rows={isGlobalView}
                        class:cal-slot--drop-ok={isHover && dragSource}
                        class:cal-slot--drop-conflict={isConflict && dragSource}
-                       style="top: {_pxFromTime(slot.start_time, displayBgRange)}px;
-                              height: {_pxDuration(slot)}px"
+                       style="top: {_pxFromTime(slot.start_time, displayBgRange, pxh)}px;
+                              height: {_pxDuration(slot, pxh)}px"
                        data-day={dnum}
                        data-hour={hnum}
                        data-testid={'sched-slot-' + dnum + '-' + hnum}
@@ -1140,13 +1151,32 @@
                       {@const plan = _slotPlan(lst)}
                       {@const isCompresenza = plan.collapsed}
                       {@const renderList = plan.visible}
+                      {#if isGlobalView}
+                        <div class="cal-slot-head">
+                          <span>{slot.start_time}-{slot.end_time}</span>
+                          {#if plan.overflow.length}
+                            <button type="button" class="cal-compresenza-btn"
+                                    class:cal-compresenza-btn--on={compresenzaPopup
+                                      && compresenzaPopup.key === (dnum + '-' + hnum)}
+                                    title={`Altre ${plan.overflow.length} lezioni in questo slot: apri l'elenco`}
+                                    aria-label={`Mostra tutte le ${lst.length} lezioni delle ${slot.start_time}`}
+                                    data-testid={'sched-overflow-' + dnum + '-' + hnum}
+                                    on:click={(e) => _openCompresenza(e, dnum + '-' + hnum,
+                                      lst, `${slot.start_time}-${slot.end_time}`, `${lst.length} lezioni`)}
+                                    on:keydown|stopPropagation>
+                              +{plan.overflow.length}
+                            </button>
+                          {/if}
+                        </div>
+                      {/if}
                       {#each renderList as l, lIdx}
                         {@const col = _colourFor(l)}
                         {@const parts = _lessonParts(l)}
                         <div class="cal-event cal-event--schedule"
+                             class:cal-event--row={isGlobalView}
                              class:cal-event--conflict={isConflict && dragSource}
                              style={`background:${col.bg};border-color:${col.bd};color:${col.fg};` +
-                                    (!isCompresenza && renderList.length > 1 ? `width:${100 / renderList.length}%;left:${(100 / renderList.length) * lIdx}%;` : '')}
+                                    (!isGlobalView && !isCompresenza && renderList.length > 1 ? `width:${100 / renderList.length}%;left:${(100 / renderList.length) * lIdx}%;` : '')}
                              draggable="true"
                              role="button"
                              tabindex="0"
@@ -1163,6 +1193,7 @@
                                (l.classroom_name ? ' @ ' + l.classroom_name : '') +
                                (isCompresenza ? ` -- compresenza (${lst.length} lezioni, vedi bottone)` : '') +
                                (isConflict && dragSource ? ' -- conflitto con la lezione che stai trascinando' : '')}>
+                          {#if !isGlobalView}
                           <div class="cal-event-time cal-event-time--row">
                             <span>{slot.start_time}-{slot.end_time}</span>
                             {#if isCompresenza}
@@ -1178,6 +1209,7 @@
                               </button>
                             {/if}
                           </div>
+                          {/if}
                           <div class="cal-event-label">
                             {#if l.locked}<span aria-hidden="true"
                               title="Bloccata in questo slot">🔒</span> {/if}<span
