@@ -27,7 +27,7 @@ openpyxl>=3.1,<4.0
 reportlab>=4.0,<5.0
 
 # Optimisation engine
-ortools>=9.7,<10.0
+ortools>=9.15.6755,<10.0
 
 # Numerical stack
 numpy>=1.24,<3.0
