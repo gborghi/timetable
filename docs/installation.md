@@ -6,7 +6,7 @@ Windows, Linux e macOS. Il progetto è composto da un backend Python
 Tailwind), avviati insieme da uno script unico (`start.bat` su
 Windows, `start.sh` su Linux / macOS).
 
-> Quick start: installa Python ≥ 3.11, Node ≥ 20 LTS, Git → clona il
+> Quick start: installa Python ≥ 3.11, Node ≥ 22 LTS, Git → clona il
 > repo → lancia `webui/start.bat` (Windows) o `./webui/start.sh`
 > (Linux / macOS) → apri <http://localhost:5173>.
 
@@ -119,7 +119,7 @@ Manjaro 24.
 
 ### Prerequisiti
 
-Python ≥ 3.11, Node ≥ 20 LTS, Git, build-essential (per moduli C
+Python ≥ 3.11, Node ≥ 22 LTS, Git, build-essential (per moduli C
 opzionali). Comandi di installazione per famiglia di distribuzione:
 
 #### Ubuntu / Debian

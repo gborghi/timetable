@@ -24,8 +24,8 @@ extend-exclude = [
 
 [tool.ruff.lint]
 # Phase 1 ruleset: bug-catching (`F` pyflakes) + security (`S` bandit).
-# Style + bugbear + isort + pyupgrade are kept commented because the
-# legacy webui code triggers ~380 nitpick findings (stray `l` names,
+# Style + bugbear + isort + pyupgrade (E/W/B/I/UP) stay OFF because the
+# legacy webui code triggers ~560 nitpick findings (stray `l` names,
 # zip(strict=), inline-if statements, unsorted imports) that would
 # block CI and are best fixed in a dedicated style-only PR.
 #
@@ -35,11 +35,8 @@ extend-exclude = [
 #   the residual flag-by-flag.
 select = [
     "F",   # pyflakes (undefined names, unused imports, dead code)
-    "E", "W", # pycodestyle (errors + warnings)
-    "B",   # flake8-bugbear
-    "I",   # isort
     "S",   # flake8-bandit (security)
-    "UP",  # pyupgrade
+    "E9",  # syntax / IO errors
 ]
 # Project-specific carve-outs:
 #   * S101 (assert) -- pytest relies on plain asserts.

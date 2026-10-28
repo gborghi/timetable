@@ -73,7 +73,7 @@ def get_runs_dir() -> Path:
         return Path(env_dir)
     
     # Production-safe default: temp directory
-    default_runs_dir = Path("/tmp/pitantum-runs")
+    default_runs_dir = Path("/tmp/pitantum-runs")  # noqa: S108 -- override con PITANTUM_RUNS_DIR
     if default_runs_dir.exists():
         return default_runs_dir
     

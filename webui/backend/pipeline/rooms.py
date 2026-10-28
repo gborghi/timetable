@@ -315,7 +315,7 @@ def retry_unplaced_days_with_lambda(
     try:
         import decomposition_temporal as dec_t  # type: ignore
         import metaheuristics as meta  # type: ignore
-        import cpsat_v2_timetable as cv2  # type: ignore
+        import cpsat_v2_timetable as cv2  # type: ignore  # noqa: F401 -- verifica disponibilita
     except ImportError:
         return rooms_metrics
     days = dec_t.days_from_room_penalties(pens)

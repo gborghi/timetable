@@ -9,6 +9,7 @@
 # Test runner + HTTP client used by FastAPI's TestClient.
 pytest>=8.0,<9.0
 httpx>=0.27,<1.0
+pytest-timeout>=2.2,<3.0
 
 # Linter / formatter. Pinned to a 0.x range -- ruff still occasionally
 # tightens existing rules in minor releases.

@@ -22,7 +22,7 @@ cd timetable
 # Windows: webui\start.bat
 ```
 
-Python ≥ 3.11 and Node ≥ 20. The first run creates the Python venv and `node_modules` (a few minutes). After that, the same command starts the stack.
+Python ≥ 3.11 and Node ≥ 22. The first run creates the Python venv and `node_modules` (a few minutes). After that, the same command starts the stack.
 
 Then open **http://localhost:5173**. On the Dashboard, import a ready-made profile (`small` is the fastest) to get a school and a solved timetable to click around.
 

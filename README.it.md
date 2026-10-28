@@ -22,7 +22,7 @@ cd timetable
 # Windows: webui\start.bat
 ```
 
-Servono Python ≥ 3.11 e Node ≥ 20. Al primo avvio lo script crea l’ambiente Python e `node_modules` (qualche minuto). Poi lo stesso comando riaccende tutto.
+Servono Python ≥ 3.11 e Node ≥ 22. Al primo avvio lo script crea l’ambiente Python e `node_modules` (qualche minuto). Poi lo stesso comando riaccende tutto.
 
 Apri **http://localhost:5173**. Nella Dashboard importa un profilo già calcolato (`small` è il più veloce): ottieni una scuola e un orario su cui cliccare.
 
