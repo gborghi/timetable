@@ -60,6 +60,8 @@ def _is_synthetic_cell(u) -> bool:
 def _autofill_free_day_cells(t: models.Teacher,
                              persisted: list[models.TeacherUnavailability],
                              db=None,
+                             hours: list[int] | None = None,
+                             active_days: set[int] | None = None,
                              ) -> list[schemas.UnavailabilitySlot]:
     """Ensure that all 6 cells of the teacher's free_day(s) are surfaced
     as HARD/SOFT red/amber, even if not yet persisted in DB. Persisted
@@ -80,7 +82,10 @@ def _autofill_free_day_cells(t: models.Teacher,
         for p in persisted
     ]
     autofilled: set[tuple[int, int]] = set()
-    hours = _hours_full(db)
+    # `hours` / `active_days` precalcolati = chiamata dalla lista, che legge
+    # il calendario una volta sola (prima: 2 query per docente, N+1).
+    if hours is None:
+        hours = _hours_full(db)
     try:
         from ..engine_io import resolve_free_day
         fd = resolve_free_day(t.free_day, db)
@@ -107,7 +112,9 @@ def _autofill_free_day_cells(t: models.Teacher,
                     if not isinstance(it, dict):
                         continue
                     d = int(it.get("day", 0))
-                    if d not in _active_day_ids(db):
+                    if active_days is None:
+                        active_days = _active_day_ids(db)
+                    if d not in active_days:
                         continue
                     is_hard = bool(it.get("is_hard", True))
                     pen = it.get("soft_penalty")
@@ -201,7 +208,9 @@ def _apply_teacher_classroom_prefs(db, teacher_id: int,
 
 
 def _to_out(t: models.Teacher, db=None,
-            classroom_prefs=None) -> schemas.TeacherOut:
+            classroom_prefs=None,
+            calendar: tuple[list[int], set[int]] | None = None,
+            ) -> schemas.TeacherOut:
     # Decode preferred_free_days_json (defensive — best-effort).
     import json as _json
     pfd_list: list[schemas.FreeDayPref] = []
@@ -261,7 +270,9 @@ def _to_out(t: models.Teacher, db=None,
         preferred_days_csv=t.preferred_days_csv,
         subjects=[s.subject for s in t.subjects],
         unavailability=_autofill_free_day_cells(
-            t, list(t.unavailability), db),
+            t, list(t.unavailability), db,
+            hours=calendar[0] if calendar else None,
+            active_days=calendar[1] if calendar else None),
         mandatory_free_days=[m.day for m in t.mandatory_free_days],
         compatible_classes=[c.class_name for c in t.compatible_classes],
         # `classroom_prefs` gia\` pronte = chiamata da una lista, che le
@@ -313,10 +324,13 @@ def list_teachers(q: str | None = Query(None,
             if l.class_name == "__disposizione__" or l.subject == "Disposizione":
                 continue
             sched_by_t[l.teacher_name] = sched_by_t.get(l.teacher_name, 0) + 1
+    # Calendario (ore + giorni attivi) letto una volta per tutta la lista.
+    calendar = (_hours_full(db), _active_day_ids(db))
     out = []
     for t in rows:
         d = _to_out(t, db,
-                    classroom_prefs=prefs_by_teacher.get(t.id, [])
+                    classroom_prefs=prefs_by_teacher.get(t.id, []),
+                    calendar=calendar,
                     ).model_dump()
         d["n_classes"] = n_classes_by_t.get(t.id, 0)
         d["scheduled_hours"] = sched_by_t.get(t.name, 0)

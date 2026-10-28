@@ -261,7 +261,7 @@ def recommend_parameters(db: Session = Depends(get_db)):
     n_teachers = db.query(m.Teacher).count()
     n_assignments = db.query(m.Assignment).count()
     n_constraints = db.query(m.GeneralConstraint).count()
-    n_coteach = db.query(m.CoteachingRule).count()
+    n_coteach = db.query(m.CoTeachingRule).count()
     n_parallel = db.query(m.StudyGroup).count()
     n_support = db.query(m.Assignment).filter(
         m.Assignment.is_support == True).count()
