@@ -33,7 +33,7 @@
     "@types/cytoscape": "^3.21.9",
     "@types/node": "^25.6.0",
     "autoprefixer": "^10.4.20",
-    "cypress": "^15.14.2",
+    "cypress": "^16.2.0",
     "postcss": "^8.4.47",
     "svelte": "^5.57.3",
     "svelte-check": "^4.4.6",
