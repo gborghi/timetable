@@ -101,7 +101,8 @@
   {/if}
 
   <header class="bg-white border-b border-ink-200">
-    <div class="max-w-[1500px] mx-auto px-4 sm:px-6 min-h-[60px] py-2 flex flex-wrap items-center gap-x-3 gap-y-2">
+    <div class="max-w-[1500px] mx-auto px-4 sm:px-6 min-h-[60px] py-2
+                flex flex-wrap items-center gap-x-3 gap-y-2">
       <a href="/" class="flex items-center gap-2.5 shrink-0"
          title={SENECA_LATIN}>
         <img src={LOGO_LIGHT} alt="piTantum"
@@ -120,8 +121,7 @@
       <div class="hidden sm:block w-px h-6 bg-ink-200 shrink-0" aria-hidden="true"></div>
 
       <nav class="flex flex-row flex-wrap items-center content-center gap-[3px]
-                  relative min-w-0 w-full basis-full grow
-                  sm:w-auto sm:basis-[16rem] sm:flex-1"
+                  relative min-w-0 w-full basis-full order-last"
            aria-label="Navigazione principale"
            data-testid="navbar">
         {#each navGroups as g}

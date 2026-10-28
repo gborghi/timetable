@@ -123,3 +123,4 @@ tests/benchmarks/results/*.csv
 
 # Stray LaTeX log at repo root (the real build lives under docs/)
 /manual.log
+.translate_venv/
