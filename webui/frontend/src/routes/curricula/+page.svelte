@@ -331,7 +331,7 @@
                 <tr>
                   <th>Anno</th><th>Etichetta</th>
                   <th>Espressione (DNF)</th>
-                  <th>Tipo</th><th>Penalita</th><th></th>
+                  <th>Tipo</th><th>Penalità</th><th></th>
                 </tr>
               </thead>
               <tbody>
@@ -413,7 +413,7 @@
               </label>
               {#if logicalDraftKind === 'soft' || logicalDraftKind === 'preferred'}
                 <div class="field">
-                  <label>{logicalDraftKind === 'soft' ? 'Penalita (> 0)' : 'Bonus (< 0)'}</label>
+                  <label>{logicalDraftKind === 'soft' ? 'Penalità (> 0)' : 'Bonus (< 0)'}</label>
                   <input type="number" class="w-24"
                          value={logicalSignedPenalty}
                          on:input={onLogicalPenaltyInput}/>

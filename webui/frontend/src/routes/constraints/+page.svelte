@@ -642,7 +642,7 @@
       </div>
 
       <div class="field">
-        <label for="routes-constraints-f5">Peso / Penalita</label>
+        <label for="routes-constraints-f5">Peso / Penalità</label>
         <input id="routes-constraints-f5" type="number" bind:value={editing.weight}/>
       </div>
 

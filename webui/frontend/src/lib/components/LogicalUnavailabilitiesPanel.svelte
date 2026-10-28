@@ -265,7 +265,7 @@
         <tr>
           <th>Espressione (DNF normalizzata)</th>
           <th>Tipo</th>
-          <th>Penalita</th>
+          <th>Penalità</th>
           <th></th>
         </tr>
       </thead>
@@ -295,7 +295,7 @@
               {#if !r.is_hard}
                 <input type="number" class="w-20 px-1.5 py-0.5 border border-ink-200 rounded text-xs"
                   value={r.soft_penalty}
-                  title={kindFromRule(r) === 'preferred' ? 'Bonus (deve essere < 0)' : 'Penalita (> 0)'}
+                  title={kindFromRule(r) === 'preferred' ? 'Bonus (deve essere < 0)' : 'Penalità (> 0)'}
                   on:change={(e) => updatePenalty(r, e)}/>
               {:else}
                 <span class="text-xs text-ink-400">-</span>
@@ -351,7 +351,7 @@
       <div class="field"
            class:opacity-50={draftKind === 'hard' || draftKind === 'enforced'}>
         <label for="lib-components-logicalunavailabilitiespanel-f2">
-          {#if draftKind === 'soft'}Penalita (soft, &gt; 0)
+          {#if draftKind === 'soft'}Penalità (soft, &gt; 0)
           {:else if draftKind === 'preferred'}Bonus (PREFERRED, &lt; 0)
           {:else}-{/if}
         </label>

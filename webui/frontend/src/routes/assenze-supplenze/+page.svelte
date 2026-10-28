@@ -348,7 +348,7 @@
     {/if}
 
     <p class="text-xs text-ink-500">
-      Click sull'<strong>intestazione di un giorno</strong> per registrare le assenze;
+      Usa il bottone <strong>«+ assenza»</strong> sotto il nome del giorno per registrare le assenze;
       click su una <strong>cella</strong> per vedere chi è disponibile e
       assegnare supplenze (drag-drop). Le celle rosse hanno classi scoperte;
       verdi sono coperte. In lista: <strong>DISP</strong> = disposizione ufficiale,
@@ -363,10 +363,14 @@
             <th class="w-16 text-center">Ora</th>
             {#each coverage.days as d}
               <th class="text-center align-bottom">
-                <button class="block w-full px-2 py-1 hover:bg-ink-100 rounded font-semibold"
+                <button type="button"
+                        class="btn !text-xs !text-ink-900 w-full justify-center flex-wrap gap-1 font-semibold"
                         on:click={() => openAbsencesModal(d)}
-                        title="Click per registrare assenze">
-                  {calName(d.day)} {fmtDateShort(d.date)}
+                        aria-label="Registra assenze di {calName(d.day)} {fmtDateShort(d.date)}"
+                        title="Registra le assenze del giorno"
+                        data-testid="assenze-day-btn">
+                  <span>{calName(d.day)} {fmtDateShort(d.date)}</span>
+                  <span class="font-normal text-accent-500 whitespace-nowrap">+ assenza</span>
                   {#if d.n_absences > 0}
                     <span class="pill pill-amber !text-[9px] ml-1">{d.n_absences} assenti</span>
                   {/if}
@@ -418,8 +422,6 @@
                       <div class="text-xs text-amber-700">
                         {cell.n_absent_teachers} ass.
                       </div>
-                    {:else}
-                      <div class="text-xs text-ink-300">-</div>
                     {/if}
                     <div class="text-[10px] text-ink-500">
                       {cell?.n_available_teachers ?? 0} liberi

@@ -285,7 +285,7 @@
         <div class="mt-3 space-y-1.5">
           {#if feasible != null}
             <span class={feasible ? 'pill-green' : 'pill-red'}
-                  title="Fattibilita della soluzione attiva rispetto ai vincoli hard">
+                  title="Fattibilità della soluzione attiva rispetto ai vincoli hard">
               {feasible ? '✓ Fattibile' : '✗ Non fattibile'}
             </span>
           {/if}
