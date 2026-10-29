@@ -2,7 +2,7 @@
 
 **Auditor:** independent (read-only) review of the end-to-end run built + solved by two prior agents.
 **Date:** 2026-08-04.
-**Isolated DB:** `sqlite:////Users/g.borghi/ICT/timetable/webui/data/superhuge_bespoke.db` (dev DB untouched).
+**Isolated DB:** `sqlite:///webui/data/superhuge_bespoke.db` (dev DB untouched).
 **Active solution audited:** `Solution id=3` ("Phase B run 12", day-scope), `is_active=1`, 2767 lessons, 2463 roomed.
 **Method:** every number below was **recomputed first-hand** from the DB + engine (scripts in
 `scratchpad/superhuge_bespoke/verify*.py`, `verify_rooms.py`); the prior agents' `count_viol.py` was re-run

@@ -13,6 +13,8 @@ import os
 import sys
 import subprocess
 from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
 import json
 
 def check_requirements():
@@ -62,8 +64,8 @@ def main():
         print("Warning: LaTeX tools not found. PDF generation may be limited.")
     
     # Check for existing documentation files
-    italian_pdf = Path("/Users/g.borghi/ICT/timetable/docs/manual.pdf")
-    english_pdf = Path("/Users/g.borghi/ICT/timetable/docs/manual_en.pdf")
+    italian_pdf = REPO_ROOT / "docs/manual.pdf"
+    english_pdf = REPO_ROOT / "docs/manual_en.pdf"
     
     print(f"Italian PDF exists: {italian_pdf.exists()}")
     print(f"English PDF exists: {english_pdf.exists()}")

@@ -10,9 +10,11 @@ import os
 import sys
 from pathlib import Path
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
 def get_documentation_files():
     """Get list of documentation files that might need translation"""
-    docs_dir = Path("/Users/g.borghi/ICT/timetable/docs")
+    docs_dir = REPO_ROOT / "docs"
     
     # Find documentation files
     doc_files = []
@@ -73,7 +75,7 @@ Translation process:
 Note: This requires actual Qwen Turbo API integration for real translation.
 """
 
-    with open("/Users/g.borghi/ICT/timetable/translation_config.md", "w") as f:
+    with open(REPO_ROOT / "translation_config.md", "w") as f:
         f.write(config_content)
     
     print("Translation configuration created: translation_config.md")
@@ -86,7 +88,7 @@ def main():
     print()
     
     # Show existing documentation
-    docs_dir = Path("/Users/g.borghi/ICT/timetable/docs")
+    docs_dir = REPO_ROOT / "docs"
     
     if (docs_dir / "manual.pdf").exists():
         print("✓ Italian manual exists: manual.pdf")

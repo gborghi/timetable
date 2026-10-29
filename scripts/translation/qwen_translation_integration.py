@@ -9,6 +9,8 @@ with the piTantum documentation translation workflow.
 import os
 import sys
 from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
 import json
 import requests
 from typing import Dict, List, Optional
@@ -71,7 +73,7 @@ class QwenTranslator:
 def analyze_documentation_structure():
     """Analyze the documentation structure for translation"""
     
-    docs_dir = Path("/Users/g.borghi/ICT/timetable/docs")
+    docs_dir = REPO_ROOT / "docs"
     
     print("=== Documentation Structure Analysis ===")
     
