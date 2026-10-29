@@ -635,6 +635,14 @@ class PhaseBRunIn(BaseModel):
     # unplaced hours (heavily penalised) and save the result as a
     # non-active ``kind="partial"`` solution with ``metrics["missing"]``.
     partial: bool = False
+    # Preset HARD, spento di default: al massimo N giorni liberi se le
+    # ore settimanali (lezioni + potenziamento) sono almeno S.
+    # N=1 e S=18 sono il preset, non costanti del motore.
+    max_free_if_full: bool = False
+    max_free_days: int = 1
+    full_time_hours: int = 18
+    max_free_exclude: str = ""
+    max_free_only: str = ""
     # Joint (day,hour,room) optimization. When ``joint_vars.enabled`` the
     # room vars join the schedule model (monolithic week scope is forced
     # server-side) and the rooms extraction step is turned on. None/absent

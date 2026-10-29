@@ -520,6 +520,19 @@ def build_phase_a_pragmas(
             else:
                 pragmas.append(
                     f'teacher_day_capacity({p!r}, {int(d)}, {n})')
+    # 7. Optional cap: at most N free days when weekly hours >= S.
+    # The numbers live on profs (preset / payload), not in the engine.
+    try:
+        from . import max_free_days as _mfd  # type: ignore
+    except ImportError:
+        import max_free_days as _mfd  # type: ignore
+    for p in sorted(profs):
+        rule = _mfd.rule_of(profs.get(p))
+        if rule is None:
+            continue
+        if _mfd.weekly_hours(profs.get(p)) < rule["threshold"]:
+            continue
+        pragmas.append(_mfd.pragma(p, rule["max_free"], rule["threshold"]))
     return pragmas
 
 
@@ -1202,6 +1215,8 @@ def solve_phase_a(profs, classes, triples, class_profs,
     # IntVars above (built with the same sum-over-triples_by_prof[p]).
     for (p, d), v in prof_day_load.items():
         _compiler._prof_day_load_cache[(p, d)] = v
+    _compiler.teacher_meta = profs
+    _compiler.pot_day_count = pot_day_count_vars
     cl_day_load_classes = {cl for (cl, _d) in cl_day_load.keys()}
     _pragmas = build_phase_a_pragmas(
         profs, classes,
@@ -2028,6 +2043,22 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
         classroom_for_slot=None,
         plessi_data=None,
     )
+    compiler.teacher_meta = profs
+    try:
+        from . import max_free_days as _mfd  # type: ignore
+    except ImportError:
+        import max_free_days as _mfd  # type: ignore
+    for _pname, _pinfo in profs.items():
+        _rule = _mfd.rule_of(_pinfo if isinstance(_pinfo, dict) else None)
+        if _rule is None:
+            continue
+        if _mfd.weekly_hours(_pinfo) < _rule["threshold"]:
+            continue
+        # Week cap is owned by Phase A / the week model. Compiling it
+        # here records that the per-day path knows the pragma and does
+        # not drop it; a one-day slice does not reimpose the week sum.
+        compiler.compile(
+            _mfd.pragma(_pname, _rule["max_free"], _rule["threshold"]))
     # SOFT coteach penalties (finding 38) join the soft accumulator so both
     # the initial Minimize and the via_dsl re-minimize below include them.
     if _soft_coteach_terms:

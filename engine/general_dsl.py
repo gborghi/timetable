@@ -1138,6 +1138,13 @@ def _eval_call(node: Call, env, world):
                 "(prof, n)")
         return _eval_teacher_at_least_n_free_days(
             world, str(pos[0]), int(pos[1]))
+    if name == "teacher_max_free_days_above_hours":
+        if len(pos) != 3:
+            raise DSLError(
+                "teacher_max_free_days_above_hours richiede 3 argomenti "
+                "(prof, max_free, soglia)")
+        return _eval_teacher_max_free_days_above_hours(
+            world, str(pos[0]), int(pos[1]), int(pos[2]))
     if name == "teacher_day_capacity":
         if len(pos) != 3:
             raise DSLError(
@@ -1418,6 +1425,40 @@ def _eval_teacher_max_consecutive(world: dict, t: str, n: int) -> bool:
         if best > n:
             return False
     return True
+
+
+def _eval_teacher_max_free_days_above_hours(world: dict, t: str,
+                                            max_free: int,
+                                            threshold: int) -> bool:
+    """HARD cap: if the teacher's contracted weekly hours are at least
+    ``threshold``, the number of free weekdays is at most ``max_free``.
+    Hours come from ``world['teacher_weekly_hours']`` or from the
+    assignment rows, plus potenziamento. A day with any lesson,
+    including potenziamento, is not free. Below the threshold the rule
+    does not apply."""
+    hours_map = world.get("teacher_weekly_hours") or {}
+    if t in hours_map:
+        hours = int(hours_map[t])
+    else:
+        hours = 0
+        for row in world.get("assignments") or []:
+            if row.get("teacher") == t:
+                hours += int(row.get("hours") or 0)
+        pot = (world.get("potenziamento_hours") or {}).get(t)
+        if pot:
+            hours += int(pot)
+    if hours < int(threshold):
+        return True
+    worked: set[int] = set()
+    for lesson in world.get("lessons") or []:
+        if lesson.get("teacher") != t:
+            continue
+        day = lesson.get("day")
+        if day is not None:
+            worked.add(int(day))
+    days = _days_in_world(world) or [1, 2, 3, 4, 5, 6]
+    free = sum(1 for d in days if d not in worked)
+    return free <= int(max_free)
 
 
 def _eval_teacher_at_least_n_free_days(world: dict, t: str, n: int) -> bool:

@@ -537,6 +537,12 @@ PRAGMA_LEVEL: dict[str, str] = {
     # hands the per-day Phase B a day_count it cannot place.
     "teacher_day_capacity": "both",
     "teacher_unavailable_day": "both",
+    # Week-level cap: at most N free days when weekly hours >= S.
+    # N and S are arguments, never hardcoded. Level "both" so Phase A
+    # (day_count) and the week model both honor it. A single-day slice
+    # recognizes the pragma but does not reimpose the week sum: missing
+    # days would count as free and make every per-day model infeasible.
+    "teacher_max_free_days_above_hours": "both",
 }
 
 
@@ -1385,6 +1391,17 @@ class DSLConstraintCompiler:
             t = str(arg_values[0])
             n = int(arg_values[1])
             self._compile_teacher_at_least_n_free_days(t, n)
+            return True
+        if name == "teacher_max_free_days_above_hours":
+            # HARD cap, only when weekly hours (lessons + potenziamento)
+            # are at least the threshold. Args: (teacher, max_free, threshold).
+            if len(arg_values) != 3:
+                self.diagnostics.append(
+                    "teacher_max_free_days_above_hours expects "
+                    "(teacher, max_free, threshold)")
+                return True
+            self._compile_teacher_max_free_days_above_hours(
+                str(arg_values[0]), int(arg_values[1]), int(arg_values[2]))
             return True
         if name == "teacher_unavailable_day":
             # HARD: teacher cannot work at all on the given day.
@@ -2465,6 +2482,110 @@ class DSLConstraintCompiler:
             if pp == t:
                 days.add(int(dd))
         return sorted(days)
+
+    def _teacher_info(self, t: str) -> dict:
+        meta = getattr(self, "teacher_meta", None) or {}
+        if t in meta:
+            return meta[t] or {}
+        owner = self.owner_model
+        profs = getattr(owner, "profs", None) or {}
+        return profs.get(t) or {}
+
+    def _weekly_hours_of(self, t: str) -> int:
+        try:
+            from . import max_free_days as mfd  # type: ignore
+        except ImportError:
+            import max_free_days as mfd  # type: ignore
+        return mfd.weekly_hours(self._teacher_info(t))
+
+    def _compile_teacher_max_free_days_above_hours(
+            self, t: str, max_free: int, threshold: int):
+        """HARD: if teacher ``t`` has at least ``threshold`` weekly hours
+        (lessons + potenziamento), at most ``max_free`` days are free.
+
+        Busy includes potenziamento (``_teacher_day_busy_var`` on the
+        week model, ``pot_day_count`` on Phase A). A per-day slice does
+        not reimpose the week sum: days outside the slice have no
+        variables and would look free. Phase A and the week model own
+        the cap. ``maxfree_<teacher>`` is the assumption literal for
+        the infeasibility core (Kepler 7b)."""
+        max_free = int(max_free)
+        threshold = int(threshold)
+        if max_free < 0:
+            return
+        hours = self._weekly_hours_of(t)
+        if hours < threshold:
+            self.diagnostics.append(
+                f"teacher_max_free_days_above_hours({t!r}): "
+                f"{hours}h < {threshold}, regola non applicata")
+            return
+        info = self._teacher_info(t)
+        min_free = int(info.get("min_free_days") or 0)
+        if min_free > max_free:
+            self.diagnostics.append(
+                f"teacher_max_free_days_above_hours({t!r}): "
+                f"min_free_days={min_free} > {max_free}")
+            self.model.AddBoolAnd([self.model.NewConstant(0)])
+            return
+        caps = info.get("day_capacity") or {}
+        full_off = [int(d) for d, n in caps.items() if int(n) <= 0]
+        if len(full_off) > max_free:
+            self.diagnostics.append(
+                f"teacher_max_free_days_above_hours({t!r}): "
+                f"indisponibilita HARD su {len(full_off)} giorni")
+            self.model.AddBoolAnd([self.model.NewConstant(0)])
+            return
+        try:
+            from . import metaheuristics as _meta  # type: ignore
+        except ImportError:
+            import metaheuristics as _meta  # type: ignore
+        full_week = list(_meta.DAYS)
+        # Phase A has an empty slot dict; the week model has every day.
+        slot_days = self._days_in_scope()
+        phase_a = bool(self.day_count) and not self.slot
+        if not phase_a and len(slot_days) < len(full_week):
+            self.diagnostics.append(
+                f"teacher_max_free_days_above_hours({t!r}): "
+                f"slice di {len(slot_days)} giorni, tetto settimanale "
+                f"lasciato a Fase A / modello settimanale")
+            return
+        days = full_week if phase_a else slot_days
+        free_vars = []
+        pot_map = getattr(self, "pot_day_count", None) or {}
+        for d in days:
+            busy = self._teacher_day_busy_var(t, d)
+            pot = pot_map.get((t, int(d)))
+            if pot is not None:
+                pot_busy = self.model.NewBoolVar(
+                    f"_maxfree_pot_{t}_{int(d)}")
+                self.model.Add(pot >= 1).OnlyEnforceIf(pot_busy)
+                self.model.Add(pot == 0).OnlyEnforceIf(pot_busy.Not())
+                if busy is None:
+                    busy = pot_busy
+                else:
+                    both = self.model.NewBoolVar(
+                        f"_maxfree_busy_{t}_{int(d)}")
+                    self.model.AddMaxEquality(both, [busy, pot_busy])
+                    busy = both
+            if busy is None:
+                free_vars.append(self.model.NewConstant(1))
+            else:
+                free_vars.append(busy.Not())
+        ok = self.model.NewBoolVar(f"maxfree_{t}")
+        self.model.Add(sum(free_vars) <= max_free).OnlyEnforceIf(ok)
+        self.model.Add(ok == 1)
+        if self.owner_model is not None:
+            lits = getattr(self.owner_model, "maxfree_lits", None)
+            if lits is None:
+                self.owner_model.maxfree_lits = {}
+                lits = self.owner_model.maxfree_lits
+            lits[t] = ok
+        else:
+            own = getattr(self, "maxfree_lits", None)
+            if own is None:
+                self.maxfree_lits = {}
+                own = self.maxfree_lits
+            own[t] = ok
 
     def _compile_teacher_at_least_n_free_days(self, t: str, n: int):
         """HARD: teacher ``t`` must have at least ``n`` weekdays

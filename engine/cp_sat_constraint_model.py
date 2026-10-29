@@ -1720,6 +1720,17 @@ class MonolithicSolver(ConstraintModel):
                 f'teacher_max_per_day({qt}, '
                 f'{PHASE_A_MAX_PROF_HOURS_PER_DAY})',
                 level="phase_b")
+            try:
+                from . import max_free_days as _mfd  # type: ignore
+            except ImportError:
+                import max_free_days as _mfd  # type: ignore
+            _rule = _mfd.rule_of(self.profs.get(t))
+            if (_rule is not None
+                    and _mfd.weekly_hours(self.profs.get(t))
+                    >= _rule["threshold"]):
+                self.add_dsl_constraint(
+                    _mfd.pragma(t, _rule["max_free"], _rule["threshold"]),
+                    level="phase_b")
         obj_terms, _ = self.compute_soft_cost_expr()
         # Append SOFT general_dsl penalties (filled by
         # ``add_dsl_constraint`` calls with ``is_hard=False``). Each

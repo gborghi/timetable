@@ -836,6 +836,38 @@ def _add_joint_rooms(model, slot, ctx: dict, jv: dict, *, plessi_data=None):
 # ----------------------------------------------------------------------
 
 
+def _apply_max_free_preset(profs, *, max_free: int, threshold: int,
+                           exclude: str = "", only: str = "",
+                           pot_assignments=None) -> None:
+    """Preset UI: al massimo N giorni liberi sopra S ore. Spento se
+    il chiamante non lo chiede. I numeri arrivano dal payload."""
+    try:
+        from engine import max_free_days as mfd
+    except ImportError:
+        import max_free_days as mfd
+    pot: dict[str, int] = {}
+    for pa in pot_assignments or []:
+        name = pa.get("teacher_name")
+        if not name:
+            continue
+        pot[name] = pot.get(name, 0) + int(pa.get("n_hours") or 0)
+    mfd.stamp(
+        profs,
+        max_free=int(max_free),
+        threshold=int(threshold),
+        exclude=mfd.parse_name_list(exclude),
+        only=mfd.parse_name_list(only),
+        pot_by_teacher=pot,
+    )
+    errors = mfd.precheck(profs)
+    if errors:
+        detail = "; ".join(e["message"] for e in errors)
+        raise RuntimeError(
+            "Orario pieno / giorni liberi: combinazione impossibile "
+            f"prima del calcolo. {detail}"
+        )
+
+
 def run_phase_b(k: int, time_a: float, time_bridges: float,
                 time_cluster: float, time_ricucitura: float,
                 time_mono: float, workers: int, log: bool,
@@ -848,7 +880,12 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                 respect_room_capacity: bool = False,
                 thoroughness: str = "balanced",
                 joint_vars: dict | None = None,
-                partial: bool = False) -> int:
+                partial: bool = False,
+                max_free_if_full: bool = False,
+                max_free_days: int = 1,
+                full_time_hours: int = 18,
+                max_free_exclude: str = "",
+                max_free_only: str = "") -> int:
     # Phase 3 -- enforce the same (cp_sat_scope, phase_a_mode)
     # cross-field rules as PhaseBRunIn so direct callers (full
     # pipeline, programmatic harness, tests) get the same guard. The
@@ -931,7 +968,12 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                   cp_sat_scope=cp_sat_scope,
                   phase_a_mode=phase_a_mode,
                   respect_room_capacity=respect_room_capacity,
-                  joint_vars=_jv, partial=bool(partial))
+                  joint_vars=_jv, partial=bool(partial),
+                  max_free_if_full=bool(max_free_if_full),
+                  max_free_days=int(max_free_days),
+                  full_time_hours=int(full_time_hours),
+                  max_free_exclude=max_free_exclude or "",
+                  max_free_only=max_free_only or "")
     _preflight_lock_check()
     run_id = create_run("phase_b", "Schedulazione orario", None, params)
 
@@ -953,6 +995,15 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                 engine_io.potenziamento_assignments_from_db(db))
             parallel_groups = engine_io.parallel_groups_for_solver(db)
             group_assignments = engine_io.group_assignments_for_solver(db)
+        if max_free_if_full:
+            _apply_max_free_preset(
+                profs,
+                max_free=int(max_free_days),
+                threshold=int(full_time_hours),
+                exclude=max_free_exclude,
+                only=max_free_only,
+                pot_assignments=potenziamento_assignments,
+            )
         if locked_snap:
             print(f"[phaseB] {len(locked_snap)} locked lessons "
                   f"(native CP-SAT path, "

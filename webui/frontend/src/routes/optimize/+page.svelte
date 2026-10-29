@@ -75,6 +75,12 @@
     // Capienza aule per-slot (option A): cap sul numero di classi in
     // contemporanea in ogni (giorno, ora) pari al totale delle aule.
     respect_room_capacity: false,
+    partial: false,
+    max_free_if_full: false,
+    max_free_days: 1,
+    full_time_hours: 18,
+    max_free_exclude: '',
+    max_free_only: '',
     // Joint (giorno,ora,aula): quando enabled, le var aula entrano nel
     // modello di schedulazione (il backend forza scope=week + no
     // decomposizione + estrazione aule). `obj` è la lista di variabili
@@ -583,6 +589,61 @@
           </small>
         </span>
       </label>
+
+      <label class="flex items-start gap-2 text-sm mt-3">
+        <input type="checkbox" class="mt-0.5"
+               bind:checked={step3.partial}
+               data-testid="optimize-partial"/>
+        <span>
+          Se impossibile, dammi un orario parziale
+          <small class="block text-[11px] text-ink-500 leading-snug">
+            Solo con scope Settimana intera. Le ore che non entrano
+            restano elencate e l'orario non viene attivato.
+          </small>
+        </span>
+      </label>
+
+      <div class="mt-3 p-3 rounded border border-ink-200 bg-ink-50/40 space-y-2">
+        <label class="flex items-start gap-2 text-sm">
+          <input type="checkbox" class="mt-0.5"
+                 bind:checked={step3.max_free_if_full}
+                 data-testid="optimize-max-free"/>
+          <span>
+            Docenti a orario pieno: al massimo N giorni liberi
+            <small class="block text-[11px] text-ink-500 leading-snug">
+              Preset spento di default. Vale solo per chi ha almeno
+              la soglia di ore (lezioni più potenziamento). Non è
+              scritto nel motore: N e la soglia si cambiano qui.
+            </small>
+          </span>
+        </label>
+        {#if step3.max_free_if_full}
+          <div class="grid grid-cols-2 gap-3">
+            <div class="field">
+              <label for="routes-optimize-maxfree-n">Giorni liberi massimi</label>
+              <input id="routes-optimize-maxfree-n" type="number" min="0" max="6"
+                     bind:value={step3.max_free_days}/>
+            </div>
+            <div class="field">
+              <label for="routes-optimize-maxfree-s">Soglia ore settimanali</label>
+              <input id="routes-optimize-maxfree-s" type="number" min="1" max="40"
+                     bind:value={step3.full_time_hours}/>
+            </div>
+            <div class="field col-span-2">
+              <label for="routes-optimize-maxfree-only">Solo questi docenti (vuoto = tutti)</label>
+              <input id="routes-optimize-maxfree-only" type="text"
+                     placeholder="Rossi, Bianchi"
+                     bind:value={step3.max_free_only}/>
+            </div>
+            <div class="field col-span-2">
+              <label for="routes-optimize-maxfree-ex">Escludi</label>
+              <input id="routes-optimize-maxfree-ex" type="text"
+                     placeholder="Verdi"
+                     bind:value={step3.max_free_exclude}/>
+            </div>
+          </div>
+        {/if}
+      </div>
 
       <div class="mt-3 p-3 rounded border border-ink-200 bg-ink-50/40 space-y-2">
         <label class="flex items-center gap-2 text-sm font-medium">

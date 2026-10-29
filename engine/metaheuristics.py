@@ -660,6 +660,22 @@ def is_hard_feasible(sol, profs, verbose=False,
                     print(f"  DSL HARD viol: {expr!r}")
                 return False
 
+    # Optional HARD cap. Off unless some teacher carries the preset
+    # data; a missing module must not fail a solve that did not ask
+    # for the rule.
+    try:
+        try:
+            from . import max_free_days as _mfd  # type: ignore
+        except ImportError:
+            import max_free_days as _mfd  # type: ignore
+        if not _mfd.solution_respects(sol, profs):
+            if verbose:
+                print("  max free days above hours: violated")
+            return False
+    except Exception as exc:  # noqa: BLE001
+        if verbose:
+            print(f"  max free days check skipped: {exc}")
+
     return True
 
 
@@ -756,6 +772,16 @@ def _build_world_from_sol(sol, profs, *,
         "slots": [{"day": d, "hour": h} for d in DAYS for h in HOURS],
         "assignments": assignments,
         "lessons": lessons,
+        "teacher_weekly_hours": {
+            t: int(sum(
+                int((spec or {}).get("ore") or 0)
+                for subs in (info.get("classi") or {}).values()
+                for spec in (subs or {}).values()
+                if isinstance(spec, dict)
+            ) + int(info.get("potenziamento_hours") or 0))
+            for t, info in profs.items()
+            if isinstance(info, dict)
+        },
     }
 
 

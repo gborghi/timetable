@@ -493,6 +493,11 @@ def launch_phase_b(payload: schemas.PhaseBRunIn):
         phase_a_mode=payload.phase_a_mode,
         respect_room_capacity=payload.respect_room_capacity,
         partial=payload.partial,
+        max_free_if_full=payload.max_free_if_full,
+        max_free_days=payload.max_free_days,
+        full_time_hours=payload.full_time_hours,
+        max_free_exclude=payload.max_free_exclude,
+        max_free_only=payload.max_free_only,
         thoroughness=payload.thoroughness,
         joint_vars=(payload.joint_vars.model_dump()
                     if payload.joint_vars else None),
