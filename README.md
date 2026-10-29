@@ -91,4 +91,13 @@ piTantum grew out of ideas by **Fernando Gargiulo**, **Giovanni Borghi**, **Matt
 
 ## License
 
-Private project; no public license.
+Proprietary. All rights reserved. See [LICENSE](LICENSE). Reading the
+repository is not permission to reuse the code.
+
+## API key
+
+Without `PITANTUM_API_KEY` every API is open. That is acceptable only on
+the loopback interface of this computer. Do not publish port 8000. Set
+the variable before any deploy; with `PITANTUM_ENV=production` the
+backend refuses to start if the key is missing. The key itself is not
+stored in this repository.

@@ -91,4 +91,13 @@ piTantum nasce da idee di **Fernando Gargiulo**, **Giovanni Borghi**, **Matteo M
 
 ## Licenza
 
-Progetto privato; nessuna licenza pubblica.
+Proprietaria. Tutti i diritti riservati. Vedi [LICENSE](LICENSE). Poter
+leggere il repository non autorizza a riusare il codice.
+
+## Chiave API
+
+Senza `PITANTUM_API_KEY` tutte le API sono aperte. Va bene solo
+sull'interfaccia di loopback di questo computer. Non pubblicare la
+porta 8000. Imposta la variabile prima di un deploy: con
+`PITANTUM_ENV=production` il backend non parte se la chiave manca. La
+chiave non sta in questo repository.
