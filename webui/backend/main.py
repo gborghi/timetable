@@ -239,6 +239,7 @@ def rate_limit_decision(key: str, now: float, max_req: int) -> float | None:
     if count >= max_req:
         return max(0.0, _RATE_LIMIT_WINDOW_S - (now - window_start))
     _rate_limit_state[key] = (window_start, count + 1)
+    _rate_limit_evict(now)
     return None
 
 
