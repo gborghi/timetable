@@ -1031,7 +1031,7 @@ def import_solution_into_db(db: Session, solution_dict: dict,
         obj_value=float(obj_value),
         metrics_json=json.dumps(metrics or {}),
         is_active=False,
-        created_at=dt.datetime.utcnow(),
+        created_at=dt.datetime.now(dt.timezone.utc).replace(tzinfo=None),
     )
     db.add(sol)
     db.flush()

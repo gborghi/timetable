@@ -318,7 +318,7 @@ def main():
             n_err += 1
 
     # Persist mapping
-    ts = _dt.datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+    ts = _dt.datetime.now(_dt.timezone.utc).replace(tzinfo=None).strftime("%Y%m%dT%H%M%SZ")
     out_dir = os.path.join(HERE, "stress_constraints", args.profile)
     out_fn = os.path.join(
         out_dir, f"loaded_{ts}{'_dryrun' if args.dry_run else ''}.json")

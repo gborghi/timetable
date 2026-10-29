@@ -10,7 +10,6 @@ from __future__ import annotations
 import os
 import sys
 import time
-from collections import defaultdict
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
@@ -135,6 +134,12 @@ def _check_production_security() -> None:
 async def lifespan(app: FastAPI):
     log.info("backend startup -- init_db()")
     _check_production_security()
+    if not os.environ.get("PITANTUM_API_KEY", "").strip():
+        log.warning(
+            "PITANTUM_API_KEY non impostata: tutte le API sono aperte. "
+            "Va bene solo in locale, sull'interfaccia di loopback. "
+            "Non esporre la porta su una rete."
+        )
     init_db()
     # Sweep runs left 'running'/'pending' by a previous crash/restart
     # into a terminal 'failed' state so they stop looking active
@@ -202,9 +207,39 @@ app.add_middleware(
 # ── Rate limiting ───────────────────────────────────────────────────
 _RATE_LIMIT_WINDOW_S = 10.0
 _RATE_LIMIT_BURST = 3
-_rate_limit_state: dict[str, tuple[float, int]] = defaultdict(
-    lambda: (0.0, 0),
-)
+_RATE_LIMIT_MAX_KEYS = 4096
+_rate_limit_state: dict[str, tuple[float, int]] = {}
+
+
+def _rate_limit_evict(now: float) -> None:
+    """Tieni la memoria limitata: butta le finestre scadute e, se
+    restano troppe chiavi, le più vecchie."""
+    if len(_rate_limit_state) <= _RATE_LIMIT_MAX_KEYS:
+        return
+    stale = [k for k, (start, _) in _rate_limit_state.items()
+             if now - start > _RATE_LIMIT_WINDOW_S]
+    for k in stale:
+        _rate_limit_state.pop(k, None)
+    overflow = len(_rate_limit_state) - _RATE_LIMIT_MAX_KEYS
+    if overflow <= 0:
+        return
+    oldest = sorted(_rate_limit_state,
+                    key=lambda k: _rate_limit_state[k][0])
+    for k in oldest[:overflow]:
+        _rate_limit_state.pop(k, None)
+
+
+def rate_limit_decision(key: str, now: float, max_req: int) -> float | None:
+    """Ritorna i secondi da aspettare se il limite è superato, altrimenti
+    None e conta la richiesta. Non cresce senza tetto."""
+    _rate_limit_evict(now)
+    window_start, count = _rate_limit_state.get(key, (now, 0))
+    if now - window_start > _RATE_LIMIT_WINDOW_S:
+        window_start, count = now, 0
+    if count >= max_req:
+        return max(0.0, _RATE_LIMIT_WINDOW_S - (now - window_start))
+    _rate_limit_state[key] = (window_start, count + 1)
+    return None
 
 
 def _rate_limit_path(path: str) -> int | None:
@@ -228,17 +263,17 @@ async def rate_limit_middleware(request: Request, call_next):
     if max_req is not None:
         now = time.monotonic()
         key = request.client.host if request.client else "unknown"
-        entry = _rate_limit_state[key]
-        window_start, count = entry
-        if now - window_start > _RATE_LIMIT_WINDOW_S:
-            window_start, count = now, 0
-        if count >= max_req:
-            raise HTTPException(
-                429,
-                detail=f"Limite di richieste superato. Riprova tra "
-                       f"{_RATE_LIMIT_WINDOW_S - (now - window_start):.0f}s.",
+        wait = rate_limit_decision(key, now, max_req)
+        if wait is not None:
+            return JSONResponse(
+                status_code=429,
+                content={
+                    "detail": (
+                        "Limite di richieste superato. Riprova tra "
+                        f"{wait:.0f}s."
+                    ),
+                },
             )
-        _rate_limit_state[key] = (window_start, count + 1)
     return await call_next(request)
 
 

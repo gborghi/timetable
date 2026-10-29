@@ -278,7 +278,7 @@ def request_cancel(run_id: int) -> bool:
             return False
         r.status = "cancelled"
         r.error = (r.error or "") + "\n[cancel] richiesto dall'utente"
-        r.finished_at = dt.datetime.utcnow()
+        r.finished_at = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
         db.commit()
     with _CANCELLED_LOCK:
         _CANCELLED_RUNS.add(run_id)
@@ -447,7 +447,7 @@ def reconcile_orphaned_runs() -> int:
                 .filter(models.Run.status.in_(("running", "pending")))
                 .all()
             )
-            now = dt.datetime.utcnow()
+            now = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
             for r in orphans:
                 r.status = "failed"
                 r.error = (
@@ -537,7 +537,7 @@ def _runner(run_id: int, target: Callable[[int], None]) -> None:
         if is_cancel_requested(run_id):
             update_run(
                 run_id, status="cancelled",
-                finished_at=dt.datetime.utcnow(),
+                finished_at=dt.datetime.now(dt.timezone.utc).replace(tzinfo=None),
             )
             _emit_line(run_id, "[run] cancelled while queued")
             buf.mark_finished()
@@ -545,7 +545,7 @@ def _runner(run_id: int, target: Callable[[int], None]) -> None:
         acquired = _RUN_SLOTS.acquire(timeout=0.5)
     update_run(
         run_id, status="running",
-        started_at=dt.datetime.utcnow(),
+        started_at=dt.datetime.now(dt.timezone.utc).replace(tzinfo=None),
     )
     try:
         with capture_stdout(run_id):
@@ -558,13 +558,13 @@ def _runner(run_id: int, target: Callable[[int], None]) -> None:
         if is_cancel_requested(run_id):
             update_run(
                 run_id, progress=1.0,
-                finished_at=dt.datetime.utcnow(),
+                finished_at=dt.datetime.now(dt.timezone.utc).replace(tzinfo=None),
             )
             _emit_line(run_id, "[run] cancelled")
         else:
             update_run(
                 run_id, status="done", progress=1.0,
-                finished_at=dt.datetime.utcnow(),
+                finished_at=dt.datetime.now(dt.timezone.utc).replace(tzinfo=None),
             )
             _emit_line(run_id, "[run] done")
     except RunCancelled:
@@ -572,7 +572,7 @@ def _runner(run_id: int, target: Callable[[int], None]) -> None:
         # already 'cancelled' (set by request_cancel); just close out.
         update_run(
             run_id, status="cancelled",
-            finished_at=dt.datetime.utcnow(),
+            finished_at=dt.datetime.now(dt.timezone.utc).replace(tzinfo=None),
         )
         _emit_line(run_id, "[run] cancelled")
     except Exception as exc:  # pragma: no cover
@@ -583,13 +583,13 @@ def _runner(run_id: int, target: Callable[[int], None]) -> None:
         if is_cancel_requested(run_id):
             update_run(
                 run_id, status="cancelled",
-                finished_at=dt.datetime.utcnow(),
+                finished_at=dt.datetime.now(dt.timezone.utc).replace(tzinfo=None),
             )
             _emit_line(run_id, "[run] cancelled")
         else:
             update_run(
                 run_id, status="failed", error=tb,
-                finished_at=dt.datetime.utcnow(),
+                finished_at=dt.datetime.now(dt.timezone.utc).replace(tzinfo=None),
             )
             _emit_line(run_id, f"[run] FAILED: {exc}")
             _emit_line(run_id, tb)

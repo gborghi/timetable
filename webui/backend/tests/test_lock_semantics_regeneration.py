@@ -20,7 +20,7 @@ def _seed_active_solution_with_locked_cattedra(Session):
         db.add(models.Assignment(teacher_id=t.id, class_id=c.id,
                                  subject="Matematica", hours=3, locked=True))
         sol = models.Solution(name="s", kind="phase_b", is_active=True,
-                              created_at=dt.datetime.utcnow())
+                              created_at=dt.datetime.now(dt.timezone.utc).replace(tzinfo=None))
         db.add(sol)
         db.flush()
         for h in (8, 9, 10):

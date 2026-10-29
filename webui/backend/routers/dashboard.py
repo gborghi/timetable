@@ -373,6 +373,25 @@ def backup_db():
     )
 
 
+async def _read_upload_limited(file: UploadFile, limit: int) -> bytes:
+    """Legge l'upload a pezzi da 1 MiB e rifiuta oltre ``limit`` senza
+    continuare a bufferizzare il resto."""
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        block = await file.read(1024 * 1024)
+        if not block:
+            break
+        total += len(block)
+        if total > limit:
+            raise HTTPException(
+                413,
+                f"File troppo grande (oltre {limit} bytes).",
+            )
+        chunks.append(block)
+    return b"".join(chunks)
+
+
 @router.post("/import-db")
 async def import_db(file: UploadFile = File(...)):
     """Upload a zip previously produced by /api/dashboard/export-db
@@ -383,7 +402,7 @@ async def import_db(file: UploadFile = File(...)):
     malicious zip-bomb (or accidentally large file) cannot exhaust
     server memory / disk.
     """
-    blob = await file.read()
+    blob = await _read_upload_limited(file, _IMPORT_DB_MAX_BYTES)
     if not blob:
         raise HTTPException(400, "file vuoto")
     if len(blob) > _IMPORT_DB_MAX_BYTES:
