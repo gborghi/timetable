@@ -209,7 +209,7 @@
       {#if ownerId} (owner_id={ownerId}){/if}.
       Le violazioni HARD vengono evidenziate in
       <em>Feasibility Check</em> e bloccate dal modello a runtime;
-      le SOFT contribuiscono allo score globale di Phase B.
+      le SOFT contribuiscono allo score globale di Fase B.
     </div>
 
     <div class="flex justify-end gap-2 pt-3 border-t border-ink-100">

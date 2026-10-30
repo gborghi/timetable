@@ -581,7 +581,7 @@
                                 : (activeTab === 'unscheduled'
                                     ? 'Cattedre per cui non tutte le ore attese sono state schedulate. Usa "Piazza" per collocarle.'
                                     : (activeTab === 'locked'
-                                        ? 'Cattedre marcate come bloccate: non si muovono durante Phase B / metaeuristiche.'
+                                        ? 'Cattedre marcate come bloccate: non si muovono durante Fase B / metaeuristiche.'
                                         : ''))}
                         selectable={true}
                         bind:selectedIds={mainSelected}

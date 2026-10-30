@@ -46,7 +46,7 @@ describe('/optimize launches Phase B from the UI', () => {
        cy.intercept('POST', '**/api/optimize/phase-b').as('launchB');
        // Click the "Avvia Phase B" button (the page in step 3 has
        // exactly one button with that label).
-       cy.contains('button', /Avvia Phase B/i).click();
+       cy.contains('button', /Avvia Fase B/i).click();
        cy.wait('@launchB').then((interception) => {
          expect(interception.response?.statusCode).to.eq(200);
          const runId = (interception.response?.body as any).run_id;

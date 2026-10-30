@@ -2,6 +2,7 @@
   import { onDestroy } from 'svelte';
   import { streamRun, api } from '../api';
   import { appendCapped, MAX_LOG_LINES } from '../log_buffer';
+  import { runStatusLabel } from '../pipeline_labels';
   export let runId = null;
   export let title = 'Log';
   export let onEnd = () => {};
@@ -84,13 +85,13 @@
     {#if status}
       <div class="flex items-center gap-2 text-xs">
         <span class="pill" class:pill-green={status.status === 'done'} class:pill-red={status.status === 'failed'} class:pill-blue={status.status === 'running'}>
-          {status.status}
+          {runStatusLabel(status.status)}
         </span>
         {#if status.progress != null}
           <span class="text-ink-500">{Math.round(status.progress * 100)}%</span>
         {/if}
         {#if status.obj_value != null}
-          <span class="text-ink-500">obj={status.obj_value}</span>
+          <span class="text-ink-500">obiettivo={status.obj_value}</span>
         {/if}
         {#if isActive}
           <button type="button"

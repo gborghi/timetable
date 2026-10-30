@@ -385,7 +385,7 @@
       <div class="card p-3 border-2 border-emerald-300 bg-emerald-50/60
                   text-emerald-900">
         ✅ <strong>Modello feasible</strong> — i vincoli HARD/ENFORCED
-        sono mutuamente compatibili. Phase B avrà (almeno) un'assegnazione
+        sono mutuamente compatibili. Fase B avrà (almeno) un'assegnazione
         che li soddisfa tutti.
       </div>
     {:else if result.feasible === false}

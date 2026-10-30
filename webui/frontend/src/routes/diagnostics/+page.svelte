@@ -404,10 +404,10 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
 
   function statusPill(d) {
     if (!d.runId) return null;
-    if (d.status === 'pending') return { cls: 'pill-blue', label: 'pending' };
-    if (d.status === 'running') return { cls: 'pill-blue', label: 'running' };
-    if (d.status === 'done') return { cls: 'pill-green', label: 'done' };
-    if (d.status === 'failed') return { cls: 'pill-red', label: 'failed' };
+    if (d.status === 'pending') return { cls: 'pill-blue', label: 'in coda' };
+    if (d.status === 'running') return { cls: 'pill-blue', label: 'in corso' };
+    if (d.status === 'done') return { cls: 'pill-green', label: 'completato' };
+    if (d.status === 'failed') return { cls: 'pill-red', label: 'fallito' };
     return null;
   }
 </script>
@@ -420,7 +420,7 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
       compaiono nel tab <a href="/runs" class="text-accent-500 hover:underline">Runs</a>
       e il risultato torna qui sotto quando completato. Il pre-check
       Hall resta sincrono (&lt;100ms) per essere usato come
-      "verde/rosso" prima di lanciare Phase A.
+      "verde/rosso" prima di lanciare Fase A.
     </p>
   </PageHero>
 
@@ -428,7 +428,7 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
   <section class="card p-4 space-y-2">
     <div class="flex items-baseline gap-2 flex-wrap">
       <h2 class="!text-base">1) Pre-check fattibilità (Hall)</h2>
-      <span class="pill !text-[10px]">async run</span>
+      <span class="pill !text-[10px]">run asincrono</span>
       {#if statusPill(hl)}
         <span class="{statusPill(hl).cls} !text-[10px]">
           {statusPill(hl).label}
@@ -462,7 +462,7 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
   <section class="card p-4 space-y-2">
     <div class="flex items-baseline gap-2 flex-wrap">
       <h2 class="!text-base">2) Sensitivity Monte Carlo</h2>
-      <span class="pill !text-[10px]">async run</span>
+      <span class="pill !text-[10px]">run asincrono</span>
       {#if statusPill(mc)}
         <span class="{statusPill(mc).cls} !text-[10px]">
           {statusPill(mc).label}
@@ -556,7 +556,7 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
   <section class="card p-4 space-y-2">
     <div class="flex items-baseline gap-2 flex-wrap">
       <h2 class="!text-base">3) Analisi bipartito</h2>
-      <span class="pill !text-[10px]">async run</span>
+      <span class="pill !text-[10px]">run asincrono</span>
       {#if statusPill(bp)}
         <span class="{statusPill(bp).cls} !text-[10px]">
           {statusPill(bp).label}
@@ -662,7 +662,7 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
   <section class="card p-4 space-y-2">
     <div class="flex items-baseline gap-2 flex-wrap">
       <h2 class="!text-base">4) Correlazioni e regressioni</h2>
-      <span class="pill !text-[10px]">async run</span>
+      <span class="pill !text-[10px]">run asincrono</span>
       {#if statusPill(co)}
         <span class="{statusPill(co).cls} !text-[10px]">
           {statusPill(co).label}
@@ -810,7 +810,7 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
   <section class="card p-4 space-y-2">
     <div class="flex items-baseline gap-2 flex-wrap">
       <h2 class="!text-base">5) Distribuzioni</h2>
-      <span class="pill !text-[10px]">async run</span>
+      <span class="pill !text-[10px]">run asincrono</span>
       {#if statusPill(ds)}
         <span class="{statusPill(ds).cls} !text-[10px]">
           {statusPill(ds).label}

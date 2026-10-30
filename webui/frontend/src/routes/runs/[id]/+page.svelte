@@ -20,7 +20,7 @@
   import EChart from '$lib/components/EChart.svelte';
   import PageHero from '$lib/components/PageHero.svelte';
   import RunLogPanel from '$lib/components/RunLogPanel.svelte';
-  import { pipelineStepLabel } from '$lib/pipeline_labels';
+  import { pipelineStepLabel, runKindLabel, runStatusLabel } from '$lib/pipeline_labels';
   import DiagnosticResult from
     '$lib/components/diagnostics/DiagnosticResult.svelte';
 
@@ -100,11 +100,11 @@
   // --- ECharts options ---
   $: objectiveOption = summary && summary.objective_series
                         && summary.objective_series.length ? {
-    title: { text: 'Objective vs ' + (xAxis === 'time' ? 'tempo (s)' : 'step') },
+    title: { text: 'Obiettivo vs ' + (xAxis === 'time' ? 'tempo (s)' : 'passo') },
     tooltip: { trigger: 'axis' },
     xAxis: {
       type: xAxis === 'time' ? 'value' : 'category',
-      name: xAxis === 'time' ? 's' : 'step',
+      name: xAxis === 'time' ? 's' : 'passo',
     },
     yAxis: { type: 'value', name: 'SOFT' },
     series: (() => {
@@ -112,7 +112,7 @@
       const byPhase = {};
       for (let i = 0; i < summary.objective_series.length; i++) {
         const s = summary.objective_series[i];
-        const ph = s.phase || '(unknown)';
+        const ph = runKindLabel(s.phase) || '—';
         if (!byPhase[ph]) byPhase[ph] = [];
         byPhase[ph].push(
           xAxis === 'time' ? [s.t, s.obj] : [i, s.obj],
@@ -139,15 +139,15 @@
   <PageHero title="Run #{runId}">
     <svelte:fragment slot="chips">
       {#if run}
-        <span class="pill">{run.kind}</span>
+        <span class="pill" title={run.kind}>{runKindLabel(run.kind)}</span>
         {#if run.status === 'done'}
-          <span class="pill-green">done</span>
+          <span class="pill-green" title={run.status}>{runStatusLabel(run.status)}</span>
         {:else if run.status === 'failed'}
-          <span class="pill-red">failed</span>
+          <span class="pill-red" title={run.status}>{runStatusLabel(run.status)}</span>
         {:else if run.status === 'running' || run.status === 'pending'}
-          <span class="pill-blue">{run.status}</span>
+          <span class="pill-blue" title={run.status}>{runStatusLabel(run.status)}</span>
         {:else}
-          <span class="pill">{run.status}</span>
+          <span class="pill" title={run.status}>{runStatusLabel(run.status)}</span>
         {/if}
       {/if}
     </svelte:fragment>
@@ -278,17 +278,17 @@
       <table class="tbl text-xs">
         <thead>
           <tr>
-            <th>Stage</th>
-            <th class="text-right"># sample</th>
+            <th>Fase</th>
+            <th class="text-right">Campioni</th>
             <th class="text-right">Inizio (s)</th>
             <th class="text-right">Fine (s)</th>
-            <th class="text-right">Best obj</th>
+            <th class="text-right">Obiettivo</th>
           </tr>
         </thead>
         <tbody>
           {#each summary.phases as ph (ph.phase)}
             <tr>
-              <td>{ph.phase || '(unknown)'}</td>
+              <td title={ph.phase || ''}>{runKindLabel(ph.phase) || '—'}</td>
               <td class="text-right tabular-nums">{ph.n_samples}</td>
               <td class="text-right tabular-nums">{ph.first_t.toFixed(2)}</td>
               <td class="text-right tabular-nums">{ph.last_t.toFixed(2)}</td>
@@ -320,7 +320,7 @@
       <div class="flex items-baseline gap-2">
         <h2 class="!text-base">Risultato diagnostica</h2>
         <span class="text-xs text-ink-500">
-          {run.kind} - generato il {fmt(run.finished_at) || '...'}
+          {runKindLabel(run.kind)} - generato il {fmt(run.finished_at) || '...'}
         </span>
       </div>
       <DiagnosticResult kind={run.kind} result={run.metrics}/>

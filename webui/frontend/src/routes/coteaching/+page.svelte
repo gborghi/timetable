@@ -114,7 +114,7 @@
 
   <p class="text-xs text-ink-500">
     Una compresenza HARD blocca due (o piu) docenti nello stesso slot della stessa lezione.
-    Le compresenze SOFT sono "preferenze" pesate. La schedulazione (Phase B) gia gestisce la
+    Le compresenze SOFT sono "preferenze" pesate. La schedulazione (Fase B) gia gestisce la
     coverage per (classe, materia); la compresenza viene risolta in fase di assegnazione cattedre
     (vedi pagina Cattedre).
   </p>

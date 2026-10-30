@@ -118,7 +118,7 @@
         `/api/teachers/${teacher_id}/free-day-preferences`,
         { preferences: prefs });
     } catch (e) {
-      flash('Errore salvando preferenze Phase A: ' + e.message, 'error');
+      flash('Errore salvando preferenze Fase A: ' + e.message, 'error');
     }
   }
 
@@ -528,7 +528,7 @@
       <div class="field"><label for="routes-teachers-f7" title="Ore di esonero dall'insegnamento (es. per incarichi o funzioni strumentali). Facoltativo.">Ore di esonero</label><input id="routes-teachers-f7" type="number" bind:value={editing.exemption_hours}/></div>
       <div class="field"><label for="routes-teachers-f8" title="Ore settimanali di disposizione (standby per supplenze). L'ottimizzatore le piazza senza classe né aula; restano disponibili in Assenze e supplenze e si possono spostare a mano.">Ore di disposizione</label><input id="routes-teachers-f8" type="number" min="0" bind:value={editing.disposizione_hours} data-testid="teacher-disposizione-hours-input"/></div>
       <div class="field">
-        <label title="Punteggio in graduatoria provinciale (0-300). Usato dal preset 'Anzianita' di Phase A per assegnare i docenti più anziani agli indirizzi pesanti.">
+        <label title="Punteggio in graduatoria provinciale (0-300). Usato dal preset 'Anzianita' di Fase A per assegnare i docenti più anziani agli indirizzi pesanti.">
           Punteggio graduatoria
           <span class="text-xs text-ink-400">- opzionale, 0-300</span>
         </label>
@@ -673,7 +673,7 @@
       {/if}
       <div class="field max-w-xs">
         <label>Min giorni liberi/sett. (HARD)
-          <span title="Numero MINIMO di giornate libere a settimana. Default 1 (CCNL). 2-3 per docenti part-time. 0 disabilita il vincolo. Il pragma è 'teacher_at_least_n_free_days' applicato uniformemente in Phase A, Phase B e tutti i bypass.">
+          <span title="Numero MINIMO di giornate libere a settimana. Default 1 (CCNL). 2-3 per docenti part-time. 0 disabilita il vincolo. Il pragma è 'teacher_at_least_n_free_days' applicato uniformemente in Fase A, Fase B e tutti i bypass.">
             &#x2139;
           </span>
         </label>
@@ -759,10 +759,10 @@
     <!-- Phase-A only preferences: class + curriculum (5-state) -->
     <div class="mt-4 space-y-3 border-t border-ink-200 pt-3">
       <div class="text-xs text-ink-500 italic">
-        <strong class="text-ink-700">Preferenze per Phase A</strong>
+        <strong class="text-ink-700">Preferenze per Fase A</strong>
         (assegnazione docente -&gt; classe). Queste preferenze
         influenzano SOLO l'assegnazione docenti↔classi, non l'orario
-        settimanale (Phase B).
+        settimanale (Fase B).
       </div>
       <EntityPreferenceGrid
         items={classItems}
