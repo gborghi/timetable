@@ -1,0 +1,32 @@
+{
+  "key": "alternativa_aula",
+  "label": "Aula del gruppo Alternativa",
+  "attivo": true,
+  "rimovibile": true,
+  "nota": "Il gruppo lavora in simultanea con IRC: è già il parallel_group, non una regola del motore. Qui si sceglie solo l'aula. Si modifica questo file, si cambia la modalità, oppure lo si toglie.",
+  "in_simultanea_con": "IRC",
+  "modalita_scelta": "aula_di_alternativa",
+  "modalita": [
+    {
+      "id": "aula_di_alternativa",
+      "label": "Aula di alternativa",
+      "selezionata": true,
+      "required_kind": "alternativa",
+      "home_room": ""
+    },
+    {
+      "id": "aula_fissa",
+      "label": "Aula fissa",
+      "selezionata": false,
+      "required_kind": "",
+      "home_room": ""
+    },
+    {
+      "id": "aule_libere",
+      "label": "Aule libere",
+      "selezionata": false,
+      "required_kind": "",
+      "home_room": ""
+    }
+  ]
+}
