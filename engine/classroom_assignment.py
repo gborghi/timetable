@@ -68,6 +68,13 @@ NOTE
   (es. 'palestra' per Educazione Fisica), la lezione e' ammessa solo
   nelle aule con `kind` corrispondente. La chiave viene popolata da
   `Subject.required_kind` nel webui-side `lessons_for_classroom_step`.
+- Preset aula (dato, non regola): se ``data/preset_alternativa.json``
+  c'e' ed e' attivo, le lezioni che condividono lo slot con la materia
+  ``in_simultanea_con`` -- e non sono quella materia, ne' una
+  compresenza -- ricevono il vincolo della modalita' scelta (kind,
+  aula nominata nel file, oppure nessuna: qualsiasi aula libera).
+  Il parallel group non si riscrive. File assente o spento: niente
+  cambia. Il motore non contiene il nome del gruppo ne' un'aula.
 - Capacit'a (HARD): se la lezione porta `n_students > 0` la lezione e'
   ammessa solo nelle aule con `capacity >= n_students`. Lezioni senza
   `n_students` (chiave assente o 0) bypassano il vincolo - usato
@@ -87,8 +94,10 @@ USO programmatico:
 """
 from __future__ import annotations
 
+import json
 import time
 from collections import defaultdict
+from pathlib import Path
 from typing import Any
 
 from ortools.sat.python import cp_model
@@ -133,9 +142,16 @@ def _is_reserved_special_kind(kind: str) -> bool:
     return k in ("palestra", "gym") or k.startswith("lab_")
 
 
-def _can_host(room: dict, lesson: dict) -> bool:
+def _can_host(room: dict, lesson: dict,
+              reserved_kinds: frozenset[str] | None = None) -> bool:
     """HARD eligibility: subject compatibility + capacity + required-
-    kind + aula base + room not unavailable on that slot."""
+    kind + aula base + room not unavailable on that slot.
+
+    ``reserved_kinds`` arriva dal preset aula, se il file c'e': si
+    somma a palestra/lab, e un'aula di quel kind resta per chi lo
+    richiede. Un ``home_room`` sulla stessa aula non viene nascosto
+    dalla riserva -- la stanza nominata nel dato resta usabile.
+    """
     subj = lesson["subject"]
     day = lesson["day"]
     hour = lesson["hour"]
@@ -163,10 +179,18 @@ def _can_host(room: dict, lesson: dict) -> bool:
     # and leave PE/lab hours roomless. Other kinds ("standard",
     # "classroom", "area_*", ...) stay open to ordinary lessons.
     # A room carrying an explicit ``subject_required`` allow-list
-    # (handled above) opts out of this default.
+    # (handled above) opts out of this default. Un kind riservato dal
+    # preset aula (dato letto dal file, non un nome scritto qui) si
+    # comporta allo stesso modo. La stanza nominata in ``home_room``
+    # deroga: e' una scelta esplicita del dato, non un consumo casuale.
     room_kind = str(room.get("kind", "standard") or "standard")
-    if (_is_reserved_special_kind(room_kind) and req_kind != room_kind
-            and not room["subject_required"]):
+    home_room = lesson.get("home_room") or ""
+    named = bool(home_room) and room["name"] == home_room
+    reserved = room_kind in (reserved_kinds or ())
+    if ((_is_reserved_special_kind(room_kind) or reserved)
+            and req_kind != room_kind
+            and not room["subject_required"]
+            and not named):
         return False
     # HARD aula base: la lezione porta `home_room` quando la classe ha
     # il preset 'fissa' (o una riga 'enforced'), e allora nessun'altra
@@ -177,7 +201,6 @@ def _can_host(room: dict, lesson: dict) -> bool:
     # palestra, perche' Scienze motorie chiederebbe insieme l'aula base
     # e un'aula di tipo palestra. Le due regole vivono su assi diversi
     # -- la materia vince sulla classe.
-    home_room = lesson.get("home_room") or ""
     if home_room and not req_kind and room["name"] != home_room:
         return False
     # HARD capacity: room.capacity >= class.n_students. Skipped silently
@@ -188,7 +211,8 @@ def _can_host(room: dict, lesson: dict) -> bool:
     return True
 
 
-def _no_room_reason(rooms: list[dict], lesson: dict) -> str:
+def _no_room_reason(rooms: list[dict], lesson: dict,
+                    reserved_kinds: frozenset[str] | None = None) -> str:
     """Human diagnostic for a lesson that ``_can_host`` rejects in EVERY
     room: the single most actionable cause, CAPACITY first because it is the
     silent one -- a room smaller than the class is HARD-ineligible and would
@@ -199,7 +223,8 @@ def _no_room_reason(rooms: list[dict], lesson: dict) -> str:
     # Rooms that pass EVERY check except capacity (n_students bypassed): if
     # some exist but all are smaller than the class, capacity is the cause.
     kind_ok = [r for r in rooms
-               if _can_host(r, {**lesson, "n_students": 0})]
+               if _can_host(r, {**lesson, "n_students": 0},
+                            reserved_kinds)]
     if n_stud > 0 and kind_ok:
         biggest = max((int(r.get("capacity", 0) or 0) for r in kind_ok),
                       default=0)
@@ -278,6 +303,151 @@ def compresenza_map(lessons: list[dict]) -> dict[tuple, tuple]:
     return riders
 
 
+def preset_alternativa_path() -> Path:
+    """Percorso del dato. Il nome del file e' il dato, non una regola."""
+    return (Path(__file__).resolve().parents[1]
+            / "data" / "preset_alternativa.json")
+
+
+def load_preset_alternativa(path: Path | None = None) -> dict | None:
+    """Legge il preset. Assente, spento o illeggibile -> None.
+
+    None significa: il passo aule resta quello di oggi. Il chiamante
+    non deve indovinare un'aula ne' un gruppo.
+    """
+    p = preset_alternativa_path() if path is None else path
+    if not p.is_file():
+        return None
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(data, dict) or not data.get("attivo"):
+        return None
+    return data
+
+
+def _norm_token(value: str) -> str:
+    return "".join(ch for ch in (value or "").casefold() if ch.isalnum())
+
+
+def _selected_mode(preset: dict) -> dict | None:
+    modes = [m for m in (preset.get("modalita") or [])
+             if isinstance(m, dict)]
+    chosen = preset.get("modalita_scelta")
+    by_id = {m.get("id"): m for m in modes}
+    if chosen and chosen in by_id:
+        return by_id[chosen]
+    selected = [m for m in modes if m.get("selezionata")]
+    return selected[0] if len(selected) == 1 else None
+
+
+def _resolve_preset(preset: dict | None | bool) -> dict | None:
+    """None legge il file. False e' il file assente. Un dict e' il dato."""
+    if preset is False:
+        return None
+    if isinstance(preset, dict):
+        return preset if preset.get("attivo") else None
+    return load_preset_alternativa()
+
+
+def _slot_of(lesson: dict) -> tuple:
+    return (lesson.get("class"), int(lesson["day"]), int(lesson["hour"]))
+
+
+def stamp_preset_rooms(
+    lessons: list[dict],
+    preset: dict | None,
+) -> tuple[list[dict], frozenset[str]]:
+    """Applica la modalita' scelta alle lezioni in simultanea con l'ancora.
+
+    L'ancora e' la materia ``in_simultanea_con`` del dato. Il gruppo e'
+    chi condivide (classe, giorno, ora) con lei e non e' lei, e non e'
+    una compresenza (``shares_room``): lo sdoppiamento e' gia' il
+    parallel group, qui si sceglie solo l'aula.
+
+    Ritorna ``(lezioni, kind_riservati)``. Se non c'e' niente da
+    applicare, la lista in ingresso resta la stessa -- i dict del
+    chiamante non si mutano.
+    """
+    if not preset or not preset.get("attivo"):
+        return lessons, frozenset()
+    mode = _selected_mode(preset)
+    anchor = str(preset.get("in_simultanea_con") or "").strip()
+    if not mode or not anchor:
+        return lessons, frozenset()
+    anchor_n = _norm_token(anchor)
+    slots = {
+        _slot_of(L) for L in lessons
+        if _norm_token(str(L.get("subject") or "")) == anchor_n
+    }
+    if not slots:
+        return lessons, frozenset()
+    req = str(mode.get("required_kind") or "").strip()
+    home = str(mode.get("home_room") or "").strip()
+    mode_id = str(mode.get("id") or "")
+    # Aula fissa senza il nome della stanza: come 'fissa' senza aula
+    # base, si segnala e non si tocca il pin di classe. L'id e' la
+    # chiave del dato, non un'aula.
+    if not req and not home and mode_id == "aula_fissa":
+        print(f"[classroom] preset {preset.get('key')}: modalita "
+              f"{mode_id} senza stanza nominata, nessun effetto")
+        return lessons, frozenset()
+    out: list[dict] = []
+    n = 0
+    for L in lessons:
+        is_group = (
+            _slot_of(L) in slots
+            and _norm_token(str(L.get("subject") or "")) != anchor_n
+            and not L.get("shares_room")
+        )
+        if not is_group:
+            out.append(L)
+            continue
+        stamped = dict(L)
+        if req:
+            stamped["required_kind"] = req
+        elif home:
+            stamped["home_room"] = home
+            stamped["required_kind"] = ""
+        else:
+            # Aule libere: nessun kind e nessun pin di classe.
+            stamped["home_room"] = ""
+            stamped["required_kind"] = ""
+        out.append(stamped)
+        n += 1
+    if not n:
+        return lessons, frozenset()
+    if req:
+        come = "kind del dato"
+    elif home:
+        come = "aula nominata nel dato"
+    else:
+        come = "aule libere"
+    print(f"[classroom] preset {preset.get('key')}: {n} lezioni in "
+          f"simultanea con la materia del dato, modalita={mode_id} "
+          f"({come})")
+    return out, (frozenset({req}) if req else frozenset())
+
+
+def _stamp_cells(
+    cell_lessons: dict[tuple, dict],
+    preset: dict | None | bool,
+) -> tuple[dict[tuple, dict], frozenset[str]]:
+    """Stessa regola di ``stamp_preset_rooms``, sulle celle del joint."""
+    order = list(cell_lessons)
+    items = []
+    for cell in order:
+        row = dict(cell_lessons[cell])
+        row["class"] = cell[0]
+        row["subject"] = cell[1]
+        row["day"] = cell[2]
+        row["hour"] = cell[3]
+        items.append(row)
+    stamped, reserved = stamp_preset_rooms(items, _resolve_preset(preset))
+    return {cell: row for cell, row in zip(order, stamped)}, reserved
+
+
 def solve_classroom_assignment(
     lessons: list[dict],
     classrooms: list[dict],
@@ -289,6 +459,7 @@ def solve_classroom_assignment(
     locked_classrooms: list[tuple] | None = None,
     plessi_data=None,
     allow_unplaced: bool = True,
+    preset: dict | None | bool = None,
 ) -> tuple[dict | None, str]:
     """Returns (mapping, status_name). mapping is None if infeasible.
 
@@ -313,6 +484,11 @@ def solve_classroom_assignment(
     greedy on capacity shortage. Set it False to recover the old
     all-or-nothing behaviour (an over-subscribed slot returns None).
 
+    ``preset``: None legge ``data/preset_alternativa.json``; False e'
+    il file assente (nessun effetto); un dict e' il dato gia' letto.
+    La modalita' scelta vale solo per chi e' in simultanea con la
+    materia del dato. Non sposta lo slot: il parallel group resta.
+
     Two failure modes, deliberately kept distinct because they need
     opposite remediations from the school:
     - **no eligible room at all** (structural: a `required_kind` no room
@@ -327,6 +503,8 @@ def solve_classroom_assignment(
         return {}, "OPTIMAL"
     if not classrooms:
         return None, "NO_CLASSROOMS"
+    lessons, reserved_kinds = stamp_preset_rooms(
+        lessons, _resolve_preset(preset))
 
     soft = dict(soft_weights or {})
     soft.setdefault("home_bonus", 20.0)
@@ -378,7 +556,7 @@ def solve_classroom_assignment(
         if key in eligible or key in riders:
             continue
         elig = [r["name"] for r in rooms
-                if _can_host(r, L)]
+                if _can_host(r, L, reserved_kinds)]
         eligible[key] = elig
 
     no_room_keys = [k for k, v in eligible.items() if not v]
@@ -399,7 +577,7 @@ def solve_classroom_assignment(
         for k in no_room_keys[:10]:
             _Lk = _first_by_key.get(k)
             cl_k, subj_k, d_k, h_k = k
-            reason = (_no_room_reason(rooms, _Lk) if _Lk
+            reason = (_no_room_reason(rooms, _Lk, reserved_kinds) if _Lk
                       else "lezione non trovata")
             print(f"[classroom] NESSUNA AULA per {cl_k}/{subj_k} "
                   f"g{d_k}o{h_k} -> {reason}")
@@ -685,6 +863,7 @@ def add_joint_room_vars(
     want_room_pref: bool = True,
     want_overflow: bool = True,
     want_plessi: bool = True,
+    preset: dict | None | bool = None,
 ) -> tuple[dict, list, dict]:
     r"""Fonde l'assegnazione delle aule dentro un modello di orario GIA'
     esistente -- il modello *joint* (giorno, ora, aula) in un solo solve.
@@ -718,6 +897,7 @@ def add_joint_room_vars(
 
     rooms = [_normalize_classroom(r) for r in classrooms]
     room_by_name = {r["name"]: r for r in rooms}
+    cell_lessons, reserved_kinds = _stamp_cells(cell_lessons, preset)
 
     # HARD eligibility per cella; una cella senza aule ammissibili non puo'
     # mai essere occupata -> forziamo occ == 0 (vincolo joint: non
@@ -725,7 +905,7 @@ def add_joint_room_vars(
     eligible: dict[tuple, list[str]] = {}
     no_room_cells: list[tuple] = []
     for cell, L in cell_lessons.items():
-        elig = [r["name"] for r in rooms if _can_host(r, L)]
+        elig = [r["name"] for r in rooms if _can_host(r, L, reserved_kinds)]
         # Pruning: restrict an ORDINARY lesson to its class' candidate pool
         # (home + a few alternates in-plesso) so the model does not carry a
         # var per (cell, every interchangeable room). Special-kind lessons
@@ -957,6 +1137,7 @@ def greedy_classroom_assignment(
     prefer_home: bool = True,
     locked_classrooms: list[tuple] | None = None,
     plessi_data=None,
+    preset: dict | None | bool = None,
 ) -> dict:
     r"""Fallback greedy: per slot, prefer the lesson's home room if free.
     Used when CP-SAT is unnecessary or as a warm start.
@@ -985,6 +1166,8 @@ def greedy_classroom_assignment(
     funzione e' una rete di sicurezza per quando il modello esatto non
     conclude, non un suo sostituto.
     """
+    lessons, reserved_kinds = stamp_preset_rooms(
+        lessons, _resolve_preset(preset))
     rooms = [_normalize_classroom(r) for r in classrooms]
     out: dict = {}
     busy: dict[tuple[str, int, int], int] = defaultdict(int)
@@ -1038,7 +1221,7 @@ def greedy_classroom_assignment(
             continue
         L = by_key[key]
         cl, subj, d, h = key
-        candidates = [r for r in rooms if _can_host(r, L)]
+        candidates = [r for r in rooms if _can_host(r, L, reserved_kinds)]
         pin = _pinned_plesso(L, cl)
         if pin is not None:
             hard = [r for r in candidates
