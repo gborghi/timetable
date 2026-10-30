@@ -1614,6 +1614,141 @@ class _ProgressCallback(cp_model.CpSolverSolutionCallback):
             pass
 
 
+def _stored_objective_weights():
+    """Pesi già sulle righe di ``models.py``.
+
+    ``None`` se il DB non si legge: resta il default già selezionato
+    dal motore. Non si introducono numeri nuovi.
+    """
+    try:
+        with SessionLocal() as db:
+            teachers = {
+                t.name: (
+                    t.pref_no_buchi_weight,
+                    t.pref_no_five_weight,
+                    t.pref_no_one_weight,
+                )
+                for t in db.query(models.Teacher).all()
+            }
+            subjects = {
+                s.name: s.distribute_days_weight
+                for s in db.query(models.Subject).all()
+            }
+        return teachers, subjects
+    except Exception:  # noqa: BLE001 - default del motore se il DB non c'è
+        return None
+
+
+def _objective_scale():
+    """Scala unica già in codice. Nessun numero nuovo."""
+    try:
+        import metaheuristics as meta  # type: ignore
+        from engine import cp_sat_constraint_model as csm  # type: ignore
+    except ImportError:
+        import metaheuristics as meta  # type: ignore
+        import cp_sat_constraint_model as csm  # type: ignore
+    return meta.OBJECTIVE_WEIGHTS, int(csm.SCALE)
+
+
+def _weight_coef(stored, scale: int) -> int | None:
+    """Coefficiente intero ``peso * SCALE``. ``None`` se il peso non c'è."""
+    if stored is None:
+        return None
+    return int(round(float(stored) * scale))
+
+
+def _var_named(model, by_name: dict, name: str):
+    index = by_name.get(name)
+    if index is None:
+        return None
+    if hasattr(model, "GetIntVarFromProtoIndex"):
+        return model.GetIntVarFromProtoIndex(index)
+    return None
+
+
+def _ui_weight_objective_terms(solver, *, exclude=None) -> list:
+    """I quattro pesi già in ``models.py`` entrano nell'obiettivo.
+
+    Il motore ha già messo il default (stessi numeri delle colonne,
+    per ``SCALE``). Se la riga è quel default, non si aggiunge nulla:
+    l'obiettivo non cambia. Peso 0 annulla il termine del motore, quindi
+    non entra. Un altro valore sostituisce il default, sulla stessa
+    scala. ``distribute_days_weight`` non ha un termine nel motore: a
+    0 resta spento; se è diverso da 0 penalizza le ore oltre la prima
+    nello stesso giorno (stessa scala), senza vincolare gli slot.
+    """
+    stored = _stored_objective_weights()
+    if stored is None:
+        return []
+    teachers, subjects = stored
+    exclude = set(exclude or ())
+    weights, scale = _objective_scale()
+    model = solver.model
+    by_name = {
+        var.name: i
+        for i, var in enumerate(model.Proto().variables)
+        if var.name
+    }
+    terms: list = []
+    pieces = []
+    if "buchi" not in exclude:
+        pieces.append(("buchi", "bch_{t}_{d}", 0))
+    if "day_load" not in exclude:
+        pieces.append(("five", "5_{t}_{d}", 1))
+        pieces.append(("one", "1_{t}_{d}", 2))
+    for teacher, row in teachers.items():
+        for key, fmt, idx in pieces:
+            want = _weight_coef(row[idx], scale)
+            if want is None:
+                continue
+            have = int(weights[key]) * scale
+            delta = want - have
+            if delta == 0:
+                continue
+            for day in solver.days:
+                var = _var_named(
+                    model, by_name, fmt.format(t=teacher, d=day))
+                if var is not None:
+                    terms.append(delta * var)
+    if subjects:
+        terms.extend(_distribute_days_terms(
+            solver, subjects, scale, by_name))
+    return terms
+
+
+def _distribute_days_terms(solver, subjects, scale: int, by_name: dict) -> list:
+    """``distribute_days_weight`` sulla scala unica. 0 non entra."""
+    del by_name  # gli indicatori di questo termine sono nuovi, non del motore
+    terms: list = []
+    model = solver.model
+    hours = list(solver.hours)
+    seq = 0
+    for teacher, pdata in (getattr(solver, "profs", None) or {}).items():
+        classi = (pdata or {}).get("classi") or {}
+        for class_name, subjs in classi.items():
+            for subject in subjs or ():
+                coef = _weight_coef(subjects.get(subject), scale)
+                if coef is None or coef == 0:
+                    continue
+                for day in solver.days:
+                    vs = [
+                        solver.slot.get((teacher, class_name, subject, day, h))
+                        for h in hours
+                    ]
+                    vs = [v for v in vs if v is not None]
+                    if len(vs) < 2:
+                        continue
+                    seq += 1
+                    over = model.NewBoolVar(f"ddo_{seq}")
+                    model.Add(sum(vs) >= 2).OnlyEnforceIf(over)
+                    model.Add(sum(vs) <= 1).OnlyEnforceIf(over.Not())
+                    extra = model.NewIntVar(0, len(vs) - 1, f"ddx_{seq}")
+                    model.Add(extra == sum(vs) - 1).OnlyEnforceIf(over)
+                    model.Add(extra == 0).OnlyEnforceIf(over.Not())
+                    terms.append(coef * extra)
+    return terms
+
+
 def _week_objective_terms(solver, *, exclude=None) -> list:
     """Objective terms of the week-scope solve: the canonical soft cost
     (``compute_soft_cost_expr(mode="default")``) PLUS the SOFT DSL rules
@@ -1626,12 +1761,16 @@ def _week_objective_terms(solver, *, exclude=None) -> list:
     (review Kepler #2). Same weighting as ``MonolithicSolver.build``
     (``dsl_soft_objective_terms``: clamp + DSL_SCALE) so both week-scope entry points share one
     objective.
+
+    I pesi già in ``models.py`` correggono questo obiettivo sulla stessa
+    scala. Al default di colonna il delta è 0.
     """
     obj_terms, _ = solver.compute_soft_cost_expr(
         mode="default", exclude=exclude)
     obj_terms = list(obj_terms)
     obj_terms.extend(solver.dsl_soft_objective_terms())
     obj_terms.extend(solver.miss_objective_terms())
+    obj_terms.extend(_ui_weight_objective_terms(solver, exclude=exclude))
     return obj_terms
 
 
