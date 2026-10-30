@@ -110,7 +110,7 @@ describe('Tab Optimize advanced techniques', () => {
         expect(body.n_samples).to.eq(128);
         expect(body.sync).to.eq(true);
       });
-      cy.contains(/Feasible \(Hall OK\)/i).should('be.visible');
+      cy.contains(/Fattibile \(Hall ok\)/i).should('be.visible');
     });
 
     it('renders violations when the report flags them', () => {
@@ -124,7 +124,7 @@ describe('Tab Optimize advanced techniques', () => {
         },
       });
       cy.get('[data-testid="adv-hall-run"]').click();
-      cy.contains(/INFEASIBILE/).should('be.visible');
+      cy.contains(/non fattibile/i).should('be.visible');
       cy.contains('Materia X: 0 docenti qualificati')
         .should('be.visible');
     });

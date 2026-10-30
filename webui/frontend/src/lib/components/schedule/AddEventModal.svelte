@@ -221,7 +221,7 @@
   }
 </script>
 
-<Modal {open} title="Nuovo evento (Monitor)" {onClose}>
+<Modal {open} title="Nuovo evento" {onClose}>
   <div class="space-y-3">
     <p class="text-xs text-ink-500">
       Un evento è una singola occorrenza in uno slot giorno/ora. Se

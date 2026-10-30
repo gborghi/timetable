@@ -568,10 +568,10 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
       {/if}
       <div class="ml-auto flex gap-2 items-end">
         <div class="field !mb-0">
-          <label for="routes-diagnostics-f4" class="!text-[11px]">Mode</label>
+          <label for="routes-diagnostics-f4" class="!text-[11px]">Modalità</label>
           <select id="routes-diagnostics-f4" bind:value={bpMode}>
-            <option value="classes">classes (nodi=classi)</option>
-            <option value="teachers">teachers (nodi=docenti)</option>
+            <option value="classes">Classi (nodi)</option>
+            <option value="teachers">Docenti (nodi)</option>
           </select>
         </div>
         <button class="btn-primary !text-xs" on:click={runBp}
@@ -701,7 +701,7 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
           <thead>
             <tr>
               <th>Tipo</th>
-              <th>Scope</th>
+              <th>Ambito</th>
               <th>x (predittore)</th>
               <th>y (dipendente)</th>
               <th>Etichetta (opzionale)</th>

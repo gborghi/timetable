@@ -169,7 +169,7 @@
   <!-- Time / workers params -->
   <div class="grid grid-cols-2 gap-3">
     <div class="field">
-      <label for="lib-components-optimize-phaseacard-f1">Time-limit (s)</label>
+      <label for="lib-components-optimize-phaseacard-f1">Tempo limite (s)</label>
       <input id="lib-components-optimize-phaseacard-f1" type="number" bind:value={time_limit_s} min="1" />
     </div>
     <div class="field">
@@ -339,7 +339,7 @@
     {#if hallReport}
       <div class="mt-2 text-xs">
         <div class={hallReport.ok ? "text-emerald-700" : "text-rose-700"}>
-          <strong>{hallReport.ok ? "Fattibile (Hall ok)" : "INFEASIBILE"}</strong>
+          <strong>{hallReport.ok ? "Fattibile (Hall ok)" : "non fattibile"}</strong>
           - {hallReport.n_classes} classi, {hallReport.n_teachers} docenti
           - domanda {hallReport.stats.total_demand_hours}h / supply
           {hallReport.stats.total_supply_hours}h

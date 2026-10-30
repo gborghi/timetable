@@ -188,7 +188,7 @@
 
 <section class="card p-5">
   <div class="flex items-baseline gap-3 flex-wrap">
-    <h2>Import / Export vincoli</h2>
+    <h2>Importa / Esporta vincoli</h2>
     <span class="text-xs text-ink-500 max-w-2xl">
       Carica un dataset di stress preconfezionato, importa un file
       JSON / xlsx custom, oppure esporta i vincoli correnti per
@@ -311,7 +311,7 @@
   <div class="mt-4 grid md:grid-cols-2 gap-4">
     <!-- Export -->
     <div class="card !shadow-none p-3 bg-ink-50/40 space-y-2">
-      <h3 class="!text-base">Export</h3>
+      <h3 class="!text-base">Esporta</h3>
       <div class="flex flex-wrap gap-2">
         <button class="btn-primary !text-sm"
                 on:click={() => downloadExport('json')}>
@@ -330,10 +330,11 @@
 
     <!-- Wipe -->
     <div class="card !shadow-none p-3 bg-red-50/40 space-y-2 border-red-200">
-      <h3 class="!text-base text-red-900">Wipe</h3>
+      <h3 class="!text-base text-red-900">Cancella</h3>
       <p class="text-[11px] text-red-800">
-        Cancella tutti i vincoli (logical, matrix, coteach, room
-        preferences). Utile per ricominciare da zero un esperimento.
+        Cancella tutti i vincoli (indisponibilità logiche, vincoli di
+        curriculum, indisponibilità di docenti/classi/aule, compresenze
+        e preferenze aula). Utile per ricominciare da zero un esperimento.
         Doppia conferma richiesta.
       </p>
       <button class="btn-danger !text-sm"

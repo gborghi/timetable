@@ -343,7 +343,7 @@
         <tr class="border-b border-ink-200">
           <th class="text-left py-1">Da</th>
           <th class="text-left py-1">A</th>
-          <th class="text-left py-1">Kind</th>
+          <th class="text-left py-1">Tipo</th>
           <th class="text-left py-1">Entit&agrave;</th>
           <th class="text-right py-1">Gap</th>
           <th class="text-left py-1">Solo ricreazione</th>
@@ -356,7 +356,7 @@
           <tr class="border-b border-ink-100">
             <td class="py-1 font-mono">{plessoNameOf(r.from_plesso_id)}</td>
             <td class="py-1 font-mono">{plessoNameOf(r.to_plesso_id)}</td>
-            <td class="py-1">{r.entity_kind}</td>
+            <td class="py-1">{r.entity_kind === 'teacher' ? 'Docenti' : r.entity_kind === 'class' ? 'Classi' : r.entity_kind === 'group' ? 'Gruppi' : r.entity_kind}</td>
             <td class="py-1">{entityNameOf(r.entity_kind, r.entity_id)}</td>
             <td class="py-1 text-right">{r.min_gap_hours}</td>
             <td class="py-1">
@@ -404,11 +404,11 @@
             </select>
           </label>
           <label class="field">
-            <span class="text-xs">Entit&agrave; kind</span>
+            <span class="text-xs">Tipo entità</span>
             <select bind:value={editingRule.entity_kind} class="w-full">
-              <option value="teacher">teacher</option>
-              <option value="class">class</option>
-              <option value="group">group</option>
+              <option value="teacher">Docenti</option>
+              <option value="class">Classi</option>
+              <option value="group">Gruppi</option>
             </select>
           </label>
           <label class="field col-span-2">
@@ -495,7 +495,7 @@
     <table class="w-full text-sm">
       <thead>
         <tr class="border-b border-ink-200">
-          <th class="text-left py-1">Kind</th>
+          <th class="text-left py-1">Tipo</th>
           <th class="text-left py-1">Entit&agrave;</th>
           <th class="text-left py-1">Policy</th>
           <th class="text-left py-1">Plesso fissato</th>
@@ -506,7 +506,7 @@
       <tbody>
         {#each filteredPolicies as p}
           <tr class="border-b border-ink-100">
-            <td class="py-1">{p.entity_kind}</td>
+            <td class="py-1">{p.entity_kind === 'teacher' ? 'Docenti' : p.entity_kind === 'class' ? 'Classi' : p.entity_kind}</td>
             <td class="py-1">{entityNameOf(p.entity_kind, p.entity_id)}</td>
             <td class="py-1 font-mono">{p.policy}</td>
             <td class="py-1">
@@ -534,10 +534,10 @@
       <div class="border border-accent-300 bg-accent-50 rounded p-3 space-y-2">
         <div class="grid grid-cols-3 gap-2">
           <label class="field">
-            <span class="text-xs">Entit&agrave; kind</span>
+            <span class="text-xs">Tipo entità</span>
             <select bind:value={editingPolicy.entity_kind} class="w-full">
-              <option value="teacher">teacher</option>
-              <option value="class">class</option>
+              <option value="teacher">Docenti</option>
+              <option value="class">Classi</option>
             </select>
           </label>
           <label class="field col-span-2">

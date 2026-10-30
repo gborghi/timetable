@@ -527,7 +527,7 @@
       <div class="mt-3 p-3 rounded border border-ink-200 bg-ink-50/40 space-y-3">
         <p class="text-xs font-medium">Solver CP-SAT (avanzato)</p>
         <div class="field">
-          <label for="routes-optimize-f13" use:tooltip={"Come il solver affronta la settimana. Per giorno: risolve un giorno alla volta (veloce, scalabile, default). Settimana intera: un unico modello CP-SAT su tutta la settimana, più robusto con compresenze/sostegno/gruppi ma più lento."}>Scope del solver CP-SAT</label>
+          <label for="routes-optimize-f13" use:tooltip={"Come il solver affronta la settimana. Per giorno: risolve un giorno alla volta (veloce, scalabile, default). Settimana intera: un unico modello CP-SAT su tutta la settimana, più robusto con compresenze/sostegno/gruppi ma più lento."}>Ambito del solver CP-SAT</label>
           <select id="routes-optimize-f13" bind:value={step3.cp_sat_scope}
                   on:change={coercePhaseAModeForScope}
                   data-testid="optimize-cp-sat-scope">
@@ -658,7 +658,7 @@
         </p>
         <div class="grid grid-cols-2 gap-3">
           <div class="field">
-            <label for="routes-optimize-f14">Time-limit aule (s)</label>
+            <label for="routes-optimize-f14">Tempo limite aule (s)</label>
             <input id="routes-optimize-f14" type="number" bind:value={step3.rooms_time_limit_s}
                    disabled={!step3.optimize_rooms}/>
           </div>
@@ -783,7 +783,7 @@
         </p>
         <div class="grid grid-cols-2 gap-3">
           <div class="field">
-            <label for="routes-optimize-f22">Time-limit aule (s)</label>
+            <label for="routes-optimize-f22">Tempo limite aule (s)</label>
             <input id="routes-optimize-f22" type="number" bind:value={step4.rooms_time_limit_s}
                    disabled={!step4.optimize_rooms}/>
           </div>
@@ -814,7 +814,7 @@
     <div class="card p-5">
       <h2 class="mb-3">8) Assegna aule</h2>
       <div class="grid grid-cols-2 gap-3">
-        <div class="field"><label for="routes-optimize-f23">Time-limit (s)</label><input id="routes-optimize-f23" type="number" bind:value={stepRooms.time_limit_s}/></div>
+        <div class="field"><label for="routes-optimize-f23">Tempo limite (s)</label><input id="routes-optimize-f23" type="number" bind:value={stepRooms.time_limit_s}/></div>
         <div class="field"><label for="routes-optimize-f24">Workers</label><input id="routes-optimize-f24" type="number" bind:value={stepRooms.workers}/></div>
         <label class="flex gap-2 text-sm col-span-2"><input type="checkbox" bind:checked={stepRooms.prefer_home}/> Preferisci aula della classe</label>
       </div>
@@ -1067,7 +1067,7 @@
       <table class="tbl">
         <thead>
           <tr>
-            <th>#</th><th>Tipo</th><th>Stato</th><th>Obj</th>
+            <th>#</th><th>Tipo</th><th>Stato</th><th>Obiettivo</th>
             <th>Metriche</th><th>Avviato</th><th>Durata</th><th>Sol.</th><th></th>
           </tr>
         </thead>

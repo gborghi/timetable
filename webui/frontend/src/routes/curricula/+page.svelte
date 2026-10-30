@@ -247,11 +247,11 @@
   {#if editing}
     <div class="grid grid-cols-2 gap-3" data-testid="curriculum-form">
       <div class="field">
-        <label for="routes-curricula-f1">Code (machine name, unique)</label>
+        <label for="routes-curricula-f1">Codice</label>
         <input id="routes-curricula-f1" bind:value={editing.code} data-testid="curriculum-code-input"/>
       </div>
       <div class="field">
-        <label for="routes-curricula-f2">Nome (display)</label>
+        <label for="routes-curricula-f2">Nome</label>
         <input id="routes-curricula-f2" bind:value={editing.name} data-testid="curriculum-name-input"/>
       </div>
       <div class="field">

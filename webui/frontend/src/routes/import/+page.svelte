@@ -176,7 +176,7 @@
                 disabled={!selectedFile}
                 onclick={() => runImport(true)}
                 title="Simula l'import senza scrivere nulla: vedi quante righe verrebbero inserite/aggiornate e gli eventuali errori.">
-          Anteprima (dry-run)
+          Anteprima
         </Button>
         <Button variant="primary" class="flex-1"
                 loading={busy && !lastWasDry}
@@ -194,7 +194,7 @@
       {#if lastWasDry}
         <div class="mt-2 text-xs rounded bg-amber-50 border border-amber-200
                     px-3 py-2 text-amber-800">
-          <strong>Anteprima (dry-run)</strong>: nessuna riga è stata scritta.
+          <strong>Anteprima</strong>: nessuna riga è stata scritta.
           Premi <strong>Importa</strong> per applicare le modifiche.
         </div>
       {/if}

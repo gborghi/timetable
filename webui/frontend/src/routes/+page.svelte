@@ -142,7 +142,7 @@
     if (!(await confirmDialog(
       'Cancella TUTTO il database: classi, docenti, aule, cattedre, '
       + 'vincoli e soluzioni. L\'operazione non è reversibile.',
-      { title: 'Reset del database', confirmLabel: 'Cancella tutto' }))) return;
+      { title: 'Cancella tutto', confirmLabel: 'Cancella tutto' }))) return;
     try {
       await api.post('/api/dataset/clear?scope=all');
       await refreshDataset();
@@ -481,7 +481,7 @@
     <Panel id="zona-pericolosa" tone="danger" title="Zona pericolosa"
            subtitle="operazioni non reversibili">
       <div class="flex flex-wrap items-center gap-3">
-        <button class="btn-danger" on:click={clearAll}>Reset DB</button>
+        <button class="btn-danger" on:click={clearAll}>Cancella tutto</button>
         <span class="text-[11.5px] text-ink-500">
           Cancella classi, docenti, aule, cattedre, vincoli e soluzioni.
           Fai prima un backup dal pannello qui sopra.

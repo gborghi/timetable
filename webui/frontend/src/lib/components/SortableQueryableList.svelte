@@ -369,12 +369,12 @@
     <button class="btn !text-xs" on:click={resetQuery}
             disabled={!q}
             title="Svuota la barra di ricerca, mostra tutti i risultati">
-      Reset query
+      Svuota
     </button>
     <button class="btn !text-xs" on:click={resetSort}
             disabled={sortLevels.length === 0}
             title="Torna all'ordine originale">
-      Reset sort
+      Torna all'ordine originale
     </button>
     {#if entity}
       <span class="border-l border-ink-200 h-5 mx-1" aria-hidden="true"></span>
@@ -541,11 +541,11 @@
         </div>
       {/if}
       <div class="text-ink-500">
-        <strong>Sort multi-livello:</strong>
+        <strong>Ordinamento multi-livello:</strong>
         doppio click sul nome di una colonna per aggiungerla / rimuoverla
-        dal sort (max {MAX_SORT_LEVELS} livelli);
+        dall'ordinamento (max {MAX_SORT_LEVELS} livelli);
         click sulla freccia ▲/▼ per invertire direzione.
-        "Reset sort" toglie tutti i livelli.
+        «Torna all'ordine originale» toglie tutti i livelli.
       </div>
     </div>
   {/if}
@@ -570,7 +570,7 @@
               {#if col.sortable !== false && col.key}
                 <span class="inline-flex items-center gap-1">
                   <button class="hover:text-ink-900 select-none"
-                          title="Doppio click per aggiungere/rimuovere dal sort"
+                          title="Doppio click per aggiungere/rimuovere dall'ordinamento"
                           on:dblclick={() => onLabelDblClick(col.key)}>
                     {col.label}
                   </button>
@@ -583,7 +583,7 @@
                     {#if sortLevels.length > 1}
                       <span class="text-[9px] bg-accent-500 text-white rounded-full
                                    w-4 h-4 inline-flex items-center justify-center font-mono"
-                            title="Livello di sort">
+                            title="Livello di ordinamento">
                         {idx + 1}
                       </span>
                     {/if}

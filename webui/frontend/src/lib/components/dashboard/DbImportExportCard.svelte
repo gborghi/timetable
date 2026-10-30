@@ -122,7 +122,7 @@
 
 <section class="card p-5" data-testid="db-import-export-card">
   <div class="flex items-baseline gap-3 flex-wrap">
-    <h2>Import / Export database</h2>
+    <h2>Importa / Esporta database</h2>
     <span class="text-xs text-ink-500 max-w-2xl">
       Esporta tutto lo stato del DB in un file .zip (raw SQLite +
       CSV per tabella + metadata.json) o caricane uno per
@@ -133,7 +133,7 @@
 
   <div class="mt-4 grid md:grid-cols-2 gap-4">
     <div class="card !shadow-none p-3 bg-ink-50/40 space-y-2">
-      <h3 class="!text-base">Export</h3>
+      <h3 class="!text-base">Esporta</h3>
       <div class="flex flex-wrap gap-2 items-center">
         <button class="btn-primary" on:click={() => downloadExport(false)}>
           Esporta DB completo
@@ -151,7 +151,7 @@
     </div>
 
     <div class="card !shadow-none p-3 bg-ink-50/40 space-y-2">
-      <h3 class="!text-base">Import</h3>
+      <h3 class="!text-base">Importa</h3>
       <input type="file" accept=".zip"
              bind:this={importInput}
              on:change={importFile}
