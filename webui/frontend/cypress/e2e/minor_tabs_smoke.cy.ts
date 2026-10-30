@@ -19,8 +19,8 @@ const TABS = [
   { path: '/assignments', heading: /Cattedre/i },
   { path: '/coteaching',  heading: /Compresenze/i },
   { path: '/schedule',    heading: /Orario/i },
-  { path: '/import',      heading: /Import bulk/i },
-  { path: '/runs',        heading: /Runs/i },
+  { path: '/import',      heading: /Importa/i },
+  { path: '/runs',        heading: /Esecuzioni/i },
 ];
 
 describe('Minor-tabs smoke', () => {

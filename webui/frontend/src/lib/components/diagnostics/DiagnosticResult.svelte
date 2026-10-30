@@ -39,14 +39,14 @@
 
   // ---- Monte Carlo ----
   $: mcOption = (kind === 'diag_montecarlo' && result && result.ok) ? {
-    title: { text: 'SOFT - distribuzione Monte Carlo' },
+    title: { text: 'Penalità — distribuzione Monte Carlo' },
     tooltip: { trigger: 'axis' },
     xAxis: {
       type: 'category',
       data: (result.samples || []).map((_, i) => i + 1),
       name: 'sample',
     },
-    yAxis: { type: 'value', name: 'SOFT' },
+    yAxis: { type: 'value', name: 'Penalità' },
     series: [{
       type: 'bar',
       data: result.samples,
@@ -121,7 +121,7 @@
 {:else if kind === 'diag_hall'}
   <div class="text-sm">
     <div class={result.ok ? 'text-emerald-700' : 'text-rose-700'}>
-      <strong>{result.ok ? 'Feasible (Hall OK)' : 'INFEASIBILE'}</strong>
+      <strong>{result.ok ? 'Fattibile (Hall ok)' : 'INFEASIBILE'}</strong>
       - {result.n_classes} classi, {result.n_teachers} docenti
       - domanda {result.stats?.total_demand_hours}h / supply
       {result.stats?.total_supply_hours}h

@@ -235,7 +235,7 @@
     teacher_cell: 'Cella docente',
     class_cell: 'Cella classe',
     room_cell: 'Cella aula',
-    matrix_hard_enforced: 'Matrice (HARD)',
+    matrix_hard_enforced: 'Matrice (obbligatorio)',
     logical_teacher: 'Docente (logico)',
     logical_curriculum: 'Curricolo (logico)',
     logical_unsatisfiable: 'Insoddisfacibile (logico)',
@@ -284,7 +284,9 @@
       {#each LEGEND_LEVELS as lv}
         <span class="inline-flex items-center gap-1.5">
           <span class={LEVEL_PILL_CLASS[lv]}>{LEVEL_LABEL[lv]}</span>
-          <span class="text-[11px] text-ink-400">{LEVEL_GLOSS[lv]}</span>
+          {#if LEVEL_GLOSS[lv].toLowerCase() !== LEVEL_LABEL[lv].toLowerCase()}
+            <span class="text-[11px] text-ink-400">{LEVEL_GLOSS[lv]}</span>
+          {/if}
         </span>
       {/each}
     </svelte:fragment>
@@ -303,7 +305,7 @@
       </button>
       <button class="btn"
               on:click={() => (feasibilityOpen = !feasibilityOpen)}
-              title="Verifica se i vincoli HARD/ENFORCED sono compatibili tra loro; se non lo sono, individua il gruppo minimo in conflitto (analisi MUS)."
+              title="Verifica se i vincoli obbligatori e imposti sono compatibili tra loro; se non lo sono, individua il gruppo minimo in conflitto (analisi MUS).">
               data-testid="feasibility-toggle-btn">
         {feasibilityOpen ? 'Nascondi' : ''} Controllo fattibilità
       </button>

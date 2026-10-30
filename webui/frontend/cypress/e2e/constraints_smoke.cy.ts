@@ -47,7 +47,7 @@ describe('Tab Vincoli smoke', () => {
 
   it('"Feasibility Check" toggles the feasibility panel', () => {
     cy.get('[data-testid="feasibility-toggle-btn"]').click();
-    cy.contains(/Feasibility Check|MUS|HARD/i,
+    cy.contains(/Avvia check|fattibilità/i,
                 { timeout: 10000 }).should('be.visible');
     // Click again to hide.
     cy.get('[data-testid="feasibility-toggle-btn"]').click();

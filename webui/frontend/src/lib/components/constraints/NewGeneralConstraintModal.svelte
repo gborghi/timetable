@@ -119,7 +119,7 @@
        {onClose}>
   <div class="space-y-3">
     <p class="text-xs text-ink-500">
-      Esprimi un vincolo HARD/SOFT come combinazione logica di
+      Esprimi un vincolo obbligatorio o penalizzato come combinazione logica di
       predicati sul modello. Sintassi: <code>forall / exists / count
       ... in ... [where ...]: ...</code> con operatori
       <code>== != &lt; &lt;= &gt; &gt;= and or not =&gt;</code>. Sorgenti:
@@ -186,10 +186,10 @@
       <div class="field">
         <label for="lib-components-constraints-newgeneralconstraintmodal-f1">Livello</label>
         <select id="lib-components-constraints-newgeneralconstraintmodal-f1" bind:value={level} data-testid="dsl-level">
-          <option value="hard">🟥 HARD</option>
-          <option value="soft">🟨 SOFT (penalty)</option>
-          <option value="preferred">🟦 PREFERRED (bonus)</option>
-          <option value="enforced">🟩 ENFORCED</option>
+          <option value="hard">🟥 Obbligatorio</option>
+          <option value="soft">🟨 Penalizzato</option>
+          <option value="preferred">🟦 Preferenza</option>
+          <option value="enforced">🟩 Imposto</option>
         </select>
       </div>
       {#if level === 'soft' || level === 'preferred'}
@@ -207,9 +207,9 @@
     <div class="text-[10px] text-ink-500">
       Lo scope di questo vincolo: <strong>{scope}</strong>
       {#if ownerId} (owner_id={ownerId}){/if}.
-      Le violazioni HARD vengono evidenziate in
-      <em>Feasibility Check</em> e bloccate dal modello a runtime;
-      le SOFT contribuiscono allo score globale di Phase B.
+      Le violazioni obbligatorie vengono evidenziate in
+      <em>Controllo fattibilità</em> e bloccate dal modello a runtime;
+      le penalizzate contribuiscono allo score globale di Fase B.
     </div>
 
     <div class="flex justify-end gap-2 pt-3 border-t border-ink-100">

@@ -57,7 +57,7 @@ describe('/optimize Phase B Phase-3 dropdowns', () => {
       .parent()
       .find('select')
       .should('have.value', 'day');
-    cy.contains('Modalità Phase A')
+    cy.contains('Modalità Fase A')
       .parent()
       .find('select')
       .should('have.value', 'always');
@@ -66,7 +66,7 @@ describe('/optimize Phase B Phase-3 dropdowns', () => {
   it('default submit carries cp_sat_scope=day + phase_a_mode=always',
      () => {
        visitOptimize();
-       cy.contains('button', /Avvia Phase B/i).click();
+       cy.contains('button', /Avvia Fase B/i).click();
        cy.wait('@launchB').then((interception) => {
          const body = interception.request.body as Record<string, any>;
          expect(body.cp_sat_scope).to.eq('day');
@@ -83,11 +83,11 @@ describe('/optimize Phase B Phase-3 dropdowns', () => {
          .find('select')
          .select('week');
        // Auto-coercion: phase_a_mode must NOT be 'always' anymore.
-       cy.contains('Modalità Phase A')
+       cy.contains('Modalità Fase A')
          .parent()
          .find('select')
          .should('have.value', 'soft_hint');
-       cy.contains('button', /Avvia Phase B/i).click();
+       cy.contains('button', /Avvia Fase B/i).click();
        cy.wait('@launchB').then((interception) => {
          const body = interception.request.body as Record<string, any>;
          expect(body.cp_sat_scope).to.eq('week');
@@ -101,11 +101,11 @@ describe('/optimize Phase B Phase-3 dropdowns', () => {
       .parent()
       .find('select')
       .select('week');
-    cy.contains('Modalità Phase A')
+    cy.contains('Modalità Fase A')
       .parent()
       .find('select')
       .select('skip');
-    cy.contains('button', /Avvia Phase B/i).click();
+    cy.contains('button', /Avvia Fase B/i).click();
     cy.wait('@launchB').then((interception) => {
       const body = interception.request.body as Record<string, any>;
       expect(body.cp_sat_scope).to.eq('week');

@@ -465,8 +465,8 @@
 
     <div class="mt-4 grid grid-cols-3 gap-3 items-end">
       <label class="flex gap-2 text-sm"><input type="checkbox" bind:checked={editing.multi_class}/> Multi-classe</label>
-      <div class="field"><label for="routes-classrooms-f13">Max classi simultanee (HARD)</label><input id="routes-classrooms-f13" type="number" bind:value={editing.multi_class_max}/></div>
-      <div class="field"><label for="routes-classrooms-f14">PREFERRED (SOFT)</label><input id="routes-classrooms-f14" type="number" bind:value={editing.multi_class_pref}/></div>
+      <div class="field"><label for="routes-classrooms-f13">Max classi simultanee (obbligatorio)</label><input id="routes-classrooms-f13" type="number" bind:value={editing.multi_class_max}/></div>
+      <div class="field"><label for="routes-classrooms-f14">Preferenza (penalizzato)</label><input id="routes-classrooms-f14" type="number" bind:value={editing.multi_class_pref}/></div>
       <div class="field"><label for="routes-classrooms-f15">Peso preferenza concorrenza</label><input id="routes-classrooms-f15" type="number" bind:value={editing.multi_class_pref_weight}/></div>
     </div>
 
@@ -489,7 +489,7 @@
     <div class="mt-4">
       <h3 class="mb-2">Materie ammesse</h3>
       <table class="tbl">
-        <thead><tr><th>Materia</th><th>Peso</th><th>HARD?</th><th></th></tr></thead>
+        <thead><tr><th>Materia</th><th>Peso</th><th>Obbligatorio?</th><th></th></tr></thead>
         <tbody>
           {#each editing.subject_prefs as s, i}
             <tr>
@@ -512,7 +512,7 @@
       <p class="text-xs text-ink-500 mb-2">
         "Aula base" indica l'aula di riferimento della classe. Quanto
         vincoli dipende dal preset <em>Aule della classe</em> nella
-        scheda Classi: con "Aula fissa" l'aula base diventa HARD.
+        scheda Classi: con "Aula fissa" l'aula base diventa obbligatoria.
         Lo stato qui sotto ha comunque la precedenza sul preset.
       </p>
       <table class="tbl">
@@ -526,10 +526,10 @@
               </td>
               <td class="w-36">
                 <select bind:value={c.state} class="w-full px-2 py-1 border border-ink-200 rounded">
-                  <option value="preferred">Preferita (soft)</option>
+                  <option value="preferred">Preferita</option>
                   <option value="allowed">Ammessa</option>
-                  <option value="enforced">Obbligatoria (HARD)</option>
-                  <option value="forbidden">Vietata (HARD)</option>
+                  <option value="enforced">Obbligatoria</option>
+                  <option value="forbidden">Vietata</option>
                 </select>
               </td>
               <td class="w-24"><input type="number" bind:value={c.weight} class="w-full px-2 py-1 border border-ink-200 rounded"/></td>

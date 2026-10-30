@@ -319,11 +319,11 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
   function mcHistogramOptionFor(result) {
     if (!result || !result.ok) return {};
     return {
-      title: { text: 'SOFT - distribuzione Monte Carlo' },
+      title: { text: 'Penalità — distribuzione Monte Carlo' },
       tooltip: { trigger: 'axis' },
       xAxis: { type: 'category',
                data: result.samples.map((_, i) => i + 1), name: 'sample' },
-      yAxis: { type: 'value', name: 'SOFT' },
+      yAxis: { type: 'value', name: 'Penalità' },
       series: [{
         type: 'bar',
         data: result.samples,
@@ -404,10 +404,10 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
 
   function statusPill(d) {
     if (!d.runId) return null;
-    if (d.status === 'pending') return { cls: 'pill-blue', label: 'pending' };
-    if (d.status === 'running') return { cls: 'pill-blue', label: 'running' };
-    if (d.status === 'done') return { cls: 'pill-green', label: 'done' };
-    if (d.status === 'failed') return { cls: 'pill-red', label: 'failed' };
+    if (d.status === 'pending') return { cls: 'pill-blue', label: 'in coda' };
+    if (d.status === 'running') return { cls: 'pill-blue', label: 'in corso' };
+    if (d.status === 'done') return { cls: 'pill-green', label: 'completato' };
+    if (d.status === 'failed') return { cls: 'pill-red', label: 'fallito' };
     return null;
   }
 </script>
@@ -417,10 +417,10 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
     <p class="mt-2 max-w-[720px] text-[13px] leading-[1.55] text-ink-500">
       Le analisi pesanti (Monte Carlo, bipartito, correlazioni,
       distribuzioni) vengono lanciate come <strong>run asincroni</strong>:
-      compaiono nel tab <a href="/runs" class="text-accent-500 hover:underline">Runs</a>
+      compaiono nel tab <a href="/runs" class="text-accent-500 hover:underline">Esecuzioni</a>
       e il risultato torna qui sotto quando completato. Il pre-check
       Hall resta sincrono (&lt;100ms) per essere usato come
-      "verde/rosso" prima di lanciare Phase A.
+      "verde/rosso" prima di lanciare Fase A.
     </p>
   </PageHero>
 
@@ -428,7 +428,7 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
   <section class="card p-4 space-y-2">
     <div class="flex items-baseline gap-2 flex-wrap">
       <h2 class="!text-base">1) Pre-check fattibilità (Hall)</h2>
-      <span class="pill !text-[10px]">async run</span>
+      <span class="pill !text-[10px]">run asincrono</span>
       {#if statusPill(hl)}
         <span class="{statusPill(hl).cls} !text-[10px]">
           {statusPill(hl).label}
@@ -462,7 +462,7 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
   <section class="card p-4 space-y-2">
     <div class="flex items-baseline gap-2 flex-wrap">
       <h2 class="!text-base">2) Sensitivity Monte Carlo</h2>
-      <span class="pill !text-[10px]">async run</span>
+      <span class="pill !text-[10px]">run asincrono</span>
       {#if statusPill(mc)}
         <span class="{statusPill(mc).cls} !text-[10px]">
           {statusPill(mc).label}
@@ -556,7 +556,7 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
   <section class="card p-4 space-y-2">
     <div class="flex items-baseline gap-2 flex-wrap">
       <h2 class="!text-base">3) Analisi bipartito</h2>
-      <span class="pill !text-[10px]">async run</span>
+      <span class="pill !text-[10px]">run asincrono</span>
       {#if statusPill(bp)}
         <span class="{statusPill(bp).cls} !text-[10px]">
           {statusPill(bp).label}
@@ -662,7 +662,7 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
   <section class="card p-4 space-y-2">
     <div class="flex items-baseline gap-2 flex-wrap">
       <h2 class="!text-base">4) Correlazioni e regressioni</h2>
-      <span class="pill !text-[10px]">async run</span>
+      <span class="pill !text-[10px]">run asincrono</span>
       {#if statusPill(co)}
         <span class="{statusPill(co).cls} !text-[10px]">
           {statusPill(co).label}
@@ -687,7 +687,7 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
       </summary>
       <p class="text-[11px] text-ink-500 mt-1 mb-2">
         Se la lista qui sotto è vuota, vengono calcolati i 3 modelli
-        canonici (carico vs buchi, materie vs SOFT, saturazione vs 6a
+        canonici (carico vs buchi, materie vs penalità, saturazione vs 6a
         ora). Aggiungi righe per scegliere altre x/y, OLS o Logit, scope
         teachers o classes.
       </p>
@@ -810,7 +810,7 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
   <section class="card p-4 space-y-2">
     <div class="flex items-baseline gap-2 flex-wrap">
       <h2 class="!text-base">5) Distribuzioni</h2>
-      <span class="pill !text-[10px]">async run</span>
+      <span class="pill !text-[10px]">run asincrono</span>
       {#if statusPill(ds)}
         <span class="{statusPill(ds).cls} !text-[10px]">
           {statusPill(ds).label}

@@ -237,10 +237,10 @@
         gia oggi; l'enforcement nel solver è parziale (vedi docs).
       </div>
       <div><strong>Tipi:</strong>
-        <span class="pill-red !text-[10px]">HARD</span> deve essere soddisfatto;
-        <span class="pill-amber !text-[10px]">SOFT</span> paga penalità se violato;
-        <span class="pill-blue !text-[10px]">PREFERRED</span> da bonus se soddisfatto;
-        <span class="pill-c-enforced !text-[10px]">ENFORCED</span>
+        <span class="pill-red !text-[10px]">Obbligatorio</span> deve essere soddisfatto;
+        <span class="pill-amber !text-[10px]">Penalizzato</span> paga penalità se violato;
+        <span class="pill-blue !text-[10px]">Preferenza</span> da bonus se soddisfatto;
+        <span class="pill-c-enforced !text-[10px]">Imposto</span>
         deve essere soddisfatto E almeno uno degli slot della DNF deve essere
         un'ora di lezione attiva.
       </div>
@@ -279,15 +279,15 @@
             <td>
               <button class="text-xs"
                 on:click={() => cycleKind(r)}
-                title="click per ciclare HARD -> SOFT -> PREFERRED -> ENFORCED">
+                title="click per ciclare obbligatorio, penalizzato, preferenza, imposto">
                 {#if kindFromRule(r) === 'enforced'}
-                  <span class="pill-c-enforced">ENFORCED</span>
+                  <span class="pill-c-enforced">Imposto</span>
                 {:else if kindFromRule(r) === 'hard'}
-                  <span class="pill-red">HARD</span>
+                  <span class="pill-red">Obbligatorio</span>
                 {:else if kindFromRule(r) === 'preferred'}
-                  <span class="pill-blue">PREFERRED</span>
+                  <span class="pill-blue">Preferenza</span>
                 {:else}
-                  <span class="pill-amber">SOFT</span>
+                  <span class="pill-amber">Penalizzato</span>
                 {/if}
               </button>
             </td>
@@ -334,25 +334,25 @@
       <button class="btn !text-xs" on:click={validate}>Verifica sintassi</button>
       <label class="flex items-center gap-1 text-xs">
         <input type="radio" bind:group={draftKind} value="hard"/>
-        <span class="pill-red !text-[10px]">HARD</span>
+        <span class="pill-red !text-[10px]">Obbligatorio</span>
       </label>
       <label class="flex items-center gap-1 text-xs">
         <input type="radio" bind:group={draftKind} value="soft"/>
-        <span class="pill-amber !text-[10px]">SOFT</span>
+        <span class="pill-amber !text-[10px]">Penalizzato</span>
       </label>
       <label class="flex items-center gap-1 text-xs">
         <input type="radio" bind:group={draftKind} value="preferred"/>
-        <span class="pill-blue !text-[10px]">PREFERRED</span>
+        <span class="pill-blue !text-[10px]">Preferenza</span>
       </label>
       <label class="flex items-center gap-1 text-xs">
         <input type="radio" bind:group={draftKind} value="enforced"/>
-        <span class="pill-c-enforced !text-[10px]">ENFORCED</span>
+        <span class="pill-c-enforced !text-[10px]">Imposto</span>
       </label>
       <div class="field"
            class:opacity-50={draftKind === 'hard' || draftKind === 'enforced'}>
         <label for="lib-components-logicalunavailabilitiespanel-f2">
           {#if draftKind === 'soft'}Penalità (soft, &gt; 0)
-          {:else if draftKind === 'preferred'}Bonus (PREFERRED, &lt; 0)
+          {:else if draftKind === 'preferred'}Bonus (preferenza, &lt; 0)
           {:else}-{/if}
         </label>
         <input id="lib-components-logicalunavailabilitiespanel-f2" type="number" class="w-24"

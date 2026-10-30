@@ -25,9 +25,9 @@
     </span>
     {#if showLegend}
       <span class="text-xs text-ink-500">
-        verde = mossa OK / migliora SOFT,
-        giallo = peggiora SOFT (con delta),
-        rosso = HARD violato.
+        verde = mossa OK / migliora la penalità,
+        giallo = peggiora la penalità (con delta),
+        rosso = vincolo obbligatorio violato.
         {movePreviewBusy ? ' (calcolo preview...)' : ''}
       </span>
     {/if}

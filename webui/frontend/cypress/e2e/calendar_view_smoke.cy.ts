@@ -103,10 +103,10 @@ describe('WeeklyCalendarView in Tab Docenti edit modal (view mode)', () => {
     // never match it.
     cy.get('.weekly-calendar')
       .should('contain.text', 'libero')
-      .and('contain.text', 'SOFT')
-      .and('contain.text', 'HARD')
-      .and('contain.text', 'PREFERRED')
-      .and('contain.text', 'ENFORCED');
+      .and('contain.text', 'penalità +')
+      .and('contain.text', 'non disponibile')
+      .and('contain.text', 'preferenza')
+      .and('contain.text', 'obbligatoria');
 
     // Event rectangles rendered (slots from working-hours config).
     cy.get('.cal-event').should('have.length.gte', 1);

@@ -25,7 +25,7 @@
         <code>{calendarDayName(notice.day, $workingHoursConfig)} {notice.hour}:00</code>,
         ma l'aula <strong>{notice.room}</strong> non era
         disponibile in quel nuovo slot (occupata da un'altra lezione
-        oppure HARD-non-disponibile in quell'orario).
+        oppure non disponibile in quell'orario).
       </p>
       <p>
         L'aula è stata <strong>rimossa</strong> dalla lezione spostata.

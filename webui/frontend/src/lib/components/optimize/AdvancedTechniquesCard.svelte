@@ -55,7 +55,7 @@
                                    { n_samples: hallSamples, sync: true });
       const status = hallReport.ok ? 'success' : 'warning';
       const msg = hallReport.ok
-        ? `Hall OK: ${hallReport.n_classes} classi, `
+        ? `Hall ok: ${hallReport.n_classes} classi, `
           + `${hallReport.n_teachers} docenti, nessuna violazione`
         : `Hall: ${hallReport.violations.length} violazioni`;
       flash(msg, status);
@@ -142,7 +142,7 @@
       <span class="pill pill-amber !text-[10px]">diagnostico, sync</span>
     </div>
     <p class="text-[11px] text-ink-500 mb-2">
-      Verifica strutturale prima di Phase A: per ogni materia controlla
+      Verifica strutturale prima di Fase A: per ogni materia controlla
       che la capacità dei docenti qualificati copra la domanda; campiona
       sottoinsiemi di docenti per verificare la condizione di Hall.
     </p>
@@ -163,7 +163,7 @@
     {#if hallReport}
       <div class="mt-2 text-xs">
         <div>
-          <strong>{hallReport.ok ? 'Feasible (Hall OK)' : 'INFEASIBILE'}</strong>
+          <strong>{hallReport.ok ? 'Fattibile (Hall ok)' : 'INFEASIBILE'}</strong>
           - {hallReport.n_classes} classi, {hallReport.n_teachers} docenti
           - domanda {hallReport.stats.total_demand_hours}h vs supply
           {hallReport.stats.total_supply_hours}h
@@ -288,13 +288,13 @@
   <div class="border border-ink-200 rounded p-3 bg-ink-50/40">
     <div class="flex items-baseline gap-2 mb-2">
       <h3 class="!text-sm">Column Generation</h3>
-      <span class="pill pill-blue !text-[10px]">phase B alternativo</span>
+      <span class="pill pill-blue !text-[10px]">alternativa a Fase B</span>
     </div>
     <p class="text-[11px] text-ink-500 mb-2">
       Decomposizione Dantzig-Wolfe: master LP + sottoproblemi CP-SAT
       a granularità configurabile (9 opzioni). <em>Mode</em> sceglie
       tra <em>iterative-diversified</em> (master LP + pattern
-      enrichment + completion fallback, sempre HARD=100%) e
+      enrichment + completion fallback, sempre copertura obbligatoria al 100%) e
       <em>branch-and-price</em> (vero BP con sub-CP-SAT pricing dei
       duali). <em>Auto</em> sceglie modalità e granularità in base
       alla taglia della scuola. Vedi

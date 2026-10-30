@@ -1,5 +1,5 @@
 <!--
-  Phase A "Assegnazione docenti -> classi" card with criterion selector.
+  Fase A "Assegnazione docenti -> classi" card with criterion selector.
 
   - Loads the catalogue of presets from
     GET /api/optimize/phase-a/presets on mount.
@@ -45,7 +45,7 @@
       );
       flash(
         hallReport!.ok
-          ? `Hall OK: nessuna violazione strutturale (${hallReport!.n_classes} classi, ${hallReport!.n_teachers} docenti)`
+          ? `Hall ok: nessuna violazione strutturale (${hallReport!.n_classes} classi, ${hallReport!.n_teachers} docenti)`
           : `Hall: ${hallReport!.violations.length} violazioni rilevate`,
         hallReport!.ok ? "success" : "warning",
       );
@@ -85,7 +85,7 @@
   // The backend currently exposes max_clustering / balance_weight /
   // seniority. balance_weight is the safest default (was previously
   // 'balance_curricula' which had been renamed and stopped being a
-  // valid preset, causing Phase A to fail with HTTP 400).
+  // valid preset, causing Fase A to fail with HTTP 400).
   let selectedKey = "balance_weight";
   let customExpression =
     "minimize 50 * total_unused_capacity\n" +
@@ -162,7 +162,7 @@
   <div class="flex items-baseline justify-between flex-wrap gap-2">
     <h2 class="!mb-0">2) Assegnazione docenti -&gt; classi</h2>
     <span class="text-xs text-ink-500">
-      Phase A: chi insegna cosa, in quale classe, per quante ore.
+      Fase A: chi insegna cosa, in quale classe, per quante ore.
     </span>
   </div>
 
@@ -328,7 +328,7 @@
     <p class="text-[11px] text-ink-500 mb-2">
       Verifica via teorema di Hall che la capacità dei docenti
       qualificati copra la domanda di ore per materia. Esegui prima
-      di Phase A per evitare assegnazioni inutilmente lunghe su
+      di Fase A per evitare assegnazioni inutilmente lunghe su
       istanze già infeasible al livello strutturale.
     </p>
     <button class="btn !text-xs" type="button"
@@ -339,7 +339,7 @@
     {#if hallReport}
       <div class="mt-2 text-xs">
         <div class={hallReport.ok ? "text-emerald-700" : "text-rose-700"}>
-          <strong>{hallReport.ok ? "Feasible (Hall OK)" : "INFEASIBILE"}</strong>
+          <strong>{hallReport.ok ? "Fattibile (Hall ok)" : "INFEASIBILE"}</strong>
           - {hallReport.n_classes} classi, {hallReport.n_teachers} docenti
           - domanda {hallReport.stats.total_demand_hours}h / supply
           {hallReport.stats.total_supply_hours}h

@@ -156,7 +156,7 @@ describe('Tab Vincoli workflow', () => {
         cy.get('[data-testid="wizard-next"]').click();
 
         // Step 2: keep level=hard.
-        cy.contains(/HARD/i).should('be.visible');
+        cy.contains(/Obbligatorio/i).should('be.visible');
         cy.get('[data-testid="wizard-next"]').click();
 
         // Step 3: kind=matrix_slot (default for teacher), pick a slot.
@@ -193,7 +193,7 @@ describe('Tab Vincoli workflow', () => {
         // nell'hero della pagina contiene anch'essa una pill "SOFT", che
         // sta prima nel DOM e non ha nessun <label> antenato.
         cy.get('[data-testid="wizard-step-2"]', { timeout: 10000 })
-          .contains('label', /SOFT/i)
+          .contains('label', /Penalizzato/i)
           .find('input[type="radio"]').check({ force: true });
         cy.get('[data-testid="wizard-next"]').click();
 

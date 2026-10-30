@@ -24,12 +24,12 @@ export const LOGICAL_KINDS: readonly LogicalKind[] = [
 ];
 
 export const LEVEL_LABEL: Record<ConstraintLevel, string> = {
-  allowed: "ALLOWED",
-  soft: "SOFT",
-  preferred: "PREFERRED",
-  hard: "HARD",
-  forbidden: "FORBIDDEN",
-  enforced: "ENFORCED",
+  allowed: "Consentito",
+  soft: "Penalizzato",
+  preferred: "Preferenza",
+  hard: "Obbligatorio",
+  forbidden: "Vietato",
+  enforced: "Imposto",
 };
 
 /**

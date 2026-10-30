@@ -10,7 +10,7 @@
   import PhaseACard from '$lib/components/optimize/PhaseACard.svelte';
   import AdvancedTechniquesCard from
     '$lib/components/optimize/AdvancedTechniquesCard.svelte';
-  import { PIPELINE_LABEL } from '$lib/pipeline_labels';
+  import { PIPELINE_LABEL, runKindLabel, runStatusLabel } from '$lib/pipeline_labels';
   import {
     DEFAULT_PIPELINE,
     loadPipeline,
@@ -66,7 +66,7 @@
     rooms_time_limit_s: 30,
     rooms_prefer_home: true,
     thoroughness: 'balanced',  // fast | balanced | thorough | maximum
-    // Phase 3: CP-SAT scope + Phase A interaction.
+    // Phase 3: CP-SAT scope + Fase A interaction.
     // Cross-field rule (mirror of backend validator):
     //   day  + always   (default, legacy)
     //   week + skip      OR  week + soft_hint
@@ -303,7 +303,7 @@
       // the field (or the active profile if both are empty).
       profile: stepFull.profile || activeProfile || 'unknown',
       steps,
-      // Phase B inside the pipeline reuses step3 (so its rooms toggle
+      // Fase B inside the pipeline reuses step3 (so its rooms toggle
       // and parameters come from card 3).
       phase_b: { ...step3 },
       // Meta steps share one rooms toggle on card 4-7.
@@ -471,7 +471,7 @@
       </div>
     </div>
 
-    <!-- Step 2: Phase A with criterion selector + custom DSL -->
+    <!-- Step 2: Fase A with criterion selector + custom DSL -->
     <PhaseACard
       bind:time_limit_s={step2.time_limit_s}
       bind:workers={step2.workers}
@@ -481,7 +481,7 @@
 
     <!-- Step 3 -->
     <div class="card p-5">
-      <h2 class="mb-3">3) Schedulazione orario (Phase B)</h2>
+      <h2 class="mb-3">3) Schedulazione orario (Fase B)</h2>
       {#if paramRec && !paramRec.error}
         <div class="mb-3 p-2.5 rounded border border-ink-200 bg-ink-50/50 text-[11.5px] leading-snug text-ink-500">
           <span class="font-medium text-ink-700">🎯 Parametri consigliati:</span>
@@ -523,7 +523,7 @@
         <label class="flex gap-2 text-sm col-span-3"><input type="checkbox" bind:checked={step3.use_decomposition}/> Decomposizione spettrale</label>
       </div>
 
-      <!-- Phase 3: CP-SAT scope + Phase A mode (Phase B knobs). -->
+      <!-- Phase 3: CP-SAT scope + Fase A mode (Fase B knobs). -->
       <div class="mt-3 p-3 rounded border border-ink-200 bg-ink-50/40 space-y-3">
         <p class="text-xs font-medium">Solver CP-SAT (avanzato)</p>
         <div class="field">
@@ -543,7 +543,7 @@
           </small>
         </div>
         <div class="field">
-          <label use:tooltip={"Come la distribuzione settimanale delle ore (Phase A) entra nella Fase B. Sempre: calcolata e imposta (obbligatoria con scope = Per giorno). Skip: omessa (solo scope = Settimana). Soft hint: passata come suggerimento non vincolante al solver settimanale."}>Modalità Phase A
+          <label use:tooltip={"Come la distribuzione settimanale delle ore (Fase A) entra nella Fase B. Sempre: calcolata e imposta (obbligatoria con scope = Per giorno). Skip: omessa (solo scope = Settimana). Soft hint: passata come suggerimento non vincolante al solver settimanale."}>Modalità Fase A
             <span class="text-[10px] text-ink-400">(distribuzione settimanale ore)</span>
           </label>
           <select bind:value={step3.phase_a_mode}
@@ -562,13 +562,13 @@
             </option>
           </select>
           <small class="block text-[11px] text-ink-500 mt-1 leading-snug">
-            Phase A decide come distribuire le ore di ciascuna cattedra
+            Fase A decide come distribuire le ore di ciascuna cattedra
             tra i giorni della settimana.
-            <strong>Sempre</strong>: Phase A obbligatoria (consigliato per
+            <strong>Sempre</strong>: Fase A obbligatoria (consigliato per
             scope Per giorno).
-            <strong>Salta</strong>: no Phase A, lo scope Settimana intera
+            <strong>Salta</strong>: no Fase A, lo scope Settimana intera
             decide tutto direttamente.
-            <strong>Hint morbido</strong>: Phase A esegue ma il suo
+            <strong>Hint morbido</strong>: Fase A esegue ma il suo
             output è solo un suggerimento (warm start non vincolante);
             lo scope Settimana intera può deviare se trova soluzione
             migliore.
@@ -651,7 +651,7 @@
           Ottimizza aule insieme a questo step
         </label>
         <p class="text-xs text-ink-500">
-          Quando attivo, dopo Phase B la lezioni-aule (step 8) viene
+          Quando attivo, dopo Fase B la lezioni-aule (step 8) viene
           eseguita sulla soluzione appena prodotta -- utile per palestre
           e laboratori la cui capienza può rendere infeasibile la
           schedulazione.
@@ -744,9 +744,9 @@
             <select id="routes-optimize-f15" class="mt-1 block w-full text-sm rounded border-ink-200"
                     bind:value={step3.joint_vars.room_continuity}>
               <option value="none">Nessuna (aula libera per ora)</option>
-              <option value="day">Stessa aula nello stesso giorno (HARD)</option>
-              <option value="week">Stessa aula tutta la settimana (HARD)</option>
-              <option value="soft">Minimizza i cambi d'aula (SOFT)</option>
+              <option value="day">Stessa aula nello stesso giorno (obbligatorio)</option>
+              <option value="week">Stessa aula tutta la settimana (obbligatorio)</option>
+              <option value="soft">Minimizza i cambi d'aula (penalizzato)</option>
             </select>
             <p class="text-xs text-ink-500 mt-1">
               Le materie con aula obbligata (palestra/lab) restano esenti.
@@ -757,7 +757,7 @@
           </div>
         {/if}
       </div>
-      <button class="btn-primary mt-3" on:click={launchPhaseB}>Avvia Phase B</button>
+      <button class="btn-primary mt-3" on:click={launchPhaseB}>Avvia Fase B</button>
     </div>
 
     <!-- Step 4-7 metaheuristics -->
@@ -826,7 +826,7 @@
       <h2 class="mb-1">10) Strategie di decomposizione</h2>
       <p class="text-xs text-ink-500 mb-3">
         Quattro strategie ortogonali per spezzare il problema di
-        Phase B in sotto-problemi più piccoli. Ognuna restituisce
+        Fase B in sotto-problemi più piccoli. Ognuna restituisce
         cluster di classi e una lista di docenti-ponte. Si possono
         combinare nella pipeline: prima la primaria (spettrale,
         METIS o per curriculum), poi la temporale per parallelizzare
@@ -847,7 +847,7 @@
           <p class="text-xs text-red-600">{decompRecommendationError}</p>
         {:else if !decompRecommendation && !decompRecommendationLoading}
           <p class="text-xs text-ink-500">
-            Nessun dato ancora. Esegui Phase A oppure premi
+            Nessun dato ancora. Esegui Fase A oppure premi
             <em>Ricalcola</em>.
           </p>
         {:else if decompRecommendation}
@@ -867,7 +867,7 @@
         {/if}
       </div>
 
-      <!-- Spectral (already wired through Phase B) -->
+      <!-- Spectral (already wired through Fase B) -->
       <div class="rounded border border-ink-200 p-3 mb-3">
         <div class="flex items-baseline justify-between mb-1">
           <strong class="text-sm">3a) Decomposizione spettrale</strong>
@@ -877,7 +877,7 @@
           Identifica cluster naturali nel grafo classe-docente
           attraverso il vettore di Fiedler. Brilla quando la
           modularità è alta (sopra 0.30). I parametri sono
-          quelli della card 3 (Phase B).
+          quelli della card 3 (Fase B).
         </p>
         <p class="text-[11px] text-ink-500">
           Avvio: dalla card 3 con
@@ -988,7 +988,7 @@
         indipendente nel punto in cui appare nell'ordine. In
         alternativa, per piegare l'assegnazione aule INSIEME al CP-SAT
         o alle metaeuristiche, ticka "Ottimizza aule insieme a questo
-        step" sulle card 3 (Phase B) e 4-7 (Metaeuristiche).
+        step" sulle card 3 (Fase B) e 4-7 (Metaeuristiche).
       </p>
       <div class="grid grid-cols-3 gap-3">
         <div class="field">
@@ -1075,12 +1075,13 @@
           {#each runs as r}
             <tr>
               <td>#{r.id}</td>
-              <td><span class="pill">{r.kind}</span></td>
+              <td><span class="pill" title={r.kind}>{runKindLabel(r.kind)}</span></td>
               <td>
                 <span class="pill"
+                  title={r.status}
                   class:pill-green={r.status === 'done'}
                   class:pill-red={r.status === 'failed'}
-                  class:pill-blue={r.status === 'running'}>{r.status}</span>
+                  class:pill-blue={r.status === 'running'}>{runStatusLabel(r.status)}</span>
               </td>
               <td>{r.obj_value ?? ''}</td>
               <td class="text-xs">

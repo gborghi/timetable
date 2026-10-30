@@ -41,9 +41,9 @@
         time_limit_s: 30,
       });
       if (result.feasible) {
-        flash('✅ Modello dei vincoli HARD/ENFORCED feasible.', 'success');
+        flash('✅ Modello dei vincoli obbligatori e imposti: fattibile.', 'success');
       } else if (result.feasible === false) {
-        flash(`❌ Infeasible: ${result.cores.length} core, `
+        flash(`❌ Non fattibile: ${result.cores.length} insiemi minimi, `
               + `${result.suggested_removal.length} rimozioni proposte.`,
               'error');
       } else {
@@ -219,13 +219,13 @@
 
   async function softenMember(m) {
     const w = parseInt(await promptDialog(
-      `Trasforma "${memberShort(m)}" in SOFT.\n\n`
-      + `Specifica la penalty (peso). Tipici: 50 = preferenza tenue, `
-      + `100 = preferenza media, 1000 = quasi-hard.`,
+      `Trasforma "${memberShort(m)}" in penalizzato.\n\n`
+      + `Specifica la penalità (peso). Tipici: 50 = preferenza tenue, `
+      + `100 = preferenza media, 1000 = quasi obbligatorio.`,
       '100'), 10);
     if (!w || w <= 0) return;
     return applyAction(m, 'soften', { weight: w }, {
-      successMsg: `Vincolo trasformato in SOFT con penalty ${w}.`,
+      successMsg: `Vincolo trasformato in penalizzato con penalità ${w}.`,
     });
   }
 
@@ -303,11 +303,11 @@
     const summary = list.slice(0, 5).map((m) =>
       `${levelLabel(m.level)} ${memberShort(m)}`).join('\n');
     const more = list.length > 5 ? `\n...e altri ${list.length - 5}` : '';
-    const verb = action === 'soften' ? 'trasformare in SOFT'
+    const verb = action === 'soften' ? 'trasformare in penalizzato'
               : action === 'disable' ? 'disabilitare temporaneamente'
               : 'rimuovere';
     if (!await confirmDialog(`${list.length} vincoli da ${verb} per rendere il `
-        + `modello feasible:\n\n${summary}${more}\n\n`
+        + `modello fattibile:\n\n${summary}${more}\n\n`
         + `Tutte le azioni sono reversibili dallo Storico interventi.`)) {
       return;
     }
@@ -359,8 +359,8 @@
           Rimuovi suggeriti ({result.suggested_removal.length})
         </button>
         <button class="btn !text-xs" on:click={() => applySuggestion('soften')}
-                title="Trasforma in SOFT con penalty 100 (reversibile)">
-          Trasforma in SOFT
+                title="Trasforma in penalizzato con penalità 100 (reversibile)">
+          Trasforma in penalizzato
         </button>
         <button class="btn !text-xs" on:click={() => applySuggestion('disable')}
                 title="Disabilita temporaneamente (il vincolo resta nel DB)">
@@ -374,7 +374,7 @@
         Storico ({interventions.length})
       </button>
       <span class="text-xs text-ink-500 ml-auto">
-        {result.n_constraints} vincoli HARD/ENFORCED ·
+        {result.n_constraints} vincoli obbligatori e imposti ·
         {result.n_assignments} cattedre · {result.time_s}s
       </span>
     {/if}
@@ -384,21 +384,21 @@
     {#if result.feasible}
       <div class="card p-3 border-2 border-emerald-300 bg-emerald-50/60
                   text-emerald-900">
-        ✅ <strong>Modello feasible</strong> — i vincoli HARD/ENFORCED
-        sono mutuamente compatibili. Phase B avrà (almeno) un'assegnazione
+        ✅ <strong>Modello fattibile</strong> — i vincoli obbligatori e imposti
+        sono mutuamente compatibili. Fase B avrà (almeno) un'assegnazione
         che li soddisfa tutti.
       </div>
     {:else if result.feasible === false}
       <div class="card p-3 border-2 border-red-300 bg-red-50/60 space-y-2">
         <h3 class="text-red-900">
-          ❌ Infeasible — {result.cores.length} core di vincoli incompatibili
+          ❌ Non fattibile — {result.cores.length} insiemi minimi di vincoli incompatibili
         </h3>
         <p class="text-xs text-red-700">
-          Ogni core è un sottoinsieme MINIMALE di vincoli che insieme
-          rendono il modello UNSAT: rimuovendone uno qualsiasi del core,
-          il sistema torna soddisfacibile (almeno fino al prossimo core).
+          Ogni nucleo è un sottoinsieme minimo di vincoli che insieme
+          rendono il modello insoddisfacibile: rimuovendone uno qualsiasi del nucleo,
+          il sistema torna soddisfacibile (almeno fino al prossimo nucleo).
           Il "suggerimento automatico" propone una rimozione che risolve
-          tutti i core in una passata.
+          tutti i nuclei in una passata.
         </p>
       </div>
       <div class="grid lg:grid-cols-2 gap-3">
@@ -432,7 +432,7 @@
                     </button>
                     <button class="btn !text-[10px] !px-1 !py-0"
                             on:click={() => softenMember(m)}
-                            title="Trasforma in SOFT con penalty">
+                            title="Trasforma in penalizzato con penalità">
                       Soften
                     </button>
                     <button class="btn !text-[10px] !px-1 !py-0"
@@ -526,7 +526,7 @@
     {:else}
       <div class="card p-3 border-2 border-amber-300 bg-amber-50/60">
         ⚠️ <strong>Inconclusivo</strong> — {result.error || 'timeout'}.
-        Aumenta `time_limit_s` o riduci il numero di vincoli HARD/ENFORCED
+        Aumenta `time_limit_s` o riduci il numero di vincoli obbligatori e imposti
         attivi.
       </div>
     {/if}

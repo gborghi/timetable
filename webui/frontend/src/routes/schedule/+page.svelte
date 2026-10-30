@@ -362,7 +362,7 @@
                 flash('Ripristino non riuscito: lo slot e di nuovo occupato.',
                       'warning');
               } else if (r && r.hard_violation) {
-                flash('Ripristino non riuscito: ' + (r.reason || 'vincolo HARD'),
+                flash('Ripristino non riuscito: ' + (r.reason || 'vincolo obbligatorio'),
                       'warning');
               } else {
                 flash('Eliminazione annullata', 'success');
@@ -909,8 +909,8 @@
       <div class="card p-6 text-center text-ink-500"
            data-testid="schedule-empty-state">
         Nessuna soluzione attiva. Vai al
-        <a class="text-accent-500 underline" href="/optimize">Workflow</a>
-        e lancia almeno la Phase B, oppure importa uno snapshot SQLite
+        <a class="text-accent-500 underline" href="/optimize">Ottimizza</a>
+        e lancia almeno la Fase B, oppure importa uno snapshot SQLite
         dalla
         <a class="text-accent-500 underline" href="/">Dashboard</a>.
       </div>

@@ -45,14 +45,14 @@
         options: ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'] },
       { field: 'max_hours', label: 'max_hours', type: 'number' },
       { field: 'max_consecutive', label: 'max_consecutive', type: 'number' },
-      { field: 'pref_no_buchi_weight', label: 'peso anti-buchi (SOFT)', type: 'number' },
+      { field: 'pref_no_buchi_weight', label: 'peso anti-buchi (penalizzato)', type: 'number' },
     ],
     classes: [
-      { field: 'hard_no_holes', label: 'no buchi (HARD)', type: 'bool' },
-      { field: 'hard_max_6_per_day', label: 'max 6 ore/giorno (HARD)', type: 'bool' },
+      { field: 'hard_no_holes', label: 'no buchi (obbligatorio)', type: 'bool' },
+      { field: 'hard_max_6_per_day', label: 'max 6 ore/giorno (obbligatorio)', type: 'bool' },
       { field: 'hard_dual_math', label: 'doppia ora Matematica', type: 'bool' },
       { field: 'hard_dual_italian', label: 'doppia ora Italiano', type: 'bool' },
-      { field: 'soft_minimize_sixth_weight', label: 'peso 6a ora (SOFT)', type: 'number' },
+      { field: 'soft_minimize_sixth_weight', label: 'peso 6a ora (penalizzato)', type: 'number' },
     ],
     classrooms: [
       { field: 'kind', label: 'kind (tipo)', type: 'string',
@@ -164,19 +164,19 @@
         <div class="flex gap-3 text-xs items-center flex-wrap">
           <label class="flex gap-1 items-center">
             <input type="radio" bind:group={logicalKind} value="hard"/>
-            <span class="pill-red !text-[10px]">HARD</span>
+            <span class="pill-red !text-[10px]">Obbligatorio</span>
           </label>
           <label class="flex gap-1 items-center">
             <input type="radio" bind:group={logicalKind} value="soft"/>
-            <span class="pill-amber !text-[10px]">SOFT</span>
+            <span class="pill-amber !text-[10px]">Penalizzato</span>
           </label>
           <label class="flex gap-1 items-center">
             <input type="radio" bind:group={logicalKind} value="preferred"/>
-            <span class="pill-blue !text-[10px]">PREFERRED</span>
+            <span class="pill-blue !text-[10px]">Preferenza</span>
           </label>
           <label class="flex gap-1 items-center">
             <input type="radio" bind:group={logicalKind} value="enforced"/>
-            <span class="pill-c-enforced !text-[10px]">ENFORCED</span>
+            <span class="pill-c-enforced !text-[10px]">Imposto</span>
           </label>
           {#if logicalKind === 'soft' || logicalKind === 'preferred'}
             <label class="flex gap-1 items-center">
@@ -238,10 +238,10 @@
                class="px-2 py-1 border border-ink-200 rounded" on:input={reset}/>
         <label for="lib-components-bulkapplymodal-f6" class="text-xs">Stato</label>
         <select id="lib-components-bulkapplymodal-f6" bind:value={unavailState} class="px-2 py-1 border border-ink-200 rounded">
-          <option value="hard">HARD (rosso)</option>
-          <option value="soft">SOFT (giallo, penalità +)</option>
-          <option value="preferred">PREFERRED (blu, bonus -)</option>
-          <option value="enforced">ENFORCED (verde scuro, deve esserci)</option>
+          <option value="hard">Obbligatorio (rosso)</option>
+          <option value="soft">Penalizzato (giallo, penalità +)</option>
+          <option value="preferred">Preferenza (blu, bonus -)</option>
+          <option value="enforced">Imposto (verde scuro, deve esserci)</option>
         </select>
         {#if unavailState === 'soft' || unavailState === 'preferred'}
           <label for="lib-components-bulkapplymodal-f7" class="text-xs">{unavailState === 'soft' ? 'Penalità' : 'Bonus'}</label>

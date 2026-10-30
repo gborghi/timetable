@@ -26,7 +26,7 @@
   import { api } from '$lib/api';
   import { flash } from '$lib/stores';
   import RunLogPanel from '$lib/components/RunLogPanel.svelte';
-  import { pipelineStepLabel } from '$lib/pipeline_labels';
+  import { pipelineStepLabel, runKindLabel, runStatusLabel } from '$lib/pipeline_labels';
 
   let runs = [];
   let busy = false;
@@ -257,10 +257,11 @@
 
   // Display helpers
   function semaforo(status) {
-    if (status === 'done') return { cls: 'pill-green', label: '✓ success' };
-    if (status === 'failed') return { cls: 'pill-red',   label: '✗ error' };
-    if (status === 'running') return { cls: 'pill-blue', label: '● running' };
-    return { cls: 'pill', label: status };
+    const label = runStatusLabel(status);
+    if (status === 'done') return { cls: 'pill-green', label: '✓ ' + label };
+    if (status === 'failed') return { cls: 'pill-red',   label: '✗ ' + label };
+    if (status === 'running') return { cls: 'pill-blue', label: '● ' + label };
+    return { cls: 'pill', label };
   }
   function elapsed(r, _now) {
     const a = r.started_at, b = r.finished_at;
@@ -285,8 +286,8 @@
 </script>
 
 <div class="space-y-4" data-testid="runs-page">
-  <PageHero title="Runs"
-            description="Storia di ogni esecuzione (mock-import, Phase A, Phase B, metaeuristiche, classroom-assignment, place-event). Doppio click su un'intestazione di colonna per aggiungerla al sort (max 3 livelli); click sulla freccia per invertire la direzione. Query DSL come nelle altre tab. Selezionando più righe ed eliminando, il delete si applica a tutto il batch.">
+  <PageHero title="Esecuzioni"
+            description="Storia di ogni esecuzione (mock-import, Fase A, Fase B, metaeuristiche, classroom-assignment, place-event). Doppio click su un'intestazione di colonna per aggiungerla al sort (max 3 livelli); click sulla freccia per invertire la direzione. Query DSL come nelle altre tab. Selezionando più righe ed eliminando, il delete si applica a tutto il batch.">
     <svelte:fragment slot="chips">
       <span class="pill"><span class="num">{runs.length}</span> run nel dataset</span>
     </svelte:fragment>
@@ -422,8 +423,8 @@
       <tbody>
         {#if runs.length === 0}
           <tr><td colspan="12" class="text-center text-ink-400 italic py-6">
-            Nessun run. Lancia un'ottimizzazione dal Workflow o dal
-            Monitor (Piazza).
+            Nessun run. Lancia un'ottimizzazione da Ottimizza o dal
+            Eventi (Piazza).
           </td></tr>
         {/if}
         {#each runs as r (r.id)}
@@ -440,7 +441,7 @@
                 {expanded.has(r.id) ? '▼' : '▶'}
               </span>#{r.id}
             </td>
-            <td><span class="pill !text-[10px]">{r.kind}</span></td>
+            <td><span class="pill !text-[10px]" title={r.kind}>{runKindLabel(r.kind)}</span></td>
             <td class="text-ink-700">{r.name || ''}</td>
             <td>
               <span class="{sem.cls} !text-[10px]">{sem.label}</span>

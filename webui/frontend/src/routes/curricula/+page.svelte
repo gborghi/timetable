@@ -344,13 +344,13 @@
                     </td>
                     <td>
                       {#if _kindFromRule(r) === 'enforced'}
-                        <span class="pill-c-enforced">ENFORCED</span>
+                        <span class="pill-c-enforced">Imposto</span>
                       {:else if _kindFromRule(r) === 'hard'}
-                        <span class="pill-red">HARD</span>
+                        <span class="pill-red">Obbligatorio</span>
                       {:else if _kindFromRule(r) === 'preferred'}
-                        <span class="pill-blue">PREFERRED</span>
+                        <span class="pill-blue">Preferenza</span>
                       {:else}
-                        <span class="pill-amber">SOFT</span>
+                        <span class="pill-amber">Penalizzato</span>
                       {/if}
                     </td>
                     <td class="w-20 text-center">{r.is_hard ? '-' : r.soft_penalty}</td>
@@ -397,19 +397,19 @@
               <button class="btn !text-xs" on:click={logicalValidateNow}>Verifica sintassi</button>
               <label class="flex items-center gap-1 text-xs">
                 <input type="radio" bind:group={logicalDraftKind} value="hard"/>
-                <span class="pill-red !text-[10px]">HARD</span>
+                <span class="pill-red !text-[10px]">Obbligatorio</span>
               </label>
               <label class="flex items-center gap-1 text-xs">
                 <input type="radio" bind:group={logicalDraftKind} value="soft"/>
-                <span class="pill-amber !text-[10px]">SOFT</span>
+                <span class="pill-amber !text-[10px]">Penalizzato</span>
               </label>
               <label class="flex items-center gap-1 text-xs">
                 <input type="radio" bind:group={logicalDraftKind} value="preferred"/>
-                <span class="pill-blue !text-[10px]">PREFERRED</span>
+                <span class="pill-blue !text-[10px]">Preferenza</span>
               </label>
               <label class="flex items-center gap-1 text-xs">
                 <input type="radio" bind:group={logicalDraftKind} value="enforced"/>
-                <span class="pill-c-enforced !text-[10px]">ENFORCED</span>
+                <span class="pill-c-enforced !text-[10px]">Imposto</span>
               </label>
               {#if logicalDraftKind === 'soft' || logicalDraftKind === 'preferred'}
                 <div class="field">

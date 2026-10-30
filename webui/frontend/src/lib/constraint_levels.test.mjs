@@ -79,8 +79,13 @@ test('levelPill returns the pill class or fallback', () => {
   assert.equal(levelPill('garbage'), 'pill');
 });
 
-test('levelLabel uppercases unknown levels', () => {
-  assert.equal(levelLabel('hard'), 'HARD');
+test('levelLabel uses the Italian gloss, and uppercases unknown levels', () => {
+  assert.equal(levelLabel('hard'), 'Obbligatorio');
+  assert.equal(levelLabel('soft'), 'Penalizzato');
+  assert.equal(levelLabel('preferred'), 'Preferenza');
+  assert.equal(levelLabel('enforced'), 'Imposto');
+  assert.equal(levelLabel('allowed'), 'Consentito');
+  assert.equal(levelLabel('forbidden'), 'Vietato');
   assert.equal(levelLabel('mystery'), 'MYSTERY');
   assert.equal(levelLabel(null), '?');
 });

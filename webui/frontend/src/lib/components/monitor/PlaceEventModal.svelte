@@ -29,6 +29,7 @@
   import { flash } from '$lib/stores';
   import Modal from '$lib/components/Modal.svelte';
   import RunLogPanel from '$lib/components/RunLogPanel.svelte';
+  import { runKindLabel, runStatusLabel } from '$lib/pipeline_labels';
 
   export let open = false;
   export let eventIds = [];
@@ -48,10 +49,10 @@
   // Order is the array order; user drags to reorder.
   function defaultSteps() {
     return [
-      { key: 'greedy', label: 'Greedy placer (rapido, HARD-only)',
+      { key: 'greedy', label: 'Piazzamento rapido (solo vincoli obbligatori)',
         enabled: true, paramsOpen: false,
         params: { prefer_pref: false } },
-      { key: 'phase_b', label: 'CP-SAT (Phase B)',
+      { key: 'phase_b', label: 'CP-SAT (Fase B)',
         enabled: false, paramsOpen: false,
         params: { k: 4, time_a: 30, time_bridges: 30, time_cluster: 20,
                   time_ricucitura: 60, time_mono: 120, workers: 4,
@@ -177,7 +178,7 @@
         }];
         if (last_status === 'failed') {
           chainError = `Step ${step.key} (run #${sub_id}) è fallito; `
-                      + 'apri il tab Runs per il dettaglio.';
+                      + 'apri Esecuzioni per il dettaglio.';
           break;
         }
       }
@@ -281,7 +282,7 @@
               {#if s.key === 'greedy'}
                 <label class="text-xs col-span-3 flex items-center gap-2">
                   <input type="checkbox" bind:checked={s.params.prefer_pref}/>
-                  Preferisci slot PREFERRED del docente (HARD non si
+                  Preferisci slot preferiti del docente (l'obbligatorio non si
                   rispettano comunque)
                 </label>
               {:else if s.key === 'phase_b'}
@@ -337,14 +338,15 @@
     <!-- Live chain progress -->
     {#if chainHistory.length || chainCurrentRunId || chainError}
       <div class="card p-3 space-y-1 bg-emerald-50/40">
-        <div class="text-sm font-medium">Pipeline progress</div>
+        <div class="text-sm font-medium">Avanzamento</div>
         {#each chainHistory as h}
           <div class="text-xs flex items-center gap-2">
-            <span class="pill !text-[10px]">{h.step}</span>
+            <span class="pill !text-[10px]" title={h.step}>{runKindLabel(h.step)}</span>
             <span class="pill !text-[10px]"
+                  title={h.status}
                   class:pill-green={h.status === 'done'}
                   class:pill-red={h.status === 'failed'}>
-              {h.status}
+              {runStatusLabel(h.status)}
             </span>
             <a class="text-accent-500 underline text-[10px]"
                href={`/runs#${h.run_id}`} target="_blank" rel="noreferrer">
@@ -354,8 +356,8 @@
         {/each}
         {#if chainCurrentStepKey}
           <div class="text-xs flex items-center gap-2">
-            <span class="pill !text-[10px]">{chainCurrentStepKey}</span>
-            <span class="pill pill-blue !text-[10px]">running</span>
+            <span class="pill !text-[10px]" title={chainCurrentStepKey}>{runKindLabel(chainCurrentStepKey)}</span>
+            <span class="pill pill-blue !text-[10px]">in corso</span>
           </div>
         {/if}
         {#if chainError}

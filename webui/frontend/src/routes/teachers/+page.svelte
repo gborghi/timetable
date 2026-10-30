@@ -118,7 +118,7 @@
         `/api/teachers/${teacher_id}/free-day-preferences`,
         { preferences: prefs });
     } catch (e) {
-      flash('Errore salvando preferenze Phase A: ' + e.message, 'error');
+      flash('Errore salvando preferenze Fase A: ' + e.message, 'error');
     }
   }
 
@@ -528,7 +528,7 @@
       <div class="field"><label for="routes-teachers-f7" title="Ore di esonero dall'insegnamento (es. per incarichi o funzioni strumentali). Facoltativo.">Ore di esonero</label><input id="routes-teachers-f7" type="number" bind:value={editing.exemption_hours}/></div>
       <div class="field"><label for="routes-teachers-f8" title="Ore settimanali di disposizione (standby per supplenze). L'ottimizzatore le piazza senza classe né aula; restano disponibili in Assenze e supplenze e si possono spostare a mano.">Ore di disposizione</label><input id="routes-teachers-f8" type="number" min="0" bind:value={editing.disposizione_hours} data-testid="teacher-disposizione-hours-input"/></div>
       <div class="field">
-        <label title="Punteggio in graduatoria provinciale (0-300). Usato dal preset 'Anzianita' di Phase A per assegnare i docenti più anziani agli indirizzi pesanti.">
+        <label title="Punteggio in graduatoria provinciale (0-300). Usato dal preset 'Anzianita' di Fase A per assegnare i docenti più anziani agli indirizzi pesanti.">
           Punteggio graduatoria
           <span class="text-xs text-ink-400">- opzionale, 0-300</span>
         </label>
@@ -537,7 +537,7 @@
                placeholder="(non impostato)"/>
       </div>
       <div class="field">
-        <label for="routes-teachers-f9" title="Imposta rapidamente un giorno di libertà: blocca (rosso/HARD) tutte le ore di quel giorno nella matrice qui sotto. Per più preferenze, o preferenze morbide, usa il pannello 'Giorni liberi (avanzato)'.">Giorno libero (rapido)</label>
+        <label for="routes-teachers-f9" title="Imposta rapidamente un giorno di libertà: blocca (rosso, non disponibile) tutte le ore di quel giorno nella matrice qui sotto. Per più preferenze, o preferenze morbide, usa il pannello 'Giorni liberi (avanzato)'.">Giorno libero (rapido)</label>
         <select id="routes-teachers-f9" value={editing.free_day || ''} on:change={onFreeDaySelect}>
           <option value="">(nessuno)</option>
           {#each calDays as d}<option value={freeDayWire(d)}>{calName(d)}</option>{/each}
@@ -600,7 +600,7 @@
       {#if editing.free_day}
         <p class="text-xs text-ink-500 mt-1">
           Le ore del giorno libero ({DAY_NAMES_EN_TO_IT[editing.free_day] || editing.free_day})
-          sono pre-impostate a HARD (rosso) automaticamente.
+          sono pre-impostate a non disponibile (rosso) automaticamente.
         </p>
       {/if}
     </div>
@@ -609,9 +609,9 @@
     <div class="mt-4 card !shadow-none p-3 bg-ink-50/40 space-y-3">
       <div class="text-sm font-semibold">Giorni liberi (avanzato)</div>
       <p class="text-xs text-ink-500">
-        Tre preferenze ordinate di giorno libero. Se HARD, le 6 ore
+        Tre preferenze ordinate di giorno libero. Se obbligatorio, le 6 ore
         del giorno vengono bloccate automaticamente nella matrice di
-        disponibilità (rosso). Se SOFT, il modello paga la penalty
+        disponibilità (rosso). Se penalizzato, il modello paga la penalità
         per ogni ora occupata in quel giorno. La 1a preferenza è
         quella prioritaria; 2a/3a sono fallback.
       </p>
@@ -640,7 +640,7 @@
                          list[i] = { ...list[i], is_hard: true };
                          editing = { ...editing, preferred_free_days: list };
                        }}/>
-                🟥 HARD
+                🟥 Obbligatorio
               </label>
               <label class="flex items-center gap-1 text-xs">
                 <input type="radio" checked={!cur.is_hard}
@@ -649,12 +649,12 @@
                          list[i] = { ...list[i], is_hard: false };
                          editing = { ...editing, preferred_free_days: list };
                        }}/>
-                🟨 SOFT
+                🟨 Penalizzato
               </label>
             </div>
             {#if !cur.is_hard}
               <div class="field col-span-2">
-                <label>Penalty</label>
+                <label>Penalità</label>
                 <input type="number" value={cur.soft_penalty ?? 100}
                        on:input={(e) => {
                          const list = [...(editing.preferred_free_days ?? [])];
@@ -672,8 +672,8 @@
         </div>
       {/if}
       <div class="field max-w-xs">
-        <label>Min giorni liberi/sett. (HARD)
-          <span title="Numero MINIMO di giornate libere a settimana. Default 1 (CCNL). 2-3 per docenti part-time. 0 disabilita il vincolo. Il pragma è 'teacher_at_least_n_free_days' applicato uniformemente in Phase A, Phase B e tutti i bypass.">
+        <label>Min giorni liberi/sett. (obbligatorio)
+          <span title="Numero MINIMO di giornate libere a settimana. Default 1 (CCNL). 2-3 per docenti part-time. 0 disabilita il vincolo. Il pragma è 'teacher_at_least_n_free_days' applicato uniformemente in Fase A, Fase B e tutti i bypass.">
             &#x2139;
           </span>
         </label>
@@ -697,7 +697,7 @@
       </div>
       <p class="text-xs text-ink-500">
         Tre preferenze ordinate. La 1a scelta paga 30 di penalty se
-        violata, la 2a paga 20, la 3a paga 10. Il vincolo HARD
+        violata, la 2a paga 20, la 3a paga 10. Il vincolo obbligatorio
         "almeno un giorno libero" è applicato a tutti i docenti
         indipendentemente da queste preferenze.
       </p>
@@ -759,24 +759,24 @@
     <!-- Phase-A only preferences: class + curriculum (5-state) -->
     <div class="mt-4 space-y-3 border-t border-ink-200 pt-3">
       <div class="text-xs text-ink-500 italic">
-        <strong class="text-ink-700">Preferenze per Phase A</strong>
+        <strong class="text-ink-700">Preferenze per Fase A</strong>
         (assegnazione docente -&gt; classe). Queste preferenze
         influenzano SOLO l'assegnazione docenti↔classi, non l'orario
-        settimanale (Phase B).
+        settimanale (Fase B).
       </div>
       <EntityPreferenceGrid
         items={classItems}
         value={editingClassPrefs}
         onChange={(v) => (editingClassPrefs = v)}
         title="Classi (preferenze)"
-        subtitle="HARD rosso = niente assegnazione su quella classe; ENFORCED = assegnamento obbligatorio."
+        subtitle="Obbligatorio rosso = niente assegnazione su quella classe; imposto = assegnamento obbligatorio."
         collapsedByDefault={true}/>
       <EntityPreferenceGrid
         items={curriculumItems}
         value={editingCurrPrefs}
         onChange={(v) => (editingCurrPrefs = v)}
         title="Indirizzi (preferenze)"
-        subtitle="Vincoli a livello di indirizzo; HARD = niente classi di quell'indirizzo."
+        subtitle="Vincoli a livello di indirizzo; Obbligatorio = niente classi di quell'indirizzo."
         collapsedByDefault={true}/>
     </div>
 
