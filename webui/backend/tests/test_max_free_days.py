@@ -212,3 +212,52 @@ def test_per_day_slice_does_not_false_unsat():
     assert any("slice" in d for d in compiler.diagnostics)
     status, _ = _solve(model)
     assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+
+
+def test_infeasible_core_names_the_teacher():
+    """Il letterale maxfree_ è un'assumption: il nucleo minimo lo nomina.
+    L'insieme ammissibile non cambia: senza la regola i due giorni
+    liberi restano ammessi (test sopra)."""
+    model, compiler = _phase_a_model(
+        18, with_rule=True, force_free_at_least=2)
+    status, solver = _solve(model)
+    assert status == cp_model.INFEASIBLE
+    names = mfd.assumption_core_teachers(
+        solver, compiler.maxfree_lits, model=model)
+    assert names == ["T"]
+
+
+def test_phase_a_infeasible_message_names_the_teacher():
+    """Il percorso di produzione (solve_phase_a) interroga il modello
+    vero e mette il nucleo nel messaggio già esistente."""
+    import cpsat_v2_timetable as cv2
+    profs = {
+        "T": {
+            "classi": {"1A": {
+                "S1": {"ore": 6},
+                "S2": {"ore": 6},
+                "S3": {"ore": 6},
+            }},
+            "min_free_days": 0,
+            "max_free_if_hours": {"max_free": 1, "threshold": 18},
+        }
+    }
+    classes, triples, class_profs = cv2.build_indices(profs)
+    try:
+        cv2.solve_phase_a(
+            profs, classes, triples, class_profs,
+            time_limit=15, workers=1, log=False,
+            class_flags={"1A": {
+                "entry_at_8": False,
+                "no_holes": False,
+                "exit_after_12": False,
+                "max_6_per_day": True,
+            }},
+        )
+    except cv2.PhaseAInfeasible as exc:
+        msg = str(exc)
+    else:
+        raise AssertionError("atteso PhaseAInfeasible")
+    assert "Nucleo minimo" in msg
+    assert "T" in msg
+

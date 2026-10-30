@@ -2573,7 +2573,10 @@ class DSLConstraintCompiler:
                 free_vars.append(busy.Not())
         ok = self.model.NewBoolVar(f"maxfree_{t}")
         self.model.Add(sum(free_vars) <= max_free).OnlyEnforceIf(ok)
-        self.model.Add(ok == 1)
+        # Assumption, not a hard ``ok == 1``: CpSolver.Solve still
+        # enforces it, so the feasible set is unchanged. On INFEASIBLE
+        # the production path can name this literal in the minimal core.
+        self.model.AddAssumption(ok)
         if self.owner_model is not None:
             lits = getattr(self.owner_model, "maxfree_lits", None)
             if lits is None:

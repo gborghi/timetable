@@ -1799,6 +1799,17 @@ class MonolithicSolver(ConstraintModel):
         _solvercfg.configure_solver(solver)
         status = solver.Solve(self.model)
         if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+            if status == cp_model.INFEASIBLE:
+                try:
+                    from . import max_free_days as _mfd  # type: ignore
+                except ImportError:
+                    import max_free_days as _mfd  # type: ignore
+                self.maxfree_core = _mfd.assumption_core_teachers(
+                    solver, getattr(self, "maxfree_lits", None),
+                    model=self.model)
+                if self.maxfree_core:
+                    print("[mono] nucleo minimo (maxfree): "
+                          + ", ".join(self.maxfree_core))
             return None, solver.StatusName(status)
         out = {}
         for k, v in self.slot.items():

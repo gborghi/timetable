@@ -1337,17 +1337,26 @@ def solve_phase_a(profs, classes, triples, class_profs,
         # "nessuna soluzione" for every non-solved status -- made a big
         # school that merely needs more time look permanently infeasible.
         if status == cp_model.INFEASIBLE:
+            try:
+                from . import max_free_days as _mfd  # type: ignore
+            except ImportError:
+                import max_free_days as _mfd  # type: ignore
+            _note = _mfd.core_note(
+                solver, getattr(_compiler, "maxfree_lits", None),
+                model=model)
             if locked_day_count:
                 raise PhaseAInfeasible(
                     "Phase A INFEASIBLE: i lock attivi sono incompatibili "
                     "con i vincoli correnti. Rimuovi o adatta i lock "
                     "(es. sblocca eventi nel monitor) e ritenta. "
                     f"Lock attivi: {len(locked_day_count)} cattedra-giorno."
+                    + _note
                 )
             raise PhaseAInfeasible(
                 "Phase A INFEASIBLE: il modello dei conteggi-giorno non "
                 "ammette soluzione con i vincoli correnti (dimostrato dal "
                 "solver, non un timeout)."
+                + _note
             )
         # UNKNOWN / MODEL_INVALID / timeout: NOT infeasibility.
         lock_note = (
