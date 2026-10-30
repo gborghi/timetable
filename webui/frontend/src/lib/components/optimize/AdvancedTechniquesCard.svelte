@@ -130,7 +130,7 @@
      "Tecniche avanzate" che avvolge questo componente in /optimize. -->
 <div class="space-y-4" data-testid="advanced-techniques-card">
   <p class="text-[11.5px] text-ink-400 max-w-[76ch]">
-    ALNS, VNS, Hall's theorem pre-check e Column Generation. Vedere
+    ALNS, VNS, Pre-check fattibilità (Hall) e Column Generation. Vedere
     <code>docs/optimization_strategies.md</code> per dettagli e
     quando usarle.
   </p>
@@ -138,7 +138,7 @@
   <!-- Hall pre-check -->
   <div class="border border-ink-200 rounded p-3 bg-ink-50/40">
     <div class="flex items-baseline gap-2 mb-2">
-      <h3 class="!text-sm">Hall's theorem pre-check</h3>
+      <h3 class="!text-sm">Pre-check fattibilità (Hall)</h3>
       <span class="pill pill-amber !text-[10px]">diagnostico, sync</span>
     </div>
     <p class="text-[11px] text-ink-500 mb-2">
@@ -163,7 +163,7 @@
     {#if hallReport}
       <div class="mt-2 text-xs">
         <div>
-          <strong>{hallReport.ok ? 'Fattibile (Hall ok)' : 'INFEASIBILE'}</strong>
+          <strong>{hallReport.ok ? 'Fattibile (Hall ok)' : 'non fattibile'}</strong>
           - {hallReport.n_classes} classi, {hallReport.n_teachers} docenti
           - domanda {hallReport.stats.total_demand_hours}h vs supply
           {hallReport.stats.total_supply_hours}h
@@ -260,7 +260,7 @@
                data-testid="adv-lag-budget" class="w-24"/>
       </div>
       <div class="field !mb-0">
-        <label for="lib-components-optimize-advancedtechniquescard-f7" class="!text-[11px]">Max iter</label>
+        <label for="lib-components-optimize-advancedtechniquescard-f7" class="!text-[11px]">Max iterazioni</label>
         <input id="lib-components-optimize-advancedtechniquescard-f7" type="number" bind:value={lagMaxIter}
                data-testid="adv-lag-max-iter" class="w-16"/>
       </div>
@@ -292,7 +292,7 @@
     </div>
     <p class="text-[11px] text-ink-500 mb-2">
       Decomposizione Dantzig-Wolfe: master LP + sottoproblemi CP-SAT
-      a granularità configurabile (9 opzioni). <em>Mode</em> sceglie
+      a granularità configurabile (9 opzioni). <em>Modalità</em> sceglie
       tra <em>iterative-diversified</em> (master LP + pattern
       enrichment + completion fallback, sempre copertura obbligatoria al 100%) e
       <em>branch-and-price</em> (vero BP con sub-CP-SAT pricing dei
@@ -353,7 +353,7 @@
                title="Max iterazioni del loop branch-and-price (master + pricing)."/>
       </div>
       <div class="field !mb-0">
-        <label for="lib-components-optimize-advancedtechniquescard-f15" class="!text-[11px]">Pricer time limit (s)</label>
+        <label for="lib-components-optimize-advancedtechniquescard-f15" class="!text-[11px]">Tempo limite pricer (s)</label>
         <input id="lib-components-optimize-advancedtechniquescard-f15" type="number" step="0.5" bind:value={cgPricerTimeLimit}
                class="w-full"
                title="Tempo CPU max per ogni sub-problema CP-SAT di pricing."/>

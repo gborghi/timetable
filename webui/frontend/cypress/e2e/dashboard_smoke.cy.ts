@@ -145,7 +145,7 @@ describe('Dashboard smoke', () => {
      + 'the confirm)', () => {
     cy.visit('/');
     expandPanel('zona-pericolosa');
-    cy.contains('button', /Reset DB/i).should('be.visible').click();
+    cy.contains('button', /Cancella tutto/i).should('be.visible').click();
     // Il Reset passa da ConfirmDialog (non window.confirm): annullare
     // dal dialog e' cio' che rende il test non distruttivo.
     dismissConfirm();

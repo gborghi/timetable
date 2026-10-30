@@ -118,10 +118,10 @@
           <span class="italic" style="color: var(--brand-secondary);">π</span>Tantum
         </span>
       </a>
-      <span class="hidden sm:inline text-[10px] font-semibold uppercase
-                   tracking-wide text-ink-400 shrink-0 -ml-1"
+      <span class="hidden sm:inline text-[10px] font-semibold
+                   text-ink-400 shrink-0 -ml-1"
             title="Sviluppato con l'aiuto dell'intelligenza artificiale (Claude)"
-            data-testid="built-with-ai">built with AI</span>
+            data-testid="built-with-ai">Sviluppato con l'aiuto dell'intelligenza artificiale</span>
       <div class="hidden sm:block w-px h-6 bg-ink-200 shrink-0" aria-hidden="true"></div>
 
       <button type="button"

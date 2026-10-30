@@ -439,9 +439,9 @@
       {#each GROUP_OPTIONS as o}<option value={o.value}>{o.label}</option>{/each}
     </select>
     <button class="btn !text-xs" on:click={toggleAll}
-            title="Chiudi tutti i gruppi">Toggle all</button>
+            title="Chiudi tutti i gruppi">Chiudi tutti i gruppi</button>
     <button class="btn !text-xs" on:click={untoggleAll}
-            title="Apri tutti i gruppi">Untoggle all</button>
+            title="Apri tutti i gruppi">Apri tutti i gruppi</button>
     <span class="text-xs text-ink-500 ml-2">Righe/pagina:</span>
     <select class="text-xs px-2 py-1 border border-ink-200 rounded"
             value={pageSize}
@@ -470,11 +470,11 @@
     <span class="border-l border-ink-200 h-6 mx-1"></span>
     <button class="btn !text-xs" on:click={resetQuery}
             disabled={!rowQuery && !appliedQuery}
-            title="Svuota la barra di ricerca">Reset query</button>
+            title="Svuota la barra di ricerca">Svuota</button>
     <button class="btn !text-xs" on:click={resetSort}
             disabled={sortLevels.length === 0}
-            title="Torna all'ordine originale">Reset sort</button>
-    <button class="btn !text-xs" on:click={refresh} disabled={busy}>refresh</button>
+            title="Torna all'ordine originale">Torna all'ordine originale</button>
+    <button class="btn !text-xs" on:click={refresh} disabled={busy}>Aggiorna</button>
     {#if selectable}
       <span class="border-l border-ink-200 h-6 mx-1"></span>
       <button class="btn !text-xs" on:click={selectAllVisible}
@@ -509,7 +509,7 @@
       {#if onBulkApply}
         <button class="btn !text-xs" on:click={bulkApply}
                 disabled={selectedIds.length === 0}
-                title="Assegna o rimuove l'aula, oppure blocca/sblocca, con dry-run dei conflitti">
+                title="Assegna o rimuove l'aula, oppure blocca/sblocca, con anteprima dei conflitti">
           Modifica selezionati
         </button>
       {/if}
@@ -541,7 +541,7 @@
 
   {#if sortLevels.length > 0}
     <div class="card p-2 text-xs flex flex-wrap items-center gap-2 bg-accent-500/5 border-accent-500/30">
-      <span class="text-ink-500">Sort attivo:</span>
+      <span class="text-ink-500">Ordinamento attivo:</span>
       {#each sortLevels as l, i}
         <span class="pill pill-blue">
           {i + 1}. {l.column} {l.direction === 'asc' ? '▲' : '▼'}
@@ -570,7 +570,7 @@
           <li><code>aula = LabFisica AND giorno = Lunedi</code></li>
           <li><code>docente contains Rossi</code></li>
         </ul></div>
-      <div class="text-ink-500"><strong>Sort multi-livello:</strong>
+      <div class="text-ink-500"><strong>Ordinamento multi-livello:</strong>
         doppio click su una colonna per aggiungere/rimuovere
         un livello (max {MAX_SORT_LEVELS}).</div>
     </div>
@@ -608,7 +608,7 @@
                   <button class="hover:text-accent-500 cursor-pointer
                                  underline decoration-dotted decoration-ink-300
                                  hover:decoration-accent-500"
-                          title="Doppio click per aggiungere/rimuovere dal sort"
+                          title="Doppio click per aggiungere/rimuovere dall'ordinamento"
                           on:dblclick={() => onLabelDblClick(c.key)}>
                     {c.label}
                   </button>

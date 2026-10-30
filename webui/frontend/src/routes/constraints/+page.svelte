@@ -391,7 +391,7 @@
             {searchBusy ? '...' : 'Cerca'}
           </button>
           <button class="btn !text-xs" on:click={resetSearch}
-                  data-testid="search-reset">Reset</button>
+                  data-testid="search-reset">azzera</button>
         </div>
       </div>
 
@@ -401,7 +401,7 @@
           <label class="flex items-center gap-1">
             <input type="checkbox" value={lv}
                    bind:group={searchLevels}/>
-            {lv}
+            {LEVEL_LABEL[lv]}
           </label>
         {/each}
       </div>
@@ -412,7 +412,7 @@
                data-testid="search-results-table">
           <thead>
             <tr>
-              <th>Kind</th><th>Origine</th><th>Scope</th>
+              <th>Tipo</th><th>Origine</th><th>Ambito</th>
               <th>Owner</th><th>Livello</th>
               <th>Dettaglio / Espressione</th>
               <th>Menzioni</th><th></th>
@@ -483,7 +483,7 @@
         <thead>
           <tr>
             <th>#</th><th>Etichetta</th><th>Livello</th>
-            <th>Peso</th><th>Scope</th><th>Espressione</th><th></th>
+            <th>Peso</th><th>Ambito</th><th>Espressione</th><th></th>
           </tr>
         </thead>
         <tbody>

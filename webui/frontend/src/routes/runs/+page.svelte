@@ -52,7 +52,7 @@
     { key: 'status',      label: 'Stato' },
     { key: 'progress',    label: 'Avanzamento' },
     { key: 'started_at',  label: 'Avviato' },
-    { key: 'obj_value',   label: 'Obj' },
+    { key: 'obj_value',   label: 'Obiettivo' },
     { key: 'solution_id', label: 'Sol.' },
   ];
 
@@ -323,9 +323,9 @@
             on:click={() => (showHelp = !showHelp)}>?  guida</button>
     <span class="border-l border-ink-200 h-6 mx-1"></span>
     <button class="btn !text-xs" on:click={resetQuery}
-            disabled={!rowQuery && !appliedQuery}>Reset query</button>
+            disabled={!rowQuery && !appliedQuery}>Svuota</button>
     <button class="btn !text-xs" on:click={resetSort}
-            disabled={sortLevels.length === 0}>Reset sort</button>
+            disabled={sortLevels.length === 0}>Torna all'ordine originale</button>
   </div>
 
   {#if queryError}
@@ -336,7 +336,7 @@
 
   {#if sortLevels.length > 0}
     <div class="card p-2 text-xs flex flex-wrap items-center gap-2 bg-accent-500/5 border-accent-500/30">
-      <span class="text-ink-500">Sort attivo:</span>
+      <span class="text-ink-500">Ordinamento attivo:</span>
       {#each sortLevels as l, i}
         <span class="pill pill-blue">{i + 1}. {l.column}
           {l.direction === 'asc' ? '▲' : '▼'}</span>
@@ -395,7 +395,7 @@
               <span class="inline-flex items-center gap-1">
                 <button class="hover:text-accent-500 cursor-pointer
                                underline decoration-dotted decoration-ink-300"
-                        title="Doppio click per aggiungere/rimuovere dal sort"
+                        title="Doppio click per aggiungere/rimuovere dall'ordinamento"
                         on:dblclick={() => onLabelDblClick(c.key)}>
                   {c.label}
                 </button>

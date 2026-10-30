@@ -14,7 +14,7 @@
     <table class="tbl">
       <thead>
         <tr>
-          <th>#</th><th>Nome</th><th>Tipo</th><th>Obj</th>
+          <th>#</th><th>Nome</th><th>Tipo</th><th>Obiettivo</th>
           <th>Metriche</th><th>Attiva?</th><th></th>
         </tr>
       </thead>

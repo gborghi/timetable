@@ -380,7 +380,7 @@
               <th>Docente</th>
               <th>Cl. concorso</th>
               <th>Assegnate</th>
-              <th>Max</th>
+              <th>Massimo</th>
               <th>Delta</th>
               <th>Stato</th>
             </tr>
