@@ -1,6 +1,5 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@config "../tailwind.config.js";
 
 /* piTantum brand palette. Tweak here, propagates to all components
    that read `var(--brand-*)`. The app.html and frontend layout/footer
@@ -50,6 +49,19 @@
 
 @layer base {
   html { -webkit-text-size-adjust: 100%; }
+  /* v3 usava gray-200 come bordo di default; v4 usa currentColor. */
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentcolor);
+  }
+  /* v3 metteva cursor:pointer sui bottoni; v4 no. */
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
   /* Il design lavora a 13px di base. Restiamo su rem=16px (le spaziature
      Tailwind sono in rem: cambiare la radice rimpicciolirebbe tutto) e
      abbassiamo solo il testo che non ha una classe text-*. */
@@ -59,6 +71,24 @@
   h1 { @apply font-serif text-[30px] font-semibold tracking-[-0.015em] leading-[1.1]; }
   h2 { @apply font-serif text-[19px] font-semibold tracking-[-0.01em]; }
   h3 { @apply font-serif text-[15px] font-semibold; }
+}
+
+/* Classi riusate con @apply: in v4 vanno registrate come utility,
+   altrimenti `@apply btn` / `@apply pill` non risolve. */
+@utility btn {
+  @apply inline-flex items-center gap-2 px-[13px] py-[7px] rounded-[7px]
+         text-[12.5px] font-normal border border-ink-200 bg-white
+         text-ink-500 hover:bg-ink-50 hover:text-ink-900
+         active:bg-ink-100 transition-colors
+         disabled:opacity-50 disabled:cursor-not-allowed;
+}
+@utility btn-danger {
+  @apply btn bg-white text-siena border-[#f0d6d0] font-medium
+         hover:bg-[#fdf4f2] hover:text-siena active:bg-[#f9e9e5];
+}
+@utility pill {
+  @apply inline-flex items-center gap-[0.32em] px-[9px] py-[3px]
+         text-[10.5px] rounded-full bg-[#eae4d5] text-ink-500;
 }
 
 @layer components {
@@ -75,21 +105,10 @@
   .num { @apply font-mono tabular-nums; }
 
   /* --- bottoni ------------------------------------------------------- */
-  .btn {
-    @apply inline-flex items-center gap-2 px-[13px] py-[7px] rounded-[7px]
-           text-[12.5px] font-normal border border-ink-200 bg-white
-           text-ink-500 hover:bg-ink-50 hover:text-ink-900
-           active:bg-ink-100 transition-colors
-           disabled:opacity-50 disabled:cursor-not-allowed;
-  }
   .btn-primary {
     @apply btn rounded-lg bg-accent-500 text-white border-accent-500
            font-medium hover:bg-accent-600 hover:text-white
            active:bg-accent-600;
-  }
-  .btn-danger {
-    @apply btn bg-white text-siena border-[#f0d6d0] font-medium
-           hover:bg-[#fdf4f2] hover:text-siena active:bg-[#f9e9e5];
   }
   /* Alias storici usati in una ventina di punti (monitor, schedule,
      diagnostics, feasibility panel). Non erano mai stati definiti in
@@ -133,10 +152,6 @@
   /* gap e non lo spazio del markup: essendo un flex container, lo
      spazio fra <span class="num">3</span> e "classi" verrebbe mangiato
      e i chip numerici si leggerebbero "3classi". */
-  .pill {
-    @apply inline-flex items-center gap-[0.32em] px-[9px] py-[3px]
-           text-[10.5px] rounded-full bg-[#eae4d5] text-ink-500;
-  }
   .pill-green { @apply pill bg-[#e6f0e8] text-[#2f6b3e] font-medium; }
   .pill-red   { @apply pill bg-[#fecaca] text-[#991b1b] font-medium; }
   .pill-amber { @apply pill bg-[#fde68a] text-[#92400e] font-medium; }
