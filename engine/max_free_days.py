@@ -173,6 +173,74 @@ def solution_respects(sol: dict, profs: dict,
     return True
 
 
+def assumption_core_teachers(cp_solver, lits: dict | None, *,
+                            model=None, retry_s: float = 5.0) -> list[str]:
+    """Docenti il cui letterale ``maxfree_`` sta nel nucleo minimo.
+
+    Usa ``SufficientAssumptionsForInfeasibility`` sul solver che ha
+    appena dimostrato l'UNSAT. Non è un endpoint nuovo. Con più
+    worker il nucleo a volte torna vuoto: in quel caso un secondo
+    solve a un worker, sullo stesso modello, lo estrae. Il secondo
+    solve non cambia l'insieme ammissibile: siamo già nell'UNSAT.
+    """
+    names = _match_core(cp_solver, lits)
+    if names or not lits or model is None:
+        return names
+    try:
+        from ortools.sat.python import cp_model
+    except ImportError:
+        return names
+    retry = cp_model.CpSolver()
+    retry.parameters.num_workers = 1
+    retry.parameters.max_time_in_seconds = float(retry_s)
+    try:
+        from . import solver_config as cfg  # type: ignore
+    except ImportError:
+        try:
+            import solver_config as cfg  # type: ignore
+        except ImportError:
+            cfg = None
+    if cfg is not None:
+        cfg.configure_solver(retry)
+        retry.parameters.num_workers = 1
+    try:
+        status = retry.Solve(model)
+    except Exception:
+        return names
+    if status != cp_model.INFEASIBLE:
+        return names
+    return _match_core(retry, lits)
+
+
+def _match_core(cp_solver, lits: dict | None) -> list[str]:
+    if not lits:
+        return []
+    try:
+        indices = set(cp_solver.SufficientAssumptionsForInfeasibility())
+    except Exception:
+        return []
+    out = []
+    for name, lit in lits.items():
+        try:
+            idx = int(lit.Index())
+        except Exception:
+            continue
+        if idx in indices or (-idx - 1) in indices:
+            out.append(str(name))
+    return sorted(out)
+
+
+def core_note(cp_solver, lits: dict | None, *, model=None) -> str:
+    """Frase da appendere al messaggio di UNSAT già esistente."""
+    names = assumption_core_teachers(cp_solver, lits, model=model)
+    if not names:
+        return ""
+    return (
+        " Nucleo minimo: il tetto sui giorni liberi di "
+        + ", ".join(names) + "."
+    )
+
+
 def parse_name_list(raw: str | None) -> set[str]:
     if not raw:
         return set()

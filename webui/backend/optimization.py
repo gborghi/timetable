@@ -1846,6 +1846,10 @@ def _solve_phase_b_week(*, rid: int, ws: str, profs: dict,
         # soft prof-day-load penalty usually hid it; the joint room coupling
         # perturbed the schedule enough to expose it (a prof landing on 6h).
         _mx = csm.PHASE_A_MAX_PROF_HOURS_PER_DAY
+        try:
+            from engine import max_free_days as _mfd  # type: ignore
+        except ImportError:
+            import max_free_days as _mfd  # type: ignore
         for _t in sorted(solver.profs):
             _qt = '"' + str(_t).replace('\\', '\\\\').replace('"', '\\"') + '"'
             solver.add_dsl_constraint(
@@ -1854,6 +1858,16 @@ def _solve_phase_b_week(*, rid: int, ws: str, profs: dict,
             if _nf > 0:
                 solver.add_dsl_constraint(
                     f'teacher_at_least_n_free_days({_qt}, {_nf})',
+                    level="phase_b")
+            _rule = _mfd.rule_of(solver.profs.get(_t))
+            if (_rule is not None
+                    and _mfd.weekly_hours(solver.profs.get(_t))
+                    >= _rule["threshold"]):
+                # Stesso pragma di MonolithicSolver.build. Il percorso
+                # a pezzi non chiamava build(), quindi il modello vero
+                # della settimana non aveva il letterale maxfree_.
+                solver.add_dsl_constraint(
+                    _mfd.pragma(_t, _rule["max_free"], _rule["threshold"]),
                     level="phase_b")
 
         if _special_room_ctx:
@@ -1932,11 +1946,25 @@ def _solve_phase_b_week(*, rid: int, ws: str, profs: dict,
     # shows 'Phase B' during it instead of a stale earlier step (finding 19).
     update_run(rid, progress=progress_base, current_step="phase_b")
 
+    def _maxfree_note(solver, cp_solver, status) -> str:
+        if status != cp_model.INFEASIBLE:
+            return ""
+        try:
+            from engine import max_free_days as _mfd  # type: ignore
+        except ImportError:
+            import max_free_days as _mfd  # type: ignore
+        return _mfd.core_note(
+            cp_solver, getattr(solver, "maxfree_lits", None),
+            model=solver.model)
+
+    _last_unsat = {"note": ""}
+
     def _solve_once(forbidden):
         """Adapter for ``dsl_cp_gate.solve_with_dsl_refinement``: build +
         solve, returning ``(sol_or_None, status_name)``."""
         solver, cp_solver, status, status_name = _build_week_solver(forbidden)
         if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+            _last_unsat["note"] = _maxfree_note(solver, cp_solver, status)
             return None, status_name
         sol = {k: 1 for k, v in solver.slot.items() if cp_solver.Value(v)}
         _jrm_holder["map"] = _room_map_from_joint_x(solver, cp_solver)
@@ -1956,15 +1984,16 @@ def _solve_phase_b_week(*, rid: int, ws: str, profs: dict,
             _gate.solve_with_dsl_refinement(
                 _solve_once, profs, hard_exprs, max_iters=8))
         if full_solution is None:
+            _note = _last_unsat["note"]
             if locks_5:
                 raise RuntimeError(
                     "Phase B (week scope) INFEASIBLE: i lock correnti "
                     "sono incompatibili con i vincoli. Rimuovi o adatta "
-                    "i lock e ritenta.")
+                    "i lock e ritenta." + _note)
             raise RuntimeError(
                 f"Phase B (week scope) returned {status_name}: nessuna "
                 "soluzione settimanale entro il time limit. Aumenta "
-                "time_mono o passa a cp_sat_scope='day'.")
+                "time_mono o passa a cp_sat_scope='day'." + _note)
         if unsatisfied:
             # Surface the un-enforceable HARD rules as structured warnings
             # (the honest "couldn't fully comply within budget" signal).
@@ -2022,15 +2051,16 @@ def _solve_phase_b_week(*, rid: int, ws: str, profs: dict,
                   f"{sum(r['missing'] for r in _MISSING_BY_RUN[rid])} "
                   "ore non collocate")
     if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        _note = _maxfree_note(solver, cp_solver, status)
         if locks_5:
             raise RuntimeError(
                 "Phase B (week scope) INFEASIBLE: i lock correnti "
                 "sono incompatibili con i vincoli. Rimuovi o adatta "
-                "i lock e ritenta.")
+                "i lock e ritenta." + _note)
         raise RuntimeError(
             f"Phase B (week scope) returned {status_name}: nessuna "
             "soluzione settimanale entro il time limit. Aumenta "
-            "time_mono o passa a cp_sat_scope='day'.")
+            "time_mono o passa a cp_sat_scope='day'." + _note)
 
     # Extract the solution dict in the same shape the legacy day-mode
     # produces: {(t, cl, subj, d, h): 1}.
