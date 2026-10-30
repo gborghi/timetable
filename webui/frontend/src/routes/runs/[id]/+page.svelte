@@ -153,7 +153,7 @@
     </svelte:fragment>
 
     <svelte:fragment slot="actions">
-      <a href="/runs" class="btn">← Torna ai runs</a>
+      <a href="/runs" class="btn">← Torna alle esecuzioni</a>
       <a class="btn" href={exportTelemetryUrl()}
          download={'telemetry_run_' + runId + '.json'}
          title="Scarica la serie completa di telemetria in JSON">

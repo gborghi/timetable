@@ -178,7 +178,7 @@
         }];
         if (last_status === 'failed') {
           chainError = `Step ${step.key} (run #${sub_id}) è fallito; `
-                      + 'apri il tab Runs per il dettaglio.';
+                      + 'apri Esecuzioni per il dettaglio.';
           break;
         }
       }

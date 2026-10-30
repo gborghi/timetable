@@ -286,7 +286,7 @@
 </script>
 
 <div class="space-y-4" data-testid="runs-page">
-  <PageHero title="Runs"
+  <PageHero title="Esecuzioni"
             description="Storia di ogni esecuzione (mock-import, Fase A, Fase B, metaeuristiche, classroom-assignment, place-event). Doppio click su un'intestazione di colonna per aggiungerla al sort (max 3 livelli); click sulla freccia per invertire la direzione. Query DSL come nelle altre tab. Selezionando più righe ed eliminando, il delete si applica a tutto il batch.">
     <svelte:fragment slot="chips">
       <span class="pill"><span class="num">{runs.length}</span> run nel dataset</span>
@@ -423,8 +423,8 @@
       <tbody>
         {#if runs.length === 0}
           <tr><td colspan="12" class="text-center text-ink-400 italic py-6">
-            Nessun run. Lancia un'ottimizzazione dal Workflow o dal
-            Monitor (Piazza).
+            Nessun run. Lancia un'ottimizzazione da Ottimizza o dal
+            Eventi (Piazza).
           </td></tr>
         {/if}
         {#each runs as r (r.id)}

@@ -11,6 +11,8 @@
  * Modificarla richiede di aggiornare quello spec.
  */
 
+import { _ } from "$lib/locales/it";
+
 export interface NavChild {
   href: string;
   label: string;
@@ -36,58 +38,58 @@ export interface NavGroup {
 // ottimizzazione. Gestione raggruppa tutto cio' che riguarda la
 // gestione operativa post-orario (assenze, supplenze, ...).
 export const navGroups: NavGroup[] = [
-  { kind: 'link', href: '/', label: 'Dashboard', exact: true,
+  { kind: 'link', href: '/', label: _.nav.dashboard, exact: true,
     hint: 'Panoramica: carica/genera la scuola, stato dei dati e dei run in corso.' },
   { kind: 'menu', label: 'Anagrafica',
     hint: 'I dati di base della scuola: chi insegna, quali classi, materie, aule.', children: [
-    { href: '/teachers',   label: 'Docenti',
+    { href: '/teachers',   label: _.nav.teachers,
       hint: 'Docenti: ore, disponibilità oraria, giorni liberi, preferenze e materie insegnabili.' },
-    { href: '/classes',    label: 'Classi',
+    { href: '/classes',    label: _.nav.classes,
       hint: 'Classi: monte ore per materia, indirizzo, n. studenti e vincoli di classe.' },
-    { href: '/curricula',  label: 'Indirizzi',
+    { href: '/curricula',  label: _.nav.curricula,
       hint: 'Indirizzi (curricula): il piano orario per anno di corso, riusabile fra classi.' },
-    { href: '/students',   label: 'Studenti',
+    { href: '/students',   label: _.nav.students,
       hint: 'Studenti: anagrafica, tag e appartenenza a gruppi.' },
-    { href: '/groups',     label: 'Gruppi',
+    { href: '/groups',     label: _.nav.groups,
       hint: 'Gruppi studio: sottogruppi inter/intra-classe (potenziamento, splitting).' },
-    { href: '/subjects',   label: 'Materie',
+    { href: '/subjects',   label: _.nav.subjects,
       hint: 'Materie: nomi, pesi di distribuzione e preferenze d\'aula.' },
-    { href: '/classrooms', label: 'Aule',
+    { href: '/classrooms', label: _.nav.classrooms,
       hint: 'Aule e laboratori: capienza, tipo, disponibilità e preferenze per materia.' },
-    { href: '/plessi',     label: 'Plessi',
+    { href: '/plessi',     label: _.nav.plessi,
       hint: 'Plessi (sedi): regole di spostamento fra edifici e politiche per giorno.' },
-    { href: '/ore',        label: 'Ore',
+    { href: '/ore',        label: _.nav.ore,
       hint: 'Tab Ore: definisce la settimana scolastica (giorni attivi e fasce orarie).' },
   ] },
   { kind: 'menu', label: 'Pianificazione',
     hint: 'Le decisioni a monte del solver: compresenze, cattedre e vincoli.', children: [
-    { href: '/coteaching',  label: 'Compresenze',
+    { href: '/coteaching',  label: _.nav.coteaching,
       hint: 'Compresenze: due o più docenti nella stessa ora/classe (es. laboratorio).' },
-    { href: '/assignments', label: 'Cattedre',
+    { href: '/assignments', label: _.nav.assignments,
       hint: 'Cattedre (Fase A): assegna ogni (classe, materia) a un docente.' },
-    { href: '/constraints', label: 'Vincoli',
+    { href: '/constraints', label: _.nav.constraints,
       hint: 'Vincoli: regole hard/soft sull\'orario, anche in linguaggio DSL generale.' },
   ] },
-  { kind: 'link', href: '/schedule', label: 'Orario',
+  { kind: 'link', href: '/schedule', label: _.nav.schedule,
     hint: 'Orario: editor settimanale drag-and-drop con anteprima dei conflitti.' },
   { kind: 'menu', label: 'Gestione',
     hint: 'Gestione operativa dopo l\'orario: assenze e supplenze.', children: [
-    { href: '/assenze-supplenze', label: 'Assenze e supplenze',
+    { href: '/assenze-supplenze', label: _.nav.coverage,
       hint: 'Assenze e supplenze: copertura settimanale e riassegnazione docenti.' },
   ] },
   { kind: 'menu', label: 'Esecuzione',
     hint: 'Far girare il solver e analizzare i risultati.', children: [
-    { href: '/optimize',    label: 'Workflow',
-      hint: 'Workflow: pipeline del solver (Fase A, Fase B, metaeuristiche, aule).' },
-    { href: '/runs',        label: 'Runs',
-      hint: 'Runs: storico delle esecuzioni con stato, log e metriche.' },
-    { href: '/diagnostics', label: 'Statistiche',
+    { href: '/optimize',    label: _.nav.optimize,
+      hint: 'Ottimizza: pipeline del solver (Fase A, Fase B, metaeuristiche, aule).' },
+    { href: '/runs',        label: _.nav.runs,
+      hint: 'Esecuzioni: storico con stato, log e metriche.' },
+    { href: '/diagnostics', label: _.nav.diagnostics,
       hint: 'Statistiche: pre-check Hall, Monte Carlo, matching e distribuzioni.' },
   ] },
-  { kind: 'link', href: '/monitor', label: 'Eventi',
+  { kind: 'link', href: '/monitor', label: _.nav.monitor,
     hint: 'Eventi: editor delle cattedre/lezioni grezze con filtri e azioni di massa.' },
-  { kind: 'link', href: '/import',  label: 'Import bulk',
-    hint: 'Import bulk: carica docenti, classi, aule e altro da file xlsx/csv.' },
+  { kind: 'link', href: '/import',  label: _.nav.imports,
+    hint: 'Importa: carica docenti, classi, aule e altro da file xlsx/csv.' },
 ];
 
 /**

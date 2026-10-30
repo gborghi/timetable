@@ -417,7 +417,7 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
     <p class="mt-2 max-w-[720px] text-[13px] leading-[1.55] text-ink-500">
       Le analisi pesanti (Monte Carlo, bipartito, correlazioni,
       distribuzioni) vengono lanciate come <strong>run asincroni</strong>:
-      compaiono nel tab <a href="/runs" class="text-accent-500 hover:underline">Runs</a>
+      compaiono nel tab <a href="/runs" class="text-accent-500 hover:underline">Esecuzioni</a>
       e il risultato torna qui sotto quando completato. Il pre-check
       Hall resta sincrono (&lt;100ms) per essere usato come
       "verde/rosso" prima di lanciare Fase A.

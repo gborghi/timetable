@@ -909,7 +909,7 @@
       <div class="card p-6 text-center text-ink-500"
            data-testid="schedule-empty-state">
         Nessuna soluzione attiva. Vai al
-        <a class="text-accent-500 underline" href="/optimize">Workflow</a>
+        <a class="text-accent-500 underline" href="/optimize">Ottimizza</a>
         e lancia almeno la Fase B, oppure importa uno snapshot SQLite
         dalla
         <a class="text-accent-500 underline" href="/">Dashboard</a>.

@@ -14,11 +14,11 @@
  * Asserts (per layout in `+layout.svelte`):
  *   - Top-level: Dashboard (link /), Anagrafica (menu), Pianificazione
  *     (menu), Orario (link /schedule), Gestione (menu), Esecuzione
- *     (menu), Eventi (link /monitor), Import bulk (link /import).
+ *     (menu), Eventi (link /monitor), Importa (link /import).
  *   - Anagrafica children: Docenti, Classi, Indirizzi, Studenti, Gruppi,
  *     Materie, Aule, Plessi, Ore.
  *   - Pianificazione children: Compresenze, Cattedre, Vincoli.
- *   - Esecuzione children: Workflow, Runs, Statistiche.
+ *   - Esecuzione children: Ottimizza, Esecuzioni, Statistiche.
  *   - Gestione children: Assenze e supplenze.
  *   - Each child link, when clicked, navigates to the expected route.
  */
@@ -53,12 +53,12 @@ const NAV: NavSpec[] = [
     { label: 'Assenze e supplenze', href: '/assenze-supplenze' },
   ]},
   { kind: 'menu', label: 'Esecuzione', children: [
-    { label: 'Workflow',    href: '/optimize' },
-    { label: 'Runs',        href: '/runs' },
+    { label: 'Ottimizza',    href: '/optimize' },
+    { label: 'Esecuzioni',   href: '/runs' },
     { label: 'Statistiche', href: '/diagnostics' },
   ]},
   { kind: 'link', label: 'Eventi',     href: '/monitor' },
-  { kind: 'link', label: 'Import bulk', href: '/import' },
+  { kind: 'link', label: 'Importa', href: '/import' },
 ];
 
 describe('Navbar completeness', () => {

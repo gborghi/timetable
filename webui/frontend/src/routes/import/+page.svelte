@@ -93,7 +93,7 @@
 </script>
 
 <div class="space-y-5">
-  <PageHero title="Import bulk">
+  <PageHero title="Importa">
     <p class="mt-2 max-w-[720px] text-[13px] leading-[1.55] text-ink-500">
       Carica file <code>.xlsx</code> / <code>.csv</code> per importare in
       blocco docenti, classi, aule, materie, studenti, indirizzi,
