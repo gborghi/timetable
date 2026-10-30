@@ -172,7 +172,7 @@
         // The slot was free (or freed) but the lesson breaks a HARD
         // rule. Unlike a conflict there is nothing to resolve, so the
         // modal stays open with the reason and the user edits the pick.
-        flash(r.reason || 'Creazione rifiutata: vincolo HARD', 'error');
+        flash(r.reason || 'Creazione rifiutata: vincolo obbligatorio', 'error');
         return;
       }
       flash('Lezione creata', 'success');
@@ -275,7 +275,7 @@
                       bg-red-50 text-xs text-red-700"
                data-testid="add-lesson-capacity-warning">
             {capacityWarning} Il backend rifiutera' questa lezione
-            (HARD); cambia aula o riduci gli studenti.
+            (obbligatorio); cambia aula o riduci gli studenti.
           </div>
         {/if}
       </div>

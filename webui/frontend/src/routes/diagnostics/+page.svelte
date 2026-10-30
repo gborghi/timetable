@@ -319,11 +319,11 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
   function mcHistogramOptionFor(result) {
     if (!result || !result.ok) return {};
     return {
-      title: { text: 'SOFT - distribuzione Monte Carlo' },
+      title: { text: 'Penalità — distribuzione Monte Carlo' },
       tooltip: { trigger: 'axis' },
       xAxis: { type: 'category',
                data: result.samples.map((_, i) => i + 1), name: 'sample' },
-      yAxis: { type: 'value', name: 'SOFT' },
+      yAxis: { type: 'value', name: 'Penalità' },
       series: [{
         type: 'bar',
         data: result.samples,
@@ -687,7 +687,7 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
       </summary>
       <p class="text-[11px] text-ink-500 mt-1 mb-2">
         Se la lista qui sotto è vuota, vengono calcolati i 3 modelli
-        canonici (carico vs buchi, materie vs SOFT, saturazione vs 6a
+        canonici (carico vs buchi, materie vs penalità, saturazione vs 6a
         ora). Aggiungi righe per scegliere altre x/y, OLS o Logit, scope
         teachers o classes.
       </p>

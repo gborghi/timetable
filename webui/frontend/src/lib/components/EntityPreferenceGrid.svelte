@@ -137,10 +137,10 @@
                on:click={(e) => onClick(e, it)}
                on:keydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(e, it); } }}
                title={(state === "allowed" ? "Default (consentito)" :
-                       state === "soft" ? "SOFT - penalità " + (pref?.soft_penalty ?? "") :
+                       state === "soft" ? "penalità " + (pref?.soft_penalty ?? "") :
                        state === "preferred" ? "PREFERITA - bonus " + (pref?.soft_penalty ?? "") :
-                       state === "forbidden" ? "VIETATO (HARD)" :
-                       "OBBLIGATORIO (HARD)")
+                       state === "forbidden" ? "vietato" :
+                       "obbligatorio")
                        + (it.hint ? " - " + it.hint : "")
                        + " \nTieni H/P/E/D/A/N + click per impostare direttamente."}>
             <div class="flex items-baseline justify-between gap-1">

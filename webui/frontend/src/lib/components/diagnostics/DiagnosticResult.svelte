@@ -39,14 +39,14 @@
 
   // ---- Monte Carlo ----
   $: mcOption = (kind === 'diag_montecarlo' && result && result.ok) ? {
-    title: { text: 'SOFT - distribuzione Monte Carlo' },
+    title: { text: 'Penalità — distribuzione Monte Carlo' },
     tooltip: { trigger: 'axis' },
     xAxis: {
       type: 'category',
       data: (result.samples || []).map((_, i) => i + 1),
       name: 'sample',
     },
-    yAxis: { type: 'value', name: 'SOFT' },
+    yAxis: { type: 'value', name: 'Penalità' },
     series: [{
       type: 'bar',
       data: result.samples,

@@ -686,7 +686,7 @@
       </label>
     </div>
     <div class="mt-4 text-xs text-ink-500">
-      Il backend valida HARD: ore-cattedra, abilitazione materia, esistenza docente.
+      Il backend valida i vincoli obbligatori: ore-cattedra, abilitazione materia, esistenza docente.
       Se la mossa rompe un vincolo, viene rifiutata con messaggio chiaro.
       Le voci marcate <code>[SFORA: +Xh]</code> indicano docenti per cui
       questa scelta sforerebbe il max-hours; il backend potrebbe rifiutare.

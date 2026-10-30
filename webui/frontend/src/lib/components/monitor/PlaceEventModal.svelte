@@ -49,7 +49,7 @@
   // Order is the array order; user drags to reorder.
   function defaultSteps() {
     return [
-      { key: 'greedy', label: 'Greedy placer (rapido, HARD-only)',
+      { key: 'greedy', label: 'Piazzamento rapido (solo vincoli obbligatori)',
         enabled: true, paramsOpen: false,
         params: { prefer_pref: false } },
       { key: 'phase_b', label: 'CP-SAT (Fase B)',
@@ -282,7 +282,7 @@
               {#if s.key === 'greedy'}
                 <label class="text-xs col-span-3 flex items-center gap-2">
                   <input type="checkbox" bind:checked={s.params.prefer_pref}/>
-                  Preferisci slot PREFERRED del docente (HARD non si
+                  Preferisci slot preferiti del docente (l'obbligatorio non si
                   rispettano comunque)
                 </label>
               {:else if s.key === 'phase_b'}

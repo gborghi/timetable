@@ -279,7 +279,7 @@
                       bg-red-50 text-xs text-red-700"
                data-testid="capacity-warning">
             {capacityWarning} Il backend rifiutera' questa lezione
-            (HARD); cambia aula o riduci gli studenti.
+            (obbligatorio); cambia aula o riduci gli studenti.
           </div>
         {/if}
       </div>

@@ -744,9 +744,9 @@
             <select id="routes-optimize-f15" class="mt-1 block w-full text-sm rounded border-ink-200"
                     bind:value={step3.joint_vars.room_continuity}>
               <option value="none">Nessuna (aula libera per ora)</option>
-              <option value="day">Stessa aula nello stesso giorno (HARD)</option>
-              <option value="week">Stessa aula tutta la settimana (HARD)</option>
-              <option value="soft">Minimizza i cambi d'aula (SOFT)</option>
+              <option value="day">Stessa aula nello stesso giorno (obbligatorio)</option>
+              <option value="week">Stessa aula tutta la settimana (obbligatorio)</option>
+              <option value="soft">Minimizza i cambi d'aula (penalizzato)</option>
             </select>
             <p class="text-xs text-ink-500 mt-1">
               Le materie con aula obbligata (palestra/lab) restano esenti.

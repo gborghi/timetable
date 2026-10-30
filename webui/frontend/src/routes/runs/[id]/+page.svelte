@@ -106,7 +106,7 @@
       type: xAxis === 'time' ? 'value' : 'category',
       name: xAxis === 'time' ? 's' : 'passo',
     },
-    yAxis: { type: 'value', name: 'SOFT' },
+    yAxis: { type: 'value', name: 'Penalità' },
     series: (() => {
       // Group samples by phase, draw one line per phase.
       const byPhase = {};
@@ -192,7 +192,7 @@
         {/if}
         {#if hardViolations != null}
           <div>
-            <div class="text-ink-500 text-xs"># vincoli HARD violati</div>
+            <div class="text-ink-500 text-xs">vincoli obbligatori violati</div>
             <span class="pill {hardViolations === 0 ? 'pill-green' : 'pill-red'}">
               {hardViolations}
             </span>

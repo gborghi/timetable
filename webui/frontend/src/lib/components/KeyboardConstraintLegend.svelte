@@ -18,12 +18,12 @@
   export let variant: "matrix" | "room" = "matrix";
 
   const ROOM_LABELS: Record<string, string> = {
-    H: "VIETATA (HARD)",
-    P: "PREFERITA",
-    E: "OBBLIGATORIA",
-    D: "SOFT +",
-    A: "CONSENTITA",
-    N: "RESET",
+    H: "vietata",
+    P: "preferita",
+    E: "obbligatoria",
+    D: "penalità +",
+    A: "consentita",
+    N: "azzera",
   };
 </script>
 

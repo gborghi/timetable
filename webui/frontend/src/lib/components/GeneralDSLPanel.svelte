@@ -73,10 +73,10 @@
   }
 
   function levelBadge(level) {
-    if (level === 'hard') return '🟥 HARD';
-    if (level === 'enforced') return '🟩 ENFORCED';
-    if (level === 'soft') return '🟨 SOFT';
-    if (level === 'preferred') return '🟦 PREFERRED';
+    if (level === 'hard') return '🟥 Obbligatorio';
+    if (level === 'enforced') return '🟩 Imposto';
+    if (level === 'soft') return '🟨 Penalizzato';
+    if (level === 'preferred') return '🟦 Preferenza';
     return level || '?';
   }
 </script>

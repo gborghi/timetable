@@ -362,7 +362,7 @@
                 flash('Ripristino non riuscito: lo slot e di nuovo occupato.',
                       'warning');
               } else if (r && r.hard_violation) {
-                flash('Ripristino non riuscito: ' + (r.reason || 'vincolo HARD'),
+                flash('Ripristino non riuscito: ' + (r.reason || 'vincolo obbligatorio'),
                       'warning');
               } else {
                 flash('Eliminazione annullata', 'success');

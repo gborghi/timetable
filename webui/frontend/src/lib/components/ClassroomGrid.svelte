@@ -147,11 +147,11 @@
         click cicla:
         <span class="pill-c-allowed">consentita</span>
         →
-        <span class="pill-c-soft">SOFT (penalità)</span>
+        <span class="pill-c-soft">penalità</span>
         →
         <span class="pill-c-preferred">preferita (bonus)</span>
         →
-        <span class="pill-c-hard">vietata (HARD)</span>
+        <span class="pill-c-hard">vietata</span>
         →
         <span class="pill-c-enforced">obbligatoria</span>
       </span>
@@ -172,9 +172,9 @@
                on:click={(e) => onClick(e, room)}
                on:keydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(e, room); } }}
                title={(state === 'allowed' ? 'Aula consentita (default)' :
-                      state === 'soft' ? 'SOFT - penalità ' + (pref?.weight ?? '') :
+                      state === 'soft' ? 'penalità ' + (pref?.weight ?? '') :
                       state === 'preferred' ? 'PREFERITA - bonus ' + (pref?.weight ?? '') :
-                      state === 'forbidden' ? 'VIETATA (HARD, no penalty)' :
+                      state === 'forbidden' ? 'vietata' :
                       'OBBLIGATORIA (enforced)')
                       + ' \nTieni H/P/E/D/A/N + click per impostare direttamente.'}>
             <div class="flex items-baseline justify-between">

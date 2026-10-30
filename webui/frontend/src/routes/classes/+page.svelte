@@ -359,7 +359,7 @@
     </div>
 
     <div class="mt-4">
-      <h3 class="mb-2">Vincoli HARD</h3>
+      <h3 class="mb-2">Vincoli obbligatori</h3>
       <div class="grid grid-cols-2 gap-2 text-sm">
         <label class="flex gap-2"><input type="checkbox" bind:checked={editing.hard_entry_at_8}/> Ingresso alle 8:00</label>
         <label class="flex gap-2"><input type="checkbox" bind:checked={editing.hard_exit_after_12}/> Uscita non prima delle 12</label>
@@ -372,7 +372,7 @@
     </div>
 
     <div class="mt-4 field">
-      <label for="routes-classes-f7">Peso minimizzazione 6^a ora (SOFT)</label>
+      <label for="routes-classes-f7">Peso minimizzazione 6^a ora (penalizzato)</label>
       <input id="routes-classes-f7" type="number" bind:value={editing.soft_minimize_sixth_weight}/>
     </div>
 
@@ -408,7 +408,7 @@
       <div class="text-sm font-semibold">Giorni liberi della classe (avanzato)</div>
       <p class="text-xs text-ink-500">
         Per le classi italiane il default è lavorare lun-sab (zero
-        giorni liberi). Se si imposta un giorno libero HARD, le 6 ore
+        giorni liberi). Se si imposta un giorno libero obbligatorio, le 6 ore
         del giorno vengono bloccate nella matrice di disponibilità.
         Tre preferenze ordinate (la 1a viene rispettata per prima),
         e un numero esatto di giorni liberi a settimana.
@@ -438,7 +438,7 @@
                          list[i] = { ...list[i], is_hard: true };
                          editing = { ...editing, preferred_free_days: list };
                        }}/>
-                🟥 HARD
+                🟥 Obbligatorio
               </label>
               <label class="flex items-center gap-1 text-xs">
                 <input type="radio" checked={!cur.is_hard}
@@ -447,12 +447,12 @@
                          list[i] = { ...list[i], is_hard: false };
                          editing = { ...editing, preferred_free_days: list };
                        }}/>
-                🟨 SOFT
+                🟨 Penalizzato
               </label>
             </div>
             {#if !cur.is_hard}
               <div class="field col-span-2">
-                <label>Penalty</label>
+                <label>Penalità</label>
                 <input type="number" value={cur.soft_penalty ?? 100}
                        on:input={(e) => {
                          const list = [...(editing.preferred_free_days ?? [])];
@@ -471,7 +471,7 @@
       {/if}
       <div class="grid grid-cols-2 gap-3">
         <div class="field">
-          <label>Giorni liberi totali nella settimana (HARD)
+          <label>Giorni liberi totali nella settimana (obbligatorio)
             <span title="Numero esatto di giornate libere per la classe. Default 0 (lavora tutti i giorni). 1 = un giorno libero (es. lunedì). Aumentare oltre 1 è raro per le classi italiane.">ℹ️</span>
           </label>
           <input type="number" min="0" max={calDays.length}
@@ -480,7 +480,7 @@
                    required_free_days_count: Math.max(0, Math.min(calDays.length, Number(e.target.value) || 0)) }}/>
         </div>
         <div class="field">
-          <label>Massimo ore al giorno (HARD)
+          <label>Massimo ore al giorno (obbligatorio)
             <span title="Cap superiore al numero di ore in un singolo giorno. Default 5. Aumentare a 6/7 se la classe ha giorni liberi e deve compensare con più ore al giorno.">ℹ️</span>
           </label>
           <input type="number" min="1" max="7"
@@ -530,12 +530,12 @@
         {@const maxPerDay = editing.max_hours_per_day ?? 5}
         {#if workDays === 0}
           <div class="text-xs text-red-700 bg-red-50 border border-red-300 p-2 rounded">
-            ⚠️ Configurazione infeasible: 6 giorni liberi -&gt; nessun
+            ⚠️ Configurazione non fattibile: 6 giorni liberi -&gt; nessun
             giorno lavorativo!
           </div>
         {:else if minPerDay > maxPerDay}
           <div class="text-xs text-red-700 bg-red-50 border border-red-300 p-2 rounded">
-            ⚠️ Configurazione infeasible: con
+            ⚠️ Configurazione non fattibile: con
             {editing.required_free_days_count ?? 0} giorni liberi e
             {totalHours} ore settimanali servono almeno {minPerDay}
             ore al giorno, ma il massimo è {maxPerDay}. Aumenta

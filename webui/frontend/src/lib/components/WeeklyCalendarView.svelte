@@ -914,19 +914,19 @@
       </span>
       <span class="flex items-center gap-1">
         <span class="w-3 h-3 rounded-sm border border-amber-400
-                     bg-amber-200"></span> SOFT (penalità +)
+                     bg-amber-200"></span> penalità +
       </span>
       <span class="flex items-center gap-1">
         <span class="w-3 h-3 rounded-sm border border-red-400
-                     bg-red-300"></span> HARD non disp.
+                     bg-red-300"></span> non disponibile
       </span>
       <span class="flex items-center gap-1">
         <span class="w-3 h-3 rounded-sm border border-sky-400
-                     bg-sky-200"></span> PREFERRED (penalità -)
+                     bg-sky-200"></span> preferenza
       </span>
       <span class="flex items-center gap-1">
         <span class="w-3 h-3 rounded-sm border border-emerald-700
-                     bg-emerald-700"></span> ENFORCED
+                     bg-emerald-700"></span> obbligatoria
       </span>
     </div>
     {/if}
@@ -1262,23 +1262,23 @@
                        role="gridcell"
                        tabindex="-1"
                        aria-label={`${slot.start_time}-${slot.end_time}: ` +
-                         (isSoft ? `SOFT, penalità ${cell.soft_penalty}`
+                         (isSoft ? `penalità ${cell.soft_penalty}`
                           : isPref ? `preferita, bonus ${Math.abs(cell.soft_penalty)}`
-                          : isEnf ? 'obbligatoria (HARD)'
-                          : isHard ? 'non disponibile (HARD)' : 'libera')}
+                          : isEnf ? 'obbligatoria'
+                          : isHard ? 'non disponibile' : 'libera')}
                        on:click={(e) => onCellClick(e, dnum, hnum)}
                        on:keydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onCellClick(e, dnum, hnum); } }}
                        on:mousedown={(e) => onMouseDown(e, dnum, hnum)}
                        on:mouseenter={() => onMouseEnter(dnum, hnum)}
                        title={`${slot.start_time}-${slot.end_time}` +
                          (isSoft
-                           ? ` -- SOFT, penalità ${cell.soft_penalty}`
+                           ? ` -- penalità ${cell.soft_penalty}`
                            : isPref
-                           ? ` -- PREFERRED, bonus ${cell.soft_penalty}`
+                           ? ` -- preferenza, bonus ${cell.soft_penalty}`
                            : isEnf
-                           ? ' -- ENFORCED'
+                           ? ' -- obbligatoria'
                            : isHard
-                           ? ' -- HARD non disponibile'
+                           ? ' -- non disponibile'
                            : ' -- libero')}>
                     <div class="cal-event-time">
                       {slot.start_time}-{slot.end_time}
@@ -1290,7 +1290,7 @@
                     {:else if isSoft}
                       <input type="number" min="0" max="9999" step="10"
                         class="cal-event-input cal-event-input--soft"
-                        aria-label={`Penalità SOFT ${slot.start_time}-${slot.end_time}`}
+                        aria-label={`Penalità ${slot.start_time}-${slot.end_time}`}
                         value={drafts[_key(dnum, hnum)] ?? cell.soft_penalty}
                         on:click|stopPropagation
                         on:mousedown|stopPropagation

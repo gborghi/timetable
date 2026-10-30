@@ -74,7 +74,7 @@
 
 <div class="space-y-4" data-testid="coteaching-page">
   <PageHero title="Compresenze"
-            description="Due o più docenti nella stessa ora sulla stessa classe. Una regola HARD obbliga il solver a farli coincidere; una SOFT la penalizza soltanto.">
+            description="Due o più docenti nella stessa ora sulla stessa classe. Una regola obbligatoria impone il solver a farli coincidere; una penalizzata la sconta soltanto.">
     <svelte:fragment slot="chips">
       <span class="pill" data-testid="coteaching-count">
         <span class="num">{rows.length}</span> regole
@@ -89,7 +89,7 @@
     <table class="tbl" data-testid="coteaching-table">
       <thead>
         <tr>
-          <th>Classe</th><th>Materia</th><th>HARD?</th><th>Peso</th>
+          <th>Classe</th><th>Materia</th><th>Obbligatoria?</th><th>Peso</th>
           <th># docenti</th><th>Docenti</th><th></th>
         </tr>
       </thead>
@@ -98,7 +98,7 @@
           <tr data-testid="coteaching-row" data-class={r.class_name} data-subject={r.subject}>
             <td><strong>{r.class_name}</strong></td>
             <td>{r.subject}</td>
-            <td>{#if r.required}<span class="pill-red" data-testid="coteaching-row-required">HARD</span>{:else}<span class="pill-amber" data-testid="coteaching-row-soft">SOFT</span>{/if}</td>
+            <td>{#if r.required}<span class="pill-red" data-testid="coteaching-row-required">Obbligatoria</span>{:else}<span class="pill-amber" data-testid="coteaching-row-soft">Penalizzata</span>{/if}</td>
             <td data-testid="coteaching-row-weight">{r.weight}</td>
             <td data-testid="coteaching-row-nteachers">{r.n_teachers}</td>
             <td class="text-xs" data-testid="coteaching-row-teachers">{r.teachers.join(' + ')}</td>
@@ -113,8 +113,8 @@
   </div>
 
   <p class="text-xs text-ink-500">
-    Una compresenza HARD blocca due (o piu) docenti nello stesso slot della stessa lezione.
-    Le compresenze SOFT sono "preferenze" pesate. La schedulazione (Fase B) gia gestisce la
+    Una compresenza obbligatoria blocca due (o piu) docenti nello stesso slot della stessa lezione.
+    Le compresenze penalizzate sono preferenze pesate. La schedulazione (Fase B) gia gestisce la
     coverage per (classe, materia); la compresenza viene risolta in fase di assegnazione cattedre
     (vedi pagina Cattedre).
   </p>
@@ -133,9 +133,9 @@
         <input id="routes-coteaching-f2" list="ll-subj" bind:value={editing.subject} data-testid="coteaching-subject-input"/>
         <datalist id="ll-subj">{#each allSubjects as s}<option value={s}></option>{/each}</datalist>
       </div>
-      <label class="flex items-center gap-2 text-sm"><input type="checkbox" bind:checked={editing.required} data-testid="coteaching-required-checkbox"/> HARD (obbligatoria)</label>
+      <label class="flex items-center gap-2 text-sm"><input type="checkbox" bind:checked={editing.required} data-testid="coteaching-required-checkbox"/> Obbligatoria</label>
       <div class="field">
-        <label for="routes-coteaching-f3">Peso (se SOFT)</label>
+        <label for="routes-coteaching-f3">Peso (se penalizzata)</label>
         <input id="routes-coteaching-f3" type="number" bind:value={editing.weight} data-testid="coteaching-weight-input"/>
       </div>
       <div class="field">

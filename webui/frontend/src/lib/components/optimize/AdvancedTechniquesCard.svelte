@@ -294,7 +294,7 @@
       Decomposizione Dantzig-Wolfe: master LP + sottoproblemi CP-SAT
       a granularità configurabile (9 opzioni). <em>Mode</em> sceglie
       tra <em>iterative-diversified</em> (master LP + pattern
-      enrichment + completion fallback, sempre HARD=100%) e
+      enrichment + completion fallback, sempre copertura obbligatoria al 100%) e
       <em>branch-and-price</em> (vero BP con sub-CP-SAT pricing dei
       duali). <em>Auto</em> sceglie modalità e granularità in base
       alla taglia della scuola. Vedi

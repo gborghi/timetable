@@ -132,12 +132,12 @@
   }
 
   const LEVELS = [
-    { value: 'hard',      label: '🟥 HARD',      desc: 'Non negoziabile' },
-    { value: 'soft',      label: '🟨 SOFT',      desc: 'Penalità positiva' },
-    { value: 'preferred', label: '🟦 PREFERRED', desc: 'Bonus negativo' },
-    { value: 'enforced',  label: '🟩 ENFORCED',  desc: 'Deve essere così' },
-    { value: 'allowed',   label: '🟢 ALLOWED',   desc: 'Esplicitamente permesso (override)' },
-    { value: 'forbidden', label: '⛔ FORBIDDEN', desc: 'Esplicitamente vietato' },
+    { value: 'hard',      label: '🟥 Obbligatorio', desc: 'Non negoziabile' },
+    { value: 'soft',      label: '🟨 Penalizzato', desc: 'Penalità positiva' },
+    { value: 'preferred', label: '🟦 Preferenza',  desc: 'Bonus negativo' },
+    { value: 'enforced',  label: '🟩 Imposto',     desc: 'Deve essere così' },
+    { value: 'allowed',   label: '🟢 Consentito',  desc: 'Esplicitamente permesso (override)' },
+    { value: 'forbidden', label: '⛔ Vietato',     desc: 'Esplicitamente vietato' },
   ];
 
   // Levels valid for the chosen kind
@@ -223,7 +223,7 @@
     }
     if (kind === 'coteach') {
       return `Classe ${ownerName} - materia ${subject}: compresenza con ${nTeachers} docenti `
-            + (level === 'hard' ? '(HARD)' : '(SOFT)') + '.';
+            + (level === 'hard' ? '(obbligatorio)' : '(penalizzato)') + '.';
     }
     return '(seleziona scope e kind)';
   })();
@@ -354,11 +354,11 @@
         {/each}
         {#if showWeight}
           <div class="field mt-3">
-            <label for="lib-components-constraints-newconstraintmodal-f8">Peso (penalty SOFT)</label>
+            <label for="lib-components-constraints-newconstraintmodal-f8">Peso (penalità)</label>
             <input id="lib-components-constraints-newconstraintmodal-f8" type="number" bind:value={weight}/>
             <div class="text-xs text-ink-500">
-              Penalità positiva quando SOFT viene violato; per
-              PREFERRED il valore viene negato automaticamente.
+              Penalità positiva quando il vincolo penalizzato viene violato; per
+              Per una preferenza il valore viene negato automaticamente.
             </div>
           </div>
         {/if}

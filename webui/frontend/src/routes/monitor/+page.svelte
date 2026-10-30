@@ -609,7 +609,7 @@
       <p class="text-xs text-ink-500">
         Click su uno slot per spostare la lezione la'.
         Verde = libero per docente e classe;
-        rosso = HARD (docente o classe già impegnati);
+        rosso = obbligatorio (docente o classe già impegnati);
         ambra = aula occupata da un'altra lezione (verrà liberata);
         azzurro = slot attuale.
       </p>
@@ -656,7 +656,7 @@
       </div>
       <div class="text-[10px] text-ink-400 flex flex-wrap gap-3">
         <span><span class="pill !text-[10px]" style="background:#a7f3d0;color:#065f46;">ok</span> libero</span>
-        <span><span class="pill !text-[10px]" style="background:#fecaca;color:#991b1b;">D / C</span> docente / classe già impegnati (HARD)</span>
+        <span><span class="pill !text-[10px]" style="background:#fecaca;color:#991b1b;">D / C</span> docente / classe già impegnati (obbligatorio)</span>
         <span><span class="pill !text-[10px]" style="background:#fde68a;color:#92400e;">aula</span> aula occupata da altra lezione</span>
         <span><span class="pill !text-[10px]" style="background:#bae6fd;color:#075985;">qui</span> slot attuale</span>
       </div>
