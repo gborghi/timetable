@@ -33,7 +33,7 @@
     "@tailwindcss/vite": "^4.3.3",
     "@types/cytoscape": "^3.31.0",
     "@types/node": "^25.9.9",
-    "autoprefixer": "^10.4.20",
+    "autoprefixer": "^10.6.2",
     "cypress": "^15.14.2",
     "postcss": "^8.4.47",
     "svelte": "^5.57.3",
