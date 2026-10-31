@@ -95,7 +95,7 @@
         {/if}
         {#if isActive}
           <button type="button"
-                  class="rounded border border-red-300 px-2 py-0.5 text-red-600 hover:bg-red-50 disabled:opacity-50"
+                  class="rounded-sm border border-red-300 px-2 py-0.5 text-red-600 hover:bg-red-50 disabled:opacity-50"
                   on:click={cancelRun} disabled={cancelling}
                   data-testid="runlog-cancel">
             {cancelling ? 'Interruzione…' : 'Interrompi'}

@@ -181,7 +181,7 @@
               </button>
               {#if open}
                 <div class="sm:absolute left-0 top-full mt-1 z-30
-                            min-w-[11rem] bg-white border border-ink-200
+                            min-w-44 bg-white border border-ink-200
                             rounded-[9px] sm:shadow-lg py-1 ml-3 sm:ml-0"
                      role="menu"
                      tabindex="-1"
@@ -191,7 +191,7 @@
                   {#each g.children as c}
                     {@const childActive = isLinkActive(c.href, false)}
                     <a href={c.href}
-                       class="block {navClass(childActive)} !rounded-none"
+                       class="block {navClass(childActive)} rounded-none!"
                        role="menuitem"
                        aria-current={childActive ? 'page' : undefined}
                        use:tooltip={c.hint}
@@ -213,7 +213,7 @@
                 on:click={closeMenu}></button>
       {/if}
 
-      <div class="order-1 sm:order-none ml-auto flex items-center gap-2 sm:gap-3 shrink-0">
+      <div class="order-1 sm:order-0 ml-auto flex items-center gap-2 sm:gap-3 shrink-0">
         <span class="hidden lg:inline font-mono text-[11px] text-ink-300 tabular-nums">
           {$datasetState.classes} classi · {$datasetState.teachers} docenti ·
           {$datasetState.classrooms} aule
@@ -265,7 +265,7 @@
   {/if}
 
   <main id="main-content" tabindex="-1"
-        class="flex-1 max-w-[1500px] w-full mx-auto px-6 py-6 focus:outline-none">
+        class="flex-1 max-w-[1500px] w-full mx-auto px-6 py-6 focus:outline-hidden">
     <slot />
   </main>
 

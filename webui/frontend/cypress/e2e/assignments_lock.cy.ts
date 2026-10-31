@@ -47,7 +47,7 @@ describe('/assignments lock toggle workflow', () => {
 
     // Click the first lucchetto / lock-looking button on the
     // (3A, Matematica) row. The page renders rows with a
-    // .btn !text-xs button next to the teacher name; we target
+    // .btn text-xs! button next to the teacher name; we target
     // by aria-label / title containing "lock", with a fallback to
     // "lucchetto".
     // The lock button has aria-label/title in Italian ("Blocca"/

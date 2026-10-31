@@ -448,12 +448,12 @@
       <button class="btn-primary" on:click={newTeacher}
               data-testid="add-teacher-btn">+ Nuovo docente</button>
       <ImportButton entity="teachers" onDone={() => listRef?.reload()}/>
-      <button class="btn !text-xs" on:click={() => (showBulk = true)}
+      <button class="btn text-xs!" on:click={() => (showBulk = true)}
               disabled={selectedIds.length === 0}
               title="Applica un vincolo a tutti i docenti selezionati">
         Vincolo collettivo ({selectedIds.length})
       </button>
-      <button class="btn-danger !text-xs" on:click={bulkDel}
+      <button class="btn-danger text-xs!" on:click={bulkDel}
               disabled={selectedIds.length === 0 || bulkDeleting}
               title="Elimina tutti i docenti selezionati (con UNDO)">
         {bulkDeleting ? 'Eliminazione...' : `Elimina selezionati (${selectedIds.length})`}
@@ -485,11 +485,11 @@
     <td class="text-center">{row.scheduled_hours}</td>
     <td class="text-center text-xs">{row.soft_penalty_total}</td>
     <td class="whitespace-nowrap">
-      <button class="btn !text-xs !px-2 !py-1"
+      <button class="btn text-xs! px-2! py-1!"
               data-testid="teacher-edit-btn"
               data-teacher-id={row.id}
               on:click={() => edit(row)}>Modifica</button>
-      <button class="btn-danger !text-xs !px-2 !py-1"
+      <button class="btn-danger text-xs! px-2! py-1!"
               data-testid="teacher-delete-btn"
               data-teacher-id={row.id}
               on:click={() => del(row)}>Elimina</button>
@@ -567,7 +567,7 @@
                     {#each calHours as h}
                       <td class="p-0.5">
                         <button type="button"
-                                class="w-8 h-6 rounded border {hasCompresenzaHour(d, h) ? 'bg-emerald-500 border-emerald-600' : 'bg-surface-100 border-ink-200'}"
+                                class="w-8 h-6 rounded-sm border {hasCompresenzaHour(d, h) ? 'bg-emerald-500 border-emerald-600' : 'bg-surface-100 border-ink-200'}"
                                 aria-pressed={hasCompresenzaHour(d, h)}
                                 aria-label="{calName(d)} {h}:00"
                                 on:click={() => toggleCompresenzaHour(d, h)}></button>
@@ -606,7 +606,7 @@
     </div>
 
     <!-- Giorni liberi: 3 preferenze ordinate (HARD/SOFT) + count totale HARD -->
-    <div class="mt-4 card !shadow-none p-3 bg-ink-50/40 space-y-3">
+    <div class="mt-4 card shadow-none! p-3 bg-ink-50/40 space-y-3">
       <div class="text-sm font-semibold">Giorni liberi (avanzato)</div>
       <p class="text-xs text-ink-500">
         Tre preferenze ordinate di giorno libero. Se obbligatorio, le 6 ore
@@ -690,7 +690,7 @@
     </div>
 
     <!-- Giorni liberi: 3 priorità SOFT (peso 30/20/10) -->
-    <div class="mt-4 card !shadow-none p-3 bg-ink-50/40 space-y-3"
+    <div class="mt-4 card shadow-none! p-3 bg-ink-50/40 space-y-3"
          data-test="free-day-priorities">
       <div class="text-sm font-semibold">
         Giorni liberi (priorità 1-3)

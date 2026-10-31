@@ -131,18 +131,18 @@
         {#each rows as row (row.id)}
           <tr>
             <td>
-              <input class="w-full px-2 py-1 border border-ink-200 rounded"
+              <input class="w-full px-2 py-1 border border-ink-200 rounded-sm"
                      value={row.name}
                      on:change={(e) => rename(row, e.currentTarget.value)}/>
             </td>
             <td>
-              <input class="w-full px-2 py-1 border border-ink-200 rounded"
+              <input class="w-full px-2 py-1 border border-ink-200 rounded-sm"
                      value={row.description || ''}
                      on:change={(e) => saveDesc(row, e.currentTarget.value)}/>
             </td>
             <td class="text-center text-sm">{row[countField] ?? 0}</td>
             <td>
-              <button class="btn-danger !text-xs !px-2 !py-1"
+              <button class="btn-danger text-xs! px-2! py-1!"
                       on:click={() => del(row)}>Elimina</button>
             </td>
           </tr>

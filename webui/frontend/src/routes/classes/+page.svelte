@@ -255,12 +255,12 @@
       <button class="btn-primary" on:click={newClass}
               data-testid="add-class-btn">+ Nuova classe</button>
       <ImportButton entity="classes" onDone={() => listRef?.reload()}/>
-      <button class="btn !text-xs" on:click={() => (showBulk = true)}
+      <button class="btn text-xs!" on:click={() => (showBulk = true)}
               disabled={selectedIds.length === 0}
               title="Applica un vincolo a tutte le classi selezionate">
         Vincolo collettivo ({selectedIds.length})
       </button>
-      <button class="btn-danger !text-xs" on:click={bulkDel}
+      <button class="btn-danger text-xs!" on:click={bulkDel}
               disabled={selectedIds.length === 0 || bulkDeleting}
               title="Elimina tutte le classi selezionate (con UNDO)">
         {bulkDeleting ? 'Eliminazione...' : `Elimina selezionati (${selectedIds.length})`}
@@ -290,7 +290,7 @@
                row, e.currentTarget.value, e.currentTarget)}
              on:keydown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
              disabled={savingNStudents.has(row.id)}
-             class="w-16 text-center px-1 py-0.5 border border-ink-200 rounded
+             class="w-16 text-center px-1 py-0.5 border border-ink-200 rounded-sm
                     focus:ring-2 focus:ring-emerald-300"
              data-testid="class-n-students-input"
              data-class-id={row.id}/>
@@ -299,11 +299,11 @@
       {(row.subjects || []).reduce((s, x) => s + Number(x.hours_per_week || 0), 0)}
     </td>
     <td class="whitespace-nowrap">
-      <button class="btn !text-xs !px-2 !py-1"
+      <button class="btn text-xs! px-2! py-1!"
               data-testid="class-edit-btn"
               data-class-id={row.id}
               on:click={() => edit(row)}>Modifica</button>
-      <button class="btn-danger !text-xs !px-2 !py-1"
+      <button class="btn-danger text-xs! px-2! py-1!"
               data-testid="class-delete-btn"
               data-class-id={row.id}
               on:click={() => del(row)}>Elimina</button>
@@ -335,13 +335,13 @@
                     const c = allCurricula.find((x) => x.id === editing.curriculum_id);
                     if (c) editing.curriculum = c.code;
                   }}
-                  class="flex-1 px-2 py-1 border border-ink-200 rounded">
+                  class="flex-1 px-2 py-1 border border-ink-200 rounded-sm">
             <option value={null}>(nessuno)</option>
             {#each allCurricula as c}
               <option value={c.id}>{c.code} - {c.name}</option>
             {/each}
           </select>
-          <button class="btn !text-xs !px-2 !py-1"
+          <button class="btn text-xs! px-2! py-1!"
                   on:click={applyCurriculumGrid}
                   disabled={!editing.curriculum_id}
                   title="Carica il monte-ore dell'indirizzo per l'anno selezionato">
@@ -384,16 +384,16 @@
           {#each editing.subjects as s, i}
             <tr>
               <td>
-                <input list="subj-{i}" class="w-full px-2 py-1 border border-ink-200 rounded" bind:value={s.subject}/>
+                <input list="subj-{i}" class="w-full px-2 py-1 border border-ink-200 rounded-sm" bind:value={s.subject}/>
                 <datalist id="subj-{i}">{#each allSubjects as sn}<option value={sn}></option>{/each}</datalist>
               </td>
-              <td class="w-24"><input type="number" min="0" max="10" bind:value={s.hours_per_week} class="w-full px-2 py-1 border border-ink-200 rounded"/></td>
-              <td><button class="btn-danger !text-xs !px-2 !py-1" aria-label="Elimina riga materia" title="Elimina riga" on:click={() => delSubject(i)}>x</button></td>
+              <td class="w-24"><input type="number" min="0" max="10" bind:value={s.hours_per_week} class="w-full px-2 py-1 border border-ink-200 rounded-sm"/></td>
+              <td><button class="btn-danger text-xs! px-2! py-1!" aria-label="Elimina riga materia" title="Elimina riga" on:click={() => delSubject(i)}>x</button></td>
             </tr>
           {/each}
         </tbody>
       </table>
-      <button class="btn !text-xs !px-2 !py-1 mt-2" on:click={addSubject}>+ Materia</button>
+      <button class="btn text-xs! px-2! py-1! mt-2" on:click={addSubject}>+ Materia</button>
     </div>
 
     <div class="mt-4">
@@ -404,7 +404,7 @@
     </div>
 
     <!-- Giorni liberi (analogo alla scheda docente) -->
-    <div class="mt-4 card !shadow-none p-3 bg-ink-50/40 space-y-3">
+    <div class="mt-4 card shadow-none! p-3 bg-ink-50/40 space-y-3">
       <div class="text-sm font-semibold">Giorni liberi della classe (avanzato)</div>
       <p class="text-xs text-ink-500">
         Per le classi italiane il default è lavorare lun-sab (zero
@@ -502,7 +502,7 @@
         </select>
       </div>
       {#if (editing.room_policy ?? 'ibrida') === 'fissa'}
-        <div class="text-xs text-slate-600 bg-slate-50 border border-slate-300 p-2 rounded">
+        <div class="text-xs text-slate-600 bg-slate-50 border border-slate-300 p-2 rounded-sm">
           Tutte le ore della classe finiranno nella sua aula base.
           Fanno eccezione automaticamente le materie a cui hai
           assegnato un'aula obbligatoria (es. Scienze motorie →
@@ -512,7 +512,7 @@
           non ha effetto.
         </div>
       {:else if (editing.room_policy ?? 'ibrida') === 'libera'}
-        <div class="text-xs text-slate-600 bg-slate-50 border border-slate-300 p-2 rounded">
+        <div class="text-xs text-slate-600 bg-slate-50 border border-slate-300 p-2 rounded-sm">
           L'ottimizzatore è libero di spostare la classe: le ore
           possono finire in aule diverse anche nella stessa giornata.
           Usa questa opzione solo se la scuola pratica davvero le
@@ -529,12 +529,12 @@
                               : Infinity}
         {@const maxPerDay = editing.max_hours_per_day ?? 5}
         {#if workDays === 0}
-          <div class="text-xs text-red-700 bg-red-50 border border-red-300 p-2 rounded">
+          <div class="text-xs text-red-700 bg-red-50 border border-red-300 p-2 rounded-sm">
             ⚠️ Configurazione non fattibile: 6 giorni liberi -&gt; nessun
             giorno lavorativo!
           </div>
         {:else if minPerDay > maxPerDay}
-          <div class="text-xs text-red-700 bg-red-50 border border-red-300 p-2 rounded">
+          <div class="text-xs text-red-700 bg-red-50 border border-red-300 p-2 rounded-sm">
             ⚠️ Configurazione non fattibile: con
             {editing.required_free_days_count ?? 0} giorni liberi e
             {totalHours} ore settimanali servono almeno {minPerDay}
@@ -543,7 +543,7 @@
             giorni liberi.
           </div>
         {:else}
-          <div class="text-xs text-emerald-700 bg-emerald-50 border border-emerald-300 p-2 rounded">
+          <div class="text-xs text-emerald-700 bg-emerald-50 border border-emerald-300 p-2 rounded-sm">
             ✓ Configurazione feasible: {totalHours} ore settimanali
             su {workDays} giorni lavorativi -&gt; minimo {minPerDay} /
             massimo {maxPerDay} ore al giorno.

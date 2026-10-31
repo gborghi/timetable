@@ -297,7 +297,7 @@
               data-testid="runs-refresh-btn">
         {busy ? '...' : 'refresh'}
       </button>
-      <select class="text-sm px-2 py-1 border border-ink-200 rounded"
+      <select class="text-sm px-2 py-1 border border-ink-200 rounded-sm"
               bind:value={limit} on:change={refresh}>
         <option value={50}>50</option>
         <option value={100}>100</option>
@@ -319,12 +319,12 @@
     <button class="btn" on:click={applyQuery} disabled={busy}>
       {busy ? '...' : 'Cerca'}
     </button>
-    <button class="btn !text-xs"
+    <button class="btn text-xs!"
             on:click={() => (showHelp = !showHelp)}>?  guida</button>
     <span class="border-l border-ink-200 h-6 mx-1"></span>
-    <button class="btn !text-xs" on:click={resetQuery}
+    <button class="btn text-xs!" on:click={resetQuery}
             disabled={!rowQuery && !appliedQuery}>Svuota</button>
-    <button class="btn !text-xs" on:click={resetSort}
+    <button class="btn text-xs!" on:click={resetSort}
             disabled={sortLevels.length === 0}>Torna all'ordine originale</button>
   </div>
 
@@ -367,10 +367,10 @@
   {#if selected.size > 0}
     <div class="card p-2 bg-accent-500/5 border-accent-500/30 flex items-center gap-2 flex-wrap">
       <span class="pill pill-blue">{selected.size} selezionati</span>
-      <button class="btn !text-xs" on:click={clearSelection}>
+      <button class="btn text-xs!" on:click={clearSelection}>
         Deseleziona
       </button>
-      <button class="btn-red !text-xs"
+      <button class="btn-red text-xs!"
               on:click={() => bulkDelete([...selected])}>
         Elimina selezionati
       </button>
@@ -441,14 +441,14 @@
                 {expanded.has(r.id) ? '▼' : '▶'}
               </span>#{r.id}
             </td>
-            <td><span class="pill !text-[10px]" title={r.kind}>{runKindLabel(r.kind)}</span></td>
+            <td><span class="pill text-[10px]!" title={r.kind}>{runKindLabel(r.kind)}</span></td>
             <td class="text-ink-700">{r.name || ''}</td>
             <td>
-              <span class="{sem.cls} !text-[10px]">{sem.label}</span>
+              <span class="{sem.cls} text-[10px]!">{sem.label}</span>
             </td>
             <td>
               {#if r.progress != null}
-                <div class="w-32 h-2 rounded bg-ink-100 overflow-hidden">
+                <div class="w-32 h-2 rounded-sm bg-ink-100 overflow-hidden">
                   <div class="h-full transition-[width] duration-300 ease-out"
                        class:bg-emerald-500={r.status === 'done'}
                        class:bg-red-500={r.status === 'failed'}
@@ -488,24 +488,24 @@
                 : ''}
             </td>
             <td class="whitespace-nowrap text-right">
-              <a class="btn !text-[10px] !px-2 !py-0.5 mr-1"
+              <a class="btn text-[10px]! px-2! py-0.5! mr-1"
                  href={'/runs/' + r.id}
                  on:click|stopPropagation
                  title="Apri il dettaglio con grafico objective e telemetria">
                 detail
               </a>
-              <button class="btn !text-[10px] !px-2 !py-0.5"
+              <button class="btn text-[10px]! px-2! py-0.5!"
                       on:click|stopPropagation={() => (logFor = logFor === r.id ? null : r.id)}>
                 {logFor === r.id ? 'nascondi log' : 'log'}
               </button>
               {#if r.status === 'running' || r.status === 'pending'}
-                <button class="btn-red !text-[10px] !px-2 !py-0.5 ml-1"
+                <button class="btn-red text-[10px]! px-2! py-0.5! ml-1"
                         on:click|stopPropagation={() => killRun(r)}
                         title="Interrompi questo run">
                   Kill
                 </button>
               {:else}
-                <button class="btn-red !text-[10px] !px-2 !py-0.5 ml-1"
+                <button class="btn-red text-[10px]! px-2! py-0.5! ml-1"
                         on:click|stopPropagation={() => deleteRun(r)}
                         title="Elimina questo run (o tutti i selezionati)">
                   Elimina
@@ -520,7 +520,7 @@
                   <div>
                     <h4 class="font-semibold mb-1">Parametri</h4>
                     {#if r.params && Object.keys(r.params).length}
-                      <pre class="bg-white p-2 rounded border border-ink-200 overflow-auto max-h-40">{JSON.stringify(r.params, null, 2)}</pre>
+                      <pre class="bg-white p-2 rounded-sm border border-ink-200 overflow-auto max-h-40">{JSON.stringify(r.params, null, 2)}</pre>
                     {:else}
                       <span class="text-ink-400 italic">nessuno</span>
                     {/if}
@@ -528,7 +528,7 @@
                   <div>
                     <h4 class="font-semibold mb-1">Metriche complete</h4>
                     {#if r.metrics && Object.keys(r.metrics).length}
-                      <pre class="bg-white p-2 rounded border border-ink-200 overflow-auto max-h-40">{JSON.stringify(r.metrics, null, 2)}</pre>
+                      <pre class="bg-white p-2 rounded-sm border border-ink-200 overflow-auto max-h-40">{JSON.stringify(r.metrics, null, 2)}</pre>
                     {:else}
                       <span class="text-ink-400 italic">nessuna</span>
                     {/if}
@@ -539,7 +539,7 @@
                     <h4 class="font-semibold mb-1 text-red-700">
                       Stack trace dell'errore
                     </h4>
-                    <pre class="bg-red-50 border border-red-300 p-2 rounded overflow-auto max-h-60 text-[10px] text-red-900">{r.error}</pre>
+                    <pre class="bg-red-50 border border-red-300 p-2 rounded-sm overflow-auto max-h-60 text-[10px] text-red-900">{r.error}</pre>
                   </div>
                 {/if}
               </td>

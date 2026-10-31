@@ -106,7 +106,7 @@
 
   <div class="grid md:grid-cols-2 gap-5">
     <section class="card p-4 space-y-3">
-      <h2 class="!text-base">1) Configurazione</h2>
+      <h2 class="text-base!">1) Configurazione</h2>
 
       <div class="field">
         <label for="routes-import-f1">Entità</label>
@@ -135,15 +135,12 @@
     </section>
 
     <section class="card p-4 space-y-3">
-      <h2 class="!text-base">2) File da importare</h2>
+      <h2 class="text-base!">2) File da importare</h2>
 
       <div class="border-2 border-dashed rounded-md p-6 text-center
-                  text-sm transition-colors"
+                  text-sm transition-colors
+                  {dragOver ? 'bg-accent-500/5 border-accent-500' : 'border-ink-200'}"
            role="button" tabindex="-1"
-           class:bg-accent-500={dragOver}
-           class:bg-opacity-5={dragOver}
-           class:border-accent-500={dragOver}
-           class:border-ink-200={!dragOver}
            on:dragover|preventDefault={() => (dragOver = true)}
            on:dragleave={() => (dragOver = false)}
            on:drop={onDrop}>
@@ -153,7 +150,7 @@
             {Math.round(selectedFile.size / 1024)} KB &middot;
             {selectedFile.type || 'tipo non rilevato'}
           </p>
-          <button class="btn !text-xs mt-2"
+          <button class="btn text-xs! mt-2"
                   on:click={() => { selectedFile = null; report = null; }}>
             Cambia file
           </button>
@@ -190,38 +187,38 @@
 
   {#if report}
     <section class="card p-4">
-      <h2 class="!text-base">Report import</h2>
+      <h2 class="text-base!">Report import</h2>
       {#if lastWasDry}
-        <div class="mt-2 text-xs rounded bg-amber-50 border border-amber-200
+        <div class="mt-2 text-xs rounded-sm bg-amber-50 border border-amber-200
                     px-3 py-2 text-amber-800">
           <strong>Anteprima</strong>: nessuna riga è stata scritta.
           Premi <strong>Importa</strong> per applicare le modifiche.
         </div>
       {/if}
       <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mt-2 text-center">
-        <div class="card !shadow-none p-2">
+        <div class="card shadow-none! p-2">
           <div class="text-2xl font-semibold">{report.n_total_rows}</div>
           <div class="text-xs text-ink-500">Righe lette</div>
         </div>
-        <div class="card !shadow-none p-2">
+        <div class="card shadow-none! p-2">
           <div class="text-2xl font-semibold text-emerald-600">
             {report.n_inserted}
           </div>
           <div class="text-xs text-ink-500">Inserite</div>
         </div>
-        <div class="card !shadow-none p-2">
+        <div class="card shadow-none! p-2">
           <div class="text-2xl font-semibold text-sky-600">
             {report.n_updated}
           </div>
           <div class="text-xs text-ink-500">Aggiornate</div>
         </div>
-        <div class="card !shadow-none p-2">
+        <div class="card shadow-none! p-2">
           <div class="text-2xl font-semibold text-amber-600">
             {report.n_skipped}
           </div>
           <div class="text-xs text-ink-500">Saltate</div>
         </div>
-        <div class="card !shadow-none p-2">
+        <div class="card shadow-none! p-2">
           <div class="text-2xl font-semibold text-rose-600">
             {(report.errors || []).length}
           </div>
@@ -230,8 +227,8 @@
       </div>
 
       {#if report.errors && report.errors.length}
-        <h3 class="!text-sm mt-4">Errori riga per riga</h3>
-        <div class="card !shadow-none p-2 bg-rose-50 border-rose-200
+        <h3 class="text-sm! mt-4">Errori riga per riga</h3>
+        <div class="card shadow-none! p-2 bg-rose-50 border-rose-200
                     max-h-72 overflow-auto text-xs">
           <ul class="list-disc ml-5">
             {#each report.errors as e}

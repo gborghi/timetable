@@ -113,7 +113,7 @@
       </span>
     {/each}
     <input
-      class="flex-1 min-w-[8rem] outline-none bg-transparent text-sm"
+      class="flex-1 min-w-32 outline-hidden bg-transparent text-sm"
       type="text"
       {placeholder}
       {disabled}
@@ -123,7 +123,7 @@
       on:keydown={onKey}/>
     {#if input.trim()}
       <button type="button"
-              class="btn !text-xs !px-2 !py-0.5"
+              class="btn text-xs! px-2! py-0.5!"
               on:click={() => add(input)}
               {disabled}>+ {input.trim().toLowerCase()}</button>
     {/if}

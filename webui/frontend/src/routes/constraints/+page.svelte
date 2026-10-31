@@ -319,7 +319,7 @@
         {conflictsBusy ? 'cerco...' : 'Cerca conflitti'}
       </button>
       {#if conflicts !== null}
-        <button class="btn !text-xs" on:click={() => (showConflicts = !showConflicts)}>
+        <button class="btn text-xs!" on:click={() => (showConflicts = !showConflicts)}>
           {showConflicts ? 'nascondi' : 'mostra'} pannello
           ({conflicts.length})
         </button>
@@ -385,12 +385,12 @@
                  placeholder="es. LabFisica, Mate, Borghi"/>
         </div>
         <div class="col-span-2 flex gap-1">
-          <button class="btn-primary !text-xs" on:click={runSearch}
+          <button class="btn-primary text-xs!" on:click={runSearch}
                   data-testid="search-run"
                   disabled={searchBusy}>
             {searchBusy ? '...' : 'Cerca'}
           </button>
-          <button class="btn !text-xs" on:click={resetSearch}
+          <button class="btn text-xs!" on:click={resetSearch}
                   data-testid="search-reset">azzera</button>
         </div>
       </div>
@@ -423,12 +423,12 @@
               <tr>
                 <td><code class="text-[10px]">{r.kind}</code></td>
                 <td>
-                  <span class="pill !text-[10px]">tab: {r.origin}</span>
+                  <span class="pill text-[10px]!">tab: {r.origin}</span>
                 </td>
-                <td><span class="pill !text-[10px]">{r.scope}</span></td>
+                <td><span class="pill text-[10px]!">{r.scope}</span></td>
                 <td>{r.owner_name}</td>
                 <td>
-                  <span class="{levelPill(r.level)} !text-[10px]">
+                  <span class="{levelPill(r.level)} text-[10px]!">
                     {levelLabel(r.level)}
                   </span>
                 </td>
@@ -437,7 +437,7 @@
                   {r.mentions.map((m) => m.entity_type + '#' + m.entity_id).join(', ')}
                 </td>
                 <td>
-                  <button class="btn-red !text-[10px] !px-1.5 !py-0.5"
+                  <button class="btn-red text-[10px]! px-1.5! py-0.5!"
                           aria-label="Elimina vincolo" title="Elimina vincolo"
                           on:click={async () => {
                             if (r.kind === 'general_dsl') {
@@ -492,7 +492,7 @@
               <td class="text-ink-400">#{c.id}</td>
               <td>{c.label || ''}</td>
               <td>
-                <span class="pill !text-[10px]
+                <span class="pill text-[10px]!
                             {c.level === 'hard' ? 'pill-red'
                              : c.level === 'soft' ? 'pill-amber'
                              : c.level === 'preferred' ? 'pill-blue'
@@ -500,12 +500,12 @@
               </td>
               <td class="text-center">{c.weight}</td>
               <td>
-                <span class="pill !text-[10px]">{c.scope}</span>
+                <span class="pill text-[10px]!">{c.scope}</span>
                 {#if c.owner_id != null}<span class="text-ink-400 ml-1">#{c.owner_id}</span>{/if}
               </td>
               <td><code class="text-[10px]">{c.expression}</code></td>
               <td class="text-right">
-                <button class="btn-red !text-[10px] !px-1.5 !py-0.5"
+                <button class="btn-red text-[10px]! px-1.5! py-0.5!"
                         aria-label="Elimina vincolo DSL #{c.id}" title="Elimina vincolo"
                         data-testid="dsl-delete-{c.id}"
                         on:click={() => deleteDSL(c.id)}>✕</button>
@@ -520,7 +520,7 @@
 
   {#if showConflicts && conflicts}
     <div class="card p-3 border-red-300 bg-red-50/50 space-y-2">
-      <h3 class="!text-base">
+      <h3 class="text-base!">
         Conflitti rilevati: <span class={conflicts.length === 0 ? 'text-emerald-700' : 'text-red-700'}>{conflicts.length}</span>
       </h3>
       {#if conflicts.length === 0}
@@ -528,7 +528,7 @@
       {:else}
         <ul class="space-y-2">
           {#each conflicts as c}
-            <li class="card !shadow-none p-2 border-red-200 bg-white">
+            <li class="card shadow-none! p-2 border-red-200 bg-white">
               <div class="text-sm"><strong>{c.kind}</strong>: {c.reason}</div>
               {#if c.members?.length}
                 <div class="text-xs text-ink-500 mt-1">Vincoli coinvolti:</div>
@@ -560,7 +560,7 @@
     <tr>
       <td class="text-xs" title={row.kind}>{kindLabel(row.kind)}</td>
       <td class="text-xs">
-        <span class="pill !text-[10px]">{row.scope}</span>
+        <span class="pill text-[10px]!">{row.scope}</span>
       </td>
       <td class="text-xs">
         <!-- "Applicato a": l'entità a cui il vincolo si riferisce.
@@ -583,7 +583,7 @@
         {/if}
       </td>
       <td>
-        <span class="{levelPill(row.level)} !text-[10px]">
+        <span class="{levelPill(row.level)} text-[10px]!">
           {levelLabel(row.level)}
         </span>
       </td>
@@ -591,9 +591,9 @@
       <td class="text-xs"><code>{row.detail}</code></td>
       <td class="whitespace-nowrap">
         {#if row.editable}
-          <button class="btn !text-xs !px-2 !py-1" on:click={() => startEdit(row)}>Modifica</button>
+          <button class="btn text-xs! px-2! py-1!" on:click={() => startEdit(row)}>Modifica</button>
         {/if}
-        <button class="btn-danger !text-xs !px-2 !py-1" on:click={() => del(row)}>Elimina</button>
+        <button class="btn-danger text-xs! px-2! py-1!" on:click={() => del(row)}>Elimina</button>
       </td>
     </tr>
   </SortableQueryableList>

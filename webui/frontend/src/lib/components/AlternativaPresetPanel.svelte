@@ -33,7 +33,7 @@
   }
 </script>
 
-<section class="rounded border border-ink-200 bg-white p-4 mb-4" aria-labelledby="alternativa-preset-title"
+<section class="rounded-sm border border-ink-200 bg-white p-4 mb-4" aria-labelledby="alternativa-preset-title"
          aria-busy={saving}>
   <h2 id="alternativa-preset-title" class="text-base font-semibold mb-2">
     Aula per l'attività alternativa

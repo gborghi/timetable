@@ -73,7 +73,7 @@
 >
   <div class="flex items-start justify-between gap-3">
     <div>
-      <h2 id="{uid}-title" class="!text-[16px] !m-0">
+      <h2 id="{uid}-title" class="text-[16px]! m-0!">
         Aula dell'attività alternativa
       </h2>
       <p class="mt-1 text-[12.5px] text-ink-500">
@@ -85,7 +85,7 @@
     {#if value.active}
       <button
         type="button"
-        class="btn shrink-0 !text-xs"
+        class="btn shrink-0 text-xs!"
         data-testid="alternativa-room-remove"
         onclick={() => emit(removePreset(value))}
       >
@@ -94,7 +94,7 @@
     {:else}
       <button
         type="button"
-        class="btn-primary shrink-0 !text-xs"
+        class="btn-primary shrink-0 text-xs!"
         data-testid="alternativa-room-restore"
         onclick={() => emit(restoreDefault(value))}
       >
@@ -128,7 +128,7 @@
               <span class="flex flex-wrap items-center gap-2">
                 <span class="text-sm font-medium text-ink-900">{choice.label}</span>
                 {#if choice.mode === "alternativa"}
-                  <span class="pill-blue !text-[10px]">predefinita</span>
+                  <span class="pill-blue text-[10px]!">predefinita</span>
                 {/if}
               </span>
               <span class="mt-0.5 block text-xs text-ink-500">{choice.hint}</span>
@@ -176,11 +176,11 @@
               {#if value.freeRooms.length > 0}
                 <ul class="mt-2 flex flex-wrap gap-1.5" data-testid="alternativa-room-free-list">
                   {#each value.freeRooms as room (room)}
-                    <li class="pill-blue inline-flex items-center gap-1 !text-[11px]">
+                    <li class="pill-blue inline-flex items-center gap-1 text-[11px]!">
                       <span>{room}</span>
                       <button
                         type="button"
-                        class="focus-ring rounded px-0.5"
+                        class="focus-ring rounded-sm px-0.5"
                         aria-label="Togli {room} dalle aule libere"
                         data-testid="alternativa-room-free-remove"
                         onclick={() => emit(removeFreeRoom(value, room))}

@@ -31,6 +31,6 @@
         {movePreviewBusy ? ' (calcolo preview...)' : ''}
       </span>
     {/if}
-    <button class="btn !text-xs ml-auto" on:click={cancel}>Esc</button>
+    <button class="btn text-xs! ml-auto" on:click={cancel}>Esc</button>
   </div>
 {/if}

@@ -207,8 +207,8 @@
 
 <div class="card p-4 space-y-3">
   <div class="flex items-baseline justify-between">
-    <h3 class="!text-base">Vincoli di indisponibilita logica</h3>
-    <button class="btn !text-xs !px-2 !py-1" on:click={() => (showHelp = !showHelp)}>?  guida sintassi</button>
+    <h3 class="text-base!">Vincoli di indisponibilita logica</h3>
+    <button class="btn text-xs! px-2! py-1!" on:click={() => (showHelp = !showHelp)}>?  guida sintassi</button>
   </div>
   <p class="text-xs text-ink-500">
     Esprimi vincoli "uno tra X e Y deve essere libero" come espressioni
@@ -216,7 +216,7 @@
   </p>
 
   {#if showHelp}
-    <div class="card !shadow-none p-3 text-xs space-y-2 bg-ink-50">
+    <div class="card shadow-none! p-3 text-xs space-y-2 bg-ink-50">
       <div><strong>Slot:</strong> <code>&lt;giorno&gt;&lt;ora&gt;</code> con
         giorno in <code>lun mar mer gio ven sab</code>
         (anche <code>lunedi monday Lun</code>) e ora in 1..6 (ordinale, 1=8:00)
@@ -237,10 +237,10 @@
         gia oggi; l'enforcement nel solver è parziale (vedi docs).
       </div>
       <div><strong>Tipi:</strong>
-        <span class="pill-red !text-[10px]">Obbligatorio</span> deve essere soddisfatto;
-        <span class="pill-amber !text-[10px]">Penalizzato</span> paga penalità se violato;
-        <span class="pill-blue !text-[10px]">Preferenza</span> da bonus se soddisfatto;
-        <span class="pill-c-enforced !text-[10px]">Imposto</span>
+        <span class="pill-red text-[10px]!">Obbligatorio</span> deve essere soddisfatto;
+        <span class="pill-amber text-[10px]!">Penalizzato</span> paga penalità se violato;
+        <span class="pill-blue text-[10px]!">Preferenza</span> da bonus se soddisfatto;
+        <span class="pill-c-enforced text-[10px]!">Imposto</span>
         deve essere soddisfatto E almeno uno degli slot della DNF deve essere
         un'ora di lezione attiva.
       </div>
@@ -249,7 +249,7 @@
         <ul class="list-disc ml-5">
           {#each (examples[entityType] || []) as ex}
             <li><button type="button"
-                        class="font-mono text-left underline focus-ring rounded-sm"
+                        class="font-mono text-left underline focus-ring rounded-xs"
                         title="Usa questo esempio nel campo espressione"
                         on:click={() => { draftExpr = ex; }}><code>{ex}</code></button></li>
           {/each}
@@ -293,7 +293,7 @@
             </td>
             <td class="w-28">
               {#if !r.is_hard}
-                <input type="number" class="w-20 px-1.5 py-0.5 border border-ink-200 rounded text-xs"
+                <input type="number" class="w-20 px-1.5 py-0.5 border border-ink-200 rounded-sm text-xs"
                   value={r.soft_penalty}
                   title={kindFromRule(r) === 'preferred' ? 'Bonus (deve essere < 0)' : 'Penalità (> 0)'}
                   on:change={(e) => updatePenalty(r, e)}/>
@@ -302,8 +302,8 @@
               {/if}
             </td>
             <td class="whitespace-nowrap">
-              <button class="btn !text-xs !px-2 !py-1" on:click={() => startEdit(r)}>Modifica</button>
-              <button class="btn-danger !text-xs !px-2 !py-1" on:click={() => del(r)}>Elimina</button>
+              <button class="btn text-xs! px-2! py-1!" on:click={() => startEdit(r)}>Modifica</button>
+              <button class="btn-danger text-xs! px-2! py-1!" on:click={() => del(r)}>Elimina</button>
             </td>
           </tr>
         {/each}
@@ -331,22 +331,22 @@
           on:input={() => (validateInfo = null)}
           on:keydown={(e) => { if (e.key === 'Enter') validate(); }}/>
       </div>
-      <button class="btn !text-xs" on:click={validate}>Verifica sintassi</button>
+      <button class="btn text-xs!" on:click={validate}>Verifica sintassi</button>
       <label class="flex items-center gap-1 text-xs">
         <input type="radio" bind:group={draftKind} value="hard"/>
-        <span class="pill-red !text-[10px]">Obbligatorio</span>
+        <span class="pill-red text-[10px]!">Obbligatorio</span>
       </label>
       <label class="flex items-center gap-1 text-xs">
         <input type="radio" bind:group={draftKind} value="soft"/>
-        <span class="pill-amber !text-[10px]">Penalizzato</span>
+        <span class="pill-amber text-[10px]!">Penalizzato</span>
       </label>
       <label class="flex items-center gap-1 text-xs">
         <input type="radio" bind:group={draftKind} value="preferred"/>
-        <span class="pill-blue !text-[10px]">Preferenza</span>
+        <span class="pill-blue text-[10px]!">Preferenza</span>
       </label>
       <label class="flex items-center gap-1 text-xs">
         <input type="radio" bind:group={draftKind} value="enforced"/>
-        <span class="pill-c-enforced !text-[10px]">Imposto</span>
+        <span class="pill-c-enforced text-[10px]!">Imposto</span>
       </label>
       <div class="field"
            class:opacity-50={draftKind === 'hard' || draftKind === 'enforced'}>
@@ -364,7 +364,7 @@
         {editingId ? 'Salva modifica' : 'Aggiungi'}
       </button>
       {#if editingId}
-        <button class="btn !text-xs" on:click={cancelEdit}>Annulla</button>
+        <button class="btn text-xs!" on:click={cancelEdit}>Annulla</button>
       {/if}
     </div>
     {#if validateInfo}

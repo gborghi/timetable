@@ -103,8 +103,8 @@
             <td data-testid="coteaching-row-nteachers">{r.n_teachers}</td>
             <td class="text-xs" data-testid="coteaching-row-teachers">{r.teachers.join(' + ')}</td>
             <td class="whitespace-nowrap">
-              <button class="btn !text-xs !px-2 !py-1" on:click={() => edit(r)} data-testid="coteaching-edit-btn">Modifica</button>
-              <button class="btn-danger !text-xs !px-2 !py-1" on:click={() => del(r)} data-testid="coteaching-delete-btn">Elimina</button>
+              <button class="btn text-xs! px-2! py-1!" on:click={() => edit(r)} data-testid="coteaching-edit-btn">Modifica</button>
+              <button class="btn-danger text-xs! px-2! py-1!" on:click={() => del(r)} data-testid="coteaching-delete-btn">Elimina</button>
             </td>
           </tr>
         {/each}
@@ -150,7 +150,7 @@
       <h3 class="mb-2">Docenti coinvolti</h3>
       <div class="space-y-2" data-testid="coteaching-teachers-list">
         {#each editing.teachers as t, i}
-          <input list="ll-t-{i}" class="w-full px-2 py-1 rounded border border-ink-200" bind:value={editing.teachers[i]} data-testid="coteaching-teacher-input" data-index={i}/>
+          <input list="ll-t-{i}" class="w-full px-2 py-1 rounded-sm border border-ink-200" bind:value={editing.teachers[i]} data-testid="coteaching-teacher-input" data-index={i}/>
           <datalist id="ll-t-{i}">{#each allTeachers as tn}<option value={tn}></option>{/each}</datalist>
         {/each}
       </div>

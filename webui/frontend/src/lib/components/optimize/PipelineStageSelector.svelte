@@ -29,7 +29,7 @@
 <div class="space-y-1.5">
   {#each stages as s (s.key)}
     <label class="flex items-start gap-2 text-sm cursor-pointer
-                  hover:bg-ink-50 rounded px-1 py-0.5">
+                  hover:bg-ink-50 rounded-sm px-1 py-0.5">
       <input type="checkbox"
              class="mt-1"
              checked={value.includes(s.key)}
@@ -37,11 +37,11 @@
       <span class="flex-1">
         <span class="font-medium">{s.label}</span>
         {#if s.kind === 'diag'}
-          <span class="ml-1 pill pill-amber !text-[10px]">diag</span>
+          <span class="ml-1 pill pill-amber text-[10px]!">diag</span>
         {:else if s.kind === 'phase'}
-          <span class="ml-1 pill pill-blue !text-[10px]">phase</span>
+          <span class="ml-1 pill pill-blue text-[10px]!">phase</span>
         {:else if s.kind === 'meta'}
-          <span class="ml-1 pill !text-[10px]">meta</span>
+          <span class="ml-1 pill text-[10px]!">meta</span>
         {/if}
         {#if s.hint}
           <div class="text-[11px] text-ink-500">{s.hint}</div>

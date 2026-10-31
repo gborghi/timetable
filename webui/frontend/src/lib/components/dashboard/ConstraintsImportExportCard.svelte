@@ -199,8 +199,8 @@
 
   <div class="mt-4 grid md:grid-cols-2 gap-4">
     <!-- Stress profile -->
-    <div class="card !shadow-none p-3 bg-ink-50/40 space-y-2">
-      <h3 class="!text-base">Stress dataset</h3>
+    <div class="card shadow-none! p-3 bg-ink-50/40 space-y-2">
+      <h3 class="text-base!">Stress dataset</h3>
       <p class="text-[11px] text-ink-500">
         Carica un profilo curato dal repository
         (<code>experiments/stress_constraints/</code>). Ogni profilo
@@ -212,13 +212,13 @@
         <label class="text-xs">
           Profilo
           <select bind:value={profile} disabled={busy}
-                  class="ml-1 border border-ink-300 rounded px-2 py-1 text-sm">
+                  class="ml-1 border border-ink-300 rounded-sm px-2 py-1 text-sm">
             {#each PROFILES as p}
               <option value={p}>{p}</option>
             {/each}
           </select>
         </label>
-        <button class="btn-primary !text-sm"
+        <button class="btn-primary text-sm!"
                 on:click={importStress} disabled={busy}>
           {busy ? 'in corso...' : 'Importa stress'}
         </button>
@@ -226,19 +226,19 @@
     </div>
 
     <!-- Custom file -->
-    <div class="card !shadow-none p-3 bg-ink-50/40 space-y-2">
-      <h3 class="!text-base">File custom (JSON / xlsx)</h3>
+    <div class="card shadow-none! p-3 bg-ink-50/40 space-y-2">
+      <h3 class="text-base!">File custom (JSON / xlsx)</h3>
       <div role="button" tabindex="-1"
            on:dragover={onDragOver}
            on:dragleave={onDragLeave}
            on:drop={onDrop}
-           class="border-2 border-dashed rounded p-4 text-center text-xs cursor-pointer
+           class="border-2 border-dashed rounded-sm p-4 text-center text-xs cursor-pointer
                   {dropActive
                     ? 'border-emerald-500 bg-emerald-50'
                     : 'border-ink-300 bg-ink-50/30'}">
         Trascina qui un file <code>.json</code> o <code>.xlsx</code>
         oppure
-        <button class="btn !text-xs ml-1"
+        <button class="btn text-xs! ml-1"
                 on:click={() => importInput.click()}
                 disabled={busy}>
           Sfoglia
@@ -260,9 +260,9 @@
   </div>
 
   <!-- Guided Vincoli language (xlsx) -->
-  <div class="mt-4 card !shadow-none p-3 bg-indigo-50/40 space-y-2
+  <div class="mt-4 card shadow-none! p-3 bg-indigo-50/40 space-y-2
               border-indigo-200">
-    <h3 class="!text-base">Vincoli guidati (xlsx) — linguaggio Vincoli</h3>
+    <h3 class="text-base!">Vincoli guidati (xlsx) — linguaggio Vincoli</h3>
     <p class="text-[11px] text-ink-500">
       Compila il foglio <strong>Vincoli</strong> del template con un
       vocabolario semplice (<code>indisponibilita</code>,
@@ -272,10 +272,10 @@
       un'espressione DSL libera. Ogni riga diventa un vincolo.
     </p>
     <div class="flex flex-wrap gap-2 items-center">
-      <button class="btn !text-sm" on:click={downloadVincoliTemplate}>
+      <button class="btn text-sm!" on:click={downloadVincoliTemplate}>
         Scarica template vincoli
       </button>
-      <label class="btn-primary !text-sm cursor-pointer">
+      <label class="btn-primary text-sm! cursor-pointer">
         Carica vincoli (xlsx)
         <input type="file" accept=".xlsx,.json"
                on:change={importVincoliInput}
@@ -310,14 +310,14 @@
 
   <div class="mt-4 grid md:grid-cols-2 gap-4">
     <!-- Export -->
-    <div class="card !shadow-none p-3 bg-ink-50/40 space-y-2">
-      <h3 class="!text-base">Esporta</h3>
+    <div class="card shadow-none! p-3 bg-ink-50/40 space-y-2">
+      <h3 class="text-base!">Esporta</h3>
       <div class="flex flex-wrap gap-2">
-        <button class="btn-primary !text-sm"
+        <button class="btn-primary text-sm!"
                 on:click={() => downloadExport('json')}>
           Esporta JSON
         </button>
-        <button class="btn !text-sm"
+        <button class="btn text-sm!"
                 on:click={() => downloadExport('xlsx')}>
           Esporta xlsx
         </button>
@@ -329,15 +329,15 @@
     </div>
 
     <!-- Wipe -->
-    <div class="card !shadow-none p-3 bg-red-50/40 space-y-2 border-red-200">
-      <h3 class="!text-base text-red-900">Cancella</h3>
+    <div class="card shadow-none! p-3 bg-red-50/40 space-y-2 border-red-200">
+      <h3 class="text-base! text-red-900">Cancella</h3>
       <p class="text-[11px] text-red-800">
         Cancella tutti i vincoli (indisponibilità logiche, vincoli di
         curriculum, indisponibilità di docenti/classi/aule, compresenze
         e preferenze aula). Utile per ricominciare da zero un esperimento.
         Doppia conferma richiesta.
       </p>
-      <button class="btn-danger !text-sm"
+      <button class="btn-danger text-sm!"
               on:click={deleteAll} disabled={busy}>
         Cancella tutti i vincoli
       </button>
@@ -346,8 +346,8 @@
 
   <!-- Last report -->
   {#if lastReport}
-    <div class="mt-4 card !shadow-none p-3 bg-ink-50/40">
-      <h3 class="!text-base">Ultimo report</h3>
+    <div class="mt-4 card shadow-none! p-3 bg-ink-50/40">
+      <h3 class="text-base!">Ultimo report</h3>
       <p class="text-xs text-ink-600">
         Sorgente: <code>{lastReport.source}</code>
         {#if lastReport.profile}

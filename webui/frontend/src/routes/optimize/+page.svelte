@@ -384,7 +384,7 @@
     <div class="flex flex-wrap items-center justify-between gap-4">
       <div class="min-w-[280px] flex-1">
         <div class="flex items-center gap-2">
-          <h2 class="!mb-0">Genera l'orario</h2>
+          <h2 class="mb-0!">Genera l'orario</h2>
           <span class="pill-amber">consigliato</span>
         </div>
         <p class="text-[12.5px] text-ink-500 max-w-[68ch] mt-1.5">
@@ -403,7 +403,7 @@
           <span class="num text-[10.5px] text-ink-300 ml-1">~4 min</span>
         </div>
       </div>
-      <button class="btn-primary !text-[13.5px] !px-5 !py-2.5"
+      <button class="btn-primary text-[13.5px]! px-5! py-2.5!"
               on:click={launchRecommended}
               data-testid="optimize-run-recommended">
         Genera orario
@@ -426,7 +426,7 @@
        column-by-column, top-to-bottom, like a Pinterest board.
        Each direct child is `break-inside: avoid` so a single card
        never splits across columns. -->
-  <div class="columns-1 lg:columns-2 gap-6 [&>*]:break-inside-avoid [&>*]:mb-6 mt-3">
+  <div class="columns-1 lg:columns-2 gap-6 *:break-inside-avoid *:mb-6 mt-3">
     <!-- Step 1 -->
     <div class="card p-5">
       <h2 class="mb-3">1) Genera / carica scuola</h2>
@@ -519,7 +519,7 @@
     <div class="card p-5">
       <h2 class="mb-3">3) Schedulazione orario (Fase B)</h2>
       {#if paramRec && !paramRec.error}
-        <div class="mb-3 p-2.5 rounded border border-ink-200 bg-ink-50/50 text-[11.5px] leading-snug text-ink-500">
+        <div class="mb-3 p-2.5 rounded-sm border border-ink-200 bg-ink-50/50 text-[11.5px] leading-snug text-ink-500">
           <span class="font-medium text-ink-700">🎯 Parametri consigliati:</span>
           {paramRec.rationale}
           <button type="button" class="ml-2 text-[10px] underline hover:text-ink-900"
@@ -530,7 +530,7 @@
           {/if}
         </div>
       {:else if paramRec?.error}
-        <div class="mb-3 p-2.5 rounded border border-amber-300 bg-amber-50 text-[11.5px] leading-snug text-amber-800"
+        <div class="mb-3 p-2.5 rounded-sm border border-amber-300 bg-amber-50 text-[11.5px] leading-snug text-amber-800"
              role="alert" data-testid="param-rec-error">
           <span class="font-medium">Parametri consigliati non disponibili:</span>
           {paramRec.error}. Restano i valori del modulo.
@@ -560,7 +560,7 @@
       </div>
 
       <!-- Phase 3: CP-SAT scope + Fase A mode (Fase B knobs). -->
-      <div class="mt-3 p-3 rounded border border-ink-200 bg-ink-50/40 space-y-3">
+      <div class="mt-3 p-3 rounded-sm border border-ink-200 bg-ink-50/40 space-y-3">
         <p class="text-xs font-medium">Solver CP-SAT (avanzato)</p>
         <div class="field">
           <label for="routes-optimize-f13" use:tooltip={"Come il solver affronta la settimana. Per giorno: risolve un giorno alla volta (veloce, scalabile, default). Settimana intera: un unico modello CP-SAT su tutta la settimana, più robusto con compresenze/sostegno/gruppi ma più lento."}>Ambito del solver CP-SAT</label>
@@ -639,7 +639,7 @@
         </span>
       </label>
 
-      <div class="mt-3 p-3 rounded border border-ink-200 bg-ink-50/40 space-y-2">
+      <div class="mt-3 p-3 rounded-sm border border-ink-200 bg-ink-50/40 space-y-2">
         <label class="flex items-start gap-2 text-sm">
           <input type="checkbox" class="mt-0.5"
                  bind:checked={step3.max_free_if_full}
@@ -681,7 +681,7 @@
         {/if}
       </div>
 
-      <div class="mt-3 p-3 rounded border border-ink-200 bg-ink-50/40 space-y-2">
+      <div class="mt-3 p-3 rounded-sm border border-ink-200 bg-ink-50/40 space-y-2">
         <label class="flex items-center gap-2 text-sm font-medium">
           <input type="checkbox" bind:checked={step3.optimize_rooms}/>
           Ottimizza aule insieme a questo step
@@ -705,7 +705,7 @@
           </label>
         </div>
       </div>
-      <div class="mt-3 p-3 rounded border border-brand-200 bg-brand-50/40 space-y-2">
+      <div class="mt-3 p-3 rounded-sm border border-brand-200 bg-brand-50/40 space-y-2">
         <label class="flex items-center gap-2 text-sm font-medium">
           <input type="checkbox" bind:checked={step3.joint_vars.enabled}/>
           Ottimizzazione congiunta aule (joint giorno/ora/aula)
@@ -777,7 +777,7 @@
             <label for="routes-optimize-f15" class="text-xs font-semibold text-ink-600">
               Continuità d'aula (classi non fissate)
             </label>
-            <select id="routes-optimize-f15" class="mt-1 block w-full text-sm rounded border-ink-200"
+            <select id="routes-optimize-f15" class="mt-1 block w-full text-sm rounded-sm border-ink-200"
                     bind:value={step3.joint_vars.room_continuity}>
               <option value="none">Nessuna (aula libera per ora)</option>
               <option value="day">Stessa aula nello stesso giorno (obbligatorio)</option>
@@ -807,7 +807,7 @@
         <div class="field"><label for="routes-optimize-f20">TS tabu size</label><input id="routes-optimize-f20" type="number" bind:value={step4.tabu_size}/></div>
         <div class="field"><label for="routes-optimize-f21">ILS cycles</label><input id="routes-optimize-f21" type="number" bind:value={step4.n_cycles}/></div>
       </div>
-      <div class="mt-3 p-3 rounded border border-ink-200 bg-ink-50/40 space-y-2">
+      <div class="mt-3 p-3 rounded-sm border border-ink-200 bg-ink-50/40 space-y-2">
         <label class="flex items-center gap-2 text-sm font-medium">
           <input type="checkbox" bind:checked={step4.optimize_rooms}/>
           Ottimizza aule insieme a questo step
@@ -870,10 +870,10 @@
       </p>
 
       <!-- Suggerimento: auto-detect -->
-      <div class="rounded border border-ink-200 bg-ink-50/40 p-3 mb-3">
+      <div class="rounded-sm border border-ink-200 bg-ink-50/40 p-3 mb-3">
         <div class="flex items-baseline justify-between gap-2 mb-1">
           <strong class="text-sm">Suggerimento (auto-detect)</strong>
-          <button class="btn !text-xs !px-2 !py-1"
+          <button class="btn text-xs! px-2! py-1!"
                   on:click={fetchDecompRecommendation}
                   disabled={decompRecommendationLoading}>
             {decompRecommendationLoading ? '...' : 'Ricalcola'}
@@ -904,7 +904,7 @@
       </div>
 
       <!-- Spectral (already wired through Fase B) -->
-      <div class="rounded border border-ink-200 p-3 mb-3">
+      <div class="rounded-sm border border-ink-200 p-3 mb-3">
         <div class="flex items-baseline justify-between mb-1">
           <strong class="text-sm">3a) Decomposizione spettrale</strong>
           <span class="text-[10px] text-ink-500">grafo bipartito + Laplaciano</span>
@@ -922,7 +922,7 @@
       </div>
 
       <!-- Temporal -->
-      <div class="rounded border border-ink-200 p-3 mb-3">
+      <div class="rounded-sm border border-ink-200 p-3 mb-3">
         <div class="flex items-baseline justify-between mb-1">
           <strong class="text-sm">3b) Decomposizione temporale (per giorno)</strong>
           <span class="text-[10px] text-ink-500">parallelizza sui 6 giorni</span>
@@ -943,14 +943,14 @@
           <div class="field"><label for="routes-optimize-f28">max iterazioni</label>
             <input id="routes-optimize-f28" type="number" bind:value={decompTemporal.max_iterations}/></div>
         </div>
-        <button class="btn-primary !text-xs mt-2"
+        <button class="btn-primary text-xs! mt-2"
                 on:click={() => launchDecomposition('temporal', decompTemporal)}>
           Avvia stage standalone
         </button>
       </div>
 
       <!-- METIS -->
-      <div class="rounded border border-ink-200 p-3 mb-3">
+      <div class="rounded-sm border border-ink-200 p-3 mb-3">
         <div class="flex items-baseline justify-between mb-1">
           <strong class="text-sm">3c) Decomposizione METIS (k-way)</strong>
           <span class="text-[10px] text-ink-500">richiede pymetis</span>
@@ -970,14 +970,14 @@
           <div class="field"><label for="routes-optimize-f32">time bridges (s)</label>
             <input id="routes-optimize-f32" type="number" bind:value={decompMetis.time_bridges}/></div>
         </div>
-        <button class="btn-primary !text-xs mt-2"
+        <button class="btn-primary text-xs! mt-2"
                 on:click={() => launchDecomposition('metis', decompMetis)}>
           Avvia stage standalone
         </button>
       </div>
 
       <!-- Curriculum -->
-      <div class="rounded border border-ink-200 p-3">
+      <div class="rounded-sm border border-ink-200 p-3">
         <div class="flex items-baseline justify-between mb-1">
           <strong class="text-sm">3d) Decomposizione per curriculum</strong>
           <span class="text-[10px] text-ink-500">un cluster per indirizzo</span>
@@ -1000,7 +1000,7 @@
                    placeholder={'{"linguistico":"_misto"}'}
                    bind:value={decompCurriculum.manual_groupings}/></div>
         </div>
-        <button class="btn-primary !text-xs mt-2"
+        <button class="btn-primary text-xs! mt-2"
                 on:click={() => launchDecomposition('curriculum', decompCurriculum)}>
           Avvia stage standalone
         </button>
@@ -1046,7 +1046,7 @@
         <div class="field"><label for="routes-optimize-f42">Budget ILS</label><input id="routes-optimize-f42" type="number" bind:value={stepFull.budget_ils}/></div>
       </div>
 
-      <ul class="mt-4 divide-y divide-ink-200 border border-ink-200 rounded select-none">
+      <ul class="mt-4 divide-y divide-ink-200 border border-ink-200 rounded-sm select-none">
         {#each pipelineList as item, i (item.key)}
           <li class="flex items-center gap-3 px-3 py-2 bg-white"
               class:opacity-50={!item.enabled}
@@ -1095,9 +1095,9 @@
     <div class="flex items-baseline justify-between mb-3">
       <div>
         <span class="eyebrow">Storico</span>
-        <h2 class="!mb-0 mt-0.5">Cronologia run</h2>
+        <h2 class="mb-0! mt-0.5">Cronologia run</h2>
       </div>
-      <button class="btn !text-xs !px-2 !py-1" on:click={reloadRuns}>Aggiorna</button>
+      <button class="btn text-xs! px-2! py-1!" on:click={reloadRuns}>Aggiorna</button>
     </div>
     <div class="overflow-x-auto">
       <table class="tbl">
@@ -1135,7 +1135,7 @@
                 {/if}
               </td>
               <td class="text-xs">{r.solution_id ?? ''}</td>
-              <td><button class="btn !text-xs !px-2 !py-1" on:click={() => (runId = r.id)}>log</button></td>
+              <td><button class="btn text-xs! px-2! py-1!" on:click={() => (runId = r.id)}>log</button></td>
             </tr>
           {/each}
         </tbody>

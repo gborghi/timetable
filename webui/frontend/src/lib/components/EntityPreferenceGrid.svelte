@@ -115,7 +115,7 @@
      on:focusin={() => (focused = true)}
      on:focusout={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) focused = false; }}>
   <div class="flex items-baseline gap-2 flex-wrap">
-    <button class="btn !text-xs !px-2 !py-1"
+    <button class="btn text-xs! px-2! py-1!"
             on:click={() => (collapsed = !collapsed)}>
       {collapsed ? "+" : "-"} {title} ({nSet} settate / {items.length})
     </button>
@@ -131,7 +131,7 @@
         {#each items as it (it.key)}
           {@const pref = byKey.get(it.key)}
           {@const state = pref ? pref.state : "allowed"}
-          <div class="rounded border-2 p-2 cursor-pointer transition-colors {colorClasses(state)}"
+          <div class="rounded-sm border-2 p-2 cursor-pointer transition-colors {colorClasses(state)}"
                role="button" tabindex="0"
                aria-label={prefCellAriaLabel(it.label, state, pref?.soft_penalty)}
                on:click={(e) => onClick(e, it)}
@@ -156,7 +156,7 @@
             {#if state === "soft" || state === "preferred"}
               <div class="mt-1">
                 <input type="number" step="10"
-                       class="w-full text-xs px-1 py-0.5 rounded border bg-white text-ink-900"
+                       class="w-full text-xs px-1 py-0.5 rounded-sm border bg-white text-ink-900"
                        value={pref?.soft_penalty ?? defaultPenalty(state)}
                        aria-label={(state === "soft" ? "Penalità per " : "Bonus per ") + it.label}
                        on:click|stopPropagation

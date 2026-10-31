@@ -332,7 +332,7 @@
                 title="Mostra docenti con problemi di copertura"
                 data-testid="assignments-warnings-toggle">
           {#if loadInfo.n_over + loadInfo.n_under > 0}
-            <span class="pill-amber !text-[10px] mr-1">
+            <span class="pill-amber text-[10px]! mr-1">
               {loadInfo.n_over + loadInfo.n_under}
             </span>
           {/if}
@@ -345,7 +345,7 @@
   {#if showLoadPanel && loadInfo}
     <div class="card p-3 border-amber-300 bg-amber-50/40 space-y-2" data-testid="assignments-load-panel">
       <div class="flex items-baseline gap-3 flex-wrap">
-        <h3 class="!text-base">
+        <h3 class="text-base!">
           Cattedre / docenti incompleti
           <span class="text-xs text-ink-500 ml-2">
             {loadInfo.n_over} sopra il max,
@@ -354,13 +354,13 @@
           </span>
         </h3>
         <div class="ml-auto flex gap-1">
-          <button class="btn !text-xs"
+          <button class="btn text-xs!"
                   class:bg-ink-100={loadFilter === 'problemi'}
                   on:click={() => (loadFilter = 'problemi')}
                   data-testid="assignments-load-filter-problems">
             solo problemi
           </button>
-          <button class="btn !text-xs"
+          <button class="btn text-xs!"
                   class:bg-ink-100={loadFilter === 'all'}
                   on:click={() => (loadFilter = 'all')}
                   data-testid="assignments-load-filter-all">
@@ -437,42 +437,42 @@
       <strong class="text-sm" data-testid="bulk-selected-count">
         {selectedIds.size} cattedre selezionate
       </strong>
-      <button class="btn !text-xs"
+      <button class="btn text-xs!"
               on:click={clearSelection}
               data-testid="bulk-clear-selection">
         Deseleziona tutto
       </button>
       <span class="text-ink-300">|</span>
-      <button class="btn-red !text-xs"
+      <button class="btn-red text-xs!"
               on:click={bulkDelete} disabled={bulkBusy}
               data-testid="bulk-delete-btn">
         Elimina
       </button>
-      <button class="btn !text-xs"
+      <button class="btn text-xs!"
               on:click={() => bulkLockToggle(true)}
               disabled={bulkBusy}
               data-testid="bulk-lock-btn">
         Blocca
       </button>
-      <button class="btn !text-xs"
+      <button class="btn text-xs!"
               on:click={() => bulkLockToggle(false)}
               disabled={bulkBusy}
               data-testid="bulk-unlock-btn">
         Sblocca
       </button>
-      <button class="btn !text-xs"
+      <button class="btn text-xs!"
               on:click={() => (bulkChangeTeacherOpen = true)}
               disabled={bulkBusy}
               data-testid="bulk-change-teacher-btn">
         Cambia docente...
       </button>
-      <button class="btn !text-xs"
+      <button class="btn text-xs!"
               on:click={() => bulkPotenziamentoToggle(true)}
               disabled={bulkBusy}
               data-testid="bulk-potenziamento-on-btn">
         Imposta POT
       </button>
-      <button class="btn !text-xs"
+      <button class="btn text-xs!"
               on:click={() => bulkPotenziamentoToggle(false)}
               disabled={bulkBusy}
               data-testid="bulk-potenziamento-off-btn">
@@ -510,13 +510,13 @@
                 <td>
                   {row.subject}
                   {#if row.coteach_group_id != null}
-                    <span class="pill-blue !text-[10px]"
+                    <span class="pill-blue text-[10px]!"
                       title="Compresenza (lab/codocenza)" data-testid="assignments-row-coteach-pill">COTEACH</span>
                   {/if}
                   {#if row.is_support}
                     <!-- Il sostegno è dell'alunno, non della classe:
                          senza il nome la riga non dice a chi va. -->
-                    <span class="pill-amber !text-[10px]"
+                    <span class="pill-amber text-[10px]!"
                       title={row.student_name
                         ? `Sostegno per ${row.student_name}`
                         : 'Sostegno (DVA) — nessun alunno collegato'}>
@@ -527,8 +527,8 @@
                 <td data-testid="assignments-row-teacher">{row.teacher}</td>
                 <td class="text-center" data-testid="assignments-row-hours">{row.hours}</td>
                 <td class="whitespace-nowrap">
-                  <button class="btn !text-xs !px-2 !py-1" on:click={() => startEdit(cn, row)} data-testid="assignments-edit-btn">cambia</button>
-                  <button class="btn !text-xs !px-2 !py-1 focus-ring"
+                  <button class="btn text-xs! px-2! py-1!" on:click={() => startEdit(cn, row)} data-testid="assignments-edit-btn">cambia</button>
+                  <button class="btn text-xs! px-2! py-1! focus-ring"
                     title={row.locked ? 'Sblocca' : 'Blocca'}
                     aria-label={row.locked
                       ? 'Sblocca cattedra ' + row.subject + ' per ' + cn
@@ -565,7 +565,7 @@
             <tr>
               <td>
                 {row.teacher}
-                <span class="pill !text-[10px]"
+                <span class="pill text-[10px]!"
                   style="background:#e9d5ff;color:#581c87;"
                   title="Ore di potenziamento (Legge 107)">POT</span>
               </td>
@@ -598,7 +598,7 @@
                 on:click={() => startEdit(key, row)}>
               <td>
                 {row.teacher}
-                <span class="pill !text-[10px]"
+                <span class="pill text-[10px]!"
                   style="background:#cffafe;color:#155e75;"
                   title="Cattedra agganciata a uno StudyGroup invece di una classe">GRP</span>
               </td>
@@ -672,7 +672,7 @@
         <div class="text-xs text-ink-400 mt-1">
           (in alternativa puoi digitare manualmente in
           <input list="ll-t" bind:value={editing.teacher_name}
-                 class="px-2 py-0.5 border border-ink-200 rounded text-xs"
+                 class="px-2 py-0.5 border border-ink-200 rounded-sm text-xs"
                  data-testid="assignment-teacher-input"/>
           - <datalist id="ll-t">
               {#each teachersForSubject as t}

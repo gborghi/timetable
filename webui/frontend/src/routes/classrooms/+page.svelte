@@ -328,12 +328,12 @@
       <button class="btn-primary" on:click={newRoom}
               data-testid="add-classroom-btn">+ Nuova aula</button>
       <ImportButton entity="classrooms" onDone={() => listRef?.reload()}/>
-      <button class="btn !text-xs" on:click={() => (showBulk = true)}
+      <button class="btn text-xs!" on:click={() => (showBulk = true)}
               disabled={selectedIds.length === 0}
               title="Applica un vincolo a tutte le aule selezionate">
         Vincolo collettivo ({selectedIds.length})
       </button>
-      <button class="btn-danger !text-xs" on:click={bulkDel}
+      <button class="btn-danger text-xs!" on:click={bulkDel}
               disabled={selectedIds.length === 0 || bulkDeleting}
               title="Elimina tutte le aule selezionate (con UNDO)">
         {bulkDeleting ? 'Eliminazione...' : `Elimina selezionati (${selectedIds.length})`}
@@ -351,7 +351,7 @@
           Classi attualmente nel DB: <strong>{suggested.n_classes}</strong>
           - parametri suggeriti compilati di conseguenza
         </span>
-        <button class="btn !text-xs !px-2 !py-1 ml-auto" on:click={() => showGenPanel = false}>chiudi</button>
+        <button class="btn text-xs! px-2! py-1! ml-auto" on:click={() => showGenPanel = false}>chiudi</button>
       </div>
       <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div class="field"><label for="routes-classrooms-f1">Lab fisica</label><input id="routes-classrooms-f1" type="number" min="0" bind:value={genCounts.lab_fisica}/><span class="text-[10px] text-ink-500">{suggested.rules.lab_fisica}</span></div>
@@ -371,7 +371,7 @@
         <button class="btn-primary" on:click={runGenerate} disabled={busyGen}>
           {busyGen ? 'Generazione in corso...' : 'Genera aule'}
         </button>
-        <button class="btn !text-xs" on:click={() => (genCounts = { ...suggested.counts })}>
+        <button class="btn text-xs!" on:click={() => (genCounts = { ...suggested.counts })}>
           Ripristina suggeriti
         </button>
       </div>
@@ -398,7 +398,7 @@
                row, e.currentTarget.value, e.currentTarget)}
              on:keydown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
              disabled={savingCapacity.has(row.id)}
-             class="w-16 text-center px-1 py-0.5 border border-ink-200 rounded
+             class="w-16 text-center px-1 py-0.5 border border-ink-200 rounded-sm
                     focus:ring-2 focus:ring-emerald-300"
              data-testid="classroom-capacity-inline-input"
              data-classroom-id={row.id}/>
@@ -412,18 +412,18 @@
       {:else}
         <div class="flex flex-wrap gap-0.5">
           {#each row.tags as t (t)}
-            <span class="inline-flex items-center px-1 py-px rounded-sm
+            <span class="inline-flex items-center px-1 py-px rounded-xs
                          border text-[9px] leading-tight font-medium {tagColor(t)}">#{t}</span>
           {/each}
         </div>
       {/if}
     </td>
     <td class="whitespace-nowrap">
-      <button class="btn !text-xs !px-2 !py-1"
+      <button class="btn text-xs! px-2! py-1!"
               data-testid="classroom-edit-btn"
               data-classroom-id={row.id}
               on:click={() => edit(row)}>Modifica</button>
-      <button class="btn-danger !text-xs !px-2 !py-1"
+      <button class="btn-danger text-xs! px-2! py-1!"
               data-testid="classroom-delete-btn"
               data-classroom-id={row.id}
               on:click={() => del(row)}>Elimina</button>
@@ -475,12 +475,12 @@
 
     <div class="mt-4 field">
       <div class="flex items-baseline gap-3 mb-1">
-        <label class="!mb-0">Tag</label>
+        <label class="mb-0!">Tag</label>
         <span class="text-[11px] text-ink-500">
           Etichette libere usabili dal DSL (es. <code>"matematica" in l.classroom.tags</code>).
           I nuovi tag vengono creati automaticamente al salvataggio.
         </span>
-        <button type="button" class="btn !text-xs !px-2 !py-0.5 ml-auto"
+        <button type="button" class="btn text-xs! px-2! py-0.5! ml-auto"
                 on:click={() => (showTagsModal = true)}>Gestisci tag...</button>
       </div>
       <TagPicker
@@ -497,17 +497,17 @@
           {#each editing.subject_prefs as s, i}
             <tr>
               <td>
-                <input list="sub-{i}" bind:value={s.subject} class="w-full px-2 py-1 border border-ink-200 rounded"/>
+                <input list="sub-{i}" bind:value={s.subject} class="w-full px-2 py-1 border border-ink-200 rounded-sm"/>
                 <datalist id="sub-{i}">{#each allSubjects as ss}<option value={ss}></option>{/each}</datalist>
               </td>
-              <td class="w-24"><input type="number" bind:value={s.weight} class="w-full px-2 py-1 border border-ink-200 rounded"/></td>
+              <td class="w-24"><input type="number" bind:value={s.weight} class="w-full px-2 py-1 border border-ink-200 rounded-sm"/></td>
               <td class="w-20 text-center"><input type="checkbox" bind:checked={s.required}/></td>
-              <td><button class="btn-danger !text-xs !px-2 !py-1" aria-label="Elimina preferenza materia-aula" title="Elimina riga" on:click={() => delSubjectPref(i)}>x</button></td>
+              <td><button class="btn-danger text-xs! px-2! py-1!" aria-label="Elimina preferenza materia-aula" title="Elimina riga" on:click={() => delSubjectPref(i)}>x</button></td>
             </tr>
           {/each}
         </tbody>
       </table>
-      <button class="btn !text-xs !px-2 !py-1 mt-2" on:click={addSubjectPref}>+ Materia</button>
+      <button class="btn text-xs! px-2! py-1! mt-2" on:click={addSubjectPref}>+ Materia</button>
     </div>
 
     <div class="mt-4">
@@ -524,25 +524,25 @@
           {#each editing.class_prefs as c, i}
             <tr>
               <td>
-                <input list="cls-{i}" bind:value={c.class_name} class="w-full px-2 py-1 border border-ink-200 rounded"/>
+                <input list="cls-{i}" bind:value={c.class_name} class="w-full px-2 py-1 border border-ink-200 rounded-sm"/>
                 <datalist id="cls-{i}">{#each allClasses as cn}<option value={cn}></option>{/each}</datalist>
               </td>
               <td class="w-36">
-                <select bind:value={c.state} class="w-full px-2 py-1 border border-ink-200 rounded">
+                <select bind:value={c.state} class="w-full px-2 py-1 border border-ink-200 rounded-sm">
                   <option value="preferred">Preferita</option>
                   <option value="allowed">Ammessa</option>
                   <option value="enforced">Obbligatoria</option>
                   <option value="forbidden">Vietata</option>
                 </select>
               </td>
-              <td class="w-24"><input type="number" bind:value={c.weight} class="w-full px-2 py-1 border border-ink-200 rounded"/></td>
+              <td class="w-24"><input type="number" bind:value={c.weight} class="w-full px-2 py-1 border border-ink-200 rounded-sm"/></td>
               <td class="w-20 text-center"><input type="checkbox" bind:checked={c.is_home}/></td>
-              <td><button class="btn-danger !text-xs !px-2 !py-1" aria-label="Elimina preferenza classe-aula" title="Elimina riga" on:click={() => delClassPref(i)}>x</button></td>
+              <td><button class="btn-danger text-xs! px-2! py-1!" aria-label="Elimina preferenza classe-aula" title="Elimina riga" on:click={() => delClassPref(i)}>x</button></td>
             </tr>
           {/each}
         </tbody>
       </table>
-      <button class="btn !text-xs !px-2 !py-1 mt-2" on:click={addClassPref}>+ Classe</button>
+      <button class="btn text-xs! px-2! py-1! mt-2" on:click={addClassPref}>+ Classe</button>
     </div>
 
     <div class="mt-4">

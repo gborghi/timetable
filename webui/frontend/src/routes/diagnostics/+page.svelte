@@ -427,10 +427,10 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
   <!-- 1) Hall (async run, like the others) -->
   <section class="card p-4 space-y-2">
     <div class="flex items-baseline gap-2 flex-wrap">
-      <h2 class="!text-base">1) Pre-check fattibilità (Hall)</h2>
-      <span class="pill !text-[10px]">run asincrono</span>
+      <h2 class="text-base!">1) Pre-check fattibilità (Hall)</h2>
+      <span class="pill text-[10px]!">run asincrono</span>
       {#if statusPill(hl)}
-        <span class="{statusPill(hl).cls} !text-[10px]">
+        <span class="{statusPill(hl).cls} text-[10px]!">
           {statusPill(hl).label}
         </span>
         <a href="/runs/{hl.runId}" class="text-xs text-accent-500 hover:underline">
@@ -439,12 +439,12 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
         <RunProgress status={hl.status} progress={hl.progress} />
       {/if}
       <div class="ml-auto flex gap-2 items-end">
-        <div class="field !mb-0">
-          <label for="routes-diagnostics-f1" class="!text-[11px]">N campioni</label>
+        <div class="field mb-0!">
+          <label for="routes-diagnostics-f1" class="text-[11px]!">N campioni</label>
           <input id="routes-diagnostics-f1" type="number" min="32" max="1024"
                  bind:value={hallSamples} class="w-24"/>
         </div>
-        <button class="btn-primary !text-xs" on:click={runHall}
+        <button class="btn-primary text-xs!" on:click={runHall}
                 disabled={hl.busy}>
           {hl.busy ? '...' : 'Lancia Hall pre-check'}
         </button>
@@ -461,10 +461,10 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
   <!-- 2) Monte Carlo (async run) -->
   <section class="card p-4 space-y-2">
     <div class="flex items-baseline gap-2 flex-wrap">
-      <h2 class="!text-base">2) Sensitivity Monte Carlo</h2>
-      <span class="pill !text-[10px]">run asincrono</span>
+      <h2 class="text-base!">2) Sensitivity Monte Carlo</h2>
+      <span class="pill text-[10px]!">run asincrono</span>
       {#if statusPill(mc)}
-        <span class="{statusPill(mc).cls} !text-[10px]">
+        <span class="{statusPill(mc).cls} text-[10px]!">
           {statusPill(mc).label}
         </span>
         <a href="/runs/{mc.runId}" class="text-xs text-accent-500 hover:underline">
@@ -473,16 +473,16 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
         <RunProgress status={mc.status} progress={mc.progress} />
       {/if}
       <div class="ml-auto flex gap-2 items-end">
-        <div class="field !mb-0">
-          <label for="routes-diagnostics-f2" class="!text-[11px]">N campioni</label>
+        <div class="field mb-0!">
+          <label for="routes-diagnostics-f2" class="text-[11px]!">N campioni</label>
           <input id="routes-diagnostics-f2" type="number" min="10" max="500"
                  bind:value={mcN} class="w-20"/>
         </div>
-        <div class="field !mb-0">
-          <label for="routes-diagnostics-f3" class="!text-[11px]">Seed</label>
+        <div class="field mb-0!">
+          <label for="routes-diagnostics-f3" class="text-[11px]!">Seed</label>
           <input id="routes-diagnostics-f3" type="number" bind:value={mcSeed} class="w-16"/>
         </div>
-        <button class="btn-primary !text-xs" on:click={runMc}
+        <button class="btn-primary text-xs!" on:click={runMc}
                 disabled={mc.busy}>
           {mc.busy ? '...' : 'Lancia analisi MC'}
         </button>
@@ -512,14 +512,14 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
       <div class="border-t border-ink-200 pt-2 mt-2">
         <div class="flex items-baseline justify-between mb-1">
           <strong class="text-xs">Cronologia ({mcHistory.length})</strong>
-          <button class="btn !text-[10px] !px-2 !py-0.5"
+          <button class="btn text-[10px]! px-2! py-0.5!"
                   on:click={() => clearHistory('mc')}>Pulisci</button>
         </div>
         {#each mcHistory as h (h.runId)}
-          <details class="border border-ink-200 rounded mb-1">
+          <details class="border border-ink-200 rounded-sm mb-1">
             <summary class="cursor-pointer px-2 py-1 text-xs flex
                             items-center gap-2 hover:bg-ink-50">
-              <span class="pill !text-[10px]">run #{h.runId}</span>
+              <span class="pill text-[10px]!">run #{h.runId}</span>
               <span class="text-ink-500">{_formatTime(h.when)}</span>
               {#if h.result?.ok}
                 <span class="text-ink-500">
@@ -529,7 +529,7 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
               {:else}
                 <span class="text-rose-700">errore</span>
               {/if}
-              <button class="ml-auto btn !text-[10px] !px-1 !py-0"
+              <button class="ml-auto btn text-[10px]! px-1! py-0!"
                       title="Elimina dalla cronologia"
                       on:click|stopPropagation|preventDefault={() => deleteHistoryEntry('mc', h.runId)}>
                 x
@@ -555,10 +555,10 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
   <!-- 3) Bipartite (async run) -->
   <section class="card p-4 space-y-2">
     <div class="flex items-baseline gap-2 flex-wrap">
-      <h2 class="!text-base">3) Analisi bipartito</h2>
-      <span class="pill !text-[10px]">run asincrono</span>
+      <h2 class="text-base!">3) Analisi bipartito</h2>
+      <span class="pill text-[10px]!">run asincrono</span>
       {#if statusPill(bp)}
-        <span class="{statusPill(bp).cls} !text-[10px]">
+        <span class="{statusPill(bp).cls} text-[10px]!">
           {statusPill(bp).label}
         </span>
         <a href="/runs/{bp.runId}" class="text-xs text-accent-500 hover:underline">
@@ -567,14 +567,14 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
         <RunProgress status={bp.status} progress={bp.progress} />
       {/if}
       <div class="ml-auto flex gap-2 items-end">
-        <div class="field !mb-0">
-          <label for="routes-diagnostics-f4" class="!text-[11px]">Modalità</label>
+        <div class="field mb-0!">
+          <label for="routes-diagnostics-f4" class="text-[11px]!">Modalità</label>
           <select id="routes-diagnostics-f4" bind:value={bpMode}>
             <option value="classes">Classi (nodi)</option>
             <option value="teachers">Docenti (nodi)</option>
           </select>
         </div>
-        <button class="btn-primary !text-xs" on:click={runBp}
+        <button class="btn-primary text-xs!" on:click={runBp}
                 disabled={bp.busy}>
           {bp.busy ? '...' : 'Analizza grafo'}
         </button>
@@ -585,7 +585,7 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
     {/if}
     {#if bp.result && bp.result.ok}
       <div class="grid md:grid-cols-3 gap-3 text-sm">
-        <div class="card !shadow-none p-3">
+        <div class="card shadow-none! p-3">
           <div class="text-3xl font-semibold">
             {bp.result.density.toFixed(3)}
           </div>
@@ -594,7 +594,7 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
             {bp.result.density_interpretation}
           </p>
         </div>
-        <div class="card !shadow-none p-3">
+        <div class="card shadow-none! p-3">
           <div class="text-3xl font-semibold">
             {bp.result.modularity.toFixed(3)}
           </div>
@@ -605,7 +605,7 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
             {bp.result.modularity_interpretation}
           </p>
         </div>
-        <div class="card !shadow-none p-3">
+        <div class="card shadow-none! p-3">
           <div class="text-xs text-ink-500 mb-1">
             Top {bp.result.top_betweenness.length} nodi per betweenness
           </div>
@@ -628,14 +628,14 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
       <div class="border-t border-ink-200 pt-2 mt-2">
         <div class="flex items-baseline justify-between mb-1">
           <strong class="text-xs">Cronologia ({bpHistory.length})</strong>
-          <button class="btn !text-[10px] !px-2 !py-0.5"
+          <button class="btn text-[10px]! px-2! py-0.5!"
                   on:click={() => clearHistory('bp')}>Pulisci</button>
         </div>
         {#each bpHistory as h (h.runId)}
-          <details class="border border-ink-200 rounded mb-1">
+          <details class="border border-ink-200 rounded-sm mb-1">
             <summary class="cursor-pointer px-2 py-1 text-xs flex
                             items-center gap-2 hover:bg-ink-50">
-              <span class="pill !text-[10px]">run #{h.runId}</span>
+              <span class="pill text-[10px]!">run #{h.runId}</span>
               <span class="text-ink-500">{_formatTime(h.when)}</span>
               <span class="text-ink-500">
                 mode {h.params?.mode || 'classes'}
@@ -643,7 +643,7 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
                   -- mod {h.result.modularity.toFixed(3)}
                 {/if}
               </span>
-              <button class="ml-auto btn !text-[10px] !px-1 !py-0"
+              <button class="ml-auto btn text-[10px]! px-1! py-0!"
                       title="Elimina dalla cronologia"
                       on:click|stopPropagation|preventDefault={() => deleteHistoryEntry('bp', h.runId)}>
                 x
@@ -661,10 +661,10 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
   <!-- 4) Correlations (async run, parametrizable) -->
   <section class="card p-4 space-y-2">
     <div class="flex items-baseline gap-2 flex-wrap">
-      <h2 class="!text-base">4) Correlazioni e regressioni</h2>
-      <span class="pill !text-[10px]">run asincrono</span>
+      <h2 class="text-base!">4) Correlazioni e regressioni</h2>
+      <span class="pill text-[10px]!">run asincrono</span>
       {#if statusPill(co)}
-        <span class="{statusPill(co).cls} !text-[10px]">
+        <span class="{statusPill(co).cls} text-[10px]!">
           {statusPill(co).label}
         </span>
         <a href="/runs/{co.runId}" class="text-xs text-accent-500 hover:underline">
@@ -672,7 +672,7 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
         </a>
         <RunProgress status={co.status} progress={co.progress} />
       {/if}
-      <button class="btn-primary !text-xs ml-auto" on:click={runCo}
+      <button class="btn-primary text-xs! ml-auto" on:click={runCo}
               disabled={co.busy}>
         {co.busy ? '...' : (coModels.length === 0
                               ? 'Calcola (3 modelli default)'
@@ -681,7 +681,7 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
     </div>
 
     <!-- Variable picker / model builder -->
-    <details class="border border-ink-200 rounded p-2 bg-ink-50/40">
+    <details class="border border-ink-200 rounded-sm p-2 bg-ink-50/40">
       <summary class="cursor-pointer text-xs font-medium">
         Personalizza modelli ({coModels.length} custom configurat{coModels.length === 1 ? 'o' : 'i'})
       </summary>
@@ -712,14 +712,14 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
             {#each coModels as m, i}
               <tr>
                 <td>
-                  <select class="px-1 py-0.5 border border-ink-200 rounded"
+                  <select class="px-1 py-0.5 border border-ink-200 rounded-sm"
                           bind:value={m.kind}>
                     <option value="ols">OLS (lineare)</option>
                     <option value="logit">Logit (binaria)</option>
                   </select>
                 </td>
                 <td>
-                  <select class="px-1 py-0.5 border border-ink-200 rounded"
+                  <select class="px-1 py-0.5 border border-ink-200 rounded-sm"
                           bind:value={m.scope}
                           on:change={() => onCoScopeChange(i)}>
                     {#each coVariables.scopes as s}
@@ -728,7 +728,7 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
                   </select>
                 </td>
                 <td>
-                  <select class="px-1 py-0.5 border border-ink-200 rounded"
+                  <select class="px-1 py-0.5 border border-ink-200 rounded-sm"
                           bind:value={m.x}>
                     {#each (coVariables.variables_by_scope[m.scope] || []) as v}
                       <option value={v.key}>{v.label} ({v.type})</option>
@@ -736,7 +736,7 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
                   </select>
                 </td>
                 <td>
-                  <select class="px-1 py-0.5 border border-ink-200 rounded"
+                  <select class="px-1 py-0.5 border border-ink-200 rounded-sm"
                           bind:value={m.y}>
                     {#each (coVariables.variables_by_scope[m.scope] || []) as v}
                       <option value={v.key}>{v.label} ({v.type})</option>
@@ -744,12 +744,12 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
                   </select>
                 </td>
                 <td>
-                  <input class="px-1 py-0.5 border border-ink-200 rounded w-full"
+                  <input class="px-1 py-0.5 border border-ink-200 rounded-sm w-full"
                          placeholder="(auto)"
                          bind:value={m.label}/>
                 </td>
                 <td>
-                  <button class="btn-red !text-[10px] !px-1 !py-0.5"
+                  <button class="btn-red text-[10px]! px-1! py-0.5!"
                           aria-label="Rimuovi modello di compresenza" title="Rimuovi"
                           on:click={() => removeCoModel(i)}>x</button>
                 </td>
@@ -757,11 +757,11 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
             {/each}
           </tbody>
         </table>
-        <button class="btn !text-xs mt-2" on:click={addCoModel}>
+        <button class="btn text-xs! mt-2" on:click={addCoModel}>
           + Aggiungi modello
         </button>
         {#if coModels.length}
-          <button class="btn !text-xs ml-2"
+          <button class="btn text-xs! ml-2"
                   on:click={() => (coModels = [])}>
             Svuota (usa 3 default)
           </button>
@@ -779,19 +779,19 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
       <div class="border-t border-ink-200 pt-2 mt-2">
         <div class="flex items-baseline justify-between mb-1">
           <strong class="text-xs">Cronologia ({coHistory.length})</strong>
-          <button class="btn !text-[10px] !px-2 !py-0.5"
+          <button class="btn text-[10px]! px-2! py-0.5!"
                   on:click={() => clearHistory('co')}>Pulisci</button>
         </div>
         {#each coHistory as h (h.runId)}
-          <details class="border border-ink-200 rounded mb-1">
+          <details class="border border-ink-200 rounded-sm mb-1">
             <summary class="cursor-pointer px-2 py-1 text-xs flex
                             items-center gap-2 hover:bg-ink-50">
-              <span class="pill !text-[10px]">run #{h.runId}</span>
+              <span class="pill text-[10px]!">run #{h.runId}</span>
               <span class="text-ink-500">{_formatTime(h.when)}</span>
               <span class="text-ink-500">
                 {h.result?.models?.length || 0} modell{(h.result?.models?.length || 0) === 1 ? 'o' : 'i'}
               </span>
-              <button class="ml-auto btn !text-[10px] !px-1 !py-0"
+              <button class="ml-auto btn text-[10px]! px-1! py-0!"
                       title="Elimina dalla cronologia"
                       on:click|stopPropagation|preventDefault={() => deleteHistoryEntry('co', h.runId)}>
                 x
@@ -809,10 +809,10 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
   <!-- 5) Distributions (async run, parametrizable) -->
   <section class="card p-4 space-y-2">
     <div class="flex items-baseline gap-2 flex-wrap">
-      <h2 class="!text-base">5) Distribuzioni</h2>
-      <span class="pill !text-[10px]">run asincrono</span>
+      <h2 class="text-base!">5) Distribuzioni</h2>
+      <span class="pill text-[10px]!">run asincrono</span>
       {#if statusPill(ds)}
-        <span class="{statusPill(ds).cls} !text-[10px]">
+        <span class="{statusPill(ds).cls} text-[10px]!">
           {statusPill(ds).label}
         </span>
         <a href="/runs/{ds.runId}" class="text-xs text-accent-500 hover:underline">
@@ -820,7 +820,7 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
         </a>
         <RunProgress status={ds.status} progress={ds.progress} />
       {/if}
-      <button class="btn-primary !text-xs ml-auto" on:click={runDs}
+      <button class="btn-primary text-xs! ml-auto" on:click={runDs}
               disabled={ds.busy}>
         {ds.busy ? '...' : (dsSelected.length === 0
                               ? 'Calcola tutte (default)'
@@ -829,7 +829,7 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
     </div>
 
     <!-- Distribution picker / param editor -->
-    <details class="border border-ink-200 rounded p-2 bg-ink-50/40">
+    <details class="border border-ink-200 rounded-sm p-2 bg-ink-50/40">
       <summary class="cursor-pointer text-xs font-medium">
         Personalizza distribuzioni
         ({dsSelected.length === 0 ? 'tutte di default' :
@@ -847,7 +847,7 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
       {:else}
         <div class="space-y-2">
           {#each dsCatalog.distributions as d (d.key)}
-            <div class="border border-ink-200 rounded p-2 bg-white">
+            <div class="border border-ink-200 rounded-sm p-2 bg-white">
               <label class="flex items-center gap-2 text-xs font-medium cursor-pointer">
                 <input type="checkbox"
                        checked={dsSelected.includes(d.key)}
@@ -865,12 +865,12 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
                       </label>
                       {#if p.type === 'int'}
                         <input type="number"
-                               class="w-full px-1 py-0.5 border border-ink-200 rounded"
+                               class="w-full px-1 py-0.5 border border-ink-200 rounded-sm"
                                min={p.min} max={p.max}
                                bind:value={dsParams[d.key][p.key]}/>
                       {:else}
                         <input type="text"
-                               class="w-full px-1 py-0.5 border border-ink-200 rounded"
+                               class="w-full px-1 py-0.5 border border-ink-200 rounded-sm"
                                placeholder={p.default || ''}
                                bind:value={dsParams[d.key][p.key]}/>
                       {/if}
@@ -882,11 +882,11 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
           {/each}
         </div>
         <div class="mt-2 flex gap-2">
-          <button class="btn !text-xs"
+          <button class="btn text-xs!"
                   on:click={() => (dsSelected = (dsCatalog.distributions || []).map((d) => d.key))}>
             Tutto
           </button>
-          <button class="btn !text-xs"
+          <button class="btn text-xs!"
                   on:click={() => (dsSelected = [])}>
             Nessuna (-> default)
           </button>
@@ -925,21 +925,21 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
       <div class="border-t border-ink-200 pt-2 mt-2">
         <div class="flex items-baseline justify-between mb-1">
           <strong class="text-xs">Cronologia ({dsHistory.length})</strong>
-          <button class="btn !text-[10px] !px-2 !py-0.5"
+          <button class="btn text-[10px]! px-2! py-0.5!"
                   on:click={() => clearHistory('ds')}>Pulisci</button>
         </div>
         {#each dsHistory as h (h.runId)}
-          <details class="border border-ink-200 rounded mb-1">
+          <details class="border border-ink-200 rounded-sm mb-1">
             <summary class="cursor-pointer px-2 py-1 text-xs flex
                             items-center gap-2 hover:bg-ink-50">
-              <span class="pill !text-[10px]">run #{h.runId}</span>
+              <span class="pill text-[10px]!">run #{h.runId}</span>
               <span class="text-ink-500">{_formatTime(h.when)}</span>
               <span class="text-ink-500">
                 {#if h.result?.teacher_loads}carico docenti{/if}
                 {#if h.result?.teacher_loads && h.result?.subject_slot_heatmap} + {/if}
                 {#if h.result?.subject_slot_heatmap}heatmap materia/slot{/if}
               </span>
-              <button class="ml-auto btn !text-[10px] !px-1 !py-0"
+              <button class="ml-auto btn text-[10px]! px-1! py-0!"
                       title="Elimina dalla cronologia"
                       on:click|stopPropagation|preventDefault={() => deleteHistoryEntry('ds', h.runId)}>
                 x

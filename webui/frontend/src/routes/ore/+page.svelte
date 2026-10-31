@@ -345,7 +345,7 @@
 
   {#if error}
     <div class="bg-rose-50 border border-rose-200 text-rose-800
-                rounded p-3" role="alert">
+                rounded-sm p-3" role="alert">
       Errore: {error}
     </div>
   {/if}
@@ -362,7 +362,7 @@
           : 'numero di ore variabile per giorno.'}
       </div>
 
-      <div class="bg-white border border-ink-200 rounded p-4"
+      <div class="bg-white border border-ink-200 rounded-sm p-4"
            class:hidden={view !== 'calendar'}>
         <header class="flex items-baseline justify-between mb-3 gap-3">
           <div>
@@ -407,12 +407,12 @@
             on:submit|preventDefault={addNamedDay}>
         <label class="text-xs text-ink-500">
           Codice
-          <input class="block bg-ink-50 px-2 py-1 rounded font-mono"
+          <input class="block bg-ink-50 px-2 py-1 rounded-sm font-mono"
                  placeholder="Gatto" bind:value={newCode}/>
         </label>
         <label class="text-xs text-ink-500">
           Etichetta
-          <input class="block bg-ink-50 px-2 py-1 rounded"
+          <input class="block bg-ink-50 px-2 py-1 rounded-sm"
                  placeholder="Gatto" bind:value={newLabel}/>
         </label>
         <button class="btn-primary" type="submit">Aggiungi giorno</button>
@@ -422,17 +422,17 @@
       </form>
       {/if}
       {#each config.days as day (day.id)}
-        <div class="bg-white border border-ink-200 rounded p-4
+        <div class="bg-white border border-ink-200 rounded-sm p-4
                     {day.is_active ? '' : 'opacity-60'}">
           <header class="flex items-center justify-between gap-3 mb-3">
             <div class="flex items-center gap-2 flex-wrap min-w-0">
               {#if expert}
-                <input class="text-sm font-mono bg-ink-100 px-2 py-0.5 rounded w-24"
+                <input class="text-sm font-mono bg-ink-100 px-2 py-0.5 rounded-sm w-24"
                        value={day.code}
                        title="Codice (Gatto, MON, lun1, …)"
                        on:change={(e) => renameDay(day, 'code', e.target.value)}/>
                 <input class="font-semibold bg-transparent border-b border-transparent
-                              hover:border-ink-200 focus:border-ink-400 px-0.5 min-w-[8rem]"
+                              hover:border-ink-200 focus:border-ink-400 px-0.5 min-w-32"
                        value={day.label}
                        title="Etichetta visibile"
                        on:change={(e) => renameDay(day, 'label', e.target.value)}/>
@@ -483,19 +483,19 @@
                     <input type="time" value={slot.start_time}
                            on:input={(e) => updateSlot(day.id, i,
                               'start_time', e.target.value)}
-                           class="bg-ink-50 px-2 py-1 rounded"/>
+                           class="bg-ink-50 px-2 py-1 rounded-sm"/>
                   </td>
                   <td>
                     <input type="time" value={slot.end_time}
                            on:input={(e) => updateSlot(day.id, i,
                               'end_time', e.target.value)}
-                           class="bg-ink-50 px-2 py-1 rounded"/>
+                           class="bg-ink-50 px-2 py-1 rounded-sm"/>
                   </td>
                   <td>
                     <input type="text" value={slot.label || ''}
                            on:input={(e) => updateSlot(day.id, i,
                               'label', e.target.value)}
-                           class="bg-ink-50 px-2 py-1 rounded w-full"
+                           class="bg-ink-50 px-2 py-1 rounded-sm w-full"
                            placeholder={`${i + 1}ª ora`}/>
                   </td>
                   <td>
@@ -504,7 +504,7 @@
                            on:input={(e) => updateSlot(day.id, i,
                               'legacy_hour_number',
                               Number(e.target.value))}
-                           class="bg-ink-50 px-2 py-1 rounded w-20"/>
+                           class="bg-ink-50 px-2 py-1 rounded-sm w-20"/>
                   </td>
                   <td>
                     <button class="text-rose-600 hover:underline
@@ -532,7 +532,7 @@
     {#if (view === 'list' && anyDirty)
          || (view === 'calendar' && anyCalDirty)}
       <div class="fixed bottom-4 left-1/2 -translate-x-1/2 bg-amber-100
-                  border border-amber-300 px-4 py-2 rounded shadow
+                  border border-amber-300 px-4 py-2 rounded-sm shadow-sm
                   text-sm">
         {#if view === 'list'}
           Modifiche non salvate. Premi <strong>Salva slot</strong> sui

@@ -347,10 +347,10 @@
       {busy ? 'analisi in corso...' : 'Avvia check'}
     </button>
     {#if result}
-      <button class="btn !text-xs" on:click={run} disabled={busy}>
+      <button class="btn text-xs!" on:click={run} disabled={busy}>
         Ri-verifica
       </button>
-      <button class="btn !text-xs" on:click={exportJson}>
+      <button class="btn text-xs!" on:click={exportJson}>
         Esporta JSON
       </button>
       {#if result.feasible === false && result.suggested_removal.length}
@@ -358,16 +358,16 @@
                 title="Rimuovi tutti i vincoli del set suggerito (reversibile da Storico)">
           Rimuovi suggeriti ({result.suggested_removal.length})
         </button>
-        <button class="btn !text-xs" on:click={() => applySuggestion('soften')}
+        <button class="btn text-xs!" on:click={() => applySuggestion('soften')}
                 title="Trasforma in penalizzato con penalità 100 (reversibile)">
           Trasforma in penalizzato
         </button>
-        <button class="btn !text-xs" on:click={() => applySuggestion('disable')}
+        <button class="btn text-xs!" on:click={() => applySuggestion('disable')}
                 title="Disabilita temporaneamente (il vincolo resta nel DB)">
           Disabilita temporaneamente
         </button>
       {/if}
-      <button class="btn !text-xs"
+      <button class="btn text-xs!"
               on:click={() => { showHistory = !showHistory;
                                 if (showHistory) loadInterventions(); }}
               title="Storico interventi sui vincoli">
@@ -416,31 +416,31 @@
               <ul class="space-y-1">
                 {#each core.members as m}
                   <li class="flex items-center gap-2 text-xs flex-wrap">
-                    <span class="{levelPill(m.level)} !text-[10px]">
+                    <span class="{levelPill(m.level)} text-[10px]!">
                       {levelLabel(m.level)}
                     </span>
-                    <span class="pill !text-[10px]">{m.scope}</span>
+                    <span class="pill text-[10px]!">{m.scope}</span>
                     <strong>{m.owner_name}</strong>
                     <code class="text-ink-500">{m.detail}</code>
                     <span class="text-[10px] text-ink-400 ml-auto">
                       {m.db_kind}#{m.db_id}
                     </span>
-                    <button class="btn-red !text-[10px] !px-1 !py-0"
+                    <button class="btn-red text-[10px]! px-1! py-0!"
                             on:click={() => removeMember(m)}
                             title="Rimuovi (reversibile da Storico)">
                       Rimuovi
                     </button>
-                    <button class="btn !text-[10px] !px-1 !py-0"
+                    <button class="btn text-[10px]! px-1! py-0!"
                             on:click={() => softenMember(m)}
                             title="Trasforma in penalizzato con penalità">
                       Soften
                     </button>
-                    <button class="btn !text-[10px] !px-1 !py-0"
+                    <button class="btn text-[10px]! px-1! py-0!"
                             on:click={() => disableMember(m)}
                             title="Disabilita temporaneamente">
                       Disabilita
                     </button>
-                    <button class="btn !text-[10px] !px-1 !py-0"
+                    <button class="btn text-[10px]! px-1! py-0!"
                             on:click={() => editMember(m)}
                             title="Modifica espressione DSL">
                       Modifica
@@ -459,7 +459,7 @@
               <ul class="space-y-1">
                 {#each result.suggested_removal as m}
                   <li class="text-xs">
-                    <span class="{levelPill(m.level)} !text-[10px]">
+                    <span class="{levelPill(m.level)} text-[10px]!">
                       {levelLabel(m.level)}
                     </span>
                     <strong>{m.owner_name}</strong>
@@ -482,15 +482,15 @@
                class="border border-ink-200 rounded-md"
                style="width: 100%; height: calc(100% - 24px);"></div>
           {#if popover}
-            <div class="absolute bg-white border border-ink-300 rounded
+            <div class="absolute bg-white border border-ink-300 rounded-sm
                         shadow-lg p-3 text-xs space-y-1 z-10"
                  style="left: {popover.x - 100}px; top: {popover.y + 30}px;
                         max-width: 280px;">
               <div>
-                <span class="{levelPill(popover.member.level)} !text-[10px]">
+                <span class="{levelPill(popover.member.level)} text-[10px]!">
                   {levelLabel(popover.member.level)}
                 </span>
-                <span class="pill !text-[10px]">{popover.member.scope}</span>
+                <span class="pill text-[10px]!">{popover.member.scope}</span>
               </div>
               <div><strong>{popover.member.owner_name}</strong></div>
               <div><code>{popover.member.detail}</code></div>
@@ -498,23 +498,23 @@
                 {popover.member.db_kind} #{popover.member.db_id}
               </div>
               <div class="flex gap-1 pt-1 border-t border-ink-100 flex-wrap">
-                <button class="btn-red !text-[10px] !px-2 !py-0.5"
+                <button class="btn-red text-[10px]! px-2! py-0.5!"
                         on:click={() => removeMember(popover.member)}>
                   Rimuovi
                 </button>
-                <button class="btn !text-[10px] !px-2 !py-0.5"
+                <button class="btn text-[10px]! px-2! py-0.5!"
                         on:click={() => softenMember(popover.member)}>
                   Soften
                 </button>
-                <button class="btn !text-[10px] !px-2 !py-0.5"
+                <button class="btn text-[10px]! px-2! py-0.5!"
                         on:click={() => disableMember(popover.member)}>
                   Disabilita
                 </button>
-                <button class="btn !text-[10px] !px-2 !py-0.5"
+                <button class="btn text-[10px]! px-2! py-0.5!"
                         on:click={() => editMember(popover.member)}>
                   Modifica
                 </button>
-                <button class="btn !text-[10px] !px-2 !py-0.5"
+                <button class="btn text-[10px]! px-2! py-0.5!"
                         on:click={() => (popover = null)}>
                   Chiudi
                 </button>
@@ -539,11 +539,11 @@
         <span class="text-xs text-ink-500">
           ({interventions.length} record, ordine cronologico inverso)
         </span>
-        <button class="btn !text-xs ml-auto"
+        <button class="btn text-xs! ml-auto"
                 on:click={loadInterventions}>
           Aggiorna
         </button>
-        <button class="btn !text-xs"
+        <button class="btn text-xs!"
                 on:click={() => (showHistory = false)}>
           Chiudi
         </button>
@@ -574,7 +574,7 @@
                   <td class="py-1 pr-2 text-ink-400">{iv.id}</td>
                   <td class="py-1 pr-2 text-ink-600">{fmtTs(iv.timestamp)}</td>
                   <td class="py-1 pr-2">
-                    <span class="pill !text-[10px]">{iv.action}</span>
+                    <span class="pill text-[10px]!">{iv.action}</span>
                   </td>
                   <td class="py-1 pr-2">
                     {iv.target_kind}#{iv.target_id}
@@ -598,7 +598,7 @@
                   </td>
                   <td class="py-1 pr-2">
                     {#if !iv.reverted && iv.action !== 'restore'}
-                      <button class="btn !text-[10px] !px-1 !py-0"
+                      <button class="btn text-[10px]! px-1! py-0!"
                               on:click={() => revertIntervention(iv)}
                               title="Annulla questo intervento">
                         Revert

@@ -876,7 +876,7 @@
       {#if classData}
         <div class="flex gap-2 mb-2">
           <select bind:value={selectedClass}
-                  class="px-2 py-1 rounded border border-ink-200">
+                  class="px-2 py-1 rounded-sm border border-ink-200">
             {#each classData.classes as c}<option>{c}</option>{/each}
           </select>
         </div>
@@ -927,29 +927,29 @@
       <span class="eyebrow">Vista</span>
       <div class="flex gap-1" role="group" aria-label="Vista orario"
            data-testid="schedule-view-buttons">
-        <button type="button" class="btn !text-xs" on:click={onViewBarClick}
+        <button type="button" class="btn text-xs!" on:click={onViewBarClick}
                 class:bg-ink-100={$viewStore === 'global'}
                 aria-pressed={$viewStore === 'global'}
                 data-view="global"
                 data-testid="schedule-view-global">Globale</button>
-        <button type="button" class="btn !text-xs" on:click={onViewBarClick}
+        <button type="button" class="btn text-xs!" on:click={onViewBarClick}
                 class:bg-ink-100={$viewStore === 'class'}
                 aria-pressed={$viewStore === 'class'}
                 data-view="class"
                 data-testid="schedule-view-classes">Per classe</button>
-        <button type="button" class="btn !text-xs" on:click={onViewBarClick}
+        <button type="button" class="btn text-xs!" on:click={onViewBarClick}
                 class:bg-ink-100={$viewStore === 'teacher'}
                 aria-pressed={$viewStore === 'teacher'}
                 data-view="teacher"
                 data-testid="schedule-view-teachers">Per docente</button>
-        <button type="button" class="btn !text-xs" on:click={onViewBarClick}
+        <button type="button" class="btn text-xs!" on:click={onViewBarClick}
                 class:bg-ink-100={$viewStore === 'room'}
                 aria-pressed={$viewStore === 'room'}
                 data-view="room"
                 data-testid="schedule-view-rooms">Per aula</button>
       </div>
       {#if pendingMoveLessonId}
-        <span class="ml-auto px-2 py-1 rounded bg-amber-100 border border-amber-300 text-xs"
+        <span class="ml-auto px-2 py-1 rounded-sm bg-amber-100 border border-amber-300 text-xs"
               data-testid="schedule-pending-move">
           Modalità sposta -- click su uno slot vuoto per confermare
           <button class="ml-2 underline"
@@ -965,14 +965,14 @@
                  list="schedule-entity-list"
                  on:input={() => commitEntitySearch(true)}
                  on:change={() => commitEntitySearch(false)}
-                 class="px-2 py-1 rounded border border-ink-200 text-sm"
+                 class="px-2 py-1 rounded-sm border border-ink-200 text-sm"
                  data-testid="schedule-entity-filter"/>
           <datalist id="schedule-entity-list">
             {#each filteredEntities as n}<option value={n}></option>{/each}
           </datalist>
           <select value={$entityIdStore}
                   on:change={(e) => onEntityIdChange(e.currentTarget.value)}
-                  class="px-2 py-1 rounded border border-ink-200 text-sm"
+                  class="px-2 py-1 rounded-sm border border-ink-200 text-sm"
                   data-testid="schedule-entity-select">
             {#each filteredEntities as n}<option value={n}>{$viewStore === 'class' ? classOptionLabel(n) : n}</option>{/each}
           </select>
@@ -984,7 +984,7 @@
       <div class="card p-2"
            data-testid="schedule-calendar-card">
         {#if !helpDismissed}
-          <div class="mb-2 flex items-start gap-2 rounded bg-accent-50 border border-accent-200 px-3 py-2 text-xs text-ink-600"
+          <div class="mb-2 flex items-start gap-2 rounded-sm bg-accent-50 border border-accent-200 px-3 py-2 text-xs text-ink-600"
                data-testid="schedule-help">
             <span class="flex-1">
               <strong>Come si usa:</strong>
@@ -1050,7 +1050,7 @@
           <button class="btn"
                   on:click={svincolaLesson}
                   data-testid="schedule-action-unschedule">Svincola</button>
-          <button class="btn !bg-rose-50 !border-rose-200 !text-rose-700"
+          <button class="btn bg-rose-50! border-rose-200! text-rose-700!"
                   on:click={eliminaLesson}
                   data-testid="schedule-action-delete">Elimina</button>
         </div>

@@ -148,7 +148,7 @@
     <div class="flex flex-wrap gap-2 items-center">
       <label for="lib-components-bulkapplymodal-f1" class="text-sm">Azione:</label>
       <select id="lib-components-bulkapplymodal-f1" bind:value={action} on:change={reset}
-              class="px-2 py-1 border border-ink-200 rounded">
+              class="px-2 py-1 border border-ink-200 rounded-sm">
         <option value="add_logical">Aggiungi vincolo logico</option>
         <option value="set_field">Imposta un campo</option>
         <option value="add_unavailability">Aggiungi cella di indisponibilita</option>
@@ -158,31 +158,31 @@
     {#if action === 'add_logical'}
       <div class="space-y-2">
         <label for="lib-components-bulkapplymodal-f2" class="text-xs">Espressione (vedi guida sintassi)</label>
-        <input id="lib-components-bulkapplymodal-f2" class="w-full font-mono text-sm px-2 py-1 border border-ink-200 rounded"
+        <input id="lib-components-bulkapplymodal-f2" class="w-full font-mono text-sm px-2 py-1 border border-ink-200 rounded-sm"
                placeholder="es. lun8 AND lun9"
                bind:value={exprText} on:input={reset}/>
         <div class="flex gap-3 text-xs items-center flex-wrap">
           <label class="flex gap-1 items-center">
             <input type="radio" bind:group={logicalKind} value="hard"/>
-            <span class="pill-red !text-[10px]">Obbligatorio</span>
+            <span class="pill-red text-[10px]!">Obbligatorio</span>
           </label>
           <label class="flex gap-1 items-center">
             <input type="radio" bind:group={logicalKind} value="soft"/>
-            <span class="pill-amber !text-[10px]">Penalizzato</span>
+            <span class="pill-amber text-[10px]!">Penalizzato</span>
           </label>
           <label class="flex gap-1 items-center">
             <input type="radio" bind:group={logicalKind} value="preferred"/>
-            <span class="pill-blue !text-[10px]">Preferenza</span>
+            <span class="pill-blue text-[10px]!">Preferenza</span>
           </label>
           <label class="flex gap-1 items-center">
             <input type="radio" bind:group={logicalKind} value="enforced"/>
-            <span class="pill-c-enforced !text-[10px]">Imposto</span>
+            <span class="pill-c-enforced text-[10px]!">Imposto</span>
           </label>
           {#if logicalKind === 'soft' || logicalKind === 'preferred'}
             <label class="flex gap-1 items-center">
               {logicalKind === 'soft' ? 'Penalità' : 'Bonus'}:
               <input type="number" min="0"
-                     class="w-16 px-1 py-0.5 border border-ink-200 rounded"
+                     class="w-16 px-1 py-0.5 border border-ink-200 rounded-sm"
                      bind:value={softPenalty}/>
             </label>
           {/if}
@@ -197,7 +197,7 @@
             if (p) { fieldType = p.type; fieldValue = (p.type === 'bool' ? false : ''); }
             reset();
           }}
-          class="px-2 py-1 border border-ink-200 rounded">
+          class="px-2 py-1 border border-ink-200 rounded-sm">
           <option value="">-- scegli --</option>
           {#each presets as p}
             <option value={p.field}>{p.label}</option>
@@ -213,17 +213,17 @@
             </label>
           {:else if selectedPreset.options}
             <select bind:value={fieldValue} on:change={reset}
-                    class="px-2 py-1 border border-ink-200 rounded">
+                    class="px-2 py-1 border border-ink-200 rounded-sm">
               {#each selectedPreset.options as opt}
                 <option value={opt}>{opt}</option>
               {/each}
             </select>
           {:else if selectedPreset.type === 'number'}
             <input type="number" bind:value={fieldValue} on:input={reset}
-                   class="w-32 px-2 py-1 border border-ink-200 rounded"/>
+                   class="w-32 px-2 py-1 border border-ink-200 rounded-sm"/>
           {:else}
             <input bind:value={fieldValue} on:input={reset}
-                   class="w-64 px-2 py-1 border border-ink-200 rounded"/>
+                   class="w-64 px-2 py-1 border border-ink-200 rounded-sm"/>
           {/if}
         {/if}
       </div>
@@ -232,12 +232,12 @@
       <div class="grid grid-cols-2 gap-3">
         <label for="lib-components-bulkapplymodal-f4" class="text-xs">Giorno (1=Lun .. 6=Sab)</label>
         <input id="lib-components-bulkapplymodal-f4" type="number" min="1" max="6" bind:value={unavailDay}
-               class="px-2 py-1 border border-ink-200 rounded" on:input={reset}/>
+               class="px-2 py-1 border border-ink-200 rounded-sm" on:input={reset}/>
         <label for="lib-components-bulkapplymodal-f5" class="text-xs">Ora (1..6 ordinale, oppure 8..13)</label>
         <input id="lib-components-bulkapplymodal-f5" type="number" min="1" max="13" bind:value={unavailHour}
-               class="px-2 py-1 border border-ink-200 rounded" on:input={reset}/>
+               class="px-2 py-1 border border-ink-200 rounded-sm" on:input={reset}/>
         <label for="lib-components-bulkapplymodal-f6" class="text-xs">Stato</label>
-        <select id="lib-components-bulkapplymodal-f6" bind:value={unavailState} class="px-2 py-1 border border-ink-200 rounded">
+        <select id="lib-components-bulkapplymodal-f6" bind:value={unavailState} class="px-2 py-1 border border-ink-200 rounded-sm">
           <option value="hard">Obbligatorio (rosso)</option>
           <option value="soft">Penalizzato (giallo, penalità +)</option>
           <option value="preferred">Preferenza (blu, bonus -)</option>
@@ -246,11 +246,11 @@
         {#if unavailState === 'soft' || unavailState === 'preferred'}
           <label for="lib-components-bulkapplymodal-f7" class="text-xs">{unavailState === 'soft' ? 'Penalità' : 'Bonus'}</label>
           <input id="lib-components-bulkapplymodal-f7" type="number" min="0" bind:value={softPenalty}
-                 class="px-2 py-1 border border-ink-200 rounded"/>
+                 class="px-2 py-1 border border-ink-200 rounded-sm"/>
         {/if}
         <label for="lib-components-bulkapplymodal-f8" class="text-xs">Motivo (opzionale)</label>
         <input id="lib-components-bulkapplymodal-f8" bind:value={unavailReason}
-               class="px-2 py-1 border border-ink-200 rounded"/>
+               class="px-2 py-1 border border-ink-200 rounded-sm"/>
       </div>
     {/if}
 
@@ -267,7 +267,7 @@
       </div>
 
       {#if dryRun && dryRun.conflicts.length > 0}
-        <div class="card !shadow-none p-2 text-xs bg-amber-50 border-amber-300">
+        <div class="card shadow-none! p-2 text-xs bg-amber-50 border-amber-300">
           <strong>Conflitti rilevati ({dryRun.conflicts.length}):</strong>
           <ul class="list-disc ml-5 max-h-32 overflow-auto">
             {#each dryRun.conflicts as c}

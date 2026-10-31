@@ -519,17 +519,17 @@
        still works (it clears only the user-typed query). -->
   <div class="card p-2 flex items-center gap-1 flex-wrap"
        data-testid="monitor-tabs">
-    <button class="btn !text-xs"
+    <button class="btn text-xs!"
             class:!bg-accent-500={activeTab === 'all'}
             class:!text-white={activeTab === 'all'}
             on:click={() => (activeTab = 'all')}
             data-testid="monitor-tab-all">
       Tutti
       {#if summary?.n_rows != null}
-        <span class="ml-1 pill !text-[10px]">{summary.n_rows}</span>
+        <span class="ml-1 pill text-[10px]!">{summary.n_rows}</span>
       {/if}
     </button>
-    <button class="btn !text-xs"
+    <button class="btn text-xs!"
             class:!bg-amber-500={activeTab === 'incomplete'}
             class:!text-white={activeTab === 'incomplete'}
             on:click={() => (activeTab = 'incomplete')}
@@ -537,10 +537,10 @@
             data-testid="monitor-tab-incomplete">
       Incompleti
       {#if summary?.n_incomplete != null}
-        <span class="ml-1 pill pill-amber !text-[10px]">{summary.n_incomplete}</span>
+        <span class="ml-1 pill pill-amber text-[10px]!">{summary.n_incomplete}</span>
       {/if}
     </button>
-    <button class="btn !text-xs"
+    <button class="btn text-xs!"
             class:!bg-red-500={activeTab === 'unscheduled'}
             class:!text-white={activeTab === 'unscheduled'}
             on:click={() => (activeTab = 'unscheduled')}
@@ -548,10 +548,10 @@
             data-testid="monitor-tab-unscheduled">
       Senza orario
       {#if summary?.n_rows_unscheduled != null}
-        <span class="ml-1 pill pill-red !text-[10px]">{summary.n_rows_unscheduled}</span>
+        <span class="ml-1 pill pill-red text-[10px]!">{summary.n_rows_unscheduled}</span>
       {/if}
     </button>
-    <button class="btn !text-xs"
+    <button class="btn text-xs!"
             class:!bg-amber-600={activeTab === 'locked'}
             class:!text-white={activeTab === 'locked'}
             on:click={() => (activeTab = 'locked')}
@@ -559,7 +559,7 @@
             data-testid="monitor-tab-locked">
       🔒 Lockati
       {#if summary?.n_rows_locked != null}
-        <span class="ml-1 pill pill-amber !text-[10px]">{summary.n_rows_locked}</span>
+        <span class="ml-1 pill pill-amber text-[10px]!">{summary.n_rows_locked}</span>
       {/if}
     </button>
   </div>
@@ -631,7 +631,7 @@
                   {@const info = slotInfo(d, h)}
                   <td class="p-1 align-middle">
                     <button
-                      class="w-full h-12 rounded border-2 transition-colors {slotClass(info)}"
+                      class="w-full h-12 rounded-sm border-2 transition-colors {slotClass(info)}"
                       title={slotTitle(info, d, h)}
                       disabled={info?.isCurrent}
                       on:click={() => pickSlot(d, h)}>
@@ -655,13 +655,13 @@
         </table>
       </div>
       <div class="text-[10px] text-ink-400 flex flex-wrap gap-3">
-        <span><span class="pill !text-[10px]" style="background:#a7f3d0;color:#065f46;">ok</span> libero</span>
-        <span><span class="pill !text-[10px]" style="background:#fecaca;color:#991b1b;">D / C</span> docente / classe già impegnati (obbligatorio)</span>
-        <span><span class="pill !text-[10px]" style="background:#fde68a;color:#92400e;">aula</span> aula occupata da altra lezione</span>
-        <span><span class="pill !text-[10px]" style="background:#bae6fd;color:#075985;">qui</span> slot attuale</span>
+        <span><span class="pill text-[10px]!" style="background:#a7f3d0;color:#065f46;">ok</span> libero</span>
+        <span><span class="pill text-[10px]!" style="background:#fecaca;color:#991b1b;">D / C</span> docente / classe già impegnati (obbligatorio)</span>
+        <span><span class="pill text-[10px]!" style="background:#fde68a;color:#92400e;">aula</span> aula occupata da altra lezione</span>
+        <span><span class="pill text-[10px]!" style="background:#bae6fd;color:#075985;">qui</span> slot attuale</span>
       </div>
       <div class="flex items-center justify-end gap-2">
-        <button class="btn-amber !text-xs"
+        <button class="btn-amber text-xs!"
                 on:click={disassociateFromSlot}
                 title="Rimuovi il legame giorno/ora di questa lezione: la cattedra rimane ma diventa incompleta (riapparira' nel pannello rosso e fra gli eventi non schedulati)">
           Disassocia (rendi non schedulato)

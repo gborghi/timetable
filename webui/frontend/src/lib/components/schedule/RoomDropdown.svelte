@@ -11,7 +11,7 @@
   export let onChange;          // (lessonId, roomName) => void
 </script>
 
-<select class="text-xs border border-ink-200 rounded px-1 py-0.5 w-full"
+<select class="text-xs border border-ink-200 rounded-sm px-1 py-0.5 w-full"
   value={currentRoom || ''}
   on:click|stopPropagation
   on:change={(e) => onChange(lessonId, e.target.value)}>

@@ -29,7 +29,7 @@
     <p class="text-sm text-ink-700 whitespace-pre-line">{$confirmRequest.message}</p>
     {#if $confirmRequest.input}
       <!-- svelte-ignore a11y_autofocus -->
-      <input class="mt-3 w-full rounded border border-ink-200 px-2 py-1 text-sm"
+      <input class="mt-3 w-full rounded-sm border border-ink-200 px-2 py-1 text-sm"
              bind:value={inputValue}
              placeholder={$confirmRequest.input.placeholder}
              on:keydown={onKeydown}

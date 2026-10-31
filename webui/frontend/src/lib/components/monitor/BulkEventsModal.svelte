@@ -115,7 +115,7 @@
     <div class="flex flex-wrap gap-2 items-center">
       <label for="lib-components-monitor-bulkeventsmodal-f1" class="text-sm">Azione:</label>
       <select id="lib-components-monitor-bulkeventsmodal-f1" bind:value={action} on:change={reset}
-              class="px-2 py-1 border border-ink-200 rounded">
+              class="px-2 py-1 border border-ink-200 rounded-sm">
         <option value="set_classroom">Assegna aula</option>
         <option value="clear_classroom">Togli aula (lascia che il solver riassegni)</option>
         <option value="set_lock">Blocca / sblocca</option>
@@ -127,7 +127,7 @@
         <label for="lib-components-monitor-bulkeventsmodal-f2" class="text-xs block">Aula di destinazione</label>
         {#if rooms.length}
           <select id="lib-components-monitor-bulkeventsmodal-f2" bind:value={classroomName} on:change={reset}
-                  class="px-2 py-1 border border-ink-200 rounded">
+                  class="px-2 py-1 border border-ink-200 rounded-sm">
             <option value="">-- scegli --</option>
             {#each rooms as r}
               <option value={r}>{r}</option>
@@ -135,7 +135,7 @@
           </select>
         {:else}
           <input bind:value={classroomName} on:input={reset}
-                 class="w-64 px-2 py-1 border border-ink-200 rounded"
+                 class="w-64 px-2 py-1 border border-ink-200 rounded-sm"
                  placeholder="es. LabFisica"/>
         {/if}
         <p class="text-[11px] text-ink-500">
@@ -182,7 +182,7 @@
       </div>
 
       {#if dryRun && dryRun.conflicts.length > 0}
-        <div class="card !shadow-none p-2 text-xs bg-amber-50 border-amber-300">
+        <div class="card shadow-none! p-2 text-xs bg-amber-50 border-amber-300">
           <strong>Conflitti rilevati ({dryRun.conflicts.length}):</strong>
           <ul class="list-disc ml-5 max-h-32 overflow-auto">
             {#each dryRun.conflicts as c}

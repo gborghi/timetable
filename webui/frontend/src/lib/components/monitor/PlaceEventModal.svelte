@@ -209,7 +209,7 @@
 <Modal {open} title={`Piazza ${eventIds.length} eventi`} {onClose}>
   <div class="space-y-3 text-sm">
     {#if summaries.length}
-      <div class="card !shadow-none p-2 bg-ink-50">
+      <div class="card shadow-none! p-2 bg-ink-50">
         <div class="text-xs text-ink-500 mb-1">Eventi selezionati ({summaries.length}):</div>
         <ul class="text-xs list-disc pl-5 max-h-32 overflow-y-auto">
           {#each summaries as s}
@@ -259,7 +259,7 @@
         </span>
       </div>
       {#each steps as s, i (s.key)}
-        <div class="border border-ink-200 rounded bg-white"
+        <div class="border border-ink-200 rounded-sm bg-white"
              class:opacity-50={!s.enabled}
              class:bg-ink-50={dragIdx === i}>
           <div class="flex items-center gap-2 px-2 py-1.5"
@@ -341,8 +341,8 @@
         <div class="text-sm font-medium">Avanzamento</div>
         {#each chainHistory as h}
           <div class="text-xs flex items-center gap-2">
-            <span class="pill !text-[10px]" title={h.step}>{runKindLabel(h.step)}</span>
-            <span class="pill !text-[10px]"
+            <span class="pill text-[10px]!" title={h.step}>{runKindLabel(h.step)}</span>
+            <span class="pill text-[10px]!"
                   title={h.status}
                   class:pill-green={h.status === 'done'}
                   class:pill-red={h.status === 'failed'}>
@@ -356,13 +356,13 @@
         {/each}
         {#if chainCurrentStepKey}
           <div class="text-xs flex items-center gap-2">
-            <span class="pill !text-[10px]" title={chainCurrentStepKey}>{runKindLabel(chainCurrentStepKey)}</span>
-            <span class="pill pill-blue !text-[10px]">in corso</span>
+            <span class="pill text-[10px]!" title={chainCurrentStepKey}>{runKindLabel(chainCurrentStepKey)}</span>
+            <span class="pill pill-blue text-[10px]!">in corso</span>
           </div>
         {/if}
         {#if chainError}
           <div class="text-xs text-red-700 bg-red-50 border-red-300
-                      border p-2 rounded">
+                      border p-2 rounded-sm">
             {chainError}
           </div>
         {/if}

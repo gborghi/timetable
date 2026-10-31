@@ -130,17 +130,17 @@
      on:focusin={() => (focused = true)}
      on:focusout={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) focused = false; }}>
   <div class="flex items-baseline gap-2 flex-wrap">
-    <button class="btn !text-xs !px-2 !py-1"
+    <button class="btn text-xs! px-2! py-1!"
             on:click={() => (collapsed = !collapsed)}>
       {collapsed ? '+' : '-'} {title} ({(value || []).filter((p) => p.state !== 'allowed').length} settate / {(classrooms || []).length})
     </button>
     {#if !collapsed}
       <select bind:value={kindFilter}
-              class="text-xs px-2 py-1 border border-ink-200 rounded">
+              class="text-xs px-2 py-1 border border-ink-200 rounded-sm">
         <option value="">tutti i tipi</option>
         {#each kinds as k}<option value={k}>{k}</option>{/each}
       </select>
-      <input class="text-xs px-2 py-1 border border-ink-200 rounded"
+      <input class="text-xs px-2 py-1 border border-ink-200 rounded-sm"
              placeholder="filtra per nome/tipo..."
              bind:value={nameFilter}/>
       <span class="text-[11px] text-ink-500 ml-auto">
@@ -166,7 +166,7 @@
         {#each filteredRooms as room (room.id)}
           {@const pref = byName.get(room.name)}
           {@const state = pref ? pref.state : 'allowed'}
-          <div class="rounded border-2 p-2 cursor-pointer transition-colors {colorClasses(state)}"
+          <div class="rounded-sm border-2 p-2 cursor-pointer transition-colors {colorClasses(state)}"
                role="button" tabindex="0"
                aria-label={prefCellAriaLabel(room.name, state, pref?.weight)}
                on:click={(e) => onClick(e, room)}
@@ -191,7 +191,7 @@
             {#if state === 'soft' || state === 'preferred'}
               <div class="mt-1">
                 <input type="number" step="10"
-                       class="w-full text-xs px-1 py-0.5 rounded border bg-white text-ink-900"
+                       class="w-full text-xs px-1 py-0.5 rounded-sm border bg-white text-ink-900"
                        value={pref?.weight ?? defaultWeightFor(state)}
                        aria-label={(state === 'soft' ? 'Penalità per ' : 'Bonus per ') + room.name}
                        on:click|stopPropagation

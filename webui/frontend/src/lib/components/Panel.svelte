@@ -63,7 +63,7 @@
     <span class="text-[10px] text-ink-300 w-2 shrink-0" aria-hidden="true">
       {open ? '▾' : '▸'}
     </span>
-    <h2 class="!text-[16px] !m-0" class:text-siena={danger}>{title}</h2>
+    <h2 class="text-[16px]! m-0!" class:text-siena={danger}>{title}</h2>
     {#if subtitle}
       <span class="text-[11.5px] text-ink-300">{subtitle}</span>
     {/if}

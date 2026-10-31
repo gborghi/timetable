@@ -230,7 +230,7 @@
   <section class="card p-4 space-y-3">
     <div class="flex items-center gap-3">
       <h2 class="text-xl font-semibold">Plessi</h2>
-      <button class="btn-primary !text-sm" on:click={newPlesso}
+      <button class="btn-primary text-sm!" on:click={newPlesso}
               data-testid="add-plesso-btn">
         + Nuovo plesso
       </button>
@@ -255,11 +255,11 @@
               {p.notes || ''}
             </td>
             <td class="py-1 text-right">
-              <button class="btn !text-xs"
+              <button class="btn text-xs!"
                       data-testid="plesso-edit-btn"
                       data-plesso-id={p.id}
                       on:click={() => editPlesso(p)}>Modifica</button>
-              <button class="btn !text-xs !text-rose-700"
+              <button class="btn text-xs! text-rose-700!"
                       data-testid="plesso-delete-btn"
                       data-plesso-id={p.id}
                       on:click={() => deletePlesso(p)}>Elimina</button>
@@ -276,7 +276,7 @@
       </tbody>
     </table>
     {#if editingPlesso}
-      <div class="border border-accent-300 bg-accent-50 rounded p-3 space-y-2"
+      <div class="border border-accent-300 bg-accent-50 rounded-sm p-3 space-y-2"
            data-testid="plesso-form">
         <div class="grid grid-cols-2 gap-2">
           <label class="field">
@@ -327,7 +327,7 @@
         <option value="class">Classi</option>
         <option value="group">Gruppi</option>
       </select>
-      <button class="btn-primary !text-sm" on:click={newRule}
+      <button class="btn-primary text-sm!" on:click={newRule}
               disabled={plessi.length < 1}>
         + Nuova regola
       </button>
@@ -368,9 +368,9 @@
             </td>
             <td class="py-1 text-right">{r.priority}</td>
             <td class="py-1 text-right">
-              <button class="btn !text-xs"
+              <button class="btn text-xs!"
                       on:click={() => editRule(r)}>Modifica</button>
-              <button class="btn !text-xs !text-rose-700"
+              <button class="btn text-xs! text-rose-700!"
                       on:click={() => deleteRule(r)}>Elimina</button>
             </td>
           </tr>
@@ -385,7 +385,7 @@
       </tbody>
     </table>
     {#if editingRule}
-      <div class="border border-accent-300 bg-accent-50 rounded p-3 space-y-2">
+      <div class="border border-accent-300 bg-accent-50 rounded-sm p-3 space-y-2">
         <div class="grid grid-cols-3 gap-2">
           <label class="field">
             <span class="text-xs">Da plesso</span>
@@ -478,7 +478,7 @@
         <option value="teacher">Docenti</option>
         <option value="class">Classi</option>
       </select>
-      <button class="btn-primary !text-sm" on:click={newPolicy}
+      <button class="btn-primary text-sm!" on:click={newPolicy}
               disabled={plessi.length < 1}>
         + Nuova policy
       </button>
@@ -514,9 +514,9 @@
             </td>
             <td class="py-1 text-right">{p.priority}</td>
             <td class="py-1 text-right">
-              <button class="btn !text-xs"
+              <button class="btn text-xs!"
                       on:click={() => editPolicy(p)}>Modifica</button>
-              <button class="btn !text-xs !text-rose-700"
+              <button class="btn text-xs! text-rose-700!"
                       on:click={() => deletePolicy(p)}>Elimina</button>
             </td>
           </tr>
@@ -531,7 +531,7 @@
       </tbody>
     </table>
     {#if editingPolicy}
-      <div class="border border-accent-300 bg-accent-50 rounded p-3 space-y-2">
+      <div class="border border-accent-300 bg-accent-50 rounded-sm p-3 space-y-2">
         <div class="grid grid-cols-3 gap-2">
           <label class="field">
             <span class="text-xs">Tipo entità</span>

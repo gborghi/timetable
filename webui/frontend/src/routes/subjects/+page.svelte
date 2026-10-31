@@ -124,11 +124,11 @@
         <td class="text-center">{row.dual_hours_weight}</td>
         <td class="text-center">{row.no_sixth_hour_weight}</td>
         <td class="whitespace-nowrap">
-          <button class="btn !text-xs !px-2 !py-1"
+          <button class="btn text-xs! px-2! py-1!"
                   data-testid="subject-edit-btn"
                   data-subject-id={row.id}
                   on:click={() => edit(row)}>Modifica</button>
-          <button class="btn-danger !text-xs !px-2 !py-1"
+          <button class="btn-danger text-xs! px-2! py-1!"
                   data-testid="subject-delete-btn"
                   data-subject-id={row.id}
                   on:click={() => del(row)}>Elimina</button>
@@ -146,15 +146,15 @@
         <tbody>
           {#each weights as w, i}
             <tr>
-              <td><input class="w-full px-2 py-1 border border-ink-200 rounded" bind:value={w.subject}/></td>
-              <td><input class="w-full px-2 py-1 border border-ink-200 rounded" bind:value={w.group_name}/></td>
-              <td class="w-32"><input type="number" class="w-full px-2 py-1 border border-ink-200 rounded" bind:value={w.weight}/></td>
-              <td><button class="btn-danger !text-xs !px-2 !py-1" aria-label="Elimina riga peso" title="Elimina riga" on:click={() => delWeightRow(i)}>x</button></td>
+              <td><input class="w-full px-2 py-1 border border-ink-200 rounded-sm" bind:value={w.subject}/></td>
+              <td><input class="w-full px-2 py-1 border border-ink-200 rounded-sm" bind:value={w.group_name}/></td>
+              <td class="w-32"><input type="number" class="w-full px-2 py-1 border border-ink-200 rounded-sm" bind:value={w.weight}/></td>
+              <td><button class="btn-danger text-xs! px-2! py-1!" aria-label="Elimina riga peso" title="Elimina riga" on:click={() => delWeightRow(i)}>x</button></td>
             </tr>
           {/each}
         </tbody>
       </table>
-      <button class="btn !text-xs !px-2 !py-1 mt-2" on:click={addWeightRow}>+ Riga</button>
+      <button class="btn text-xs! px-2! py-1! mt-2" on:click={addWeightRow}>+ Riga</button>
     </div>
   {/if}
 </div>

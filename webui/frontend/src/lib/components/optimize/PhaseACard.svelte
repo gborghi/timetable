@@ -160,7 +160,7 @@
 
 <div class="card p-5 space-y-4">
   <div class="flex items-baseline justify-between flex-wrap gap-2">
-    <h2 class="!mb-0">2) Assegnazione docenti -&gt; classi</h2>
+    <h2 class="mb-0!">2) Assegnazione docenti -&gt; classi</h2>
     <span class="text-xs text-ink-500">
       Fase A: chi insegna cosa, in quale classe, per quante ore.
     </span>
@@ -180,14 +180,14 @@
 
   <!-- Criterion selector -->
   <div>
-    <h3 class="!text-base mb-2">Criterio di ottimizzazione</h3>
+    <h3 class="text-base! mb-2">Criterio di ottimizzazione</h3>
     <p class="text-xs text-ink-500 mb-2">
       Determina cosa minimizzare nella scelta della cattedra:
       bilanciamento, concentrazione, cattedre piene, ecc.
     </p>
     <div class="space-y-1.5">
       {#each presets as p (p.key)}
-        <label class="flex items-start gap-2 p-2 rounded hover:bg-ink-50 cursor-pointer
+        <label class="flex items-start gap-2 p-2 rounded-sm hover:bg-ink-50 cursor-pointer
                       border transition-colors"
                class:border-accent-500={selectedKey === p.key}
                class:bg-accent-500={selectedKey === p.key}
@@ -207,7 +207,7 @@
           </div>
           {#if selectedKey !== p.key}
             <button type="button"
-                    class="btn !text-xs !px-1.5 !py-0.5 self-center"
+                    class="btn text-xs! px-1.5! py-0.5! self-center"
                     title="Carica questa espressione nell'editor custom"
                     on:click|stopPropagation|preventDefault={() => loadIntoCustom(p)}>
               edita
@@ -217,7 +217,7 @@
       {/each}
 
       <!-- Custom -->
-      <label class="flex items-start gap-2 p-2 rounded cursor-pointer border transition-colors"
+      <label class="flex items-start gap-2 p-2 rounded-sm cursor-pointer border transition-colors"
              class:border-accent-500={selectedKey === 'custom'}
              class:bg-accent-500={selectedKey === 'custom'}
              class:!text-white={selectedKey === 'custom'}
@@ -247,7 +247,7 @@
       </label>
       <textarea id="lib-components-optimize-phaseacard-f3" bind:value={customExpression}
                 rows="6"
-                class="w-full mt-1 font-mono text-xs border border-ink-300 rounded p-2"
+                class="w-full mt-1 font-mono text-xs border border-ink-300 rounded-sm p-2"
                 placeholder="minimize ... + ... + ..."
                 spellcheck="false"></textarea>
       <div class="mt-1 flex items-baseline gap-2 flex-wrap text-xs">
@@ -315,15 +315,15 @@
         : 'Mostra DSL attivo nel modello'}
     </button>
     {#if showActive}
-      <pre class="mt-1 text-xs bg-ink-50 border border-ink-200 rounded p-2 overflow-x-auto whitespace-pre-wrap"
+      <pre class="mt-1 text-xs bg-ink-50 border border-ink-200 rounded-sm p-2 overflow-x-auto whitespace-pre-wrap"
           >{activeExpression || '(seleziona un criterio)'}</pre>
     {/if}
   </div>
 
   <div class="border-t border-ink-200 pt-3 mt-1">
     <div class="flex items-baseline gap-2 mb-1">
-      <h3 class="!text-sm">Pre-check fattibilità strutturale</h3>
-      <span class="pill pill-amber !text-[10px]">Hall (diagnostico)</span>
+      <h3 class="text-sm!">Pre-check fattibilità strutturale</h3>
+      <span class="pill pill-amber text-[10px]!">Hall (diagnostico)</span>
     </div>
     <p class="text-[11px] text-ink-500 mb-2">
       Verifica via teorema di Hall che la capacità dei docenti
@@ -331,7 +331,7 @@
       di Fase A per evitare assegnazioni inutilmente lunghe su
       istanze già infeasible al livello strutturale.
     </p>
-    <button class="btn !text-xs" type="button"
+    <button class="btn text-xs!" type="button"
             on:click={runHallPrecheck}
             disabled={busyHall}>
       {busyHall ? "Pre-check in corso..." : "Pre-check fattibilità strutturale"}

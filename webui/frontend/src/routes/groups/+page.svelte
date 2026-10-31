@@ -173,11 +173,11 @@
       <td class="text-center">{row.n_classes_touched}</td>
       <td class="text-center">{(row.subject_hours || []).length}</td>
       <td class="whitespace-nowrap">
-        <button class="btn !text-xs !px-2 !py-1"
+        <button class="btn text-xs! px-2! py-1!"
                 data-testid="group-edit-btn"
                 data-group-id={row.id}
                 on:click={() => edit(row)}>Modifica</button>
-        <button class="btn-danger !text-xs !px-2 !py-1"
+        <button class="btn-danger text-xs! px-2! py-1!"
                 data-testid="group-delete-btn"
                 data-group-id={row.id}
                 on:click={() => del(row)}>Elimina</button>
@@ -212,18 +212,18 @@
 
     <div class="mt-4 grid grid-cols-2 gap-4">
       <div class="space-y-2">
-        <h3 class="!text-base">Studenti del gruppo
+        <h3 class="text-base!">Studenti del gruppo
           <span class="text-xs text-ink-500">({editing.student_ids.length} selezionati)</span>
         </h3>
 
-        <details class="text-xs border border-ink-200 rounded p-2 bg-ink-50/40">
+        <details class="text-xs border border-ink-200 rounded-sm p-2 bg-ink-50/40">
           <summary class="cursor-pointer font-medium">Precompila da tag studenti</summary>
           <div class="mt-2 grid grid-cols-[1fr_auto_auto] gap-1.5 items-end">
             <div>
               <label for="routes-groups-f4" class="block mb-0.5 text-[11px] text-ink-500">
                 Tag (separa con virgola)
               </label>
-              <input id="routes-groups-f4" class="w-full px-2 py-1 border border-ink-200 rounded"
+              <input id="routes-groups-f4" class="w-full px-2 py-1 border border-ink-200 rounded-sm"
                      list="all-student-tags"
                      placeholder="es. debito_matematica_4, BES"
                      bind:value={tagFilter}/>
@@ -233,13 +233,13 @@
             </div>
             <div>
               <label for="routes-groups-f5" class="block mb-0.5 text-[11px] text-ink-500">Logica</label>
-              <select id="routes-groups-f5" class="px-2 py-1 border border-ink-200 rounded"
+              <select id="routes-groups-f5" class="px-2 py-1 border border-ink-200 rounded-sm"
                       bind:value={tagFilterMode}>
                 <option value="any_of">qualunque (OR)</option>
                 <option value="all_of">tutti (AND)</option>
               </select>
             </div>
-            <button type="button" class="btn !text-xs"
+            <button type="button" class="btn text-xs!"
                     disabled={tagPreviewBusy}
                     on:click={precompileFromTags}>
               {tagPreviewBusy ? '...' : 'Aggiungi'}
@@ -254,16 +254,16 @@
         </details>
 
         <div class="flex gap-2 items-center">
-          <input class="flex-1 px-2 py-1 border border-ink-200 rounded text-sm"
+          <input class="flex-1 px-2 py-1 border border-ink-200 rounded-sm text-sm"
                  placeholder="Filtra per cognome/classe/matricola"
                  bind:value={memberFilter}/>
-          <button type="button" class="btn !text-xs"
+          <button type="button" class="btn text-xs!"
                   on:click={clearMembers}
                   disabled={editing.student_ids.length === 0}>
             Svuota
           </button>
         </div>
-        <div class="card !shadow-none p-2 max-h-72 overflow-auto text-xs">
+        <div class="card shadow-none! p-2 max-h-72 overflow-auto text-xs">
           {#each filteredStudents as s (s.id)}
             <label class="flex items-center gap-2 py-0.5 hover:bg-ink-50">
               <input type="checkbox" checked={editing.student_ids.includes(s.id)}
@@ -280,14 +280,14 @@
       </div>
 
       <div class="space-y-2">
-        <h3 class="!text-base">Materie e ore del gruppo</h3>
+        <h3 class="text-base!">Materie e ore del gruppo</h3>
         <table class="tbl text-sm">
           <thead><tr><th>Materia</th><th>Ore/sett.</th><th></th></tr></thead>
           <tbody>
             {#each editing.subject_hours as sh, i}
               <tr>
                 <td>
-                  <input list="g-subj-{i}" class="w-full px-2 py-1 border border-ink-200 rounded"
+                  <input list="g-subj-{i}" class="w-full px-2 py-1 border border-ink-200 rounded-sm"
                          bind:value={sh.subject}/>
                   <datalist id="g-subj-{i}">
                     {#each allSubjects as sn}<option value={sn}></option>{/each}
@@ -295,10 +295,10 @@
                 </td>
                 <td class="w-20">
                   <input type="number" min="0" max="10" bind:value={sh.hours_per_week}
-                         class="w-full px-2 py-1 border border-ink-200 rounded"/>
+                         class="w-full px-2 py-1 border border-ink-200 rounded-sm"/>
                 </td>
                 <td>
-                  <button class="btn-danger !text-xs !px-2 !py-1"
+                  <button class="btn-danger text-xs! px-2! py-1!"
                           aria-label="Elimina riga ore materia" title="Elimina riga"
                           on:click={() => delSubjectHours(i)}>x</button>
                 </td>
@@ -306,7 +306,7 @@
             {/each}
           </tbody>
         </table>
-        <button class="btn !text-xs !px-2 !py-1" on:click={addSubjectHours}>+ Materia</button>
+        <button class="btn text-xs! px-2! py-1!" on:click={addSubjectHours}>+ Materia</button>
       </div>
     </div>
 

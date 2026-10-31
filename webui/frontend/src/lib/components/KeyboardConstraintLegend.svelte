@@ -30,7 +30,7 @@
 {#if visible}
   <div
     class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]
-           text-ink-600 bg-ink-50 border border-ink-200 rounded
+           text-ink-600 bg-ink-50 border border-ink-200 rounded-sm
            px-2 py-1.5"
     aria-label="Scorciatoie tastiera: tieni premuto un tasto e clicca sulla cella per impostare lo stato"
   >
@@ -38,19 +38,19 @@
     {#each LEGEND_ITEMS as it}
       {@const active = $heldKey === it.shortcut}
       <span
-        class="inline-flex items-center gap-1 px-1 py-0.5 rounded transition-colors"
+        class="inline-flex items-center gap-1 px-1 py-0.5 rounded-sm transition-colors"
         class:bg-accent-500={active}
         class:text-white={active}
       >
         <kbd
           class="inline-block min-w-[18px] text-center font-mono text-[10px]
-                 leading-none px-1 py-0.5 rounded border {active
+                 leading-none px-1 py-0.5 rounded-sm border {active
                   ? 'bg-white/20 border-white text-white'
                   : 'bg-white border-ink-300 text-ink-800'}"
           >{it.key}</kbd
         >
         <span
-          class="inline-block w-3 h-3 rounded-sm border {it.swatch}"
+          class="inline-block w-3 h-3 rounded-xs border {it.swatch}"
           aria-hidden="true"
         ></span>
         <span>{variant === "room" ? ROOM_LABELS[it.key] : it.label}</span>

@@ -32,7 +32,7 @@
           {$toast.msg}
         </div>
         {#if $toast.action && $toast.action.label}
-          <button class="btn !text-xs !px-2 !py-1 focus-ring"
+          <button class="btn text-xs! px-2! py-1! focus-ring"
                   on:click={() => $toast.action.fn?.()}>
             {$toast.action.label}
           </button>

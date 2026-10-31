@@ -98,18 +98,18 @@
   {#if showActions}
     <div class="flex justify-end gap-1 text-[10px] mb-1">
       {#if cleared}
-        <button class="btn !text-[10px] !px-2 !py-0.5"
+        <button class="btn text-[10px]! px-2! py-0.5!"
                 on:click={restoreChart}
                 title="Ripristina il grafico cancellato">
           Ripristina
         </button>
       {/if}
-      <button class="btn !text-[10px] !px-2 !py-0.5"
+      <button class="btn text-[10px]! px-2! py-0.5!"
               on:click={exportPng}
               title="Scarica il grafico come PNG">
         Esporta PNG
       </button>
-      <button class="btn !text-[10px] !px-2 !py-0.5"
+      <button class="btn text-[10px]! px-2! py-0.5!"
               on:click={clearChart}
               disabled={cleared}
               title="Svuota il grafico (puoi ripristinarlo o lanciare di nuovo)">

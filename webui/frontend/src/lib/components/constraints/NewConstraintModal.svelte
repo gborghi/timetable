@@ -267,7 +267,7 @@
     <!-- Stepper indicator -->
     <div class="flex items-center gap-2 text-xs">
       {#each [1, 2, 3, 4] as i}
-        <span class="pill {step === i ? 'pill-blue' : ''} !text-[10px]">
+        <span class="pill {step === i ? 'pill-blue' : ''} text-[10px]!">
           {i}. {['Categoria', 'Livello', 'Tipo', 'Conferma'][i - 1]}
         </span>
         {#if i < 4}<span class="text-ink-300">›</span>{/if}
@@ -441,7 +441,7 @@
       </div>
     {:else if step === 4}
       <div class="space-y-3">
-        <div class="card !shadow-none p-3 bg-ink-50">
+        <div class="card shadow-none! p-3 bg-ink-50">
           <div class="text-xs text-ink-500 mb-1">Riepilogo:</div>
           <div class="text-sm">{summary}</div>
         </div>
@@ -449,7 +449,7 @@
           <summary class="cursor-pointer text-ink-500">
             Payload tecnico (POST /api/constraints)
           </summary>
-          <pre class="bg-white p-2 rounded border border-ink-200 text-[10px] mt-1 overflow-auto max-h-48">{JSON.stringify(payload, null, 2)}</pre>
+          <pre class="bg-white p-2 rounded-sm border border-ink-200 text-[10px] mt-1 overflow-auto max-h-48">{JSON.stringify(payload, null, 2)}</pre>
         </details>
         {#if createdResult}
           <div class="card p-2 bg-emerald-50 border-emerald-300 text-xs">

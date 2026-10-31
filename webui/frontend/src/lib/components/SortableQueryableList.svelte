@@ -357,28 +357,28 @@
       <label class="eyebrow mb-1 block" for="sql-query">Query DSL</label>
       <input id="sql-query"
              class="w-full px-2.5 py-1.5 rounded-lg border border-ink-200
-                    font-mono text-[12.5px] focus:outline-none focus:ring-2
+                    font-mono text-[12.5px] focus:outline-hidden focus:ring-2
                     focus:ring-accent-500/25 focus:border-accent-500"
              placeholder="es. group=A026 AND max_hours>=18"
              bind:value={q}
              on:keydown={(e) => { if (e.key === 'Enter') applyQuery(); }}/>
     </div>
     <button class="btn-primary" on:click={applyQuery} disabled={busy}>{busy ? '...' : 'Cerca'}</button>
-    <button class="btn !text-xs" on:click={() => (showHelp = !showHelp)}>?  guida</button>
+    <button class="btn text-xs!" on:click={() => (showHelp = !showHelp)}>?  guida</button>
     <span class="border-l border-ink-200 h-5 mx-1" aria-hidden="true"></span>
-    <button class="btn !text-xs" on:click={resetQuery}
+    <button class="btn text-xs!" on:click={resetQuery}
             disabled={!q}
             title="Svuota la barra di ricerca, mostra tutti i risultati">
       Svuota
     </button>
-    <button class="btn !text-xs" on:click={resetSort}
+    <button class="btn text-xs!" on:click={resetSort}
             disabled={sortLevels.length === 0}
             title="Torna all'ordine originale">
       Torna all'ordine originale
     </button>
     {#if entity}
       <span class="border-l border-ink-200 h-5 mx-1" aria-hidden="true"></span>
-      <select class="btn !text-xs !pr-2"
+      <select class="btn text-xs! pr-2!"
               title="Carica una vista salvata (query + sort)"
               bind:value={selectedViewId}
               on:change={(e) => applyView(e.currentTarget.value)}>
@@ -387,11 +387,11 @@
           <option value={v.id}>{v.name}</option>
         {/each}
       </select>
-      <button class="btn !text-xs" on:click={saveCurrentView}
+      <button class="btn text-xs!" on:click={saveCurrentView}
               title="Salva la query+sort corrente come vista nominata">
         Salva vista
       </button>
-      <button class="btn-danger !text-xs"
+      <button class="btn-danger text-xs!"
               on:click={deleteSelectedView}
               disabled={!selectedViewId}
               title="Elimina la vista selezionata">
@@ -399,28 +399,28 @@
       </button>
     {/if}
     <span class="border-l border-ink-200 h-5 mx-1" aria-hidden="true"></span>
-    <button class="btn !text-xs" on:click={() => downloadExport('xlsx', false)}
+    <button class="btn text-xs!" on:click={() => downloadExport('xlsx', false)}
             disabled={exporting || rows.length === 0}
             title="Esporta la vista corrente (query + sort) come xlsx">
       {exporting ? '...' : 'xlsx'}
     </button>
-    <button class="btn !text-xs" on:click={() => downloadExport('csv', false)}
+    <button class="btn text-xs!" on:click={() => downloadExport('csv', false)}
             disabled={exporting || rows.length === 0}
             title="Esporta la vista corrente (query + sort) come csv">
       csv
     </button>
-    <button class="btn !text-xs" on:click={() => downloadExport('xlsx', true)}
+    <button class="btn text-xs!" on:click={() => downloadExport('xlsx', true)}
             disabled={exporting}
             title="Esporta TUTTE le righe (ignora query e sort)">
       tutto
     </button>
     {#if selectable}
       <span class="border-l border-ink-200 h-5 mx-1" aria-hidden="true"></span>
-      <button class="btn !text-xs" on:click={selectAllVisible}
+      <button class="btn text-xs!" on:click={selectAllVisible}
               title="Seleziona tutte le righe attualmente visibili">
         Seleziona tutto
       </button>
-      <button class="btn !text-xs" on:click={clearSelection}
+      <button class="btn text-xs!" on:click={clearSelection}
               disabled={selectedIds.length === 0}>
         Deseleziona
       </button>
@@ -454,17 +454,17 @@
   {#if total != null && pageSize !== 'all'}
     <div class="card px-3.5 py-2 text-[11.5px] flex flex-wrap items-center gap-2">
       <span class="eyebrow">Pagina</span>
-      <button class="btn !text-xs !px-2 !py-0.5"
+      <button class="btn text-xs! px-2! py-0.5!"
               on:click={() => gotoPage(0)}
               disabled={offset === 0 || busy}>{'|<'}</button>
-      <button class="btn !text-xs !px-2 !py-0.5"
+      <button class="btn text-xs! px-2! py-0.5!"
               on:click={() => gotoPage(offset - pageSizeNum)}
               disabled={offset === 0 || busy}>{'<'} prec</button>
       <span class="px-2 font-mono tabular-nums">{currentPage} / {numPages}</span>
-      <button class="btn !text-xs !px-2 !py-0.5"
+      <button class="btn text-xs! px-2! py-0.5!"
               on:click={() => gotoPage(offset + pageSizeNum)}
               disabled={currentPage >= numPages || busy}>succ {'>'}</button>
-      <button class="btn !text-xs !px-2 !py-0.5"
+      <button class="btn text-xs! px-2! py-0.5!"
               on:click={() => gotoPage((numPages - 1) * pageSizeNum)}
               disabled={currentPage >= numPages || busy}>{'>|'}</button>
       <span class="ml-auto flex items-center gap-1">
@@ -603,7 +603,7 @@
           {#each Array(6) as _, i}
             <tr aria-hidden="true">
               <td colspan={colSpan} class="px-2 py-3">
-                <div class="h-3.5 bg-ink-100 rounded animate-pulse"
+                <div class="h-3.5 bg-ink-100 rounded-sm animate-pulse"
                      style="width: {Math.max(40, 100 - (i * 7))}%"></div>
               </td>
             </tr>

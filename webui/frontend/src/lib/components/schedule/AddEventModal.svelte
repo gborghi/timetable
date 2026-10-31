@@ -275,7 +275,7 @@
           {#each roomNames as r}<option value={r}>{r}</option>{/each}
         </select>
         {#if capacityWarning}
-          <div class="mt-1 px-2 py-1 rounded border border-red-300
+          <div class="mt-1 px-2 py-1 rounded-sm border border-red-300
                       bg-red-50 text-xs text-red-700"
                data-testid="capacity-warning">
             {capacityWarning} Il backend rifiutera' questa lezione

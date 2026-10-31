@@ -161,7 +161,7 @@
 {:else if kind === 'diag_bipartite'}
   {#if result.ok}
     <div class="grid md:grid-cols-3 gap-3 text-sm">
-      <div class="card !shadow-none p-3">
+      <div class="card shadow-none! p-3">
         <div class="text-3xl font-semibold">
           {result.density.toFixed(3)}
         </div>
@@ -170,7 +170,7 @@
           {result.density_interpretation}
         </p>
       </div>
-      <div class="card !shadow-none p-3">
+      <div class="card shadow-none! p-3">
         <div class="text-3xl font-semibold">
           {result.modularity.toFixed(3)}
         </div>
@@ -181,7 +181,7 @@
           {result.modularity_interpretation}
         </p>
       </div>
-      <div class="card !shadow-none p-3">
+      <div class="card shadow-none! p-3">
         <div class="text-xs text-ink-500 mb-1">
           Top {result.top_betweenness.length} betweenness
         </div>
@@ -270,5 +270,5 @@
   {/if}
 
 {:else}
-  <pre class="bg-ink-50 border border-ink-200 rounded p-2 text-xs overflow-auto max-h-96">{JSON.stringify(result, null, 2)}</pre>
+  <pre class="bg-ink-50 border border-ink-200 rounded-sm p-2 text-xs overflow-auto max-h-96">{JSON.stringify(result, null, 2)}</pre>
 {/if}

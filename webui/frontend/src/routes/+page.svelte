@@ -252,7 +252,7 @@
             </span>
           </div>
 
-          <h2 class="!text-[15px]">{t.label}</h2>
+          <h2 class="text-[15px]!">{t.label}</h2>
           <p class="text-[11.5px] leading-snug text-ink-400">{t.blurb}</p>
           <p class="mt-1 font-mono text-[10.5px] tabular-nums
                     {t.corrente ? 'text-accent-500 font-medium' : 'text-ink-300'}">
@@ -263,7 +263,7 @@
     </div>
 
     <div class="card p-4" data-testid="scuola-attiva">
-      <h2 class="!text-[15px]">Scuola attiva</h2>
+      <h2 class="text-[15px]!">Scuola attiva</h2>
       <dl class="mt-3 space-y-1">
         {#each statRows as [label, value]}
           <div class="flex items-baseline justify-between border-b border-ink-100 pb-1">
@@ -272,7 +272,7 @@
               <dd class="font-mono text-[12.5px] tabular-nums">{value}</dd>
             {:else}
               <dd aria-hidden="true">
-                <span class="inline-block h-3 w-6 animate-pulse rounded bg-ink-200"></span>
+                <span class="inline-block h-3 w-6 animate-pulse rounded-sm bg-ink-200"></span>
               </dd>
             {/if}
           </div>
@@ -459,7 +459,7 @@
                     on:click={() => (graphMode = mode)}>{label}</button>
           {/each}
         </div>
-        <button class="btn !text-[11px]"
+        <button class="btn text-[11px]!"
                 aria-expanded={showGraph}
                 on:click={() => (showGraph = !showGraph)}>
           {showGraph ? 'Nascondi grafo' : 'Visualizza grafo'}

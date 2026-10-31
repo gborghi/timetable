@@ -55,16 +55,16 @@
 
 <div class="inline-flex items-center gap-2">
   <select bind:value={mode}
-          class="text-xs px-2 py-1 border border-ink-200 rounded"
+          class="text-xs px-2 py-1 border border-ink-200 rounded-sm"
           title="upsert: aggiunge/aggiorna; replace: svuota la tabella prima">
     <option value="upsert">upsert</option>
     <option value="append">append</option>
     <option value="replace">replace (svuota!)</option>
   </select>
-  <button class="btn !text-xs" on:click={() => fileInput.click()} disabled={busy}>
+  <button class="btn text-xs!" on:click={() => fileInput.click()} disabled={busy}>
     {busy ? '...' : label}
   </button>
-  <a class="btn !text-xs" href={downloadUrl(`/api/import/${entity}/template`)}
+  <a class="btn text-xs!" href={downloadUrl(`/api/import/${entity}/template`)}
      title="Scarica un template .xlsx con le colonne attese">
     Template
   </a>
@@ -73,7 +73,7 @@
 </div>
 
 {#if report && report.errors?.length}
-  <div class="card !shadow-none p-2 text-xs bg-amber-50 border-amber-300 mt-2">
+  <div class="card shadow-none! p-2 text-xs bg-amber-50 border-amber-300 mt-2">
     <strong>Avvisi import:</strong>
     <ul class="list-disc ml-5">
       {#each report.errors.slice(0, 8) as e}<li>{e}</li>{/each}

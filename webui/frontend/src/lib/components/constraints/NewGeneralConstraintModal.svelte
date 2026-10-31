@@ -163,7 +163,7 @@
     {#if validateResult}
       {#if validateResult.ok}
         <div class="text-xs text-emerald-700 bg-emerald-50 border
-                    border-emerald-300 rounded p-2">
+                    border-emerald-300 rounded-sm p-2">
           ✓ Sintassi valida ({validateResult.n_atoms} atomi).
           {#if validateResult.warnings?.length}
             <ul class="list-disc list-inside mt-1 text-amber-700">
@@ -173,7 +173,7 @@
         </div>
       {:else}
         <div class="text-xs text-red-700 bg-red-50 border
-                    border-red-300 rounded p-2">
+                    border-red-300 rounded-sm p-2">
           <strong>Errori:</strong>
           <ul class="list-disc list-inside">
             {#each validateResult.errors as e}<li>{e}</li>{/each}

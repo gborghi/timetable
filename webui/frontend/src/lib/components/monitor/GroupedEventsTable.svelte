@@ -410,7 +410,7 @@
   }
 </script>
 
-<div class="space-y-2 {redTheme ? 'p-3 border-2 border-red-300 bg-red-50 rounded' : ''}">
+<div class="space-y-2 {redTheme ? 'p-3 border-2 border-red-300 bg-red-50 rounded-sm' : ''}">
   {#if title}
     <h3 class="font-semibold {redTheme ? 'text-red-900' : ''}">
       {title}
@@ -429,21 +429,21 @@
 
   <div class="card p-3 flex items-center gap-3 flex-wrap">
     <span class="text-sm font-medium">Raggruppa per:</span>
-    <select class="text-sm px-2 py-1 border border-ink-200 rounded"
+    <select class="text-sm px-2 py-1 border border-ink-200 rounded-sm"
             bind:value={groupBy1}>
       {#each GROUP_OPTIONS as o}<option value={o.value}>{o.label}</option>{/each}
     </select>
     <span class="text-sm">e poi per:</span>
-    <select class="text-sm px-2 py-1 border border-ink-200 rounded"
+    <select class="text-sm px-2 py-1 border border-ink-200 rounded-sm"
             bind:value={groupBy2}>
       {#each GROUP_OPTIONS as o}<option value={o.value}>{o.label}</option>{/each}
     </select>
-    <button class="btn !text-xs" on:click={toggleAll}
+    <button class="btn text-xs!" on:click={toggleAll}
             title="Chiudi tutti i gruppi">Chiudi tutti i gruppi</button>
-    <button class="btn !text-xs" on:click={untoggleAll}
+    <button class="btn text-xs!" on:click={untoggleAll}
             title="Apri tutti i gruppi">Apri tutti i gruppi</button>
     <span class="text-xs text-ink-500 ml-2">Righe/pagina:</span>
-    <select class="text-xs px-2 py-1 border border-ink-200 rounded"
+    <select class="text-xs px-2 py-1 border border-ink-200 rounded-sm"
             value={pageSize}
             on:change={(e) => changePageSize(e.target.value)}>
       <option value={50}>50</option>
@@ -465,56 +465,56 @@
     <button class="btn" on:click={applyQuery} disabled={busy}>
       {busy ? '...' : 'Cerca'}
     </button>
-    <button class="btn !text-xs"
+    <button class="btn text-xs!"
             on:click={() => (showHelp = !showHelp)}>?  guida</button>
     <span class="border-l border-ink-200 h-6 mx-1"></span>
-    <button class="btn !text-xs" on:click={resetQuery}
+    <button class="btn text-xs!" on:click={resetQuery}
             disabled={!rowQuery && !appliedQuery}
             title="Svuota la barra di ricerca">Svuota</button>
-    <button class="btn !text-xs" on:click={resetSort}
+    <button class="btn text-xs!" on:click={resetSort}
             disabled={sortLevels.length === 0}
             title="Torna all'ordine originale">Torna all'ordine originale</button>
-    <button class="btn !text-xs" on:click={refresh} disabled={busy}>Aggiorna</button>
+    <button class="btn text-xs!" on:click={refresh} disabled={busy}>Aggiorna</button>
     {#if selectable}
       <span class="border-l border-ink-200 h-6 mx-1"></span>
-      <button class="btn !text-xs" on:click={selectAllVisible}
+      <button class="btn text-xs!" on:click={selectAllVisible}
               title="Seleziona tutte le righe attualmente visibili">
         Seleziona tutto
       </button>
-      <button class="btn !text-xs" on:click={clearSelection}
+      <button class="btn text-xs!" on:click={clearSelection}
               disabled={selectedIds.length === 0}>
         Deseleziona
       </button>
       {#if onBulkDissociate}
-        <button class="btn-amber !text-xs" on:click={bulkDissociate}
+        <button class="btn-amber text-xs!" on:click={bulkDissociate}
                 disabled={selectedIds.length === 0}
                 title="Toglie l'assegnazione temporale a tutti i selezionati (cattedra resta)">
           Dissocia selezionati
         </button>
       {/if}
       {#if onBulkLock}
-        <button class="btn !text-xs" on:click={bulkLock}
+        <button class="btn text-xs!" on:click={bulkLock}
                 disabled={selectedIds.length === 0}
                 title="Blocca / sblocca i selezionati (toggle)">
           Blocca selezionati
         </button>
       {/if}
       {#if onBulkPlace}
-        <button class="btn-primary !text-xs" on:click={bulkPlace}
+        <button class="btn-primary text-xs!" on:click={bulkPlace}
                 disabled={selectedIds.length === 0}
                 title="Esegue il placer sui selezionati">
           Piazza selezionati
         </button>
       {/if}
       {#if onBulkApply}
-        <button class="btn !text-xs" on:click={bulkApply}
+        <button class="btn text-xs!" on:click={bulkApply}
                 disabled={selectedIds.length === 0}
                 title="Assegna o rimuove l'aula, oppure blocca/sblocca, con anteprima dei conflitti">
           Modifica selezionati
         </button>
       {/if}
       {#if onBulkDelete}
-        <button class="btn-red !text-xs" on:click={bulkDelete}
+        <button class="btn-red text-xs!" on:click={bulkDelete}
                 disabled={selectedIds.length === 0}
                 title="Elimina tutte le righe selezionate">
           Elimina selezionati
@@ -656,28 +656,28 @@
                        handler decide cosa fare). -->
                   <span class="ml-3 inline-flex gap-1">
                     {#if onBulkDissociate}
-                      <button class="btn-amber !text-[10px] !px-2 !py-0.5"
+                      <button class="btn-amber text-[10px]! px-2! py-0.5!"
                               on:click|stopPropagation={async () => { await onBulkDissociate(bucket.rows1); refresh(); onChanged(); }}
                               title="Dissocia tutte le lezioni schedulate del gruppo">
                         Dissocia gruppo
                       </button>
                     {/if}
                     {#if onBulkLock}
-                      <button class="btn !text-[10px] !px-2 !py-0.5"
+                      <button class="btn text-[10px]! px-2! py-0.5!"
                               on:click|stopPropagation={async () => { await onBulkLock(bucket.rows1); refresh(); onChanged(); }}
                               title="Toggle lock per tutte le cattedre del gruppo">
                         🔒 Blocca gruppo
                       </button>
                     {/if}
                     {#if onBulkPlace}
-                      <button class="btn-primary !text-[10px] !px-2 !py-0.5"
+                      <button class="btn-primary text-[10px]! px-2! py-0.5!"
                               on:click|stopPropagation={async () => { await onBulkPlace(bucket.rows1); refresh(); onChanged(); }}
                               title="Apri il modal di piazzamento per tutto il gruppo">
                         Piazza gruppo
                       </button>
                     {/if}
                     {#if onBulkDelete}
-                      <button class="btn-red !text-[10px] !px-2 !py-0.5"
+                      <button class="btn-red text-[10px]! px-2! py-0.5!"
                               on:click|stopPropagation={async () => { await onBulkDelete(bucket.rows1); refresh(); onChanged(); }}
                               title="Elimina tutte le righe del gruppo">
                         Elimina gruppo
@@ -708,25 +708,25 @@
                       <!-- Sub-group level buttons (same as level-1) -->
                       <span class="ml-3 inline-flex gap-1">
                         {#if onBulkDissociate}
-                          <button class="btn-amber !text-[10px] !px-2 !py-0.5"
+                          <button class="btn-amber text-[10px]! px-2! py-0.5!"
                                   on:click|stopPropagation={async () => { await onBulkDissociate(sb.rows2); refresh(); onChanged(); }}>
                             Dissocia
                           </button>
                         {/if}
                         {#if onBulkLock}
-                          <button class="btn !text-[10px] !px-2 !py-0.5"
+                          <button class="btn text-[10px]! px-2! py-0.5!"
                                   on:click|stopPropagation={async () => { await onBulkLock(sb.rows2); refresh(); onChanged(); }}>
                             🔒 Blocca
                           </button>
                         {/if}
                         {#if onBulkPlace}
-                          <button class="btn-primary !text-[10px] !px-2 !py-0.5"
+                          <button class="btn-primary text-[10px]! px-2! py-0.5!"
                                   on:click|stopPropagation={async () => { await onBulkPlace(sb.rows2); refresh(); onChanged(); }}>
                             Piazza
                           </button>
                         {/if}
                         {#if onBulkDelete}
-                          <button class="btn-red !text-[10px] !px-2 !py-0.5"
+                          <button class="btn-red text-[10px]! px-2! py-0.5!"
                                   on:click|stopPropagation={async () => { await onBulkDelete(sb.rows2); refresh(); onChanged(); }}>
                             Elimina
                           </button>
@@ -769,7 +769,7 @@
                         {#if r.classroom_name}
                           {r.classroom_name}
                         {:else if r.is_scheduled}
-                          <span class="pill-amber !text-[10px]">no aula</span>
+                          <span class="pill-amber text-[10px]!">no aula</span>
                         {:else}
                           <span class="text-ink-300">-</span>
                         {/if}
@@ -780,28 +780,28 @@
                       </td>
                       <td>
                         {#if r.is_scheduled}
-                          <span class="pill-green !text-[10px]">{r.status}</span>
+                          <span class="pill-green text-[10px]!">{r.status}</span>
                         {:else}
-                          <span class="pill-red !text-[10px]">non schedulato</span>
+                          <span class="pill-red text-[10px]!">non schedulato</span>
                         {/if}
                       </td>
                       <td class="text-right whitespace-nowrap">
                         <!-- Compact icon-only action buttons with tooltips,
                              so the cell fits even in a narrow viewport. -->
-                        <button class="btn !text-[11px] !px-1.5 !py-0.5"
+                        <button class="btn text-[11px]! px-1.5! py-0.5!"
                                 on:click={() => onModify(r)}
                                 title="Modifica (sposta o disassocia da slot)">
                           ✎
                         </button>
                         {#if onDissociate}
-                          <button class="btn-amber !text-[11px] !px-1.5 !py-0.5 ml-0.5"
+                          <button class="btn-amber text-[11px]! px-1.5! py-0.5! ml-0.5"
                                   on:click={async () => { await onDissociate(r); refresh(); onChanged(); }}
                                   title="Dissocia: rimuove SOLO questa lezione (cattedra resta)">
                             ⏏
                           </button>
                         {/if}
                         {#if onLockToggle}
-                          <button class="btn !text-[11px] !px-1.5 !py-0.5 ml-0.5"
+                          <button class="btn text-[11px]! px-1.5! py-0.5! ml-0.5"
                                   class:!bg-amber-100={r.is_locked || r.locked}
                                   on:click={async () => { await onLockToggle(r); refresh(); onChanged(); }}
                                   title={(r.is_locked || r.locked)
@@ -810,13 +810,13 @@
                           </button>
                         {/if}
                         {#if onPlace}
-                          <button class="btn-primary !text-[11px] !px-1.5 !py-0.5 ml-0.5"
+                          <button class="btn-primary text-[11px]! px-1.5! py-0.5! ml-0.5"
                                   on:click={() => onPlace(r)}
                                   title="Piazza: apri modal di piazzamento">
                             ▶
                           </button>
                         {/if}
-                        <button class="btn-red !text-[11px] !px-1.5 !py-0.5 ml-0.5"
+                        <button class="btn-red text-[11px]! px-1.5! py-0.5! ml-0.5"
                                 on:click={async () => { await onDelete(r); refresh(); onChanged(); }}
                                 title="Elimina">
                           ✕
@@ -846,20 +846,20 @@
             ({(data.n_filtered ?? data.n_total)} righe filtrate)
           </span>
           <div class="ml-auto flex items-center gap-1">
-            <button class="btn !text-[11px] !px-2 !py-0.5"
+            <button class="btn text-[11px]! px-2! py-0.5!"
                     disabled={pageIndex === 0}
                     on:click={() => gotoPage(0)}>«</button>
-            <button class="btn !text-[11px] !px-2 !py-0.5"
+            <button class="btn text-[11px]! px-2! py-0.5!"
                     disabled={pageIndex === 0}
                     on:click={() => gotoPage(pageIndex - 1)}>‹ Prec</button>
-            <input type="number" class="w-14 text-xs px-1 py-0.5 border border-ink-200 rounded"
+            <input type="number" class="w-14 text-xs px-1 py-0.5 border border-ink-200 rounded-sm"
                    min="1" max={nPages}
                    value={pageIndex + 1}
                    on:change={(e) => gotoPage(Number(e.target.value) - 1)}/>
-            <button class="btn !text-[11px] !px-2 !py-0.5"
+            <button class="btn text-[11px]! px-2! py-0.5!"
                     disabled={pageIndex >= nPages - 1}
                     on:click={() => gotoPage(pageIndex + 1)}>Succ ›</button>
-            <button class="btn !text-[11px] !px-2 !py-0.5"
+            <button class="btn text-[11px]! px-2! py-0.5!"
                     disabled={pageIndex >= nPages - 1}
                     on:click={() => gotoPage(nPages - 1)}>»</button>
           </div>

@@ -132,13 +132,13 @@
   </div>
 
   <div class="mt-4 grid md:grid-cols-2 gap-4">
-    <div class="card !shadow-none p-3 bg-ink-50/40 space-y-2">
-      <h3 class="!text-base">Esporta</h3>
+    <div class="card shadow-none! p-3 bg-ink-50/40 space-y-2">
+      <h3 class="text-base!">Esporta</h3>
       <div class="flex flex-wrap gap-2 items-center">
         <button class="btn-primary" on:click={() => downloadExport(false)}>
           Esporta DB completo
         </button>
-        <button class="btn !text-xs" on:click={() => downloadExport(true)}
+        <button class="btn text-xs!" on:click={() => downloadExport(true)}
                 title="Esporta solo lo schema (vincoli + struttura), senza dati di scheduling">
           Solo schema
         </button>
@@ -150,8 +150,8 @@
       </p>
     </div>
 
-    <div class="card !shadow-none p-3 bg-ink-50/40 space-y-2">
-      <h3 class="!text-base">Importa</h3>
+    <div class="card shadow-none! p-3 bg-ink-50/40 space-y-2">
+      <h3 class="text-base!">Importa</h3>
       <input type="file" accept=".zip"
              bind:this={importInput}
              on:change={importFile}
@@ -167,17 +167,17 @@
 
   <div class="mt-5 space-y-2">
     <div class="flex items-baseline gap-3">
-      <h3 class="!text-base">Snapshot locali</h3>
+      <h3 class="text-base!">Snapshot locali</h3>
       <span class="text-xs text-ink-500">
         ({snapshots.length} salvat{snapshots.length === 1 ? 'o' : 'i'})
       </span>
-      <button class="btn-primary !text-xs ml-auto"
+      <button class="btn-primary text-xs! ml-auto"
               on:click={makeSnapshot}
               disabled={busy}
               data-testid="snapshot-create-btn">
         Crea snapshot
       </button>
-      <button class="btn !text-xs"
+      <button class="btn text-xs!"
               on:click={reloadSnapshots}
               disabled={busy}
               data-testid="snapshot-reload-btn">
@@ -207,13 +207,13 @@
               <td class="text-xs">{s.modified_at}</td>
               <td class="text-right">{fmtBytes(s.size_bytes)}</td>
               <td class="whitespace-nowrap">
-                <button class="btn !text-xs !px-2 !py-1"
+                <button class="btn text-xs! px-2! py-1!"
                         on:click={() => restore(s)}
                         disabled={busy}
                         data-testid="snapshot-restore-btn">
                   Ripristina
                 </button>
-                <button class="btn-danger !text-xs !px-2 !py-1"
+                <button class="btn-danger text-xs! px-2! py-1!"
                         on:click={() => del(s)}
                         disabled={busy}
                         data-testid="snapshot-delete-btn">

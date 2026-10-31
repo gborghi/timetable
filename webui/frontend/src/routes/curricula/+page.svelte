@@ -229,11 +229,11 @@
       <td class="text-center">{row.n_classes}</td>
       <td class="text-center">{(row.hours || []).length}</td>
       <td class="whitespace-nowrap">
-        <button class="btn !text-xs !px-2 !py-1"
+        <button class="btn text-xs! px-2! py-1!"
                 data-testid="curriculum-edit-btn"
                 data-curriculum-id={row.id}
                 on:click={() => edit(row)}>Modifica</button>
-        <button class="btn-danger !text-xs !px-2 !py-1"
+        <button class="btn-danger text-xs! px-2! py-1!"
                 data-testid="curriculum-delete-btn"
                 data-curriculum-id={row.id}
                 on:click={() => del(row)}>Elimina</button>
@@ -278,7 +278,7 @@
         <div class="flex items-center gap-2 flex-wrap">
           <label class="text-sm">Anno:</label>
           {#each [1,2,3,4,5] as y}
-            <button class="btn !text-xs !px-2 !py-1
+            <button class="btn text-xs! px-2! py-1!
                            {selectedYear === y ? 'bg-accent-500/10' : ''}"
                     on:click={() => (selectedYear = y)}>
               {y} ({hoursForYear(y).length})
@@ -297,7 +297,7 @@
               {@const gIdx = globalIndexOf(h)}
               <tr>
                 <td>
-                  <input list="curr-subj-{i}" class="w-full px-2 py-1 border border-ink-200 rounded"
+                  <input list="curr-subj-{i}" class="w-full px-2 py-1 border border-ink-200 rounded-sm"
                          bind:value={h.subject}/>
                   <datalist id="curr-subj-{i}">
                     {#each allSubjects as sn}<option value={sn}></option>{/each}
@@ -305,10 +305,10 @@
                 </td>
                 <td class="w-24">
                   <input type="number" min="0" max="10" bind:value={h.hours_per_week}
-                         class="w-full px-2 py-1 border border-ink-200 rounded"/>
+                         class="w-full px-2 py-1 border border-ink-200 rounded-sm"/>
                 </td>
                 <td>
-                  <button class="btn-danger !text-xs !px-2 !py-1"
+                  <button class="btn-danger text-xs! px-2! py-1!"
                           aria-label="Elimina riga ore" title="Elimina riga"
                           on:click={() => delHour(gIdx)}>x</button>
                 </td>
@@ -316,7 +316,7 @@
             {/each}
           </tbody>
         </table>
-        <button class="btn !text-xs !px-2 !py-1" on:click={addHour}>+ Materia per anno {selectedYear}</button>
+        <button class="btn text-xs! px-2! py-1!" on:click={addHour}>+ Materia per anno {selectedYear}</button>
       </div>
     {:else}
       <div class="space-y-3">
@@ -355,9 +355,9 @@
                     </td>
                     <td class="w-20 text-center">{r.is_hard ? '-' : r.soft_penalty}</td>
                     <td class="whitespace-nowrap">
-                      <button class="btn !text-xs !px-2 !py-1"
+                      <button class="btn text-xs! px-2! py-1!"
                               on:click={() => startEditLogical(r)}>Modifica</button>
-                      <button class="btn-danger !text-xs !px-2 !py-1"
+                      <button class="btn-danger text-xs! px-2! py-1!"
                               on:click={() => delLogical(r)}>Elimina</button>
                     </td>
                   </tr>
@@ -375,7 +375,7 @@
             <div class="grid grid-cols-2 gap-2">
               <div class="field">
                 <label for="routes-curricula-f5">Anno (vuoto = tutti gli anni)</label>
-                <select id="routes-curricula-f5" bind:value={logicalDraftYear} class="px-2 py-1 border border-ink-200 rounded">
+                <select id="routes-curricula-f5" bind:value={logicalDraftYear} class="px-2 py-1 border border-ink-200 rounded-sm">
                   <option value={null}>tutti</option>
                   <option value={1}>1</option><option value={2}>2</option>
                   <option value={3}>3</option><option value={4}>4</option><option value={5}>5</option>
@@ -394,22 +394,22 @@
                      on:input={() => (logicalValidate = null)}/>
             </div>
             <div class="flex gap-2 items-end flex-wrap">
-              <button class="btn !text-xs" on:click={logicalValidateNow}>Verifica sintassi</button>
+              <button class="btn text-xs!" on:click={logicalValidateNow}>Verifica sintassi</button>
               <label class="flex items-center gap-1 text-xs">
                 <input type="radio" bind:group={logicalDraftKind} value="hard"/>
-                <span class="pill-red !text-[10px]">Obbligatorio</span>
+                <span class="pill-red text-[10px]!">Obbligatorio</span>
               </label>
               <label class="flex items-center gap-1 text-xs">
                 <input type="radio" bind:group={logicalDraftKind} value="soft"/>
-                <span class="pill-amber !text-[10px]">Penalizzato</span>
+                <span class="pill-amber text-[10px]!">Penalizzato</span>
               </label>
               <label class="flex items-center gap-1 text-xs">
                 <input type="radio" bind:group={logicalDraftKind} value="preferred"/>
-                <span class="pill-blue !text-[10px]">Preferenza</span>
+                <span class="pill-blue text-[10px]!">Preferenza</span>
               </label>
               <label class="flex items-center gap-1 text-xs">
                 <input type="radio" bind:group={logicalDraftKind} value="enforced"/>
-                <span class="pill-c-enforced !text-[10px]">Imposto</span>
+                <span class="pill-c-enforced text-[10px]!">Imposto</span>
               </label>
               {#if logicalDraftKind === 'soft' || logicalDraftKind === 'preferred'}
                 <div class="field">
@@ -424,7 +424,7 @@
                 {logicalEditingId ? 'Salva modifica' : 'Aggiungi'}
               </button>
               {#if logicalEditingId}
-                <button class="btn !text-xs" on:click={cancelEditLogical}>Annulla</button>
+                <button class="btn text-xs!" on:click={cancelEditLogical}>Annulla</button>
               {/if}
             </div>
             {#if logicalValidate}

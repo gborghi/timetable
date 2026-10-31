@@ -46,7 +46,7 @@
 {:else}
   <div class="card p-4" data-testid="onboarding-checklist">
     <div class="flex items-center justify-between gap-2">
-      <h2 class="!text-base !mb-0">Primi passi — {doneCount}/{required.length}</h2>
+      <h2 class="text-base! mb-0!">Primi passi — {doneCount}/{required.length}</h2>
       <button type="button" class="text-xs text-ink-400 hover:text-ink-600" on:click={dismiss}>
         {allDone ? 'Nascondi' : 'Nascondi guida'}
       </button>

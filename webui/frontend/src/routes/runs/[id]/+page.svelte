@@ -166,7 +166,7 @@
     <p class="text-sm text-ink-500 italic">Caricamento...</p>
   {:else if run}
     <section class="card p-4 space-y-2">
-      <h2 class="!text-base">Riepilogo</h2>
+      <h2 class="text-base!">Riepilogo</h2>
       <div class="grid md:grid-cols-3 gap-3 text-sm">
         <div>
           <div class="text-ink-500 text-xs">Avviato</div>
@@ -220,7 +220,7 @@
         {/if}
       </div>
       {#if run.error}
-        <pre class="bg-rose-50 border border-rose-200 rounded p-2 text-xs text-rose-800 mt-2 whitespace-pre-wrap">{run.error}</pre>
+        <pre class="bg-rose-50 border border-rose-200 rounded-sm p-2 text-xs text-rose-800 mt-2 whitespace-pre-wrap">{run.error}</pre>
       {/if}
     </section>
   {/if}
@@ -232,14 +232,14 @@
   {#if !((run?.kind || '').startsWith('diag_'))}
     <section class="card p-4 space-y-2">
       <div class="flex items-baseline gap-3">
-        <h2 class="!text-base">Grafico objective + statistiche stage</h2>
+        <h2 class="text-base!">Grafico objective + statistiche stage</h2>
         <span class="text-xs text-ink-500">
           {#if summary}
             {summary.n_samples} sample,
             durata {summary.duration_s?.toFixed(1)}s
           {/if}
         </span>
-        <button class="btn !text-xs ml-auto"
+        <button class="btn text-xs! ml-auto"
                 on:click={toggleChart}
                 disabled={summaryLoading}>
           {showChart ? 'Nascondi' : (summary ? 'Mostra' : 'Carica grafico')}
@@ -260,7 +260,7 @@
   {#if showChart && summary && summary.n_samples > 0}
     <section class="card p-4 space-y-2">
       <div class="flex items-baseline gap-3">
-        <h2 class="!text-base">Grafico objective</h2>
+        <h2 class="text-base!">Grafico objective</h2>
         <div class="ml-auto">
           <label class="text-xs">
             <input type="radio" bind:group={xAxis} value="time"/> tempo
@@ -274,7 +274,7 @@
     </section>
 
     <section class="card p-4 space-y-2">
-      <h2 class="!text-base">Statistiche per stage</h2>
+      <h2 class="text-base!">Statistiche per stage</h2>
       <table class="tbl text-xs">
         <thead>
           <tr>
@@ -318,7 +318,7 @@
   {#if run && (run.kind || '').startsWith('diag_') && run.metrics}
     <section class="card p-4 space-y-2">
       <div class="flex items-baseline gap-2">
-        <h2 class="!text-base">Risultato diagnostica</h2>
+        <h2 class="text-base!">Risultato diagnostica</h2>
         <span class="text-xs text-ink-500">
           {runKindLabel(run.kind)} - generato il {fmt(run.finished_at) || '...'}
         </span>
@@ -328,13 +328,13 @@
         <summary class="cursor-pointer text-ink-500">
           Mostra payload JSON grezzo
         </summary>
-        <pre class="bg-ink-50 border border-ink-200 rounded p-2 mt-2 text-xs overflow-auto max-h-96">{JSON.stringify(run.metrics, null, 2)}</pre>
+        <pre class="bg-ink-50 border border-ink-200 rounded-sm p-2 mt-2 text-xs overflow-auto max-h-96">{JSON.stringify(run.metrics, null, 2)}</pre>
       </details>
     </section>
   {/if}
 
   <section class="card p-4 space-y-2">
-    <h2 class="!text-base">Log</h2>
+    <h2 class="text-base!">Log</h2>
     <RunLogPanel runId={runId} title={'Run #' + runId}/>
   </section>
 </div>

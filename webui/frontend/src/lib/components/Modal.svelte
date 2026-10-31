@@ -73,7 +73,7 @@
        on:click|self={onClose}
        role="presentation"
        data-testid="modal-overlay">
-    <div class="card flex w-full max-w-3xl max-h-[calc(100vh-2rem)] flex-col outline-none"
+    <div class="card flex w-full max-w-3xl max-h-[calc(100vh-2rem)] flex-col outline-hidden"
          bind:this={dialog}
          role="dialog"
          aria-modal="true"
@@ -83,7 +83,7 @@
          data-testid="modal-dialog">
       <div class="flex shrink-0 items-center justify-between border-b border-ink-100 px-4 py-3">
         <h2 id="modal-title" class="font-semibold">{title}</h2>
-        <button class="btn !px-2 !py-1 focus-ring"
+        <button class="btn px-2! py-1! focus-ring"
                 aria-label="Chiudi finestra"
                 on:click={onClose}>Chiudi</button>
       </div>

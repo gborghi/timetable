@@ -190,11 +190,11 @@
         {/if}
       </td>
       <td class="whitespace-nowrap">
-        <button class="btn !text-xs !px-2 !py-1"
+        <button class="btn text-xs! px-2! py-1!"
                 data-testid="student-edit-btn"
                 data-student-id={row.id}
                 on:click={() => edit(row)}>Modifica</button>
-        <button class="btn-danger !text-xs !px-2 !py-1"
+        <button class="btn-danger text-xs! px-2! py-1!"
                 data-testid="student-delete-btn"
                 data-student-id={row.id}
                 on:click={() => del(row)}>Elimina</button>
@@ -252,14 +252,14 @@
 
     <div class="mt-4 field">
       <div class="flex items-baseline gap-3 mb-1">
-        <label class="!mb-0">Tag</label>
+        <label class="mb-0!">Tag</label>
         <span class="text-[11px] text-ink-500">
           Etichette libere (es. <code>BES</code>, <code>DSA</code>,
           <code>debito_matematica_4</code>, <code>studente_atleta</code>).
           Usabili dal DSL come <code>"BES" in s.tags</code> o
           <code>has_tag(BES)</code> nelle query.
         </span>
-        <button type="button" class="btn !text-xs !px-2 !py-0.5 ml-auto"
+        <button type="button" class="btn text-xs! px-2! py-0.5! ml-auto"
                 on:click={() => (showTagsModal = true)}>Gestisci tag...</button>
       </div>
       <TagPicker

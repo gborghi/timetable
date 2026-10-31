@@ -291,7 +291,7 @@
       <button class="btn" on:click={() => shiftWeek(-1)}
               data-testid="absences-prev-week">&lt; settimana prec.</button>
       <input type="date" bind:value={weekStart} on:change={load}
-             class="px-2 py-1 border border-ink-200 rounded text-sm"
+             class="px-2 py-1 border border-ink-200 rounded-sm text-sm"
              title="Lunedi della settimana"
              data-testid="absences-week-input"/>
       <button class="btn" on:click={() => shiftWeek(1)}
@@ -312,7 +312,7 @@
   {:else}
     {#if showDispPanel}
       <div class="card p-3 space-y-2" data-testid="disp-policy-panel">
-        <h3 class="!text-base">Ore di disposizione</h3>
+        <h3 class="text-base!">Ore di disposizione</h3>
         <p class="text-xs text-ink-500">
           Quota per docente nella scheda Docenti. Qui il tetto scolastico,
           chi è eleggibile, e il ripiazzamento sulla soluzione attiva
@@ -321,13 +321,13 @@
         <div class="flex flex-wrap items-end gap-3">
           <label class="text-sm">
             Tetto scolastico
-            <input type="number" min="0" class="block px-2 py-1 border border-ink-200 rounded text-sm w-28"
+            <input type="number" min="0" class="block px-2 py-1 border border-ink-200 rounded-sm text-sm w-28"
                    bind:value={dispCap} placeholder="nessun tetto"
                    data-testid="disp-cap-input"/>
           </label>
           <label class="text-sm">
             Assegna a
-            <select class="block px-2 py-1 border border-ink-200 rounded text-sm"
+            <select class="block px-2 py-1 border border-ink-200 rounded-sm text-sm"
                     bind:value={dispEligibility}
                     data-testid="disp-eligibility">
               <option value="all">tutti i docenti con quota</option>
@@ -364,7 +364,7 @@
             {#each coverage.days as d}
               <th class="text-center align-bottom">
                 <button type="button"
-                        class="btn !text-xs !text-ink-900 w-full justify-center flex-wrap gap-1 font-semibold"
+                        class="btn text-xs! text-ink-900! w-full justify-center flex-wrap gap-1 font-semibold"
                         on:click={() => openAbsencesModal(d)}
                         aria-label="Registra assenze di {calName(d.day)} {fmtDateShort(d.date)}"
                         title="Registra le assenze del giorno"
@@ -372,13 +372,13 @@
                   <span>{calName(d.day)} {fmtDateShort(d.date)}</span>
                   <span class="font-normal text-accent-500 whitespace-nowrap">+ assenza</span>
                   {#if d.n_absences > 0}
-                    <span class="pill pill-amber !text-[9px] ml-1">{d.n_absences} assenti</span>
+                    <span class="pill pill-amber text-[9px]! ml-1">{d.n_absences} assenti</span>
                   {/if}
                   {#if d.n_uncovered > 0}
-                    <span class="pill pill-red !text-[9px] ml-1">-{d.n_uncovered}</span>
+                    <span class="pill pill-red text-[9px]! ml-1">-{d.n_uncovered}</span>
                   {/if}
                   {#if d.n_covered > 0 && d.n_uncovered === 0}
-                    <span class="pill pill-green !text-[9px] ml-1">{d.n_covered} ok</span>
+                    <span class="pill pill-green text-[9px]! ml-1">{d.n_covered} ok</span>
                   {/if}
                 </button>
                 {#if d.n_absences > 0 || d.n_uncovered > 0 || d.n_covered > 0}
@@ -456,7 +456,7 @@
   {#if absencesModal}
     <div class="space-y-3">
       <div>
-        <h3 class="!text-base mb-1">Docenti assenti
+        <h3 class="text-base! mb-1">Docenti assenti
           <span class="text-xs text-ink-500">({absencesModal.absences.length})</span>
         </h3>
         {#if absencesModal.absences.length === 0}
@@ -469,7 +469,7 @@
                 <tr>
                   <td><strong>{a.teacher_display}</strong></td>
                   <td class="text-xs">{a.reason ?? ''}</td>
-                  <td><button class="btn-danger !text-xs !px-2 !py-1"
+                  <td><button class="btn-danger text-xs! px-2! py-1!"
                               on:click={() => removeAbsence(a)}>Rimuovi</button></td>
                 </tr>
               {/each}
@@ -479,13 +479,13 @@
       </div>
 
       <div class="border-t border-ink-200 pt-3 space-y-2">
-        <h3 class="!text-base">Aggiungi assenza</h3>
-        <input class="w-full px-2 py-1 border border-ink-200 rounded text-sm"
+        <h3 class="text-base!">Aggiungi assenza</h3>
+        <input class="w-full px-2 py-1 border border-ink-200 rounded-sm text-sm"
                placeholder="filtra docente per cognome/nome/nickname..."
                bind:value={absenceFilter}/>
         <div class="grid grid-cols-2 gap-2">
           <select bind:value={absencesModal.pickedTeacherId}
-                  class="px-2 py-1 border border-ink-200 rounded">
+                  class="px-2 py-1 border border-ink-200 rounded-sm">
             <option value={null}>-- scegli docente --</option>
             {#each candidatesForAbsence as t}
               <option value={t.id}>
@@ -498,10 +498,10 @@
           </select>
           <input bind:value={absencesModal.reason}
                  placeholder="motivo (es. Malattia)"
-                 class="px-2 py-1 border border-ink-200 rounded"/>
+                 class="px-2 py-1 border border-ink-200 rounded-sm"/>
         </div>
         <div class="flex justify-between gap-2">
-          <button class="btn-danger !text-xs"
+          <button class="btn-danger text-xs!"
                   on:click={() => clearDayAbsences(absencesModal.date)}
                   title="Cancella tutte le assenze e supplenze del giorno">
             Cancella giorno
@@ -529,7 +529,7 @@
     <div class="grid grid-cols-2 gap-4">
       <!-- Uncovered slots -->
       <div>
-        <h3 class="!text-base mb-2">
+        <h3 class="text-base! mb-2">
           Classi scoperte
           <span class="pill {allCovered ? 'pill-green' : 'pill-red'} ml-1">
             {cellModal.detail.uncovered.length}
@@ -543,7 +543,7 @@
         {:else}
           <ul class="space-y-2">
             {#each cellModal.detail.uncovered as u}
-              <li class="card !shadow-none p-3 border-2
+              <li class="card shadow-none! p-3 border-2
                          {u.substitute_teacher_id ? 'border-emerald-300 bg-emerald-50'
                                                   : 'border-red-300 bg-red-50'}"
                   on:dragover={onDragOver}
@@ -560,7 +560,7 @@
                     <span class="text-sm">
                       Supplente: <strong>{u.substitute_teacher_display}</strong>
                     </span>
-                    <button class="btn-danger !text-xs !px-2 !py-1"
+                    <button class="btn-danger text-xs! px-2! py-1!"
                             on:click={() => removeSub(u)}>Rimuovi</button>
                   </div>
                 {:else}
@@ -576,7 +576,7 @@
 
       <!-- Available teachers -->
       <div>
-        <h3 class="!text-base mb-2">
+        <h3 class="text-base! mb-2">
           Docenti disponibili
           <span class="pill ml-1">{filteredAvailable.length}</span>
           {#if filteredAvailable.length !== cellModal.detail.available.length}
@@ -591,17 +591,17 @@
           materia: i filtri qui sotto selezionano solo chi mostrare.
         </p>
         <div class="mb-2 space-y-1" data-testid="avail-filters">
-          <input class="w-full px-2 py-1 border border-ink-200 rounded text-sm"
+          <input class="w-full px-2 py-1 border border-ink-200 rounded-sm text-sm"
                  placeholder="filtra per nome, classe di concorso, materia..."
                  bind:value={availQuery}
                  data-testid="avail-query"/>
           <div class="flex flex-wrap gap-1">
-            <button class="btn !text-[10px] !px-2 !py-0.5"
+            <button class="btn text-[10px]! px-2! py-0.5!"
                     class:!bg-ink-800={availFilter === 'all'}
                     class:!text-white={availFilter === 'all'}
                     on:click={() => setAvailFilter('all')}
                     data-testid="avail-filter-all">Tutti</button>
-            <button class="btn !text-[10px] !px-2 !py-0.5"
+            <button class="btn text-[10px]! px-2! py-0.5!"
                     class:!bg-sky-700={availFilter === 'same_subject'}
                     class:!text-white={availFilter === 'same_subject'}
                     on:click={() => setAvailFilter('same_subject')}
@@ -611,7 +611,7 @@
                     data-testid="avail-filter-same-subject">
               Stessa materia{uncoveredSubjects.length ? ` (${uncoveredSubjects.join(', ')})` : ''}
             </button>
-            <button class="btn !text-[10px] !px-2 !py-0.5"
+            <button class="btn text-[10px]! px-2! py-0.5!"
                     class:!bg-sky-700={availFilter === 'same_as_absent'}
                     class:!text-white={availFilter === 'same_as_absent'}
                     on:click={() => setAvailFilter('same_as_absent')}
@@ -619,27 +619,27 @@
                     data-testid="avail-filter-same-as-absent">
               Materie del collega
             </button>
-            <button class="btn !text-[10px] !px-2 !py-0.5"
+            <button class="btn text-[10px]! px-2! py-0.5!"
                     class:!bg-sky-600={availFilter === 'disposizione'}
                     class:!text-white={availFilter === 'disposizione'}
                     on:click={() => setAvailFilter('disposizione')}
                     data-testid="avail-filter-disp">Disposizione</button>
-            <button class="btn !text-[10px] !px-2 !py-0.5"
+            <button class="btn text-[10px]! px-2! py-0.5!"
                     class:!bg-amber-700={availFilter === 'hole'}
                     class:!text-white={availFilter === 'hole'}
                     on:click={() => setAvailFilter('hole')}
                     data-testid="avail-filter-hole">Buco</button>
-            <button class="btn !text-[10px] !px-2 !py-0.5"
+            <button class="btn text-[10px]! px-2! py-0.5!"
                     class:!bg-ink-500={availFilter === 'free'}
                     class:!text-white={availFilter === 'free'}
                     on:click={() => setAvailFilter('free')}
                     data-testid="avail-filter-free">Liberi</button>
-            <button class="btn !text-[10px] !px-2 !py-0.5"
+            <button class="btn text-[10px]! px-2! py-0.5!"
                     class:!bg-purple-700={availFilter === 'potenziamento'}
                     class:!text-white={availFilter === 'potenziamento'}
                     on:click={() => setAvailFilter('potenziamento')}
                     data-testid="avail-filter-pot">Potenziamento</button>
-            <button class="btn !text-[10px] !px-2 !py-0.5"
+            <button class="btn text-[10px]! px-2! py-0.5!"
                     class:!bg-ink-700={availFilter === 'under_hours'}
                     class:!text-white={availFilter === 'under_hours'}
                     on:click={() => setAvailFilter('under_hours')}
@@ -657,22 +657,22 @@
           </p>
         {:else}
           <p class="text-[11px] text-ink-400 mb-1">
-            <span class="pill !text-[9px]"
+            <span class="pill text-[9px]!"
               style="background:#bae6fd;color:#0c4a6e;">DISP</span>
             disposizione ufficiale ·
-            <span class="pill !text-[9px]"
+            <span class="pill text-[9px]!"
               style="background:#fde68a;color:#78350f;font-weight:700;">BUCO</span>
             buco (meno scomodo) ·
-            <span class="pill !text-[9px]"
+            <span class="pill text-[9px]!"
               style="background:#e5e7eb;color:#374151;">LIBERO</span>
             semplicemente libero ·
-            <span class="pill !text-[9px]"
+            <span class="pill text-[9px]!"
               style="background:#e9d5ff;color:#581c87;">POT</span>
             potenziamento (Legge 107).
           </p>
           <ul class="space-y-1 max-h-96 overflow-auto">
             {#each filteredAvailable as t}
-              <li class="card !shadow-none p-2 cursor-grab
+              <li class="card shadow-none! p-2 cursor-grab
                          hover:bg-accent-500/10 active:cursor-grabbing"
                   class:!border-sky-400={t.is_disposizione}
                   class:!bg-sky-50={t.is_disposizione}
@@ -689,29 +689,29 @@
                 <div class="flex items-baseline justify-between">
                   <strong>
                     {#if t.is_disposizione}
-                      <span class="pill !text-[9px]"
+                      <span class="pill text-[9px]!"
                         style="background:#bae6fd;color:#0c4a6e;"
                         title="In disposizione ufficiale in questa ora"
                       >DISP</span>
                     {:else if t.is_hole}
-                      <span class="pill !text-[9px] font-bold"
+                      <span class="pill text-[9px]! font-bold"
                         style="background:#fde68a;color:#78350f;"
                         title="Buco tra prima e ultima lezione: coprire è meno scomodo"
                       >BUCO</span>
                     {:else}
-                      <span class="pill !text-[9px]"
+                      <span class="pill text-[9px]!"
                         style="background:#e5e7eb;color:#374151;"
                         title="Semplicemente libero in questa ora"
                       >LIBERO</span>
                     {/if}
                     {#if t.is_potenziamento}
-                      <span class="pill !text-[9px]"
+                      <span class="pill text-[9px]!"
                         style="background:#e9d5ff;color:#581c87;"
                         title={`${t.potenziamento_hours}h di potenziamento`}
                       >POT</span>
                     {/if}
                     {#if t.matches_lesson_subject}
-                      <span class="pill !text-[9px]"
+                      <span class="pill text-[9px]!"
                         style="background:#dbeafe;color:#1e3a8a;"
                         title="Insegna la materia della lezione scoperta"
                       >MAT</span>

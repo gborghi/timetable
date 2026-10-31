@@ -41,10 +41,10 @@
             <td>{s.is_active ? '✓' : ''}</td>
             <td>
               {#if !s.is_active}
-                <button class="btn !text-xs !px-2 !py-1"
+                <button class="btn text-xs! px-2! py-1!"
                         on:click={() => onActivate(s.id)}>attiva</button>
               {/if}
-              <button class="btn-danger !text-xs !px-2 !py-1"
+              <button class="btn-danger text-xs! px-2! py-1!"
                       aria-label="Elimina soluzione {s.name || '#' + s.id}" title="Elimina soluzione"
                       on:click={() => onDelete(s.id)}>x</button>
             </td>

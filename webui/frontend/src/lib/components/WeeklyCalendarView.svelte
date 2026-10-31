@@ -905,27 +905,27 @@
      on:focusout={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) focused = false; }}
      on:keydown={(e) => { if (e.key === 'Escape') { dragSource = null; dragHoverKey = null; } }}>
   <div class="flex items-baseline justify-between mb-2 flex-wrap gap-2">
-    <h3 class="!text-base">{title}</h3>
+    <h3 class="text-base!">{title}</h3>
     {#if mode !== 'schedule'}
     <div class="flex gap-3 text-xs flex-wrap">
       <span class="flex items-center gap-1">
-        <span class="w-3 h-3 rounded-sm border border-emerald-400
+        <span class="w-3 h-3 rounded-xs border border-emerald-400
                      bg-emerald-100"></span> libero
       </span>
       <span class="flex items-center gap-1">
-        <span class="w-3 h-3 rounded-sm border border-amber-400
+        <span class="w-3 h-3 rounded-xs border border-amber-400
                      bg-amber-200"></span> penalità +
       </span>
       <span class="flex items-center gap-1">
-        <span class="w-3 h-3 rounded-sm border border-red-400
+        <span class="w-3 h-3 rounded-xs border border-red-400
                      bg-red-300"></span> non disponibile
       </span>
       <span class="flex items-center gap-1">
-        <span class="w-3 h-3 rounded-sm border border-sky-400
+        <span class="w-3 h-3 rounded-xs border border-sky-400
                      bg-sky-200"></span> preferenza
       </span>
       <span class="flex items-center gap-1">
-        <span class="w-3 h-3 rounded-sm border border-emerald-700
+        <span class="w-3 h-3 rounded-xs border border-emerald-700
                      bg-emerald-700"></span> obbligatoria
       </span>
     </div>
@@ -936,12 +936,12 @@
     Click ciclico: libero -&gt; giallo -&gt; rosso -&gt; blu -&gt;
     verde scuro -&gt; libero. Trascina per applicare in blocco.
     <span class="text-ink-700">
-      Tieni <kbd class="px-1 border border-ink-300 rounded text-[10px]">H</kbd>/<kbd
-      class="px-1 border border-ink-300 rounded text-[10px]">P</kbd>/<kbd
-      class="px-1 border border-ink-300 rounded text-[10px]">E</kbd>/<kbd
-      class="px-1 border border-ink-300 rounded text-[10px]">D</kbd>/<kbd
-      class="px-1 border border-ink-300 rounded text-[10px]">A</kbd>/<kbd
-      class="px-1 border border-ink-300 rounded text-[10px]">N</kbd>
+      Tieni <kbd class="px-1 border border-ink-300 rounded-sm text-[10px]">H</kbd>/<kbd
+      class="px-1 border border-ink-300 rounded-sm text-[10px]">P</kbd>/<kbd
+      class="px-1 border border-ink-300 rounded-sm text-[10px]">E</kbd>/<kbd
+      class="px-1 border border-ink-300 rounded-sm text-[10px]">D</kbd>/<kbd
+      class="px-1 border border-ink-300 rounded-sm text-[10px]">A</kbd>/<kbd
+      class="px-1 border border-ink-300 rounded-sm text-[10px]">N</kbd>
       + click per impostare direttamente.
     </span>
   </p>
