@@ -253,7 +253,8 @@ def add_consecutive_constraints_phase_b(model, slot, day, profs, dc_value,
       - ``pair_exists``: per ogni cattedra (docente, materia), se il
         docente ha >= 2 ore DI QUELLA MATERIA quel giorno,
         almeno una coppia di slot consecutivi deve essere occupata.
-      - ``must_pair``: se ne ha 2 (Phase A garantisce {0, 2}), consecutive.
+      - ``must_pair``: per ogni cattedra, se il docente ha 2 ore di quella
+        materia (Phase A garantisce {0, 2}), consecutive.
 
     Le coppie (classe, materia) da appaiare arrivano dalla mappa
     ``pairing`` -- ``{(class, subject): "must_pair" | "pair_exists"}`` --
@@ -296,10 +297,9 @@ def add_consecutive_constraints_phase_b(model, slot, day, profs, dc_value,
                 if subject_key(s) == want:
                     cattedre.append((cl, subject, mode, p, s))
     for cl, subject, mode, p, cat_subj in cattedre:
-            if mode == "pair_exists":
-                subjs_of_p = [cat_subj]
-            else:
-                subjs_of_p = list(profs[p]["classi"][cl].keys())
+            # Anche must_pair (es. motorie) per cattedra: ogni docente
+            # della materia, solo le sue ore di quella materia (Kepler M1).
+            subjs_of_p = [cat_subj]
             # Skip se questo prof non ha slot in questo stage
             # (e' schedulato altrove). Il vincolo verra' applicato
             # nello stage in cui il prof e' modellato.
