@@ -247,6 +247,12 @@ def recommend_decomposition(db: Session = Depends(get_db)):
     return rec.to_dict()
 
 
+@router.get("/presets/max-free-days")
+def max_free_days_preset():
+    """Il preset «giorni liberi» come dato (default di N e S per la UI)."""
+    return dict(schemas._max_free_preset())
+
+
 @router.get("/parameters/recommend")
 def recommend_parameters(db: Session = Depends(get_db)):
     """Suggest solver parameters based on the current school's size

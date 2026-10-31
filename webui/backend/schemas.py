@@ -9,6 +9,16 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
+def _max_free_preset() -> dict:
+    """Il preset «giorni liberi» è un dato del motore
+    (``engine/max_free_days.PRESET``): qui se ne leggono i default."""
+    try:
+        from engine import max_free_days as _mfd
+    except ImportError:  # backend avviato con engine/ su sys.path
+        import max_free_days as _mfd
+    return _mfd.PRESET
+
+
 # Whitelist of accepted profile identifiers across import / dataset
 # endpoints. Hardcoded set keeps user-supplied values from reaching
 # filesystem path joins or pickle.load() calls (Section: audit C2 path
@@ -639,8 +649,10 @@ class PhaseBRunIn(BaseModel):
     # ore settimanali (lezioni + potenziamento) sono almeno S.
     # N=1 e S=18 sono il preset, non costanti del motore.
     max_free_if_full: bool = False
-    max_free_days: int = 1
-    full_time_hours: int = 18
+    max_free_days: int = Field(
+        default_factory=lambda: _max_free_preset()["max_free"], ge=0, le=7)
+    full_time_hours: int = Field(
+        default_factory=lambda: _max_free_preset()["threshold"], ge=0, le=60)
     max_free_exclude: str = ""
     max_free_only: str = ""
     # Joint (day,hour,room) optimization. When ``joint_vars.enabled`` the
