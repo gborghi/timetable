@@ -42,7 +42,6 @@ jobs:
   liceo90-nightly:
     runs-on: ubuntu-latest
     timeout-minutes: 150
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v5
 
