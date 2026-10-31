@@ -4,7 +4,9 @@
   import { onMount } from 'svelte';
   import { api } from '$lib/api';
   import { humanMetricsLine, roomsWarning } from '$lib/metrics_labels';
-  import { flash, refreshDataset } from '$lib/stores';
+  import { flash, refreshDataset, datasetState } from '$lib/stores';
+  import { confirmDialog } from '$lib/confirm';
+  import { replaceSchoolMessage } from '$lib/replace_school';
   import { OPTIMIZE_DEFAULTS } from '$lib/constants';
   import RunLogPanel from '$lib/components/RunLogPanel.svelte';
   import PhaseACard from '$lib/components/optimize/PhaseACard.svelte';
@@ -301,8 +303,25 @@
   }
 
   // Step shortcuts
-  const launchMock = () => go('/api/dataset/mock', step1);
-  const launchImport = () => go('/api/dataset/import-profile', step1import);
+  // Come sulla Dashboard: Genera e Importa sostituiscono la scuola,
+  // quindi si chiede conferma se nel DB c'è già qualcosa (Liceo G2).
+  async function confirmReplace(action) {
+    const msg = replaceSchoolMessage($datasetState, action);
+    if (msg === null) return true;
+    return confirmDialog(msg, {
+      title: 'Sostituire la scuola?',
+      confirmLabel: 'Sostituisci',
+      danger: true,
+    });
+  }
+  const launchMock = async () => {
+    if (!(await confirmReplace(`Generare la scuola di test «${step1.profile ?? ''}»`))) return;
+    go('/api/dataset/mock', step1);
+  };
+  const launchImport = async () => {
+    if (!(await confirmReplace(`Importare il profilo «${step1import.profile}»`))) return;
+    go('/api/dataset/import-profile', step1import);
+  };
   const launchAssignment = () => go('/api/optimize/assignment', step2);
   const launchPhaseB = () => go('/api/optimize/phase-b', step3);
   const launchMeta = (stage) => go('/api/optimize/meta/' + stage, step4);
