@@ -850,9 +850,18 @@ def _seed_stress_fixtures(profile: str, rng: random.Random,
         if teachers and day_legacies:
             t = teachers[0]
             d = day_legacies[1] if len(day_legacies) > 1 else day_legacies[0]
+            # Le prime due ore del giorno, lette dalla griglia (ore
+            # assolute, 8..13 nel profilo standard): «h<=2» non
+            # corrispondeva a nessuna cella.
+            _wd = (db.query(models.WorkingDay)
+                   .filter(models.WorkingDay.legacy_day_number == d).first())
+            _hrs = sorted(int(x.legacy_hour_number) for x in
+                          (getattr(_wd, "slots", None) or [])
+                          if x.legacy_hour_number is not None)
+            _hmax = _hrs[min(1, len(_hrs) - 1)] if _hrs else 9
             db.add(models.LogicalUnavailability(
                 entity_type="teacher", entity_id=t.id,
-                expression=f"(d={d} and h<=2)",
+                expression=f"(d={d} and h<={_hmax})",
                 parsed_dnf_json="[]",
                 is_hard=True, soft_penalty=0, kind="hard"))
         db.commit()

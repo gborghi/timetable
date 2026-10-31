@@ -53,6 +53,9 @@ Mapping invariants
 """
 from __future__ import annotations
 
+import json
+import re
+
 
 
 def _quote(s: str) -> str:
@@ -96,6 +99,67 @@ def classroom_unavailability_to_dsl(classroom_name: str, day: int,
     return (f'forall l in lessons where l.classroom == {_quote(classroom_name)}'
             f' and l.day == {int(day)} and l.hour == {int(hour)}: false')
 
+
+
+_LU_FIELD = {"teacher": "teacher", "class": "class", "classroom": "classroom"}
+
+
+def _logical_entity_names(db, _models) -> dict:
+    out: dict = {}
+    for kind, model_name in (("teacher", "Teacher"), ("class", "SchoolClass"),
+                             ("classroom", "Classroom")):
+        m = getattr(_models, model_name, None)
+        if m is None:
+            continue
+        try:
+            for row in db.query(m).all():
+                out[(kind, row.id)] = row.name
+        except Exception:  # noqa: BLE001 - tabella assente in DB vecchi
+            continue
+    return out
+
+
+_SHORT_DH = re.compile(r"\b([dh])\s*(<=|>=|==|!=|=|<|>)\s*(\d+)")
+
+
+def logical_unavailability_to_dsl(entity_type, entity_name, expression,
+                                  parsed_dnf_json=None) -> list[str]:
+    """Indisponibilita' logica -> regole DSL ``forall ...: false``.
+
+    * DNF salvata con una sola clausola: ogni letterale positivo
+      (giorno, ora) diventa una cella vietata all'entita'.
+    * Forma breve su ``d``/``h`` (es. ``(d=2 and h<=2)``): le celle in
+      cui il predicato vale sono vietate.
+    * Gia' DSL completa (``forall``/``exists``/pragma): invariata.
+    Le DNF con piu' clausole (disponibilita' disgiuntiva) non hanno una
+    forma DSL a regole indipendenti: si lasciano ai controlli post-hoc
+    (lista vuota) invece di passare testo che il compilatore non capisce.
+    """
+    expr = (expression or "").strip()
+    field = _LU_FIELD.get(entity_type)
+    if re.match(r"^(forall|exists)\b", expr) or re.match(r"^[a-z_]+\(", expr):
+        return [expr] if expr else []
+    if not field or not entity_name:
+        return []
+    who = f"l.{field} == {_quote(entity_name)}"
+    try:
+        clauses = json.loads(parsed_dnf_json or "[]")
+    except (TypeError, ValueError):
+        clauses = []
+    if clauses:
+        if len(clauses) != 1:
+            return []
+        return [f"forall l in lessons where {who} and l.day == {int(lit['day'])}"
+                f" and l.hour == {int(lit['hour'])}: false"
+                for lit in clauses[0] if not lit.get("negate")]
+    rest = re.sub(r"\b(and|or|not)\b", " ", _SHORT_DH.sub(" ", expr))
+    if _SHORT_DH.search(expr) and not re.search(r"[A-Za-z_]", rest):
+        body = _SHORT_DH.sub(
+            lambda m: (f"l.{'day' if m.group(1) == 'd' else 'hour'} "
+                       f"{'==' if m.group(2) == '=' else m.group(2)} "
+                       f"{m.group(3)}"), expr)
+        return [f"forall l in lessons where {who} and ({body}): false"]
+    return []
 
 def _configured_hours_by_day(db, _models) -> dict[int, set[int]]:
     """Map legacy day number -> set of legacy hour numbers configured
@@ -1055,21 +1119,30 @@ def load_all_dsl_constraints(db, *, _models=None,
             "label": f"Capienza aule '{kind}'",
         })
 
-    # 6. LogicalUnavailability (already DSL, just pass through)
+    # 6. LogicalUnavailability. Non e' DSL: e' un'indisponibilita' di
+    # un'entita' (DNF del logic_parser, o la forma breve su d/h). Si
+    # traduce in regole ``forall l in lessons where <entita'> ...: false``;
+    # prima passava grezza e il compilatore la valutava con d/h liberi
+    # ('<=' tra str e int, Liceo M5).
+    _ent_names = _logical_entity_names(db, _models)
     for r in db.query(_models.LogicalUnavailability).all():
         is_hard = bool(r.is_hard) and (r.kind in ("hard", "enforced"))
         if not is_hard and not include_soft:
             continue
-        out.append({
-            "source": "logical_unavailability",
-            "scope_kind": r.entity_type,
-            "scope_id": r.entity_id,
-            "expression": r.expression,
-            "is_hard": is_hard,
-            "weight": 0 if is_hard else int(r.soft_penalty or 100),
-            "label": f"DSL {r.entity_type}#{r.entity_id}",
-        })
-
+        name = _ent_names.get((r.entity_type, r.entity_id))
+        exprs = logical_unavailability_to_dsl(
+            r.entity_type, name, r.expression,
+            getattr(r, "parsed_dnf_json", None))
+        for expr in exprs:
+            out.append({
+                "source": "logical_unavailability",
+                "scope_kind": r.entity_type,
+                "scope_id": r.entity_id,
+                "expression": expr,
+                "is_hard": is_hard,
+                "weight": 0 if is_hard else int(r.soft_penalty or 100),
+                "label": f"DSL {r.entity_type}#{r.entity_id}",
+            })
     # 7. CurriculumLogicalConstraint
     if hasattr(_models, "CurriculumLogicalConstraint"):
         for r in db.query(_models.CurriculumLogicalConstraint).all():
