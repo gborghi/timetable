@@ -889,8 +889,8 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                 joint_vars: dict | None = None,
                 partial: bool = False,
                 max_free_if_full: bool = False,
-                max_free_days: int = 1,
-                full_time_hours: int = 18,
+                max_free_days: int | None = None,
+                full_time_hours: int | None = None,
                 max_free_exclude: str = "",
                 max_free_only: str = "") -> int:
     # Phase 3 -- enforce the same (cp_sat_scope, phase_a_mode)
@@ -977,8 +977,10 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
                   respect_room_capacity=respect_room_capacity,
                   joint_vars=_jv, partial=bool(partial),
                   max_free_if_full=bool(max_free_if_full),
-                  max_free_days=int(max_free_days),
-                  full_time_hours=int(full_time_hours),
+                  max_free_days=(None if max_free_days is None
+                                 else int(max_free_days)),
+                  full_time_hours=(None if full_time_hours is None
+                                   else int(full_time_hours)),
                   max_free_exclude=max_free_exclude or "",
                   max_free_only=max_free_only or "")
     _preflight_lock_check()
@@ -1003,10 +1005,17 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
             parallel_groups = engine_io.parallel_groups_for_solver(db)
             group_assignments = engine_io.group_assignments_for_solver(db)
         if max_free_if_full:
+            # None = valori del preset (dato del motore), non numeri qui.
+            try:
+                from engine import max_free_days as _mfd_d
+            except ImportError:
+                import max_free_days as _mfd_d
             _apply_max_free_preset(
                 profs,
-                max_free=int(max_free_days),
-                threshold=int(full_time_hours),
+                max_free=int(_mfd_d.PRESET["max_free"]
+                             if max_free_days is None else max_free_days),
+                threshold=int(_mfd_d.PRESET["threshold"]
+                              if full_time_hours is None else full_time_hours),
                 exclude=max_free_exclude,
                 only=max_free_only,
                 pot_assignments=potenziamento_assignments,
