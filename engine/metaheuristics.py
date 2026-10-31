@@ -445,15 +445,13 @@ def is_hard_feasible(sol, profs, verbose=False,
                       f"free={len(DAYS) - _busy_days} < {_mfd}")
             return False
 
-    # H_A: Mat/Ita doppia consecutiva PER CATTEDRA (stesso docente,
-    # stessa materia, stessa classe), come la Fase A
-    # (``subject_day_count_pair``) e il modello settimanale
-    # (``add_subject_pair_constraint(mode="pair_exists")``): la regola
-    # vale se la cattedra ha almeno 2 ore e si controlla per OGNI docente
-    # della materia nella classe. Prima si sommavano tutte le ore del
-    # docente nella classe (Mat 1 h + Fis 2 h = 3) e si accettava una
-    # doppia di qualsiasi materia: il modello poteva produrre un orario
-    # che il validatore rifiutava (R1 di Kepler).
+    # H_A: Mat/Ita doppia consecutiva PER DOCENTE nella classe. Per ogni
+    # docente che insegna Matematica o Italiano nella classe (flag attivo),
+    # se quella materia ha almeno 2 ore nella classe, serve almeno un giorno
+    # con due ore consecutive DELLO STESSO DOCENTE nella classe, anche di
+    # materie diverse (es. Italiano + Storia). Regola di Giovanni (31/10):
+    # «doppia basta che sia con stesso docente, non serve stessa materia».
+    # Coerente con la Fase B (cpsat_v2_timetable.py), che conta per docente.
     _pair_flag = {"matematica": "dual_math", "italiano": "dual_italian"}
     for cl in cls_set:
         for want, flag in _pair_flag.items():
@@ -466,25 +464,25 @@ def is_hard_feasible(sol, profs, verbose=False,
                 subjs = (info.get("classi") or {}).get(cl)
                 if not subjs:
                     continue
-                for s in subjs:
-                    if cv2.subject_key(s) != want:
-                        continue
-                    sd = subjs[s]
-                    ore = int(sd.get("ore", 0)) if isinstance(sd, dict) else 0
-                    if ore < 2:
-                        continue
-                    ok = False
-                    for d in DAYS:
-                        pres = [sol.get((p, cl, s, d, h), 0) == 1
-                                for h in HOURS]
-                        if any(pres[i] and pres[i + 1]
-                               for i in range(len(pres) - 1)):
-                            ok = True
-                            break
-                    if not ok:
-                        if verbose:
-                            print(f"  HA viol: {s} {p} in {cl}")
-                        return False
+                ore_want = sum(
+                    int(sd.get("ore", 0)) if isinstance(sd, dict) else 0
+                    for s, sd in subjs.items()
+                    if cv2.subject_key(s) == want)
+                if ore_want < 2:
+                    continue
+                ok = False
+                for d in DAYS:
+                    pres = [any(sol.get((p, cl, s, d, h), 0) == 1
+                                for s in subjs)
+                            for h in HOURS]
+                    if any(pres[i] and pres[i + 1]
+                           for i in range(len(pres) - 1)):
+                        ok = True
+                        break
+                if not ok:
+                    if verbose:
+                        print(f"  HA viol: {want} {p} in {cl}")
+                    return False
 
     # H_B: Scienzemotorie sempre a coppie. Per ogni (cl, d) le ore
     # del prof di motorie (in qualsiasi materia ma tipicamente
