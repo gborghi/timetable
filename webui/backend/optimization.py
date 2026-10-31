@@ -12,6 +12,7 @@ works for every historical name.
 """
 from __future__ import annotations
 
+import warnings
 import contextlib
 import os
 import pickle
@@ -30,6 +31,7 @@ ensure_engine_on_path()
 from ortools.sat.python import cp_model
 import solver_config as _solvercfg  # noqa: E402
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
 
 from . import engine_io, models
 from .db import SessionLocal
@@ -1640,7 +1642,15 @@ def _stored_objective_weights():
                 for s in db.query(models.Subject).all()
             }
         return teachers, subjects
-    except Exception:  # noqa: BLE001 - default del motore se il DB non c'è
+    except SQLAlchemyError as exc:
+        # Solo il DB assente o illeggibile ricade sul default del motore,
+        # e lo si dice: con i pesi di default l'ottimo cambia.
+        warnings.warn(
+            "Pesi dell'obiettivo non letti dal DB, uso i default del "
+            f"motore: {exc.__class__.__name__}: {exc}",
+            RuntimeWarning, stacklevel=2)
+        print(f"[obiettivo] WARN pesi non letti dal DB ({exc.__class__.__name__}): "
+              "default del motore")
         return None
 
 
