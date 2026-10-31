@@ -6,14 +6,17 @@ funzioni diagnostic ritornino strutture sensate.
 from __future__ import annotations
 
 import os
-import pickle
 import sys
 
 import pytest
 
 # Add parent for engine imports
-PARENT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-ENGINE = os.path.join(PARENT, "engine")
+# Radice del repo: webui/backend/tests -> tre livelli sopra. Prima
+# PARENT puntava a webui/backend e il modulo non si importava mai.
+REPO = os.path.dirname(os.path.dirname(os.path.dirname(
+    os.path.dirname(os.path.abspath(__file__)))))
+PARENT = os.path.join(REPO, "engine")
+ENGINE = PARENT
 if ENGINE not in sys.path:
     sys.path.insert(0, ENGINE)
 
@@ -28,19 +31,38 @@ meta = pytest.importorskip("metaheuristics")
 diag = pytest.importorskip("engine_diagnostics")
 
 
+def _small_school():
+    """Scuola sintetica minima: i pickle storici di `small` non ci sono
+    piu' (vedi PICKLE_DEPRECATED.md), la soluzione si calcola qui."""
+    g = [6, 5, 4]
+    return {
+        "Lettere": {"classi": {"3A": {"Italiano": {"ore": 4},
+                                      "Storia": {"ore": 3}}}, "glibero": g},
+        "Mate": {"classi": {"3A": {"Matematica": {"ore": 4}}}, "glibero": g},
+        "Ing": {"classi": {"3A": {"Inglese": {"ore": 3}}}, "glibero": g},
+        "Sci": {"classi": {"3A": {"Scienze": {"ore": 3}}}, "glibero": g},
+        "Fil": {"classi": {"3A": {"Filosofia": {"ore": 3}}}, "glibero": g},
+        "Fis": {"classi": {"3A": {"Fisica": {"ore": 3}}}, "glibero": g},
+        "Art": {"classi": {"3A": {"Disegno": {"ore": 2}}}, "glibero": g},
+        "Mot": {"classi": {"3A": {"Scienzemotorie": {"ore": 2}}},
+                "glibero": g},
+    }
+
+
 def test_engine_diagnostics():
     """Smoke test for engine diagnostics via pytest."""
-    profs_path = os.path.join(PARENT, "scripts", "data", "small", "profs_small.pkl")
-    sol_path = os.path.join(PARENT, "scripts", "data", "small", "solution_timetable_small_optimized.pkl")
-    dc_path = os.path.join(PARENT, "scripts", "data", "small", "phase_a_dc_small.pkl")
-    if not os.path.exists(sol_path):
-        pytest.skip(f"SKIP: {sol_path} non esiste")
-    with open(profs_path, "rb") as f:
-        profs = pickle.load(f)
-    with open(sol_path, "rb") as f:
-        sol = pickle.load(f)
-    with open(dc_path, "rb") as f:
-        dc_value = pickle.load(f)
+    profs = _small_school()
+    classes, triples, class_profs = cv2.build_indices(profs)
+    dc_value = cv2.solve_phase_a(profs, classes, triples, class_profs,
+                                 time_limit=10, workers=2, log=False)
+    assert dc_value
+    sol = {}
+    for d in cv2.DAYS:
+        out, _ = cv2.solve_phase_b_for_day(d, profs, classes, triples,
+                                           class_profs, dc_value,
+                                           time_limit=10, workers=2)
+        assert out is not None
+        sol.update(out)
 
     print("[test] HARD check sulla soluzione attuale: ", end="")
     print("OK" if meta.is_hard_feasible(sol, profs) else "FAIL")
