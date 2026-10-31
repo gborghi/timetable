@@ -250,8 +250,7 @@ def find_prof_subject(profs, cl, subject):
 def add_consecutive_constraints_phase_b(model, slot, day, profs, dc_value,
                                         class_flags=None, pairing=None):
     r"""Aggiunge i vincoli HARD di appaiamento su Phase B per quel giorno:
-      - ``pair_exists``: per ogni cattedra (docente, materia), se il
-        docente ha >= 2 ore DI QUELLA MATERIA quel giorno,
+      - ``pair_exists``: se il prof della materia ha >= 2 ore quel giorno,
         almeno una coppia di slot consecutivi deve essere occupata.
       - ``must_pair``: se ne ha 2 (Phase A garantisce {0, 2}), consecutive.
 
@@ -283,23 +282,11 @@ def add_consecutive_constraints_phase_b(model, slot, day, profs, dc_value,
                    for subj, mode in _legacy
                    if class_enforces(class_flags, cl,
                                      _pair_flag[subj], True)]
-    # Regola per cattedra (docente, materia), come il validatore H_A in
-    # metaheuristics.is_hard_feasible: ogni docente della materia, e solo
-    # le ore di QUELLA materia (Italiano+Storia dello stesso docente non
-    # fanno una doppia di Italiano).
-    cattedre = []
     for cl, subject, mode in targets:
-        want = subject_key(subject)
-        for p in sorted(profs):
-            cm = (profs[p].get("classi") or {}).get(cl) or {}
-            for s in cm:
-                if subject_key(s) == want:
-                    cattedre.append((cl, subject, mode, p, s))
-    for cl, subject, mode, p, cat_subj in cattedre:
-            if mode == "pair_exists":
-                subjs_of_p = [cat_subj]
-            else:
-                subjs_of_p = list(profs[p]["classi"][cl].keys())
+            p = find_prof_subject(profs, cl, subject)
+            if p is None or cl not in profs[p]["classi"]:
+                continue
+            subjs_of_p = list(profs[p]["classi"][cl].keys())
             # Skip se questo prof non ha slot in questo stage
             # (e' schedulato altrove). Il vincolo verra' applicato
             # nello stage in cui il prof e' modellato.
