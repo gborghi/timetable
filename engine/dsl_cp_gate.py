@@ -28,6 +28,8 @@ job, not this module's.
 """
 from __future__ import annotations
 
+import re
+
 
 def _gd():
     """Resolve ``general_dsl`` using metaheuristics' import idiom.
@@ -75,6 +77,14 @@ def _build_world(sol, profs, *, day=None):
     return world
 
 
+_ROOM_REF = re.compile(r"\b[A-Za-z_]\w*\.classroom\b")
+
+
+def needs_rooms(expr: str) -> bool:
+    """True se la regola legge l'aula della lezione (``l.classroom...``)."""
+    return bool(_ROOM_REF.search(expr or ""))
+
+
 def screen_dsl_hard(sol, profs, hard_exprs, *, day=None):
     """Split ``hard_exprs`` into ``(violated, unverifiable)`` against ``sol``.
 
@@ -101,6 +111,12 @@ def screen_dsl_hard(sol, profs, hard_exprs, *, day=None):
     world = _build_world(sol, profs, day=day)
     violated, unverifiable = [], []
     for e in hard_exprs:
+        if needs_rooms(e):
+            # La soluzione qui non ha aule: una regola su ``l.classroom``
+            # non e' giudicabile e la controlla il passo aule. Prima finiva
+            # in «unverifiable» e ogni giorno con quella materia falliva
+            # chiuso (Fase B al 0% sul profilo small, Liceo M5).
+            continue
         try:
             tree = gd.parse(e)
         except Exception:  # noqa: BLE001 - unparseable HARD rule: fail closed
