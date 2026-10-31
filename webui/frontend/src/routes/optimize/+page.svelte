@@ -17,6 +17,7 @@
     savePipeline,
   } from '$lib/pipeline_persist.mjs';
   import { tooltip } from '$lib/actions/tooltip';
+  import { fromPreset, loadMaxFree, saveMaxFree } from '$lib/max_free_persist.mjs';
 
   let runId = null;
   let runs = [];
@@ -76,9 +77,11 @@
     // contemporanea in ogni (giorno, ora) pari al totale delle aule.
     respect_room_capacity: false,
     partial: false,
+    // Giorni liberi: valori dal preset del motore, caricati in onMount
+    // (GET /api/optimize/presets/max-free-days) e ricordati in localStorage.
     max_free_if_full: false,
-    max_free_days: 1,
-    full_time_hours: 18,
+    max_free_days: null,
+    full_time_hours: null,
     max_free_exclude: '',
     max_free_only: '',
     // Joint (giorno,ora,aula): quando enabled, le var aula entrano nel
@@ -221,9 +224,23 @@
     pipelineList = next;
   }
 
+  let maxFreeHydrated = false;
+  async function loadMaxFreePreset() {
+    try {
+      const preset = await api.get('/api/optimize/presets/max-free-days');
+      Object.assign(step3, loadMaxFree(fromPreset(preset)));
+      step3 = step3;
+      maxFreeHydrated = true;
+    } catch (e) {
+      flash(`Preset giorni liberi non disponibile: ${e.message}`, 'error');
+    }
+  }
+  $: if (maxFreeHydrated) saveMaxFree(step3);
+
   onMount(async () => {
     pipelineList = loadPipeline();
     pipelineHydrated = true;
+    loadMaxFreePreset();
     await Promise.all([
       reloadRuns(),
       reloadActiveProfile(),
