@@ -381,7 +381,7 @@
                     on:click={discardCalendarChanges}>
               Annulla modifiche
             </button>
-            <button class="btn btn-primary" type="button"
+            <button class="btn-primary" type="button"
                     disabled={!anyCalDirty}
                     data-testid="save-calendar"
                     on:click={saveCalendarChanges}>
@@ -415,7 +415,7 @@
           <input class="block bg-ink-50 px-2 py-1 rounded"
                  placeholder="Gatto" bind:value={newLabel}/>
         </label>
-        <button class="btn btn-primary" type="submit">Aggiungi giorno</button>
+        <button class="btn-primary" type="submit">Aggiungi giorno</button>
         <span class="text-[11.5px] text-ink-400 max-w-[40ch]">
           Codice ed etichetta sono liberi. L’ID numerico (#) non cambia se rinomini.
         </span>
@@ -450,7 +450,7 @@
                        on:change={() => toggleActive(day)}/>
                 Attivo
               </label>
-              <button class="btn btn-primary" disabled={!dirty[day.id]}
+              <button class="btn-primary" disabled={!dirty[day.id]}
                       on:click={() => saveDay(day.id)}>
                 Salva slot
               </button>

@@ -105,6 +105,8 @@
   .num { @apply font-mono tabular-nums; }
 
   /* --- bottoni ------------------------------------------------------- */
+  /* Le varianti includono già `btn`: non scrivere «btn btn-primary».
+     In v4 `btn` è nel layer utilities e vincerebbe sui colori. */
   .btn-primary {
     @apply btn rounded-lg bg-accent-500 text-white border-accent-500
            font-medium hover:bg-accent-600 hover:text-white
