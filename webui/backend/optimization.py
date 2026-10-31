@@ -859,7 +859,12 @@ def _apply_max_free_preset(profs, *, max_free: int, threshold: int,
         only=mfd.parse_name_list(only),
         pot_by_teacher=pot,
     )
-    errors = mfd.precheck(profs)
+    try:
+        from engine import cpsat_v2_timetable as _cv2
+    except ImportError:
+        import cpsat_v2_timetable as _cv2
+    errors = mfd.precheck(profs, days=list(_cv2.DAYS),
+                          hours_per_day=len(_cv2.HOURS))
     if errors:
         detail = "; ".join(e["message"] for e in errors)
         raise RuntimeError(

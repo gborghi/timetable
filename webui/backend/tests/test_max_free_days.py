@@ -261,3 +261,21 @@ def test_phase_a_infeasible_message_names_the_teacher():
     assert "Nucleo minimo" in msg
     assert "T" in msg
 
+
+
+def test_weekly_hours_skips_pseudo_class_potenziamento():
+    """Kepler G1: il potenziamento in ``classi`` non si conta due volte."""
+    info = {"classi": {"1A": {"Matematica": {"ore": 16}},
+                       "__potenziamento__": {"Pot": {"ore": 2}}},
+            "potenziamento_hours": 2}
+    assert mfd.weekly_hours(info) == 18
+
+
+def test_precheck_hours_exceed_capacity_of_remaining_days():
+    """Kepler G2: 20 ore, 6 giorni da 4 ore, max 2 liberi -> 16 < 20."""
+    profs = {"T": {"classi": {"1A": {"X": {"ore": 20}}},
+                   "potenziamento_hours": 0,
+                   "max_free_if_hours": {"max_free": 2, "threshold": 18}}}
+    errs = mfd.precheck(profs, days=[1, 2, 3, 4, 5, 6], hours_per_day=4)
+    assert [e["code"] for e in errs] == ["hours_exceed_capacity"]
+    assert mfd.precheck(profs, days=[1, 2, 3, 4, 5, 6], hours_per_day=5) == []

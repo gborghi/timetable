@@ -30,7 +30,11 @@ def weekly_hours(info: dict | None, pot_hours: int = 0) -> int:
     passato a parte si somma solo se non è già in ``info``."""
     info = info or {}
     hours = 0
-    for subs in (info.get("classi") or {}).values():
+    for cl, subs in (info.get("classi") or {}).items():
+        # Le pseudo-classi (``__potenziamento__`` ecc.) non sono lezioni:
+        # il potenziamento si conta sotto, una volta sola (Kepler G1).
+        if str(cl).startswith("__"):
+            continue
         if not isinstance(subs, dict):
             continue
         for spec in subs.values():
@@ -93,7 +97,8 @@ def stamp(profs: dict, *, max_free: int, threshold: int,
         }
 
 
-def precheck(profs: dict, *, days: list[int] | None = None) -> list[dict]:
+def precheck(profs: dict, *, days: list[int] | None = None,
+             hours_per_day: int | None = None) -> list[dict]:
     """Controlli aritmetici prima del solve. Lista vuota = nessun
     conflitto. Non risolve il modello."""
     errors: list[dict] = []
@@ -131,6 +136,24 @@ def precheck(profs: dict, *, days: list[int] | None = None) -> list[dict]:
                 ),
                 "days": sorted(full_off),
             })
+        # Kepler G2: le ore devono stare nei (|D| - N) giorni piu' capienti.
+        if days and hours_per_day:
+            cap = sorted((max(0, min(int(caps.get(d, caps.get(str(d),
+                                                         hours_per_day))),
+                                     int(hours_per_day)))
+                          for d in days), reverse=True)
+            need_days = max(0, len(days) - max_free)
+            room = sum(cap[:need_days]) if need_days else 0
+            if need_days and hours > room:
+                errors.append({
+                    "teacher": name,
+                    "code": "hours_exceed_capacity",
+                    "message": (
+                        f"{name}: {hours} ore non stanno in "
+                        f"{need_days} giorni (capienza {room}) con al "
+                        f"massimo {max_free} giorni liberi"
+                    ),
+                })
     return errors
 
 
