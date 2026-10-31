@@ -99,7 +99,7 @@
 
   {#if hasLocked}
     <p class="text-sm text-red-700 mb-3" data-testid="schedule-conflict-locked">
-      Attenzione: fra gli eventi confliggenti ce n'e' almeno uno
+      Attenzione: fra gli eventi confliggenti ce n'è almeno uno
       <b>bloccato</b>. Entrambe le risoluzioni lo rimuovono.
     </p>
   {/if}

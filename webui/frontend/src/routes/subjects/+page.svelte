@@ -73,7 +73,7 @@
 
   const columns = [
     { key: 'name', label: 'Nome' },
-    { key: 'pretty_name', label: 'Pretty name' },
+    { key: 'pretty_name', label: 'Nome visualizzato' },
     { key: 'distribute_days_weight', label: 'Dist. giorni' },
     { key: 'dual_hours_weight', label: 'Doppie ore' },
     { key: 'no_sixth_hour_weight', label: 'No 6^a ora' }
@@ -163,7 +163,7 @@
   {#if editing}
     <div class="grid grid-cols-2 gap-3" data-testid="subject-form">
       <div class="field"><label for="routes-subjects-f1">Nome (chiave)</label><input id="routes-subjects-f1" bind:value={editing.name} data-testid="subject-name-input"/></div>
-      <div class="field"><label for="routes-subjects-f2">Pretty name</label><input id="routes-subjects-f2" bind:value={editing.pretty_name} data-testid="subject-pretty-name-input"/></div>
+      <div class="field"><label for="routes-subjects-f2">Nome visualizzato</label><input id="routes-subjects-f2" bind:value={editing.pretty_name} data-testid="subject-pretty-name-input"/></div>
       <div class="field col-span-2"><label for="routes-subjects-f3">Note</label><input id="routes-subjects-f3" bind:value={editing.notes}/></div>
       <div class="field"><label for="routes-subjects-f4">Peso "spalmare su pi giorni"</label><input id="routes-subjects-f4" type="number" bind:value={editing.distribute_days_weight}/></div>
       <div class="field"><label for="routes-subjects-f5">Peso "doppie ore consecutive"</label><input id="routes-subjects-f5" type="number" bind:value={editing.dual_hours_weight}/></div>

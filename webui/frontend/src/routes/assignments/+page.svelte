@@ -153,7 +153,7 @@
     if (!t) return '';
     const used = t.assigned_hours;
     const mx = t.max_hours;
-    if (t.is_over) return `${used}/${mx} (gia oltre il max!)`;
+    if (t.is_over) return `${used}/${mx} (già oltre il max!)`;
     return `${used}/${mx}`;
   }
 

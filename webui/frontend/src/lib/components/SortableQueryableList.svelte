@@ -476,7 +476,7 @@
                     : Number(e.currentTarget.value),
                 )}>
           {#each PAGE_SIZE_OPTIONS as opt}
-            <option value={opt}>{opt}</option>
+            <option value={opt}>{opt === 'all' ? 'tutte' : opt}</option>
           {/each}
         </select>
       </span>
@@ -497,7 +497,7 @@
                     : Number(e.currentTarget.value),
                 )}>
           {#each PAGE_SIZE_OPTIONS as opt}
-            <option value={opt}>{opt}</option>
+            <option value={opt}>{opt === 'all' ? 'tutte' : opt}</option>
           {/each}
         </select>
       </span>

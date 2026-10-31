@@ -115,7 +115,7 @@
   }
 
   async function del(row) {
-    if (!await confirmDialog('Eliminare ' + row.code + '? (le classi gia collegate verranno disassociate)')) return;
+    if (!await confirmDialog('Eliminare ' + row.code + '? (le classi già collegate verranno disassociate)')) return;
     try {
       await curriculaSvc.remove(row.id);
       await listRef.reload();

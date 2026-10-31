@@ -228,6 +228,9 @@
   }
 
   // levelPill / levelLabel imported from $lib/constraint_levels.js
+  const SCOPE_IT = { global: 'globale', teacher: 'docente', class: 'classe',
+                     classroom: 'aula', subject: 'materia', curriculum: 'curricolo' };
+  const scopeLabelIt = (s) => SCOPE_IT[s] || s;
 
   // Human labels for the raw `kind` enum (the raw value stays as a
   // tooltip). Unknown kinds fall back to a de-underscored form.
@@ -425,7 +428,7 @@
                 <td>
                   <span class="pill text-[10px]!">tab: {r.origin}</span>
                 </td>
-                <td><span class="pill text-[10px]!">{r.scope}</span></td>
+                <td><span class="pill text-[10px]!" title={r.scope}>{scopeLabelIt(r.scope)}</span></td>
                 <td>{r.owner_name}</td>
                 <td>
                   <span class="{levelPill(r.level)} text-[10px]!">
@@ -496,11 +499,11 @@
                             {c.level === 'hard' ? 'pill-red'
                              : c.level === 'soft' ? 'pill-amber'
                              : c.level === 'preferred' ? 'pill-blue'
-                             : 'pill-green'}">{c.level}</span>
+                             : 'pill-green'}" title={c.level}>{levelLabel(c.level)}</span>
               </td>
               <td class="text-center">{c.weight}</td>
               <td>
-                <span class="pill text-[10px]!">{c.scope}</span>
+                <span class="pill text-[10px]!" title={c.scope}>{scopeLabelIt(c.scope)}</span>
                 {#if c.owner_id != null}<span class="text-ink-400 ml-1">#{c.owner_id}</span>{/if}
               </td>
               <td><code class="text-[10px]">{c.expression}</code></td>

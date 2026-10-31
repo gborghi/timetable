@@ -1443,7 +1443,7 @@ def run_phase_b(k: int, time_a: float, time_bridges: float,
         with SessionLocal() as db:
             sid = engine_io.import_solution_into_db(
                 db, full_solution,
-                name=f"Phase B run {rid}"
+                name=f"Fase B, esecuzione {rid}"
                      + (" (orario parziale)" if _missing is not None
                         else "" if make_active
                         else " (parziale / non valido)"),

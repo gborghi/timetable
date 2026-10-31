@@ -415,7 +415,7 @@
          title="Modalità avanzata"
          subtitle="step singoli e parametri del solver">
   <p class="text-[12.5px] text-ink-500 max-w-[76ch] mb-3">
-    Le schede qui sotto servono solo per casi particolari: ogni step puo
+    Le schede qui sotto servono solo per casi particolari: ogni step può
     essere lanciato singolarmente o in catena, e tra uno step e l'altro
     puoi tornare alle pagine CRUD per modificare a mano vincoli, cattedre
     e singole lezioni. Il log live arriva via SSE dal backend.
@@ -1095,7 +1095,7 @@
     <div class="flex items-baseline justify-between mb-3">
       <div>
         <span class="eyebrow">Storico</span>
-        <h2 class="mb-0! mt-0.5">Cronologia run</h2>
+        <h2 class="mb-0! mt-0.5">Cronologia delle esecuzioni</h2>
       </div>
       <button class="btn text-xs! px-2! py-1!" on:click={reloadRuns}>Aggiorna</button>
     </div>

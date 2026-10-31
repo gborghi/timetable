@@ -234,7 +234,7 @@
         o <code>@giornoOra</code> (es. <code>aula:LabFisica@mar</code> =
         "in aula LabFisica il martedi", <code>aula:LabFisica@mar4</code> =
         "in aula LabFisica martedi 4a ora"). Lo storage e l'editing funzionano
-        gia oggi; l'enforcement nel solver è parziale (vedi docs).
+        già oggi; l'enforcement nel solver è parziale (vedi docs).
       </div>
       <div><strong>Tipi:</strong>
         <span class="pill-red text-[10px]!">Obbligatorio</span> deve essere soddisfatto;

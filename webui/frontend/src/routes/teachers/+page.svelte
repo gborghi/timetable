@@ -421,7 +421,7 @@
     { key: 'free_day', label: 'Giorno libero' },
     { key: 'n_classes', label: 'N. classi' },
     { key: 'scheduled_hours', label: 'Ore-cattedra' },
-    { key: 'soft_penalty_total', label: 'Soft tot.' }
+    { key: 'soft_penalty_total', label: 'Penalità tot.' }
   ];
   const help = {
     fields: ['name', 'cognome_nome', 'matricola', 'group', 'classe_di_concorso',
