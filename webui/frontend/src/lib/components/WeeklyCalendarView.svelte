@@ -1136,7 +1136,8 @@
                        data-day={dnum}
                        data-hour={hnum}
                        data-testid={'sched-slot-' + dnum + '-' + hnum}
-                       role="gridcell"
+                       role="button"
+                       aria-label={'Giorno ' + dnum + ', ora ' + hnum + (lst.length ? ', ' + lst.length + ' lezioni' : ', libera')}
                        tabindex="-1"
                        on:dragover={(e) => _onSlotDragOver(e, dnum, hnum)}
                        on:dragleave={(e) => _onSlotDragLeave(e, dnum, hnum)}
@@ -1259,7 +1260,7 @@
                        data-day={dnum}
                        data-hour={hnum}
                        data-state={cell ? cell.state : 'free'}
-                       role="gridcell"
+                       role="button"
                        tabindex="-1"
                        aria-label={`${slot.start_time}-${slot.end_time}: ` +
                          (isSoft ? `penalità ${cell.soft_penalty}`

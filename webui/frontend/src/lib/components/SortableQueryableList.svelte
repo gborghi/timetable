@@ -470,6 +470,7 @@
       <span class="ml-auto flex items-center gap-1">
         <span class="text-ink-500">Per pagina:</span>
         <select class="px-1.5 py-0.5 border border-ink-200 rounded-md bg-white"
+                aria-label="Righe per pagina"
                 value={pageSize}
                 on:change={(e) => changePageSize(
                   e.currentTarget.value === 'all' ? 'all'
@@ -491,6 +492,7 @@
       <span class="ml-auto flex items-center gap-1">
         <span class="text-ink-500">Per pagina:</span>
         <select class="px-1.5 py-0.5 border border-ink-200 rounded-md bg-white"
+                aria-label="Righe per pagina"
                 value={pageSize}
                 on:change={(e) => changePageSize(
                   e.currentTarget.value === 'all' ? 'all'
@@ -557,7 +559,7 @@
           {#if selectable}
             <th class="w-6 text-center"
                 title="Tieni Ctrl o Shift per selezione multipla. Click semplice = singola.">
-              <input type="checkbox"
+              <input type="checkbox" aria-label="Seleziona tutte le righe visibili"
                      checked={selectedIds.length > 0 && selectedIds.length === rows.length}
                      indeterminate={selectedIds.length > 0 && selectedIds.length < rows.length}
                      on:change={(e) => e.target.checked ? selectAllVisible() : clearSelection()}/>
@@ -634,6 +636,7 @@
                 on:click={(e) => onRowClick(e, row, idx)}>
               <td class="w-6 text-center">
                 <input type="checkbox" checked={isSelected(row)}
+                       aria-label={'Seleziona riga ' + rowKey(row)}
                        on:click|stopPropagation={() => { toggleOne(row); lastClickedIdx = idx; }}/>
               </td>
               <slot {row} {columns} {idx}>

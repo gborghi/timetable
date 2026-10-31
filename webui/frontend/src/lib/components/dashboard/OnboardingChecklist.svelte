@@ -55,8 +55,8 @@
     {#if allDone}
       <p class="text-sm text-ink-500 mt-1">
         Tutto pronto: la scuola ha un orario. Puoi rigenerarlo da
-        <a href="/optimize" class="text-accent-500 hover:underline">Ottimizza</a>
-        o modificarlo in <a href="/schedule" class="text-accent-500 hover:underline">Orario</a>.
+        <a href="/optimize" class="text-accent-500 underline">Ottimizza</a>
+        o modificarlo in <a href="/schedule" class="text-accent-500 underline">Orario</a>.
       </p>
     {:else}
       <p class="text-sm text-ink-500 mt-1">

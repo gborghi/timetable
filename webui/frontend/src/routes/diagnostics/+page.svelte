@@ -516,8 +516,9 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
                   on:click={() => clearHistory('mc')}>Pulisci</button>
         </div>
         {#each mcHistory as h (h.runId)}
+          <div class="relative">
           <details class="border border-ink-200 rounded-sm mb-1">
-            <summary class="cursor-pointer px-2 py-1 text-xs flex
+            <summary class="cursor-pointer pl-2 pr-8 py-1 text-xs flex
                             items-center gap-2 hover:bg-ink-50">
               <span class="pill text-[10px]!">run #{h.runId}</span>
               <span class="text-ink-500">{_formatTime(h.when)}</span>
@@ -529,11 +530,6 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
               {:else}
                 <span class="text-rose-700">errore</span>
               {/if}
-              <button class="ml-auto btn text-[10px]! px-1! py-0!"
-                      title="Elimina dalla cronologia"
-                      on:click|stopPropagation|preventDefault={() => deleteHistoryEntry('mc', h.runId)}>
-                x
-              </button>
             </summary>
             <div class="p-2">
               {#if h.result?.ok}
@@ -547,6 +543,12 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
               {/if}
             </div>
           </details>
+              <button class="absolute right-2 top-1 btn text-[10px]! px-1! py-0!"
+                      title="Elimina dalla cronologia"
+                      on:click|stopPropagation|preventDefault={() => deleteHistoryEntry('mc', h.runId)}>
+                x
+              </button>
+          </div>
         {/each}
       </div>
     {/if}
@@ -632,8 +634,9 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
                   on:click={() => clearHistory('bp')}>Pulisci</button>
         </div>
         {#each bpHistory as h (h.runId)}
+          <div class="relative">
           <details class="border border-ink-200 rounded-sm mb-1">
-            <summary class="cursor-pointer px-2 py-1 text-xs flex
+            <summary class="cursor-pointer pl-2 pr-8 py-1 text-xs flex
                             items-center gap-2 hover:bg-ink-50">
               <span class="pill text-[10px]!">run #{h.runId}</span>
               <span class="text-ink-500">{_formatTime(h.when)}</span>
@@ -643,16 +646,17 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
                   -- mod {h.result.modularity.toFixed(3)}
                 {/if}
               </span>
-              <button class="ml-auto btn text-[10px]! px-1! py-0!"
-                      title="Elimina dalla cronologia"
-                      on:click|stopPropagation|preventDefault={() => deleteHistoryEntry('bp', h.runId)}>
-                x
-              </button>
             </summary>
             <div class="p-2">
               <DiagnosticResult kind="diag_bipartite" result={h.result}/>
             </div>
           </details>
+              <button class="absolute right-2 top-1 btn text-[10px]! px-1! py-0!"
+                      title="Elimina dalla cronologia"
+                      on:click|stopPropagation|preventDefault={() => deleteHistoryEntry('bp', h.runId)}>
+                x
+              </button>
+          </div>
         {/each}
       </div>
     {/if}
@@ -783,24 +787,26 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
                   on:click={() => clearHistory('co')}>Pulisci</button>
         </div>
         {#each coHistory as h (h.runId)}
+          <div class="relative">
           <details class="border border-ink-200 rounded-sm mb-1">
-            <summary class="cursor-pointer px-2 py-1 text-xs flex
+            <summary class="cursor-pointer pl-2 pr-8 py-1 text-xs flex
                             items-center gap-2 hover:bg-ink-50">
               <span class="pill text-[10px]!">run #{h.runId}</span>
               <span class="text-ink-500">{_formatTime(h.when)}</span>
               <span class="text-ink-500">
                 {h.result?.models?.length || 0} modell{(h.result?.models?.length || 0) === 1 ? 'o' : 'i'}
               </span>
-              <button class="ml-auto btn text-[10px]! px-1! py-0!"
-                      title="Elimina dalla cronologia"
-                      on:click|stopPropagation|preventDefault={() => deleteHistoryEntry('co', h.runId)}>
-                x
-              </button>
             </summary>
             <div class="p-2">
               <DiagnosticResult kind="diag_correlations" result={h.result}/>
             </div>
           </details>
+              <button class="absolute right-2 top-1 btn text-[10px]! px-1! py-0!"
+                      title="Elimina dalla cronologia"
+                      on:click|stopPropagation|preventDefault={() => deleteHistoryEntry('co', h.runId)}>
+                x
+              </button>
+          </div>
         {/each}
       </div>
     {/if}
@@ -929,8 +935,9 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
                   on:click={() => clearHistory('ds')}>Pulisci</button>
         </div>
         {#each dsHistory as h (h.runId)}
+          <div class="relative">
           <details class="border border-ink-200 rounded-sm mb-1">
-            <summary class="cursor-pointer px-2 py-1 text-xs flex
+            <summary class="cursor-pointer pl-2 pr-8 py-1 text-xs flex
                             items-center gap-2 hover:bg-ink-50">
               <span class="pill text-[10px]!">run #{h.runId}</span>
               <span class="text-ink-500">{_formatTime(h.when)}</span>
@@ -939,11 +946,6 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
                 {#if h.result?.teacher_loads && h.result?.subject_slot_heatmap} + {/if}
                 {#if h.result?.subject_slot_heatmap}heatmap materia/slot{/if}
               </span>
-              <button class="ml-auto btn text-[10px]! px-1! py-0!"
-                      title="Elimina dalla cronologia"
-                      on:click|stopPropagation|preventDefault={() => deleteHistoryEntry('ds', h.runId)}>
-                x
-              </button>
             </summary>
             <div class="p-2">
               {#if h.result?.ok}
@@ -978,6 +980,12 @@ Le righe verranno rimosse dalla tabella runs del database.`)) return;
               {/if}
             </div>
           </details>
+              <button class="absolute right-2 top-1 btn text-[10px]! px-1! py-0!"
+                      title="Elimina dalla cronologia"
+                      on:click|stopPropagation|preventDefault={() => deleteHistoryEntry('ds', h.runId)}>
+                x
+              </button>
+          </div>
         {/each}
       </div>
     {/if}

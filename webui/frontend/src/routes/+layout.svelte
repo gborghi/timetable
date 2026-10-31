@@ -119,7 +119,7 @@
         </span>
       </a>
       <span class="hidden sm:inline text-[10px] font-semibold
-                   text-ink-400 shrink-0 -ml-1"
+                   text-ink-500 shrink-0 -ml-1"
             title="Sviluppato con l'aiuto dell'intelligenza artificiale (Claude)"
             data-testid="built-with-ai">Sviluppato con l'aiuto dell'intelligenza artificiale</span>
       <div class="hidden sm:block w-px h-6 bg-ink-200 shrink-0" aria-hidden="true"></div>
@@ -214,7 +214,7 @@
       {/if}
 
       <div class="order-1 sm:order-0 ml-auto flex items-center gap-2 sm:gap-3 shrink-0">
-        <span class="hidden lg:inline font-mono text-[11px] text-ink-300 tabular-nums">
+        <span class="hidden lg:inline font-mono text-[11px] text-ink-500 tabular-nums">
           {$datasetState.classes} classi · {$datasetState.teachers} docenti ·
           {$datasetState.classrooms} aule
         </span>

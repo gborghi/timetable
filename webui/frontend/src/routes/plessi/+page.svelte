@@ -235,6 +235,7 @@
         + Nuovo plesso
       </button>
     </div>
+    <div class="overflow-x-auto">
     <table class="w-full text-sm">
       <thead>
         <tr class="border-b border-ink-200">
@@ -275,6 +276,7 @@
         {/if}
       </tbody>
     </table>
+    </div>
     {#if editingPlesso}
       <div class="border border-accent-300 bg-accent-50 rounded-sm p-3 space-y-2"
            data-testid="plesso-form">
@@ -321,7 +323,7 @@
   <section class="card p-4 space-y-3">
     <div class="flex items-center gap-3 flex-wrap">
       <h2 class="text-xl font-semibold">Regole di spostamento</h2>
-      <select bind:value={filterRuleKind} class="text-sm">
+      <select bind:value={filterRuleKind} class="text-sm" aria-label="Filtra le regole di spostamento per tipo">
         <option value="all">Tutte</option>
         <option value="teacher">Docenti</option>
         <option value="class">Classi</option>
@@ -338,6 +340,7 @@
       sedi: gap minimo (slot vuoti) o spostamento solo durante la
       ricreazione.
     </p>
+    <div class="overflow-x-auto">
     <table class="w-full text-sm">
       <thead>
         <tr class="border-b border-ink-200">
@@ -384,9 +387,10 @@
         {/if}
       </tbody>
     </table>
+    </div>
     {#if editingRule}
       <div class="border border-accent-300 bg-accent-50 rounded-sm p-3 space-y-2">
-        <div class="grid grid-cols-3 gap-2">
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
           <label class="field">
             <span class="text-xs">Da plesso</span>
             <select bind:value={editingRule.from_plesso_id} class="w-full">
@@ -473,7 +477,7 @@
   <section class="card p-4 space-y-3">
     <div class="flex items-center gap-3 flex-wrap">
       <h2 class="text-xl font-semibold">Regole entit&agrave;</h2>
-      <select bind:value={filterPolicyKind} class="text-sm">
+      <select bind:value={filterPolicyKind} class="text-sm" aria-label="Filtra le regole entità per tipo">
         <option value="all">Tutte</option>
         <option value="teacher">Docenti</option>
         <option value="class">Classi</option>
@@ -492,6 +496,7 @@
       <code>single_plesso_total</code> (in tutta la settimana
       stesso plesso, opzionalmente fissato a un plesso specifico).
     </p>
+    <div class="overflow-x-auto">
     <table class="w-full text-sm">
       <thead>
         <tr class="border-b border-ink-200">
@@ -530,9 +535,10 @@
         {/if}
       </tbody>
     </table>
+    </div>
     {#if editingPolicy}
       <div class="border border-accent-300 bg-accent-50 rounded-sm p-3 space-y-2">
-        <div class="grid grid-cols-3 gap-2">
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
           <label class="field">
             <span class="text-xs">Tipo entità</span>
             <select bind:value={editingPolicy.entity_kind} class="w-full">

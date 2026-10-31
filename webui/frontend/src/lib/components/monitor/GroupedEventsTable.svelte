@@ -430,12 +430,12 @@
   <div class="card p-3 flex items-center gap-3 flex-wrap">
     <span class="text-sm font-medium">Raggruppa per:</span>
     <select class="text-sm px-2 py-1 border border-ink-200 rounded-sm"
-            bind:value={groupBy1}>
+            bind:value={groupBy1} aria-label="Raggruppa per">
       {#each GROUP_OPTIONS as o}<option value={o.value}>{o.label}</option>{/each}
     </select>
     <span class="text-sm">e poi per:</span>
     <select class="text-sm px-2 py-1 border border-ink-200 rounded-sm"
-            bind:value={groupBy2}>
+            bind:value={groupBy2} aria-label="Poi raggruppa per">
       {#each GROUP_OPTIONS as o}<option value={o.value}>{o.label}</option>{/each}
     </select>
     <button class="btn text-xs!" on:click={toggleAll}

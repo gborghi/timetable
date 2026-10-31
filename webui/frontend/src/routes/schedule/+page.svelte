@@ -875,8 +875,8 @@
       </p>
       {#if classData}
         <div class="flex gap-2 mb-2">
-          <select bind:value={selectedClass}
-                  class="px-2 py-1 rounded-sm border border-ink-200">
+          <select bind:value={selectedClass} aria-label="Classe"
+                  class="px-2 py-1 rounded-sm border border-ink-200 max-w-full">
             {#each classData.classes as c}<option>{c}</option>{/each}
           </select>
         </div>
@@ -958,9 +958,9 @@
       {/if}
       </div>
       {#if $viewStore !== 'global'}
-        <div class="flex items-center gap-2"
+        <div class="flex flex-wrap items-center gap-2 min-w-0 max-w-full"
              data-testid="schedule-entity-controls">
-          <input type="text" placeholder="cerca..."
+          <input type="text" placeholder="cerca..." aria-label="Cerca"
                  bind:value={entityFilter}
                  list="schedule-entity-list"
                  on:input={() => commitEntitySearch(true)}
@@ -972,7 +972,8 @@
           </datalist>
           <select value={$entityIdStore}
                   on:change={(e) => onEntityIdChange(e.currentTarget.value)}
-                  class="px-2 py-1 rounded-sm border border-ink-200 text-sm"
+                  aria-label={$viewStore === 'class' ? 'Classe' : 'Docente'}
+                  class="px-2 py-1 rounded-sm border border-ink-200 text-sm min-w-0 max-w-full"
                   data-testid="schedule-entity-select">
             {#each filteredEntities as n}<option value={n}>{$viewStore === 'class' ? classOptionLabel(n) : n}</option>{/each}
           </select>
