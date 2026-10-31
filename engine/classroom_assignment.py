@@ -304,9 +304,12 @@ def compresenza_map(lessons: list[dict]) -> dict[tuple, tuple]:
 
 
 def preset_alternativa_path() -> Path:
-    """Percorso del dato. Il nome del file e' il dato, non una regola."""
-    return (Path(__file__).resolve().parents[1]
-            / "data" / "preset_alternativa.json")
+    """Percorso del dato. Il nome del file e' il dato, non una regola.
+    ``PITANTUM_DATA_DIR`` sposta la cartella (test, installazioni)."""
+    import os
+    base = os.environ.get("PITANTUM_DATA_DIR")
+    root = Path(base) if base else Path(__file__).resolve().parents[1] / "data"
+    return root / "preset_alternativa.json"
 
 
 def load_preset_alternativa(path: Path | None = None) -> dict | None:

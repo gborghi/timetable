@@ -130,3 +130,4 @@ tests/benchmarks/results/*.csv
 /AUDIT.md
 /AUDIT_2026-08-15.md
 /report_purge_sync.md
+data/*.json.bak
