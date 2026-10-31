@@ -1224,10 +1224,11 @@ class ConstraintModel:
         ``mode == "must_pair"``: when the (teacher, class, subject)
             has exactly 2 hours that day, they MUST be consecutive
             (used for Scienzemotorie -- always paired).
-        ``mode == "pair_exists"``: when the (teacher, class, subject)
-            has >= 2 hours that day, at least one consecutive pair
-            of busy hours must exist (used for Matematica/Italiano
-            -- doppia consecutiva).
+        ``mode == "pair_exists"``: when the teacher of the subject has
+            >= 2 hours in the class that day (ANY of their subjects),
+            at least one consecutive pair of that teacher's hours must
+            exist, subjects may differ (Matematica/Italiano -- doppia
+            con lo stesso docente, Giovanni 31/10; validator H_A).
 
         In per-day mode the day-count is read statically from
         ``self.dc_value`` so the constraint only fires when the
@@ -1266,7 +1267,7 @@ class ConstraintModel:
                     continue
                 # Weekly mode: per-day "has >= 2 hours" literals, used
                 # below for the Mat/Ita "at least one day with a double"
-                # rule (validator H_A; Phase A ``subject_day_count_pair``).
+                # rule (validator H_A; Phase A ``teacher_class_day_count_pair``).
                 ge_two_days = []
                 n_days_in_scope = 0
                 for d in self.days:
@@ -1279,13 +1280,38 @@ class ConstraintModel:
                     if len(vs) != len(self.hours):
                         # subject not in scope on this day
                         continue
+                    day_terms = list(vs)
+                    if mode == "pair_exists":
+                        # Mat/Ita: la doppia vale con lo stesso docente,
+                        # anche di materie diverse (Giovanni 31/10, come
+                        # il validatore H_A e la Fase B). Presenza oraria
+                        # = OR di tutte le materie del docente in classe.
+                        others = [s2 for s2 in subjs if s2 != subj]
+                        if others:
+                            pres = []
+                            for i, h in enumerate(self.hours):
+                                ks = [vs[i]] + [
+                                    self.slot[(teacher, class_name, s2, d, h)]
+                                    for s2 in others
+                                    if (teacher, class_name, s2, d, h)
+                                    in self.slot]
+                                day_terms.extend(ks[1:])
+                                if len(ks) == 1:
+                                    pres.append(vs[i])
+                                    continue
+                                pr = self.model.NewBoolVar(
+                                    f"prT_{subject_name[:3]}_{teacher}_"
+                                    f"{class_name}_{d}_{h}")
+                                self.model.AddMaxEquality(pr, ks)
+                                pres.append(pr)
+                            vs = pres
                     if self.weekly_mode:
                         # Reified gate: the day-count is a CP-SAT
                         # decision, so we cannot statically skip
                         # day-pairs. Build is_two / is_ge_two from
                         # ``sum(vs)`` and gate the pair constraint
                         # on it.
-                        day_sum = sum(vs)
+                        day_sum = sum(day_terms)
                         n_days_in_scope += 1
                         pairs = []
                         for i in range(len(self.hours) - 1):
@@ -1339,8 +1365,14 @@ class ConstraintModel:
                                 f"unknown mode={mode!r}; expected "
                                 "'must_pair' or 'pair_exists'")
                         continue
-                    day_total = int(self.dc_value.get(
-                        (teacher, class_name, subj, d), 0))
+                    if mode == "pair_exists":
+                        # per docente: tutte le sue materie in classe
+                        day_total = sum(int(self.dc_value.get(
+                            (teacher, class_name, s2, d), 0))
+                            for s2 in subjs)
+                    else:
+                        day_total = int(self.dc_value.get(
+                            (teacher, class_name, subj, d), 0))
                     if mode == "must_pair" and day_total != 2:
                         continue
                     if mode == "pair_exists" and day_total < 2:
@@ -1363,10 +1395,11 @@ class ConstraintModel:
                     if pairs:
                         self.model.AddBoolOr(pairs)
                 # Mat/Ita (pair_exists), weekly mode: at least one day of
-                # the week must carry >= 2 hours of this cattedra (and so,
+                # the week must carry >= 2 hours of this teacher in the
+                # class, any subject (and so,
                 # by the implication above, a consecutive double). Only
                 # when every day is in scope and the cattedra has >= 2
-                # hours, mirroring Phase A's ``subject_day_count_pair``.
+                # hours, mirroring Phase A's ``teacher_class_day_count_pair``.
                 if (self.weekly_mode and mode == "pair_exists"
                         and ge_two_days
                         and n_days_in_scope == len(self.days)):
@@ -1862,7 +1895,7 @@ class DayCountModel(ConstraintModel):
     BoolVars. The constraint catalogue is supplied through the DSL
     compiler at level ``"phase_a"`` -- the five Phase A canonical
     pragmas (``class_day_load_in_day_count``, ``hall_bound_prof_day``,
-    ``free_day_choice_3way``, ``subject_day_count_pair``,
+    ``free_day_choice_3way``, ``teacher_class_day_count_pair``,
     ``subject_day_count_in``) cover the HARD surface of the legacy
     function ``cpsat_v2_timetable.solve_phase_a`` plus the SOFT
     free-day choice.

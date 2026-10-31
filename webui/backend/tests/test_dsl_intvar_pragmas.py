@@ -909,10 +909,10 @@ def test_build_phase_a_pragmas_emits_canonical_set():
     # is < 2 and is not Mat/Ita anyway -> skip. T3 has Motorie
     # only -> skip Mat/Ita.
     assert any(
-        "subject_day_count_pair('T1', '1A', 'Matematica', 2)" == p
+        "teacher_class_day_count_pair('T1', '1A', 2)" == p
         for p in pragmas), pragmas
     assert any(
-        "subject_day_count_pair('T2', '1A', 'Italiano', 2)" == p
+        "teacher_class_day_count_pair('T2', '1A', 2)" == p
         for p in pragmas), pragmas
     # No spurious emission for Storia / Motorie:
     assert not any("'Storia'" in p and "subject_day_count_pair" in p
@@ -1006,10 +1006,10 @@ def test_build_phase_a_pragmas_emits_subject_pair_per_teacher():
         day_count_keys=day_count_keys,
     )
     assert any(
-        "subject_day_count_pair('T1', '1A', 'Matematica', 2)" == p
+        "teacher_class_day_count_pair('T1', '1A', 2)" == p
         for p in pragmas), pragmas
     assert any(
-        "subject_day_count_pair('T2', '1A', 'Italiano', 2)" == p
+        "teacher_class_day_count_pair('T2', '1A', 2)" == p
         for p in pragmas), pragmas
 
 
@@ -1038,8 +1038,8 @@ def test_build_phase_a_pragmas_skips_subject_pair_when_below_2_ore():
         triples_by_prof=triples_by_prof,
         day_count_keys=day_count_keys,
     )
-    assert not any("'Italiano'" in p and "subject_day_count_pair" in p
+    assert not any("'T1'" in p and "day_count_pair" in p
                     for p in pragmas), pragmas
     assert any(
-        "subject_day_count_pair('T2', '1A', 'Matematica', 2)" == p
+        "teacher_class_day_count_pair('T2', '1A', 2)" == p
         for p in pragmas), pragmas

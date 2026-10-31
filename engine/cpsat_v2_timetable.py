@@ -377,12 +377,10 @@ def build_phase_a_pragmas(
         triple in a real class -- profs whose only classes are virtual
         groups are skipped, mirroring the legacy ``only_group_classes``
         bypass.
-      * ``subject_day_count_pair(t, cl, subj, 2)`` per (teacher, class,
-        subject) cattedra where ``subj`` is "Matematica" or "Italiano"
-        and the cattedra has at least 2 hours. Per-teacher per-subject:
-        each such cattedra independently needs >=1 day with >=2 hours
-        of that specific (teacher, class, subject). Replaces the
-        legacy per-prof cross-subject Mat/Ita HARD block.
+      * ``teacher_class_day_count_pair(t, cl, 2)`` per (teacher, class)
+        where the teacher has Matematica or Italiano with at least 2
+        hours: >=1 day with >=2 hours of that teacher in the class, any
+        subject (doppia con lo stesso docente, Giovanni 31/10).
       * ``subject_day_count_in(cl, "Scienzemotorie", 0, 2)`` per class
         with a Scienzemotorie cattedra in ``day_count``.
       * ``teacher_day_capacity(prof, day, n)`` -- or its ``n == 0``
@@ -491,8 +489,13 @@ def build_phase_a_pragmas(
             if mode == "pair_exists":
                 if int(cmap[cl][subj].get("ore", 0)) < 2:
                     continue
-                pragmas.append(
-                    f'subject_day_count_pair({p!r}, {cl!r}, {subj!r}, 2)')
+                # Doppia con lo stesso docente, anche di materie diverse
+                # (Giovanni 31/10): un giorno con >= 2 ore del docente
+                # nella classe, sommando tutte le sue materie. Una sola
+                # regola per (docente, classe) anche se ha Mat e Ita.
+                prag = f'teacher_class_day_count_pair({p!r}, {cl!r}, 2)'
+                if prag not in pragmas:
+                    pragmas.append(prag)
             else:  # must_pair -> daily count restricted to {0, 2}
                 if not any(k[0] == p and k[1] == cl and k[2] == subj
                            for k in day_count_keys):
@@ -1083,8 +1086,8 @@ def solve_phase_a(profs, classes, triples, class_profs,
         )
 
     # HARD (A) Mat/Ita "≥1 day with ≥2 hours" -- compiled below by
-    # the ``subject_day_count_pair`` DSL pragma. Per-teacher
-    # per-subject: each (t, cl, subj) cattedra with subj in
+    # the ``teacher_class_day_count_pair`` DSL pragma (same teacher,
+    # any subject; Giovanni 31/10). Triggered by each (t, cl, subj) cattedra with subj in
     # {Matematica, Italiano} and ore >= 2 gets the rule independently.
     # HARD (B) Motorie {0, 2} -- compiled below by the
     # ``subject_day_count_in`` DSL pragma.

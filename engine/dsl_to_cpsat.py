@@ -516,6 +516,7 @@ PRAGMA_LEVEL: dict[str, str] = {
     "hall_bound_prof_day": "phase_a",
     "free_day_choice_3way": "phase_a",
     "subject_day_count_pair": "phase_a",
+    "teacher_class_day_count_pair": "phase_a",
     "subject_day_count_in": "phase_a",
     "teacher_five_penalty": "phase_a",
     "teacher_one_penalty": "phase_a",
@@ -1361,6 +1362,20 @@ class DSLConstraintCompiler:
             subj = str(arg_values[2])
             n = int(arg_values[3])
             self._compile_subject_day_count_pair(teacher, cl, subj, n)
+            return True
+        if name == "teacher_class_day_count_pair":
+            # Per-teacher, any subject: (teacher, class, n). At least one
+            # day where the teacher has >= n hours in the class, summing
+            # all of the teacher's subjects there (doppia con lo stesso
+            # docente, anche di materie diverse: Giovanni 31/10).
+            if len(arg_values) != 3:
+                self.diagnostics.append(
+                    "teacher_class_day_count_pair expects "
+                    "(teacher, class, n)")
+                return True
+            self._compile_teacher_class_day_count_pair(
+                str(arg_values[0]), str(arg_values[1]),
+                int(arg_values[2]))
             return True
         if name == "free_day_choice_3way":
             # Args: prof, candidate_day_1, candidate_day_2,
@@ -2349,6 +2364,40 @@ class DSLConstraintCompiler:
         if not has_pair_days:
             return
         self.model.Add(sum(has_pair_days) >= 1)
+
+    def _compile_teacher_class_day_count_pair(
+            self, teacher: str, cl: str, n: int):
+        """Phase A "≥1 day with ≥n hours of the teacher in the class",
+        summing every subject the teacher has in that class. Phase B
+        then places a consecutive pair on such a day (same teacher, any
+        subject), matching the validator H_A."""
+        if not self.day_count:
+            self.diagnostics.append(
+                "teacher_class_day_count_pair: day_count empty")
+            return
+        days = self._days_in_dc_scope()
+        if not days:
+            return
+        per_day: dict = {}
+        for (pp, ccl, _ss, dd), v in self.day_count.items():
+            if pp == teacher and ccl == cl:
+                per_day.setdefault(dd, []).append(v)
+        if not per_day:
+            self.diagnostics.append(
+                f"teacher_class_day_count_pair: no day_count for "
+                f"({teacher!r}, {cl!r})")
+            return
+        has_pair_days = []
+        for d in days:
+            vs = per_day.get(d)
+            if not vs:
+                continue
+            b = self.model.NewBoolVar(f"_dsl_tcdp_has_{teacher}_{cl}_{d}")
+            self.model.Add(sum(vs) >= int(n)).OnlyEnforceIf(b)
+            self.model.Add(sum(vs) < int(n)).OnlyEnforceIf(b.Not())
+            has_pair_days.append(b)
+        if has_pair_days:
+            self.model.Add(sum(has_pair_days) >= 1)
 
     def _compile_free_day_choice_3way(
             self, prof: str, candidates: list[int],
