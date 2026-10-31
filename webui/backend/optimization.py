@@ -3000,6 +3000,31 @@ def run_full_pipeline(profile: str,
                         "phase_b: nessuna assegnazione; "
                         "metti 'phase_a' prima nella pipeline."
                     )
+                # Preset «giorni liberi» anche dalla pipeline completa
+                # (prima arrivava solo a run_phase_b: Liceo B1).
+                if (pb_kwargs or {}).get("max_free_if_full"):
+                    with SessionLocal() as _db_mf:
+                        _pot_mf = (engine_io
+                                   .potenziamento_assignments_from_db(_db_mf))
+                    try:
+                        from engine import max_free_days as _mfd_p
+                    except ImportError:
+                        import max_free_days as _mfd_p
+                    _n = pb_kwargs.get("max_free_days")
+                    _s = pb_kwargs.get("full_time_hours")
+                    _apply_max_free_preset(
+                        profs,
+                        max_free=int(_mfd_p.PRESET["max_free"]
+                                     if _n is None else _n),
+                        threshold=int(_mfd_p.PRESET["threshold"]
+                                      if _s is None else _s),
+                        exclude=pb_kwargs.get("max_free_exclude") or "",
+                        only=pb_kwargs.get("max_free_only") or "",
+                        pot_assignments=_pot_mf,
+                    )
+                    print("[full] phase_b: preset giorni liberi attivo "
+                          f"(N={pb_kwargs.get('max_free_days')}, "
+                          f"S={pb_kwargs.get('full_time_hours')})")
                 classes, triples, class_profs = cv2.build_indices(profs)
                 # Build the per-run solver ctx ONCE for this phase_b step.
                 # The full-pipeline block used to build none, so plessi
