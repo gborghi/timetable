@@ -28,8 +28,40 @@ jobs:
         env:
           PYTHONPATH: ${{ github.workspace }}/webui:${{ github.workspace }}/engine:${{ github.workspace }}/schedule
         run: |
+          # liceo90 (90 classi) gira nel job sotto: con 600 s per test
+          # andava sempre in timeout e nascondeva gli altri risultati.
           python -m pytest backend/tests -m slow \
+            --ignore=backend/tests/test_90class_schools.py \
             --timeout 600 \
             --tb=short \
             -ra \
             --maxfail=10
+
+  # Scuole da 90 classi: job notturno a parte, con il tempo che serve
+  # (TIMEOUT_S=1200 per run nel test) e senza bloccare il job sopra.
+  liceo90-nightly:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r webui/backend/requirements.txt -r webui/backend/requirements-dev.txt
+
+      - name: Run liceo90 tests
+        working-directory: webui
+        env:
+          PYTHONPATH: ${{ github.workspace }}/webui:${{ github.workspace }}/engine:${{ github.workspace }}/schedule
+        run: |
+          python -m pytest backend/tests/test_90class_schools.py -m slow \
+            --timeout 2700 \
+            --tb=short \
+            -ra
