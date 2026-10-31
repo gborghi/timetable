@@ -5,8 +5,8 @@
    * alternativa. L'aula fissa (nome della stanza) e le aule libere
    * si possono cambiare. La scelta si può togliere.
    *
-   * Non è importato dalle pagine: lo collegherà chi traduce le
-   * schermate, quando il testo di quelle pagine è fermo.
+   * Montato in /classrooms da AlternativaPresetPanel, che salva su
+   * data/preset_alternativa.json.
    */
   import {
     ALTERNATIVA_ROOM_CHOICES,

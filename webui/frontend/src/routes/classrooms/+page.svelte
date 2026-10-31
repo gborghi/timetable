@@ -3,6 +3,7 @@
   import { confirmDialog } from '$lib/confirm';
   import { api } from '$lib/api';
   import PageHero from '$lib/components/PageHero.svelte';
+  import AlternativaPresetPanel from '$lib/components/AlternativaPresetPanel.svelte';
   import { flash, refreshDataset } from '$lib/stores';
   import { ROOM_KINDS } from '$lib/constants';
   import Modal from '$lib/components/Modal.svelte';
@@ -339,6 +340,8 @@
       </button>
     </svelte:fragment>
   </PageHero>
+
+  <AlternativaPresetPanel />
 
   {#if showGenPanel && suggested}
     <div class="card p-5 border-accent-500/40 bg-accent-500/5">
