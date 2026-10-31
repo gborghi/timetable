@@ -152,7 +152,8 @@ def run_lagrangian(sol: dict, profs: dict, dc_value: dict,
                    dsl_hard_expressions=None,
                    soft_rules=None,
                    class_to_plesso: dict | None = None,
-                   plessi_ctx=None) -> tuple[dict, dict]:
+                   plessi_ctx=None,
+                   workers: int = 4) -> tuple[dict, dict]:
     """Genuine Lagrangian relaxation of the cross-cluster bridge coupling.
 
     Returns ``(best_sol, info)``. ``best_sol`` is the reconstructed week when
@@ -295,7 +296,7 @@ def run_lagrangian(sol: dict, profs: dict, dc_value: dict,
         su = [g for g in (support_assignments or []) if g.get("class_name") in cs]
         return cv2.solve_phase_b_for_day(
             d, profs_sub, classes_c, triples_c, class_profs_c, dc_value,
-            time_limit=per_solve_time, workers=4, log=False,
+            time_limit=per_solve_time, workers=workers, log=False,
             locked_slots_for_day=locked_day,
             coteach_groups=ct or None, support_assignments=su or None,
             parallel_groups=pl or None, class_flags=class_flags,

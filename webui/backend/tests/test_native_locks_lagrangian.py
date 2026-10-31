@@ -145,6 +145,10 @@ def test_lagrangian_subgradient_resolves_bridge_collision():
         sol, profs, dc_value,
         time_budget_s=30.0, max_iter=8,
         classes_clusters=cc, class_flags=cf, log=False,
+        # Un solo worker CP-SAT: la prima risoluzione a lambda=0 e'
+        # deterministica, quindi lo scontro sul ponte c'e' sempre (prima
+        # dipendeva dall'ordine dei worker e il test falliva a caso).
+        workers=1,
     )
     assert info["n_bridges"] == 1
     # Day 1 saw a real collision and the multiplier rose above zero.
