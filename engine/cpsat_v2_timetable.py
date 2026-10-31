@@ -283,7 +283,19 @@ def add_consecutive_constraints_phase_b(model, slot, day, profs, dc_value,
                    if class_enforces(class_flags, cl,
                                      _pair_flag[subj], True)]
     for cl, subject, mode in targets:
-            p = find_prof_subject(profs, cl, subject)
+        # pair_exists (Mat/Ita): OGNI docente della materia nella classe,
+        # come Fase A, modello settimanale e validatore H_A (Kepler,
+        # revisione 31/10, GRAVE). must_pair (Motorie): invariato, solo il
+        # primo docente (find_prof_subject), in attesa di Giovanni.
+        if mode == "pair_exists":
+            _want = subject_key(subject)
+            _teachers = [q for q in sorted(profs)
+                         if cl in (profs[q].get("classi") or {})
+                         and any(subject_key(s) == _want
+                                 for s in profs[q]["classi"][cl])]
+        else:
+            _teachers = [find_prof_subject(profs, cl, subject)]
+        for p in _teachers:
             if p is None or cl not in profs[p]["classi"]:
                 continue
             subjs_of_p = list(profs[p]["classi"][cl].keys())

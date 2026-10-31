@@ -14,7 +14,8 @@ import metaheuristics as meta  # noqa: E402
 
 P = {"I": {"classi": {"1A": {"Italiano": {"ore": 2}, "Storia": {"ore": 2}}}}}
 CF = {"1A": {"dual_math": False, "motorie_pairs": False,
-             "exit_after_12": False, "entry_at_8": False}}
+             "exit_after_12": False, "entry_at_8": False,
+             "no_holes": False}}
 
 
 def _sol(lessons):
@@ -114,3 +115,38 @@ def test_week_model_accepts_cross_subject_double():
     assert st in (cp_model.OPTIMAL, cp_model.FEASIBLE), cs.StatusName(st)
     sol = {k: 1 for k, v in s.slot.items() if cs.Value(v)}
     assert meta.is_hard_feasible(sol, P, verbose=True, class_flags=CF)
+
+
+def test_phase_b_pairs_every_math_teacher_in_class():
+    """Fase B: due docenti di Matematica nella stessa classe (Kepler, GRAVE
+    31/10). Anche il secondo docente, con 2 ore quel giorno, deve averle
+    consecutive: forzarle staccate rende il giorno infeasible."""
+    from ortools.sat.python import cp_model
+    import cpsat_v2_timetable as cv2
+    profs = {"A": {"classi": {"1A": {"Matematica": {"ore": 2}}}},
+             "B": {"classi": {"1A": {"Matematica": {"ore": 2}}}}}
+    day = cv2.DAYS[0]
+    H = list(cv2.HOURS)
+
+    def build(force_split):
+        m = cp_model.CpModel()
+        slot = {(p, "1A", "Matematica", h): m.NewBoolVar(f"{p}{h}")
+                for p in profs for h in H}
+        for p in profs:
+            m.Add(sum(slot[(p, "1A", "Matematica", h)] for h in H) == 2)
+        for h in H:
+            m.Add(sum(slot[(p, "1A", "Matematica", h)] for p in profs) <= 1)
+        dc = {(p, "1A", "Matematica", day): 2 for p in profs}
+        cv2.add_consecutive_constraints_phase_b(m, slot, day, profs, dc)
+        if force_split:
+            for p in ("B",):
+                for i in range(len(H) - 1):
+                    m.AddBoolOr([slot[(p, "1A", "Matematica", H[i])].Not(),
+                                 slot[(p, "1A", "Matematica", H[i + 1])].Not()])
+        cs = cp_model.CpSolver()
+        cs.parameters.num_workers = 1
+        return cs.Solve(m)
+
+    assert build(False) in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+    # solo B staccato: prima del fix B non era vincolato
+    assert build(True) == cp_model.INFEASIBLE
