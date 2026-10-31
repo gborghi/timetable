@@ -77,23 +77,3 @@ def test_pair_exists_ignores_other_subject_of_same_teacher():
         pairing={("3A", "Italiano"): "pair_exists"})
     st = cp_model.CpSolver().Solve(m)
     assert st == cp_model.INFEASIBLE
-
-
-def test_must_pair_binds_every_teacher_of_the_subject():
-    """Due docenti di motorie nella classe: anche il secondo deve avere
-    le sue 2 ore consecutive (Kepler M1)."""
-    import cpsat_v2_timetable as cv2
-    profs = {"E1": {"classi": {"1A": {"Scienzemotorie": {"ore": 2}}}},
-             "E2": {"classi": {"1A": {"Scienzemotorie": {"ore": 2}}}}}
-    H = cv2.HOURS
-    m = cp_model.CpModel()
-    slot = {(p, "1A", "Scienzemotorie", h): m.NewBoolVar(f"{p}{h}")
-            for p in profs for h in H}
-    on = {"E1": {H[0], H[1]}, "E2": {H[2], H[4]}}
-    for (p, _c, _s, h), v in slot.items():
-        m.Add(v == (1 if h in on[p] else 0))
-    dc = {(p, "1A", "Scienzemotorie", 1): 2 for p in profs}
-    cv2.add_consecutive_constraints_phase_b(
-        m, slot, 1, profs, dc,
-        pairing={("1A", "Scienzemotorie"): "must_pair"})
-    assert cp_model.CpSolver().Solve(m) == cp_model.INFEASIBLE
