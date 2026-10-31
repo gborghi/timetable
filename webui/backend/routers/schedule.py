@@ -165,6 +165,18 @@ def delete_solution(sol_id: int, db: Session = Depends(get_db)):
     return {"ok": True}
 
 
+def _off_grid(l) -> bool:
+    """Lezione con giorno/ora fuori dalla griglia attuale (dati vecchi o
+    griglia cambiata): la si segnala invece di andare in 500 (Liceo G3)."""
+    return l.day not in DAYS or l.hour not in HOURS
+
+
+def _off_grid_item(l) -> dict:
+    return {"lesson_id": l.id, "class_name": l.class_name,
+            "teacher": l.teacher_name, "subject": l.subject,
+            "day": l.day, "hour": l.hour}
+
+
 @router.get("/by-class")
 def view_by_class(class_name: str | None = None,
                   db: Session = Depends(get_db)):
@@ -181,7 +193,11 @@ def view_by_class(class_name: str | None = None,
     grid: dict[str, dict[int, dict[int, dict | None]]] = {
         c: {d: {h: None for h in HOURS} for d in DAYS} for c in classes
     }
+    off_grid = []
     for l in rows:
+        if _off_grid(l):
+            off_grid.append(_off_grid_item(l))
+            continue
         cell = grid[l.class_name][l.day][l.hour]
         # If two lessons share the same slot it's a co-teaching:
         if cell is None:
@@ -199,7 +215,7 @@ def view_by_class(class_name: str | None = None,
                 cell["classroom"] = l.classroom_name
     return {
         "days": DAYS, "hours": HOURS, "day_names": DAY_NAMES_IT,
-        "classes": classes, "grid": grid,
+        "classes": classes, "grid": grid, "off_grid": off_grid,
         "obj_value": a.obj_value, "metrics": a.metrics,
     }
 
@@ -217,7 +233,11 @@ def view_by_teacher(teacher: str | None = None,
     grid: dict[str, dict[int, dict[int, dict | None]]] = {
         t: {d: {h: None for h in HOURS} for d in DAYS} for t in teachers
     }
+    off_grid = []
     for l in rows:
+        if _off_grid(l):
+            off_grid.append(_off_grid_item(l))
+            continue
         cell = grid[l.teacher_name][l.day][l.hour]
         if cell is None:
             grid[l.teacher_name][l.day][l.hour] = {
@@ -230,7 +250,7 @@ def view_by_teacher(teacher: str | None = None,
             cell["class_name"] += "+" + l.class_name
     return {
         "days": DAYS, "hours": HOURS, "day_names": DAY_NAMES_IT,
-        "teachers": teachers, "grid": grid,
+        "teachers": teachers, "grid": grid, "off_grid": off_grid,
         "obj_value": a.obj_value, "metrics": a.metrics,
     }
 
@@ -273,7 +293,7 @@ def view_by_room(db: Session = Depends(get_db)):
     for r in rooms:
         out[r] = {d: {h: [] for h in HOURS} for d in DAYS}
     for l in rows:
-        if not l.classroom_name:
+        if not l.classroom_name or _off_grid(l):
             continue
         out.setdefault(l.classroom_name,
                        {d: {h: [] for h in HOURS} for d in DAYS})

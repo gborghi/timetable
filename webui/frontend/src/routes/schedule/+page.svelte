@@ -230,6 +230,10 @@
       summary = summaryData
         ? { obj_value: summaryData.obj_value, metrics: summaryData.metrics }
         : null;
+      const offGrid = summaryData?.off_grid?.length || 0;
+      if (offGrid) {
+        flash(`${offGrid} lezioni hanno giorno od ora fuori dalla griglia attuale e non sono mostrate: controlla Ore e giorni.`, 'warning');
+      }
       if ($viewStore !== 'global' && !$entityIdStore) {
         entityIdStore.set(defaultEntityFor($viewStore));
       }
