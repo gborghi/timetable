@@ -26,6 +26,8 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import unicodedata
 from pathlib import Path
 from typing import Any
 
@@ -37,7 +39,13 @@ DEFAULT: dict[str, Any] = {
     "min_hours": 2,
     "per_teacher_all_subjects": True,
     "whole_class_only": True,
-    "excluded_subjects": ["Sostegno"],
+    # Materie non «di tutta la classe»: confronto per parole normalizzate
+    # (minuscole, senza accenti e punteggiatura). Una voce esclude la
+    # materia se le sue parole compaiono di seguito nel nome, l'ultima
+    # anche come prefisso («AD0» prende «AD01»). Es.: «Sostegno (AD01)»,
+    # «Religione cattolica», «IRC», «Mat. alternativa».
+    "excluded_subjects": ["Sostegno", "AD0", "Religione", "IRC",
+                          "Alternativa", "Materia alternativa"],
     # flag di classe che spengono la regola per una materia trigger
     "class_flags": {"Matematica": "dual_math", "Italiano": "dual_italian"},
 }
@@ -97,8 +105,56 @@ def is_whole_class(subj: str, spec, rule: dict | None = None,
         return False
     if subj in group_subjects:
         return False
-    excl = {_key(s) for s in rule.get("excluded_subjects") or []}
-    return _key(subj) not in excl
+    return not is_excluded_name(subj, rule)
+
+
+def _words(name) -> list[str]:
+    s = unicodedata.normalize("NFKD", str(name).lower())
+    s = "".join(ch for ch in s if not unicodedata.combining(ch))
+    return re.findall(r"[a-z0-9]+", s)
+
+
+def is_excluded_name(subj: str, rule: dict | None = None) -> bool:
+    """Il nome della materia corrisponde a una voce di
+    ``excluded_subjects`` (parole consecutive, ultima per prefisso)."""
+    rule = rule or get_rule()
+    w = _words(subj)
+    if not w:
+        return False
+    for e in rule.get("excluded_subjects") or []:
+        ew = _words(e)
+        if not ew:
+            continue
+        n = len(ew)
+        for i in range(len(w) - n + 1):
+            if w[i:i + n - 1] == ew[:-1] and w[i + n - 1].startswith(ew[-1]):
+                return True
+        # anche il nome compatto («Scienzemotorie»-style) intero
+        if _key(subj) == _key(e):
+            return True
+    return False
+
+
+def mark_groups(profs: dict, parallel_groups=None,
+                support_assignments=None) -> dict:
+    """Segna ``"gruppo": True`` nei profs per le materie di gruppo
+    dichiarate in ``parallel_groups`` (e nel sostegno). Da chiamare una
+    volta prima di Fase A/B, modello settimanale e validatore, cosi' le
+    quattro parti escludono gli stessi gruppi. Idempotente."""
+    def _mark(t, cl, s):
+        sd = ((profs.get(t) or {}).get("classi") or {}).get(cl, {}) \
+            if isinstance(profs.get(t), dict) else {}
+        spec = sd.get(s) if isinstance(sd, dict) else None
+        if isinstance(spec, dict):
+            spec["gruppo"] = True
+    for pg in parallel_groups or []:
+        for m in pg.get("members", []):
+            _mark(m.get("teacher_name"), pg.get("class_name"),
+                  m.get("subject"))
+    for sa in support_assignments or []:
+        _mark(sa.get("teacher_name"), sa.get("class_name"),
+              sa.get("subject"))
+    return profs
 
 
 def counted_subjects(subjs: dict, trigger: str | None = None,
@@ -145,6 +201,23 @@ def requirement(subjs: dict, cl: str, class_flags=None,
         counted = [s for s in subjs
                    if _key(s) in hit
                    and is_whole_class(s, subjs[s], rule, group_subjects)]
+    if sum(_ore(subjs[s]) for s in counted) < int(rule.get("min_hours", 2)):
+        return None
+    return counted
+
+
+def requirement_for_subject(subjs: dict, want: str,
+                            rule: dict | None = None) -> list | None:
+    """Percorso «coppia dichiarata dai vincoli» (pragma
+    ``subject_pair_exists``): stessa regola del preset (materie contate,
+    esclusioni, ``min_hours``), con trigger la sola materia dichiarata."""
+    rule = rule or get_rule()
+    if not subjs:
+        return None
+    if not any(_key(s) == want and is_whole_class(s, sd, rule)
+               for s, sd in subjs.items()):
+        return None
+    counted = counted_subjects(subjs, want, rule)
     if sum(_ore(subjs[s]) for s in counted) < int(rule.get("min_hours", 2)):
         return None
     return counted

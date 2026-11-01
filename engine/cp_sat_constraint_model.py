@@ -1442,6 +1442,8 @@ class ConstraintModel:
             import cpsat_v2_timetable as _cv  # type: ignore
             import double_lesson_rule as _dlr  # type: ignore
         rule = _dlr.get_rule()
+        _dlr.mark_groups(self.profs,
+                         getattr(self.config, "parallel_groups", None))
         flags = getattr(self.config, "class_flags", None)
         for teacher, pdata in self.profs.items():
             if not self._scope_includes_teacher(teacher):

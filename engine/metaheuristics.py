@@ -451,11 +451,8 @@ def is_hard_feasible(sol, profs, verbose=False,
     # tutta la classe, ore sommate per docente, soglia 2). Giovanni 01/11:
     # «conta solo il prof non la materia... ma devono essere materie di
     # tutta la classe».
-    _group_subj_by_cl: dict = {}
-    for pg in (parallel_groups or []):
-        for m in pg.get("members", []):
-            _group_subj_by_cl.setdefault(pg.get("class_name"), set()).add(
-                m.get("subject"))
+    # Gruppi da parallel_groups segnati nei profs come nelle altre parti.
+    _dlr.mark_groups(profs, parallel_groups)
     _dl_rule = _dlr.get_rule()
     for cl in cls_set:
         for p in profs_set:
@@ -464,8 +461,7 @@ def is_hard_feasible(sol, profs, verbose=False,
                 continue
             subjs = (info.get("classi") or {}).get(cl)
             counted = _dlr.requirement(
-                subjs, cl, class_flags, _dl_rule,
-                _group_subj_by_cl.get(cl, ()), cv2.class_enforces)
+                subjs, cl, class_flags, _dl_rule, (), cv2.class_enforces)
             if not counted:
                 continue
             ok = False

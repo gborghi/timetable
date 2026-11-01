@@ -308,7 +308,9 @@ def add_consecutive_constraints_phase_b(model, slot, day, profs, dc_value,
                          and any(subject_key(s) == _want
                                  for s in profs[q]["classi"][cl])]
             for q in _teachers:
-                _counted[q] = _dlr.counted_subjects(
+                # stessa regola del preset (soglia settimanale min_hours,
+                # esclusioni): None -> nessun vincolo per q.
+                _counted[q] = _dlr.requirement_for_subject(
                     profs[q]["classi"][cl], _want, _dl_rule)
         else:
             _teachers = [find_prof_subject(profs, cl, subject)]
@@ -546,9 +548,9 @@ def build_phase_a_pragmas(
             if mode == "pair_exists":
                 # Coppia dichiarata dai vincoli: stesse materie contate
                 # della regola (preset), soglia 2 ore.
-                counted = _dlr.counted_subjects(cmap[cl], want, _dl_rule)
-                if sum(int(cmap[cl][s].get("ore", 0))
-                       for s in counted) < 2:
+                counted = _dlr.requirement_for_subject(
+                    cmap[cl], want, _dl_rule)
+                if not counted:
                     continue
                 _pair_prag(p, cl, counted)
             else:  # must_pair -> daily count restricted to {0, 2}
@@ -640,6 +642,10 @@ def solve_phase_a(profs, classes, triples, class_profs,
     }
     potenziamento_assignments = list(potenziamento_assignments or [])
     parallel_groups = list(parallel_groups or [])
+    # Gruppi paralleli e sostegno: materie non di tutta la classe per la
+    # regola della doppia (stesso segno per Fase A, B, settimanale, H_A).
+    import double_lesson_rule as _dlr_mg
+    _dlr_mg.mark_groups(profs, parallel_groups, support_assignments)
     # Task C3: group assignments are scheduled like normal triples
     # but with class_name = group_name (a virtual class label that
     # is NOT in `classes`). Their day_count vars get created by the
@@ -1762,6 +1768,8 @@ def solve_phase_b_for_day(day, profs, classes, triples, class_profs,
         for sa in support_assignments
     }
     parallel_groups = list(parallel_groups or [])
+    import double_lesson_rule as _dlr_mg
+    _dlr_mg.mark_groups(profs, parallel_groups, support_assignments)
     parallel_subj_to_busy_key: dict[tuple[str, str], str] = {}
     for pg in parallel_groups:
         key = f"__par__{pg['group_id']}"

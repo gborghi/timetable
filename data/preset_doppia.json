@@ -10,7 +10,12 @@
   "per_teacher_all_subjects": true,
   "whole_class_only": true,
   "excluded_subjects": [
-    "Sostegno"
+    "Sostegno",
+    "AD0",
+    "Religione",
+    "IRC",
+    "Alternativa",
+    "Materia alternativa"
   ],
   "class_flags": {
     "Matematica": "dual_math",
