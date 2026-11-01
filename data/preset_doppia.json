@@ -1,0 +1,19 @@
+{
+  "key": "double_lesson",
+  "label": "Doppia consecutiva (stesso docente)",
+  "enabled": true,
+  "trigger_subjects": [
+    "Matematica",
+    "Italiano"
+  ],
+  "min_hours": 2,
+  "per_teacher_all_subjects": true,
+  "whole_class_only": true,
+  "excluded_subjects": [
+    "Sostegno"
+  ],
+  "class_flags": {
+    "Matematica": "dual_math",
+    "Italiano": "dual_italian"
+  }
+}

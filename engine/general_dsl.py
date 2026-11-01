@@ -1109,11 +1109,13 @@ def _eval_call(node: Call, env, world):
             world, str(pos[0]), str(pos[1]),
             str(pos[2]), int(pos[3]))
     if name == "teacher_class_day_count_pair":
-        if len(pos) != 3:
+        if len(pos) < 3:
             raise DSLError(
-                "teacher_class_day_count_pair richiede (prof, classe, n)")
+                "teacher_class_day_count_pair richiede "
+                "(prof, classe, n, [materie...])")
         return _eval_teacher_class_day_count_pair(
-            world, str(pos[0]), str(pos[1]), int(pos[2]))
+            world, str(pos[0]), str(pos[1]), int(pos[2]),
+            [str(v) for v in pos[3:]] or None)
     if name == "hall_bound_prof_day":
         if len(pos) != 1:
             raise DSLError(
@@ -1612,11 +1614,13 @@ def _eval_subject_day_count_pair(world: dict, t: str, cl: str,
 
 
 def _eval_teacher_class_day_count_pair(world: dict, t: str, cl: str,
-                                       n: int) -> bool:
+                                       n: int, subjects=None) -> bool:
     """At least one day where t has >= n hours in cl (any subject)."""
     by_day: dict[int, int] = {}
     for l in world.get("lessons", []):
         if l.get("teacher") != t or l.get("class") != cl:
+            continue
+        if subjects is not None and l.get("subject") not in subjects:
             continue
         d = l.get("day")
         if d is None:

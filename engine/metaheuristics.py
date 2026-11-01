@@ -49,7 +49,8 @@ from collections import defaultdict
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-import cpsat_v2_timetable as cv2  # noqa: E402
+import cpsat_v2_timetable as cv2
+import double_lesson_rule as _dlr  # noqa: E402
 
 DAYS = cv2.DAYS
 HOURS = cv2.HOURS
@@ -445,44 +446,41 @@ def is_hard_feasible(sol, profs, verbose=False,
                       f"free={len(DAYS) - _busy_days} < {_mfd}")
             return False
 
-    # H_A: Mat/Ita doppia consecutiva PER DOCENTE nella classe. Per ogni
-    # docente che insegna Matematica o Italiano nella classe (flag attivo),
-    # se quella materia ha almeno 2 ore nella classe, serve almeno un giorno
-    # con due ore consecutive DELLO STESSO DOCENTE nella classe, anche di
-    # materie diverse (es. Italiano + Storia). Regola di Giovanni (31/10):
-    # «doppia basta che sia con stesso docente, non serve stessa materia».
-    # Coerente con la Fase B (cpsat_v2_timetable.py), che conta per docente.
-    _pair_flag = {"matematica": "dual_math", "italiano": "dual_italian"}
+    # H_A: doppia consecutiva per (docente, classe). Regola come DATO in
+    # ``double_lesson_rule`` (preset; default: trigger Mat/Ita, materie di
+    # tutta la classe, ore sommate per docente, soglia 2). Giovanni 01/11:
+    # «conta solo il prof non la materia... ma devono essere materie di
+    # tutta la classe».
+    _group_subj_by_cl: dict = {}
+    for pg in (parallel_groups or []):
+        for m in pg.get("members", []):
+            _group_subj_by_cl.setdefault(pg.get("class_name"), set()).add(
+                m.get("subject"))
+    _dl_rule = _dlr.get_rule()
     for cl in cls_set:
-        for want, flag in _pair_flag.items():
-            if not cv2.class_enforces(class_flags, cl, flag, True):
+        for p in profs_set:
+            info = profs.get(p)
+            if not isinstance(info, dict):
                 continue
-            for p in profs_set:
-                info = profs.get(p)
-                if not isinstance(info, dict):
-                    continue
-                subjs = (info.get("classi") or {}).get(cl)
-                if not subjs:
-                    continue
-                ore_want = sum(
-                    int(sd.get("ore", 0)) if isinstance(sd, dict) else 0
-                    for s, sd in subjs.items()
-                    if cv2.subject_key(s) == want)
-                if ore_want < 2:
-                    continue
-                ok = False
-                for d in DAYS:
-                    pres = [any(sol.get((p, cl, s, d, h), 0) == 1
-                                for s in subjs)
-                            for h in HOURS]
-                    if any(pres[i] and pres[i + 1]
-                           for i in range(len(pres) - 1)):
-                        ok = True
-                        break
-                if not ok:
-                    if verbose:
-                        print(f"  HA viol: {want} {p} in {cl}")
-                    return False
+            subjs = (info.get("classi") or {}).get(cl)
+            counted = _dlr.requirement(
+                subjs, cl, class_flags, _dl_rule,
+                _group_subj_by_cl.get(cl, ()), cv2.class_enforces)
+            if not counted:
+                continue
+            ok = False
+            for d in DAYS:
+                pres = [any(sol.get((p, cl, s, d, h), 0) == 1
+                            for s in counted)
+                        for h in HOURS]
+                if any(pres[i] and pres[i + 1]
+                       for i in range(len(pres) - 1)):
+                    ok = True
+                    break
+            if not ok:
+                if verbose:
+                    print(f"  HA viol: {p} in {cl}")
+                return False
 
     # H_B: Scienzemotorie sempre a coppie. Per ogni (cl, d) le ore
     # del prof di motorie (in qualsiasi materia ma tipicamente

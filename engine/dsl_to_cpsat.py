@@ -1368,14 +1368,17 @@ class DSLConstraintCompiler:
             # day where the teacher has >= n hours in the class, summing
             # all of the teacher's subjects there (doppia con lo stesso
             # docente, anche di materie diverse: Giovanni 31/10).
-            if len(arg_values) != 3:
+            # Optional trailing subjects: count only those (materie di
+            # tutta la classe, dal preset della doppia).
+            if len(arg_values) < 3:
                 self.diagnostics.append(
                     "teacher_class_day_count_pair expects "
-                    "(teacher, class, n)")
+                    "(teacher, class, n, [subjects...])")
                 return True
             self._compile_teacher_class_day_count_pair(
                 str(arg_values[0]), str(arg_values[1]),
-                int(arg_values[2]))
+                int(arg_values[2]),
+                [str(v) for v in arg_values[3:]] or None)
             return True
         if name == "free_day_choice_3way":
             # Args: prof, candidate_day_1, candidate_day_2,
@@ -2366,7 +2369,7 @@ class DSLConstraintCompiler:
         self.model.Add(sum(has_pair_days) >= 1)
 
     def _compile_teacher_class_day_count_pair(
-            self, teacher: str, cl: str, n: int):
+            self, teacher: str, cl: str, n: int, subjects=None):
         """Phase A "≥1 day with ≥n hours of the teacher in the class",
         summing every subject the teacher has in that class. Phase B
         then places a consecutive pair on such a day (same teacher, any
@@ -2380,7 +2383,8 @@ class DSLConstraintCompiler:
             return
         per_day: dict = {}
         for (pp, ccl, _ss, dd), v in self.day_count.items():
-            if pp == teacher and ccl == cl:
+            if pp == teacher and ccl == cl and (
+                    subjects is None or _ss in subjects):
                 per_day.setdefault(dd, []).append(v)
         if not per_day:
             self.diagnostics.append(

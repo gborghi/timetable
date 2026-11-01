@@ -226,10 +226,10 @@ def test_motorie_odd_weekly_hours_is_infeasible(ore):
 
 
 def test_mixed_cattedra_model_solution_passes_validator():
-    """R1: docente M con Matematica 1 h + Fisica 2 h in 1A, al massimo 1
-    sua ora al giorno. La regola della doppia vale per cattedra (Mat ha
-    1 ora: niente doppia), quindi il modello e' fattibile e il validatore
-    deve accettare la soluzione (prima: «HA viol: Matematica M in 1A»)."""
+    """Docente M con Matematica 1 h + Fisica 2 h in 1A. Regola di Giovanni
+    (01/11): conta il docente, non la materia, quindi 3 ore -> serve una
+    doppia. Con al massimo 1 sua ora al giorno il modello e' infeasible;
+    senza quel tetto la soluzione passa il validatore."""
     import metaheuristics as meta
     P = {"M": {"classi": {"1A": {"Matematica": {"ore": 1},
                                  "Fisica": {"ore": 2}}},
@@ -245,6 +245,9 @@ def test_mixed_cattedra_model_solution_passes_validator():
     for d in meta.DAYS:
         s.model.Add(sum(v for k, v in s.slot.items()
                         if k[0] == "M" and k[3] == d) <= 1)
+    cs, st = _solve(s.model)
+    assert st == cp_model.INFEASIBLE, cs.StatusName(st)
+    s = _week_solver(P)
     cs, st = _solve(s.model)
     assert st in (cp_model.OPTIMAL, cp_model.FEASIBLE), cs.StatusName(st)
     sol = {k: 1 for k, v in s.slot.items() if cs.Value(v)}

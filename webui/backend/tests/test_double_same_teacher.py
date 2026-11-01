@@ -78,7 +78,7 @@ def test_phase_a_emits_teacher_rule_once_per_teacher_class():
         triples_by_prof={"I": [("1A", "Italiano"), ("1A", "Matematica")]},
         day_count_keys=keys)
     pair = [p for p in prags if "day_count_pair" in p]
-    assert pair == ["teacher_class_day_count_pair('I', '1A', 2)"], prags
+    assert pair == ["teacher_class_day_count_pair('I', '1A', 2, 'Italiano', 'Matematica')"], prags
 
 
 def test_general_dsl_teacher_class_day_count_pair():
@@ -150,3 +150,117 @@ def test_phase_b_pairs_every_math_teacher_in_class():
     assert build(False) in (cp_model.OPTIMAL, cp_model.FEASIBLE)
     # solo B staccato: prima del fix B non era vincolato
     assert build(True) == cp_model.INFEASIBLE
+
+
+# --- Regola per (docente, classe) su materie di tutta la classe, come
+# dato del preset (Giovanni 01/11) ---
+
+import pytest  # noqa: E402
+import double_lesson_rule as dlr  # noqa: E402
+
+CF2 = {"1A": {"motorie_pairs": False, "exit_after_12": False,
+              "entry_at_8": False, "no_holes": False}}
+
+
+@pytest.fixture(autouse=True)
+def _reset_rule():
+    dlr.set_rule(None)
+    yield
+    dlr.set_rule(None)
+
+
+def _feas(P, lessons, **kw):
+    sol = {(p, "1A", s, d, h): 1 for p, s, d, h in lessons}
+    return meta.is_hard_feasible(sol, P, verbose=True, class_flags=CF2, **kw)
+
+
+def _D(i):
+    return meta.DAYS[i]
+
+
+def _H(i):
+    return meta.HOURS[i]
+
+
+def test_mat_1h_plus_potenziamento_1h_needs_double():
+    P = {"M": {"classi": {"1A": {"Matematica": {"ore": 1},
+                                 "Potenziamento matematica": {"ore": 1}}}}}
+    split = [("M", "Matematica", _D(0), _H(0)),
+             ("M", "Potenziamento matematica", _D(1), _H(0))]
+    pair = [("M", "Matematica", _D(0), _H(0)),
+            ("M", "Potenziamento matematica", _D(0), _H(1))]
+    assert not _feas(P, split)
+    assert _feas(P, pair)
+
+
+def test_group_subject_not_counted():
+    # Religione e' di gruppo: non entra ne' nella soglia ne' nella doppia.
+    P = {"I": {"classi": {"1A": {"Italiano": {"ore": 1},
+                                 "Religione": {"ore": 1, "gruppo": True}}}}}
+    assert _feas(P, [("I", "Italiano", _D(0), _H(0)),
+                     ("I", "Religione", _D(1), _H(0))])  # 1 h: niente doppia
+    P2 = {"I": {"classi": {"1A": {"Italiano": {"ore": 2},
+                                  "Religione": {"ore": 1, "gruppo": True}}}}}
+    # Ita + Religione consecutive non e' una doppia valida.
+    assert not _feas(P2, [("I", "Italiano", _D(0), _H(0)),
+                          ("I", "Religione", _D(0), _H(1)),
+                          ("I", "Italiano", _D(1), _H(0))])
+    # Gruppo dichiarato via parallel_groups (senza flag nei profs).
+    P3 = {"I": {"classi": {"1A": {"Italiano": {"ore": 2},
+                                  "Alternativa": {"ore": 1}}}}}
+    pg = [{"group_id": 1, "class_name": "1A",
+           "members": [{"teacher_name": "I", "subject": "Alternativa"}]}]
+    les = [("I", "Italiano", _D(0), _H(0)), ("I", "Alternativa", _D(0), _H(1)),
+           ("I", "Italiano", _D(1), _H(0))]
+    assert _feas(P3, les)
+    assert not _feas(P3, les, parallel_groups=pg)
+
+
+def test_config_disabled_and_extra_trigger_change_constraints():
+    import cpsat_v2_timetable as cv2
+    P = {"F": {"classi": {"1A": {"Fisica": {"ore": 2}}}}}
+    split = [("F", "Fisica", _D(0), _H(0)), ("F", "Fisica", _D(1), _H(0))]
+    keys = [("F", "1A", "Fisica", d) for d in range(1, 7)]
+
+    def prags():
+        return [p for p in cv2.build_phase_a_pragmas(
+            P, ["1A"], cl_day_load_classes=["1A"],
+            triples_by_prof={"F": [("1A", "Fisica")]}, day_count_keys=keys)
+            if "day_count_pair" in p]
+    # default: Fisica non e' trigger
+    assert _feas(P, split) and prags() == []
+    dlr.set_rule({"trigger_subjects": ["Matematica", "Italiano", "Fisica"]})
+    assert not _feas(P, split)
+    assert prags() == ["teacher_class_day_count_pair('F', '1A', 2, 'Fisica')"]
+    # regola spenta: niente vincolo per Ita
+    PI = {"I": {"classi": {"1A": {"Italiano": {"ore": 2}}}}}
+    spl = [("I", "Italiano", _D(0), _H(0)), ("I", "Italiano", _D(1), _H(0))]
+    dlr.set_rule(None)
+    assert not _feas(PI, spl)
+    dlr.set_rule({"enabled": False})
+    assert _feas(PI, spl)
+    # soglia alzata a 3: 2 ore non bastano a far scattare la regola
+    dlr.set_rule({"min_hours": 3})
+    assert _feas(PI, spl)
+
+
+def test_config_drives_week_model():
+    from ortools.sat.python import cp_model
+    import cp_sat_constraint_model as csm
+    P = {"F": {"classi": {"1A": {"Fisica": {"ore": 2}}}}}
+
+    def status():
+        cfg = csm.ConstraintConfig(enforce_no_holes=False,
+                                   enforce_h3_presence_at_11=False,
+                                   enforce_motorie_pair=False,
+                                   enforce_math_italian_pair=True, locks=[])
+        s = csm.MonolithicSolver(P, dc_value=None, config=cfg, scope=None)
+        s.add_all_hard_constraints()
+        for d in meta.DAYS:  # al massimo 1 ora al giorno
+            s.model.Add(sum(v for k, v in s.slot.items() if k[3] == d) <= 1)
+        cs = cp_model.CpSolver()
+        cs.parameters.num_workers = 1
+        return cs.Solve(s.model)
+    assert status() in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+    dlr.set_rule({"trigger_subjects": ["Fisica"]})
+    assert status() == cp_model.INFEASIBLE

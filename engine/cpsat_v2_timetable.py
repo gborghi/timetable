@@ -274,31 +274,56 @@ def add_consecutive_constraints_phase_b(model, slot, day, profs, dc_value,
         # loro materie canoniche. Confinato qui, fuori dalla logica generale.
         _pair_flag = {"Matematica": "dual_math", "Italiano": "dual_italian",
                       "Scienzemotorie": "motorie_pairs"}
-        _legacy = [("Matematica", "pair_exists"),
-                   ("Italiano", "pair_exists"),
-                   ("Scienzemotorie", "must_pair")]
-        targets = [(cl, subj, mode)
-                   for cl in classes_in_day
-                   for subj, mode in _legacy
-                   if class_enforces(class_flags, cl,
-                                     _pair_flag[subj], True)]
+        # Doppia di Mat/Ita: regola come dato (double_lesson_rule), un
+        # solo target per classe; i flag dual_* li legge la regola.
+        targets = [(cl, "__doppia__", "pair_exists")
+                   for cl in classes_in_day]
+        targets += [(cl, "Scienzemotorie", "must_pair")
+                    for cl in classes_in_day
+                    if class_enforces(class_flags, cl,
+                                      _pair_flag["Scienzemotorie"], True)]
+    import double_lesson_rule as _dlr
+    _dl_rule = _dlr.get_rule()
+    _seen_pair: set = set()
     for cl, subject, mode in targets:
         # pair_exists (Mat/Ita): OGNI docente della materia nella classe,
         # come Fase A, modello settimanale e validatore H_A (Kepler,
         # revisione 31/10, GRAVE). must_pair (Motorie): invariato, solo il
         # primo docente (find_prof_subject), in attesa di Giovanni.
-        if mode == "pair_exists":
+        _counted: dict = {}
+        if mode == "pair_exists" and subject == "__doppia__":
+            # Regola della doppia dal preset: per (docente, classe), ore
+            # sommate sulle materie di tutta la classe (Giovanni 01/11).
+            for q in sorted(profs):
+                c = _dlr.requirement(
+                    (profs[q].get("classi") or {}).get(cl), cl,
+                    class_flags, _dl_rule, (), class_enforces)
+                if c:
+                    _counted[q] = c
+            _teachers = list(_counted)
+        elif mode == "pair_exists":
             _want = subject_key(subject)
             _teachers = [q for q in sorted(profs)
                          if cl in (profs[q].get("classi") or {})
                          and any(subject_key(s) == _want
                                  for s in profs[q]["classi"][cl])]
+            for q in _teachers:
+                _counted[q] = _dlr.counted_subjects(
+                    profs[q]["classi"][cl], _want, _dl_rule)
         else:
             _teachers = [find_prof_subject(profs, cl, subject)]
         for p in _teachers:
             if p is None or cl not in profs[p]["classi"]:
                 continue
-            subjs_of_p = list(profs[p]["classi"][cl].keys())
+            if mode == "pair_exists":
+                if (p, cl) in _seen_pair:
+                    continue
+                _seen_pair.add((p, cl))
+                subjs_of_p = list(_counted.get(p) or [])
+                if not subjs_of_p:
+                    continue
+            else:
+                subjs_of_p = list(profs[p]["classi"][cl].keys())
             # Skip se questo prof non ha slot in questo stage
             # (e' schedulato altrove). Il vincolo verra' applicato
             # nello stage in cui il prof e' modellato.
@@ -481,13 +506,33 @@ def build_phase_a_pragmas(
                     "Scienzemotorie": "motorie_pairs"}
         _pa_mode = {"Matematica": "pair_exists", "Italiano": "pair_exists",
                     "Scienzemotorie": "must_pair"}
-        _pa_targets = [(cl, subj, _pa_mode[subj])
-                       for cl in sorted(classes)
-                       for subj in ("Matematica", "Italiano",
-                                    "Scienzemotorie")
-                       if class_enforces(class_flags, cl,
-                                         _pa_gate[subj], True)]
+        # Doppia: un target per classe, la regola (preset) decide il resto.
+        _pa_targets = [(cl, "__doppia__", "pair_exists")
+                       for cl in sorted(classes)]
+        _pa_targets += [(cl, "Scienzemotorie", "must_pair")
+                        for cl in sorted(classes)
+                        if class_enforces(class_flags, cl,
+                                          _pa_gate["Scienzemotorie"], True)]
+    import double_lesson_rule as _dlr
+    _dl_rule = _dlr.get_rule()
+
+    def _pair_prag(p, cl, counted):
+        args = ", ".join(repr(s) for s in sorted(counted))
+        prag = f'teacher_class_day_count_pair({p!r}, {cl!r}, 2, {args})'
+        if prag not in pragmas:
+            pragmas.append(prag)
+
     for cl, subject, mode in sorted(_pa_targets):
+        if subject == "__doppia__":
+            # Regola della doppia dal preset (Giovanni 01/11): per
+            # (docente, classe), materie di tutta la classe, ore sommate.
+            for p in sorted(profs):
+                counted = _dlr.requirement(
+                    (profs[p].get("classi") or {}).get(cl), cl,
+                    class_flags, _dl_rule, (), class_enforces)
+                if counted:
+                    _pair_prag(p, cl, counted)
+            continue
         want = subject_key(subject)
         for p in sorted(profs):
             cmap = profs[p].get("classi", {}) or {}
@@ -499,15 +544,13 @@ def build_phase_a_pragmas(
             if subj is None:
                 continue
             if mode == "pair_exists":
-                if int(cmap[cl][subj].get("ore", 0)) < 2:
+                # Coppia dichiarata dai vincoli: stesse materie contate
+                # della regola (preset), soglia 2 ore.
+                counted = _dlr.counted_subjects(cmap[cl], want, _dl_rule)
+                if sum(int(cmap[cl][s].get("ore", 0))
+                       for s in counted) < 2:
                     continue
-                # Doppia con lo stesso docente, anche di materie diverse
-                # (Giovanni 31/10): un giorno con >= 2 ore del docente
-                # nella classe, sommando tutte le sue materie. Una sola
-                # regola per (docente, classe) anche se ha Mat e Ita.
-                prag = f'teacher_class_day_count_pair({p!r}, {cl!r}, 2)'
-                if prag not in pragmas:
-                    pragmas.append(prag)
+                _pair_prag(p, cl, counted)
             else:  # must_pair -> daily count restricted to {0, 2}
                 if not any(k[0] == p and k[1] == cl and k[2] == subj
                            for k in day_count_keys):

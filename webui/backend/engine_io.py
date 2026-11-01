@@ -408,6 +408,11 @@ def profs_dict_from_db(db: Session) -> dict[str, Any]:
             slot[a.subject]["ore"] += a.hours
         else:
             slot[a.subject] = {"ore": a.hours}
+        # Materia di gruppo (gruppo parallelo, es. religione/alternativa;
+        # sostegno): non e' di tutta la classe, la regola della doppia
+        # (double_lesson_rule) non la conta.
+        if getattr(a, "parallel_group_id", None) is not None or a.is_support:
+            slot[a.subject]["gruppo"] = True
     # glibero + min_free_days HARD floor + per-day capacity
     day_caps = day_capacity_by_teacher(db)
     # Ranked free-day PREFERENCES (audit F5). These are SOFT and, crucially,

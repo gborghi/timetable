@@ -1425,12 +1425,102 @@ class ConstraintModel:
             "Scienzemotorie", mode="must_pair", flag_key="motorie_pairs")
 
     def add_math_italian_pair(self):
-        """Matematica + Italiano: when >= 2 hours/day, at least one
-        consecutive pair of busy hours."""
-        self.add_subject_pair_constraint(
-            "Matematica", mode="pair_exists", flag_key="dual_math")
-        self.add_subject_pair_constraint(
-            "Italiano", mode="pair_exists", flag_key="dual_italian")
+        """Doppia consecutiva per (docente, classe), regola come DATO in
+        ``double_lesson_rule`` (default: trigger Mat/Ita, materie di tutta
+        la classe, ore sommate per docente, soglia 2; Giovanni 01/11).
+
+        Per giorno: se il docente ha >= 2 ore contate nella classe, almeno
+        due sono consecutive (come la Fase B). Modo settimanale: almeno un
+        giorno con >= 2 ore contate (come la Fase A e il validatore H_A).
+        """
+        if not self.hours:
+            return
+        try:
+            from . import cpsat_v2_timetable as _cv  # type: ignore
+            from . import double_lesson_rule as _dlr  # type: ignore
+        except ImportError:
+            import cpsat_v2_timetable as _cv  # type: ignore
+            import double_lesson_rule as _dlr  # type: ignore
+        rule = _dlr.get_rule()
+        flags = getattr(self.config, "class_flags", None)
+        for teacher, pdata in self.profs.items():
+            if not self._scope_includes_teacher(teacher):
+                continue
+            for class_name, subjs in (pdata.get("classi", {}) or {}).items():
+                counted = _dlr.requirement(subjs, class_name, flags, rule,
+                                           (), _cv.class_enforces)
+                if not counted:
+                    continue
+                ge_two_days = []
+                n_days_in_scope = 0
+                for d in self.days:
+                    cols = []
+                    for s in counted:
+                        vs = [self.slot.get((teacher, class_name, s, d, h))
+                              for h in self.hours]
+                        if all(v is not None for v in vs):
+                            cols.append(vs)
+                    if not cols:
+                        continue
+                    n_days_in_scope += 1
+                    tag = f"{teacher}_{class_name}_{d}"
+                    if len(cols) == 1:
+                        pres = cols[0]
+                    else:
+                        pres = []
+                        for i in range(len(self.hours)):
+                            pr = self.model.NewBoolVar(f"dlP_{tag}_{i}")
+                            self.model.AddMaxEquality(
+                                pr, [c[i] for c in cols])
+                            pres.append(pr)
+                    pairs = []
+                    for i in range(len(self.hours) - 1):
+                        pair = self.model.NewBoolVar(f"dlPair_{tag}_{i}")
+                        self.model.AddBoolAnd(
+                            [pres[i], pres[i + 1]]).OnlyEnforceIf(pair)
+                        self.model.AddBoolOr(
+                            [pres[i].Not(), pres[i + 1].Not()]
+                        ).OnlyEnforceIf(pair.Not())
+                        pairs.append(pair)
+                    if not pairs:
+                        continue
+                    if self.weekly_mode:
+                        day_sum = sum(v for c in cols for v in c)
+                        any_pair = self.model.NewBoolVar(f"dlAny_{tag}")
+                        self.model.AddMaxEquality(any_pair, pairs)
+                        ge2 = self.model.NewBoolVar(f"dlGE2_{tag}")
+                        self.model.Add(day_sum >= 2).OnlyEnforceIf(ge2)
+                        self.model.Add(day_sum <= 1).OnlyEnforceIf(ge2.Not())
+                        self.model.AddImplication(ge2, any_pair)
+                        ge_two_days.append(ge2)
+                    else:
+                        day_total = sum(int(self.dc_value.get(
+                            (teacher, class_name, s, d), 0))
+                            for s in counted)
+                        if day_total >= 2:
+                            self.model.AddBoolOr(pairs)
+                if not (self.weekly_mode and ge_two_days
+                        and n_days_in_scope == len(self.days)):
+                    continue
+                miss_map = getattr(self, "miss", {})
+                misses = [miss_map.get((teacher, class_name, s))
+                          for s in counted]
+                ore = sum(int(subjs[s].get("ore", 0)) for s in counted
+                          if isinstance(subjs[s], dict))
+                misses = [m for m in misses if m is not None]
+                if misses:
+                    # partial mode: la regola segue le ore PIAZZATE
+                    placed_ge = self.model.NewBoolVar(
+                        f"dlPlacedGE_{teacher}_{class_name}")
+                    thr = int(rule.get("min_hours", 2))
+                    self.model.Add(ore - sum(misses) >= thr).OnlyEnforceIf(
+                        placed_ge)
+                    self.model.Add(ore - sum(misses) <= thr - 1
+                                   ).OnlyEnforceIf(placed_ge.Not())
+                    self.model.AddBoolOr(ge_two_days).OnlyEnforceIf(
+                        placed_ge)
+                else:
+                    self.model.AddBoolOr(ge_two_days)
 
     def add_plessi_commuting_constraints(self):
         """Apply plessi commuting rules (teacher- and class-kind) to

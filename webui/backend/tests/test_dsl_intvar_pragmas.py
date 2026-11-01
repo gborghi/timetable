@@ -909,10 +909,10 @@ def test_build_phase_a_pragmas_emits_canonical_set():
     # is < 2 and is not Mat/Ita anyway -> skip. T3 has Motorie
     # only -> skip Mat/Ita.
     assert any(
-        "teacher_class_day_count_pair('T1', '1A', 2)" == p
+        "teacher_class_day_count_pair('T1', '1A', 2, 'Matematica')" == p
         for p in pragmas), pragmas
     assert any(
-        "teacher_class_day_count_pair('T2', '1A', 2)" == p
+        p.startswith("teacher_class_day_count_pair('T2', '1A', 2")
         for p in pragmas), pragmas
     # No spurious emission for Storia / Motorie:
     assert not any("'Storia'" in p and "subject_day_count_pair" in p
@@ -1006,21 +1006,24 @@ def test_build_phase_a_pragmas_emits_subject_pair_per_teacher():
         day_count_keys=day_count_keys,
     )
     assert any(
-        "teacher_class_day_count_pair('T1', '1A', 2)" == p
+        "teacher_class_day_count_pair('T1', '1A', 2, 'Matematica')" == p
         for p in pragmas), pragmas
     assert any(
-        "teacher_class_day_count_pair('T2', '1A', 2)" == p
+        p.startswith("teacher_class_day_count_pair('T2', '1A', 2")
         for p in pragmas), pragmas
 
 
 def test_build_phase_a_pragmas_skips_subject_pair_when_below_2_ore():
-    """A Mat/Ita cattedra with < 2 hours is skipped (the per-teacher
-    per-subject pragma would be infeasible)."""
+    """Soglia per (docente, classe), ore sommate su tutte le materie di
+    classe (Giovanni 01/11): Ita 1 + Storia 3 = 4 -> regola attiva; un
+    docente con sola Ita 1 h resta sotto soglia."""
     import cpsat_v2_timetable as cv2
     profs = {
-        # Italian = 1 hour: skip.
+        # Ita 1 + Storia 3: emit (sum 4).
         "T1": {"classi": {"1A": {"Italiano": {"ore": 1},
                                    "Storia": {"ore": 3}}}},
+        # Ita 1 only: skip.
+        "T3": {"classi": {"1A": {"Italiano": {"ore": 1}}}},
         # Mat = 2 hours: emit.
         "T2": {"classi": {"1A": {"Matematica": {"ore": 2}}}},
     }
@@ -1038,8 +1041,10 @@ def test_build_phase_a_pragmas_skips_subject_pair_when_below_2_ore():
         triples_by_prof=triples_by_prof,
         day_count_keys=day_count_keys,
     )
-    assert not any("'T1'" in p and "day_count_pair" in p
-                    for p in pragmas), pragmas
+    assert ("teacher_class_day_count_pair('T1', '1A', 2, 'Italiano', "
+            "'Storia')") in pragmas, pragmas
+    assert not any("'T3'" in p and "day_count_pair" in p
+                   for p in pragmas), pragmas
     assert any(
-        "teacher_class_day_count_pair('T2', '1A', 2)" == p
+        p.startswith("teacher_class_day_count_pair('T2', '1A', 2")
         for p in pragmas), pragmas
